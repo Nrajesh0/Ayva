@@ -2,21 +2,26 @@ package com.focusbyrj.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
+import androidx.compose.ui.unit.sp
 import com.focusbyrj.app.util.HeatmapTheme
 import com.focusbyrj.app.util.UserProfile
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
 @Composable
 fun HeatmapAndStreaksWidget(
@@ -25,8 +30,12 @@ fun HeatmapAndStreaksWidget(
     profile: UserProfile,
     currentStreak: Int = profile.currentStreak,
     longestStreak: Int = profile.longestStreak,
-    streakTypeLabel: String = "Streaks"
+    streakTypeLabel: String = "Streaks",
+    isDrillMode: Boolean = false,
+    onToggleStreakSource: (() -> Unit)? = null
 ) {
+    var selectedTileInfo by remember { mutableStateOf<String?>(null) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -35,90 +44,151 @@ fun HeatmapAndStreaksWidget(
             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
             .padding(20.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // LEFT HALF: Heatmap
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Activity (30D)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    for (row in 0..4) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            for (col in 0..5) {
-                                // First block (row 0, col 0) corresponds to today (daysAgo = 0)
-                                val daysAgo = row * 6 + col
-                                val targetCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
-                                val usage = dailyUsage[targetCal.get(Calendar.DAY_OF_YEAR)] ?: 0L
-                                
-                                val emptyTileColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-                                
-                                val boxColor = when {
-                                    usage <= 0L -> emptyTileColor
-                                    usage < 15 * 60 * 1000L -> theme.colors[1]
-                                    usage < 30 * 60 * 1000L -> theme.colors[2]
-                                    usage < 60 * 60 * 1000L -> theme.colors[3]
-                                    else -> theme.colors[4]
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // LEFT HALF: Heatmap
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        if (isDrillMode) "Drills (30D)" else "Focus (30D)",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        for (row in 0..4) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                for (col in 0..5) {
+                                    val daysAgo = row * 6 + col
+                                    val targetCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
+                                    val usage = dailyUsage[targetCal.get(Calendar.DAY_OF_YEAR)] ?: 0L
+
+                                    val emptyTileColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+
+                                    val boxColor = if (isDrillMode) {
+                                        when {
+                                            usage <= 0L -> emptyTileColor
+                                            usage == 1L -> theme.colors[1]
+                                            usage in 2L..3L -> theme.colors[2]
+                                            usage in 4L..5L -> theme.colors[3]
+                                            else -> theme.colors[4]
+                                        }
+                                    } else {
+                                        when {
+                                            usage <= 0L -> emptyTileColor
+                                            usage < 15 * 60 * 1000L -> theme.colors[1]
+                                            usage < 30 * 60 * 1000L -> theme.colors[2]
+                                            usage < 60 * 60 * 1000L -> theme.colors[3]
+                                            else -> theme.colors[4]
+                                        }
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .aspectRatio(1f)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(boxColor)
+                                            .clickable {
+                                                val dateStr = if (daysAgo == 0) "Today" else if (daysAgo == 1) "Yesterday" else {
+                                                    SimpleDateFormat("MMM d", Locale.getDefault()).format(targetCal.time)
+                                                }
+                                                selectedTileInfo = if (isDrillMode) {
+                                                    if (usage <= 0L) "$dateStr: 0 drills" else "$dateStr: $usage drill${if (usage > 1) "s" else ""}"
+                                                } else {
+                                                    val mins = usage / (60 * 1000L)
+                                                    if (mins <= 0L) "$dateStr: 0m focus" else "$dateStr: ${mins}m focus"
+                                                }
+                                            }
+                                    )
                                 }
-                                
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .aspectRatio(1f)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(boxColor)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = selectedTileInfo ?: (if (isDrillMode) "Tap tile to inspect drills" else "Tap tile to inspect focus"),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+
+                // RIGHT HALF: Streaks
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            streakTypeLabel,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f, fill = false),
+                            maxLines = 1
+                        )
+                        if (onToggleStreakSource != null) {
+                            IconButton(
+                                onClick = onToggleStreakSource,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("streak_source_toggle")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SwapHoriz,
+                                    contentDescription = "Switch streak source",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                     }
-                }
-            }
-            
-            // RIGHT HALF: Streaks
-            Column(modifier = Modifier.weight(1f)) {
-                Text(streakTypeLabel, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                            .padding(vertical = 12.dp, horizontal = 8.dp),
-                        contentAlignment = Alignment.Center
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("$currentStreak", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                            Text("Current Streak", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("$currentStreak", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                                Text("Current Streak", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
-                    }
-                    
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                            .padding(vertical = 12.dp, horizontal = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("$longestStreak", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                            Text("Longest Streak", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("$longestStreak", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                                Text("Longest Streak", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }

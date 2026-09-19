@@ -39,9 +39,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckBox
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Card
@@ -52,11 +50,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -115,32 +116,42 @@ fun KeepNoteCard(
     val haptic = LocalHapticFeedback.current
     val isDark = isSystemInDarkTheme()
     val theme = KeepColorPalette.getColor(note.colorKey)
+    val fontStyle = KeepFontPalette.getFont(note.fontKey)
     val cardBg = theme.resolveBackgroundColor(isDark)
     val baseBorderColor = theme.resolveBorderColor(isDark)
     val isBeingDragged = isDragging
     val cardBorder = if (isBeingDragged || isSelected) {
-        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary)
     } else {
         BorderStroke(1.dp, baseBorderColor)
     }
     val textColor = theme.resolveTextColor(isDark)
 
+    val currentIsSelectionMode by rememberUpdatedState(isSelectionMode)
+    val currentIsSelected by rememberUpdatedState(isSelected)
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnToggleSelect by rememberUpdatedState(onToggleSelect)
+    val currentOnStartDrag by rememberUpdatedState(onStartDrag)
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    val currentOnEndDrag by rememberUpdatedState(onEndDrag)
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .zIndex(if (isBeingDragged) 100f else if (isSelected) 2f else 1f)
+            .zIndex(if (isBeingDragged) 1000f else if (isSelected) 2f else 1f)
             .graphicsLayer {
                 if (isBeingDragged) {
                     translationX = dragOffset.x
                     translationY = dragOffset.y
                     scaleX = 1.05f
                     scaleY = 1.05f
-                    shadowElevation = 16.dp.toPx()
-                    alpha = 0.94f
+                    shadowElevation = 18.dp.toPx()
+                    alpha = 0.95f
                 }
             }
             .clip(RoundedCornerShape(16.dp))
-            .pointerInput(note.id, isSelectionMode) {
+            .pointerInput(note.id) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val longPressTimeout = viewConfiguration.longPressTimeoutMillis
@@ -156,18 +167,18 @@ fun KeepNoteCard(
 
                     if (!isLongPress && upOrCancel != null) {
                         upOrCancel.consume()
-                        if (isSelectionMode) {
-                            onToggleSelect()
+                        if (currentIsSelectionMode) {
+                            currentOnToggleSelect()
                         } else {
-                            onClick()
+                            currentOnClick()
                         }
                     } else if (isLongPress) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        if (!isSelected) {
-                            onToggleSelect()
+                        if (!currentIsSelected) {
+                            currentOnToggleSelect()
                         }
-                        onLongClick?.invoke()
-                        onStartDrag?.invoke(down.position)
+                        currentOnLongClick?.invoke()
+                        currentOnStartDrag?.invoke(down.position)
                         val pointerId = down.id
                         while (true) {
                             val event = awaitPointerEvent()
@@ -179,10 +190,10 @@ fun KeepNoteCard(
                             val dragAmount = change.positionChange()
                             if (dragAmount != Offset.Zero) {
                                 change.consume()
-                                onDrag?.invoke(dragAmount)
+                                currentOnDrag?.invoke(dragAmount)
                             }
                         }
-                        onEndDrag?.invoke()
+                        currentOnEndDrag?.invoke()
                     }
                 }
             }
@@ -191,7 +202,7 @@ fun KeepNoteCard(
         colors = CardDefaults.cardColors(containerColor = cardBg),
         border = cardBorder,
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isBeingDragged) 12.dp else if (isSelected) 4.dp else if (note.colorKey == "default") 1.dp else 0.dp,
+            defaultElevation = if (isBeingDragged) 16.dp else if (isSelected) 4.dp else if (note.colorKey == "default") 1.dp else 0.dp,
             pressedElevation = 3.dp
         )
     ) {
@@ -205,6 +216,16 @@ fun KeepNoteCard(
                         .align(Alignment.BottomEnd)
                         .size(width = 100.dp, height = 85.dp)
                         .padding(end = 4.dp, bottom = 4.dp)
+                )
+            }
+
+            // Selection subtle colored highlight overlay (replaces checkmarks)
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.16f else 0.08f))
                 )
             }
 
@@ -225,18 +246,14 @@ fun KeepNoteCard(
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                if (isSelectionMode || isSelected) {
-                    // Indent so floating TopStart selection checkmark button has dedicated room
-                    Spacer(modifier = Modifier.width(24.dp))
-                }
-
                 if (note.title.isNotBlank()) {
                     Text(
                         text = note.title,
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            lineHeight = 22.sp
+                            lineHeight = 22.sp,
+                            fontFamily = fontStyle.fontFamily
                         ),
                         color = textColor,
                         maxLines = 3,
@@ -296,7 +313,8 @@ fun KeepNoteCard(
                                     text = item.text.ifBlank { "List item" },
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontSize = 13.5.sp,
-                                        textDecoration = if (item.isChecked) TextDecoration.LineThrough else null
+                                        textDecoration = if (item.isChecked) TextDecoration.LineThrough else null,
+                                        fontFamily = fontStyle.fontFamily
                                     ),
                                     color = if (item.isChecked) textColor.copy(alpha = 0.45f) else textColor,
                                     maxLines = 1,
@@ -310,7 +328,8 @@ fun KeepNoteCard(
                                 text = "+ $remainingCount more items",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Medium,
-                                    fontSize = 12.sp
+                                    fontSize = 12.sp,
+                                    fontFamily = fontStyle.fontFamily
                                 ),
                                 color = textColor.copy(alpha = 0.55f),
                                 modifier = Modifier.padding(top = 2.dp)
@@ -324,7 +343,8 @@ fun KeepNoteCard(
                     text = note.content,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 14.sp,
-                        lineHeight = 20.sp
+                        lineHeight = 20.sp,
+                        fontFamily = fontStyle.fontFamily
                     ),
                     color = textColor.copy(alpha = 0.85f),
                     maxLines = 8,
@@ -427,48 +447,6 @@ fun KeepNoteCard(
                 }
             }
         }
-        }
-
-        // Google Keep Selection Checkmark Button & Indicator (Top-left)
-        if (isSelectionMode || isSelected) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp)
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .clickable { onToggleSelect() }
-                    .testTag("note_select_${note.id}"),
-                shape = CircleShape,
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)
-                },
-                border = BorderStroke(
-                    width = if (isSelected) 0.dp else 1.2.dp,
-                    color = if (isSelected) Color.Transparent else if (isSelectionMode) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.4f)
-                ),
-                shadowElevation = if (isSelected || isSelectionMode) 3.dp else 1.dp
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Filled.CheckCircle,
-                            contentDescription = "Selected",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Outlined.CheckCircle,
-                            contentDescription = "Select note",
-                            tint = if (isSelectionMode) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.5f),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
         }
     }
 }

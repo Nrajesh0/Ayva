@@ -44,9 +44,9 @@ object DrillSummaryHelper {
             xpEarned = (xpEarned * boostMultiplier).roundToInt()
         }
 
-        // Sync gold to user wallet
+        // Sync gold directly to user wallet
         if (session.gold > 0) {
-            FocusEconomyManager.addRewards(baseXp = 0, baseGold = session.gold)
+            FocusEconomyManager.addDirectGold(session.gold)
         }
 
         val profileBefore = AptitudeManager.profileFlow.value

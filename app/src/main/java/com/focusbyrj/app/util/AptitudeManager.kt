@@ -2,9 +2,13 @@ package com.focusbyrj.app.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -32,7 +36,8 @@ data class AptitudeProfile(
     val isWagerActive: Boolean = false,
     val wagerDaysCompleted: Int = 0,
     val isXpBoostActive: Boolean = false,
-    val xpBoostRemainingMinutes: Int = 0
+    val xpBoostRemainingMinutes: Int = 0,
+    val dailyDrillCounts: Map<Int, Long> = emptyMap() // DayOfYear -> drill count for heatmap
 ) {
     val accuracy: Float
         get() = if (totalQuestions > 0) (correctQuestions.toFloat() / totalQuestions) * 100f else 0f
@@ -67,7 +72,8 @@ object AptitudeManager {
             xp = 0, tQ = 0, cQ = 0, tD = 0, savedStreak = 0, longestStreak = 0,
             lastDate = "", isVacationMode = false, streakFreezes = 1, freezeUsedNotice = null,
             weeklyXp = 0, isWagerActive = false, wagerDays = 0,
-            isXpBoostActive = false, xpBoostRemainingMins = 0
+            isXpBoostActive = false, xpBoostRemainingMins = 0,
+            dailyDrillCounts = emptyMap()
         )
     )
     val profileFlow: StateFlow<AptitudeProfile> = _profileFlow.asStateFlow()
@@ -89,6 +95,45 @@ object AptitudeManager {
         }
 
         refreshProfile()
+
+        // Sync past drill sessions from Room database into daily heatmap counts
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val db = com.focusbyrj.app.data.drill.DrillDatabase.getDatabase(context)
+                val sessions = db.drillSessionDao().getAllSessionsSync()
+                if (sessions.isNotEmpty()) {
+                    val p = prefs ?: return@launch
+                    var modified = false
+                    val cal = Calendar.getInstance()
+                    val editor = p.edit()
+                    val thirtyDaysAgo = System.currentTimeMillis() - (31L * 24 * 60 * 60 * 1000L)
+                    val dayCounts = mutableMapOf<String, Long>()
+
+                    for (session in sessions) {
+                        if (session.timestamp >= thirtyDaysAgo) {
+                            cal.timeInMillis = session.timestamp
+                            val key = getDailyDrillKey(cal)
+                            dayCounts[key] = (dayCounts[key] ?: 0L) + 1L
+                        }
+                    }
+
+                    for ((key, count) in dayCounts) {
+                        val currentVal = p.getLong(key, 0L)
+                        if (count > currentVal) {
+                            editor.putLong(key, count)
+                            modified = true
+                        }
+                    }
+
+                    if (modified) {
+                        editor.apply()
+                        withContext(Dispatchers.Main) {
+                            refreshProfile()
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     fun isVacationMode(context: Context? = null): Boolean {
@@ -127,6 +172,10 @@ object AptitudeManager {
         refreshProfile()
     }
 
+    fun getDailyDrillKey(cal: Calendar): String {
+        return "drill_day_${cal.get(Calendar.YEAR)}_${cal.get(Calendar.DAY_OF_YEAR)}"
+    }
+
     private fun getTodayDateString(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     }
@@ -135,6 +184,20 @@ object AptitudeManager {
         val cal = Calendar.getInstance()
         cal.add(Calendar.DAY_OF_YEAR, -1)
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+    }
+
+    private fun getDaysBetween(fromDateStr: String, toDateStr: String): Int {
+        if (fromDateStr.isEmpty() || toDateStr.isEmpty()) return 999
+        if (fromDateStr == toDateStr) return 0
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val fromDate = sdf.parse(fromDateStr) ?: return 999
+            val toDate = sdf.parse(toDateStr) ?: return 999
+            val diffMs = toDate.time - fromDate.time
+            (diffMs / (24 * 60 * 60 * 1000L)).toInt()
+        } catch (_: Exception) {
+            999
+        }
     }
 
     private fun getCurrentWeekKey(): String {
@@ -275,18 +338,30 @@ object AptitudeManager {
         val yesterday = getYesterdayDateString()
         var freezeNotice: String? = null
 
-        // Check if user missed yesterday and can be protected by a Streak Freeze
-        if (!vacation && lastDate.isNotEmpty() && lastDate != today && lastDate != yesterday && savedStreak > 0) {
-            if (freezes > 0) {
-                // Consume Streak Freeze
-                freezes -= 1
-                lastDate = yesterday
-                p.edit()
-                    .putInt(KEY_STREAK_FREEZES, freezes)
-                    .putString(KEY_LAST_ACTIVE_DATE, yesterday)
-                    .putString(KEY_LAST_FREEZE_USED_DATE, today)
-                    .apply()
-                freezeNotice = "🛡️ Streak Freeze preserved your $savedStreak-day streak!"
+        val daysBetween = if (lastDate.isNotEmpty()) getDaysBetween(lastDate, today) else 999
+
+        // Streak check and freeze protection logic
+        if (!vacation && lastDate.isNotEmpty() && savedStreak > 0) {
+            if (daysBetween == 2) {
+                // Exactly 1 day was missed (yesterday). Can be protected by a streak freeze!
+                if (freezes > 0) {
+                    freezes -= 1
+                    lastDate = yesterday
+                    p.edit()
+                        .putInt(KEY_STREAK_FREEZES, freezes)
+                        .putString(KEY_LAST_ACTIVE_DATE, yesterday)
+                        .putString(KEY_LAST_FREEZE_USED_DATE, today)
+                        .apply()
+                    freezeNotice = "🛡️ Streak Freeze preserved your $savedStreak-day streak!"
+                } else {
+                    // No freeze available: streak is broken
+                    savedStreak = 0
+                    p.edit().putInt(KEY_CURRENT_STREAK, 0).apply()
+                }
+            } else if (daysBetween > 2) {
+                // More than 1 day missed: streak is broken
+                savedStreak = 0
+                p.edit().putInt(KEY_CURRENT_STREAK, 0).apply()
             }
         }
 
@@ -304,6 +379,16 @@ object AptitudeManager {
         val xpBoostActive = isXpBoostActive()
         val xpBoostRemaining = getXpBoostRemainingMinutes()
 
+        // Build 30-day drill counts map for the heatmap
+        val dailyDrillMap = mutableMapOf<Int, Long>()
+        for (i in 0 downTo -30) {
+            val dayCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, i) }
+            val dayOfYear = dayCal.get(Calendar.DAY_OF_YEAR)
+            val key = getDailyDrillKey(dayCal)
+            val count = p.getLong(key, 0L)
+            dailyDrillMap[dayOfYear] = count
+        }
+
         _profileFlow.value = calculateProfile(
             xp = savedXp,
             tQ = tQ,
@@ -319,7 +404,8 @@ object AptitudeManager {
             isWagerActive = isWagerActive,
             wagerDays = wagerDays,
             isXpBoostActive = xpBoostActive,
-            xpBoostRemainingMins = xpBoostRemaining
+            xpBoostRemainingMins = xpBoostRemaining,
+            dailyDrillCounts = dailyDrillMap
         )
     }
 
@@ -356,8 +442,10 @@ object AptitudeManager {
         var freezes = prefs?.getInt(KEY_STREAK_FREEZES, 1) ?: 1
         var freezeNotice: String? = null
 
-        // Auto Streak Freeze protection if day was missed
-        if (!vacation && lastDate.isNotEmpty() && lastDate != today && lastDate != yesterday && savedStreak > 0) {
+        val daysBetween = if (lastDate.isNotEmpty()) getDaysBetween(lastDate, today) else 999
+
+        // Auto Streak Freeze protection if yesterday was missed
+        if (!vacation && lastDate.isNotEmpty() && daysBetween == 2 && savedStreak > 0) {
             if (freezes > 0) {
                 freezes -= 1
                 lastDate = yesterday
@@ -367,9 +455,9 @@ object AptitudeManager {
         }
 
         val newStreak = when {
-            vacation -> savedStreak + 1
-            lastDate == today -> if (savedStreak <= 0) 1 else savedStreak
-            lastDate == yesterday -> savedStreak + 1
+            vacation -> if (daysBetween == 0) (if (savedStreak <= 0) 1 else savedStreak) else savedStreak + 1
+            lastDate == today || daysBetween == 0 -> if (savedStreak <= 0) 1 else savedStreak
+            lastDate == yesterday || daysBetween == 1 -> savedStreak + 1
             else -> 1
         }
         val newLongest = maxOf(savedLongest, newStreak)
@@ -378,6 +466,12 @@ object AptitudeManager {
         val newTQ = p.totalQuestions + questions
         val newCQ = p.correctQuestions + correct
         val newTD = p.totalDrills + 1
+
+        // Track daily drill count for heatmap
+        val cal = Calendar.getInstance()
+        val dailyKey = getDailyDrillKey(cal)
+        val currentDailyDrills = prefs?.getLong(dailyKey, 0L) ?: 0L
+        val updatedDailyDrills = currentDailyDrills + 1L
 
         // Weekly XP
         val currentWeek = getCurrentWeekKey()
@@ -395,7 +489,7 @@ object AptitudeManager {
         val wagerLastDate = prefs?.getString(KEY_WAGER_LAST_DATE, "") ?: ""
 
         if (wagerActive) {
-            if (lastDate != today && lastDate != yesterday && !vacation && freezeNotice == null) {
+            if (daysBetween > 1 && !vacation && freezeNotice == null) {
                 // Streak broken and no freeze -> Wager failed
                 wagerActive = false
                 wagerDays = 0
@@ -403,7 +497,6 @@ object AptitudeManager {
                 wagerDays += 1
                 prefs?.edit()?.putString(KEY_WAGER_LAST_DATE, today)?.apply()
                 if (wagerDays >= 7) {
-                    // Wager completed! Double reward: 10,000 gold + 100 XP
                     FocusEconomyManager.addRewards(baseXp = 100, baseGold = 10000)
                     wagerActive = false
                     wagerDays = 0
@@ -419,17 +512,25 @@ object AptitudeManager {
             putInt(KEY_CURRENT_STREAK, newStreak)
             putInt(KEY_LONGEST_STREAK, newLongest)
             putString(KEY_LAST_ACTIVE_DATE, today)
+            putLong(dailyKey, updatedDailyDrills)
             putString(KEY_WEEK_KEY, currentWeek)
             putInt(KEY_WEEKLY_XP, weeklyXp)
             putBoolean(KEY_WAGER_ACTIVE, wagerActive)
             putInt(KEY_WAGER_DAYS, wagerDays)
         }
 
+        // Sync streak rewards to economy
+        FocusEconomyManager.syncStreaks(newStreak, newLongest)
+
         // Report to DailyQuestManager
         DailyQuestManager.recordXpEarned(xpEarned)
 
         val xpBoostActive = isXpBoostActive()
         val xpBoostRemaining = getXpBoostRemainingMinutes()
+
+        // Build updated daily counts map
+        val updatedMap = p.dailyDrillCounts.toMutableMap()
+        updatedMap[cal.get(Calendar.DAY_OF_YEAR)] = updatedDailyDrills
 
         _profileFlow.value = calculateProfile(
             xp = newXp,
@@ -446,7 +547,8 @@ object AptitudeManager {
             isWagerActive = wagerActive,
             wagerDays = wagerDays,
             isXpBoostActive = xpBoostActive,
-            xpBoostRemainingMins = xpBoostRemaining
+            xpBoostRemainingMins = xpBoostRemaining,
+            dailyDrillCounts = updatedMap
         )
     }
 
@@ -473,7 +575,8 @@ object AptitudeManager {
         isWagerActive: Boolean,
         wagerDays: Int,
         isXpBoostActive: Boolean,
-        xpBoostRemainingMins: Int
+        xpBoostRemainingMins: Int,
+        dailyDrillCounts: Map<Int, Long> = emptyMap()
     ): AptitudeProfile {
         val level = getLevelForXp(xp)
         val currentLevelXp = getXpForLevel(level)
@@ -490,10 +593,11 @@ object AptitudeManager {
 
         val today = getTodayDateString()
         val yesterday = getYesterdayDateString()
+        val daysBetween = if (lastDate.isNotEmpty()) getDaysBetween(lastDate, today) else 999
         val currentStreak = when {
             isVacationMode -> savedStreak
             lastDate.isEmpty() -> 0
-            lastDate == today || lastDate == yesterday -> savedStreak
+            daysBetween <= 1 || lastDate == today || lastDate == yesterday -> savedStreak
             else -> 0
         }
 
@@ -519,7 +623,8 @@ object AptitudeManager {
             isWagerActive = isWagerActive,
             wagerDaysCompleted = wagerDays,
             isXpBoostActive = isXpBoostActive,
-            xpBoostRemainingMinutes = xpBoostRemainingMins
+            xpBoostRemainingMinutes = xpBoostRemainingMins,
+            dailyDrillCounts = dailyDrillCounts
         )
     }
 }

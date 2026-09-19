@@ -133,6 +133,14 @@ class NoteRepository(private val noteDao: NoteDao) {
         }
     }
 
+    suspend fun setFont(id: Long, fontKey: String) {
+        try {
+            noteDao.updateFont(id, fontKey)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in setFont", e)
+        }
+    }
+
     suspend fun getTrashedNotesSync(): List<NoteEntity> = try {
         noteDao.getTrashedNotesSync()
     } catch (e: Exception) {

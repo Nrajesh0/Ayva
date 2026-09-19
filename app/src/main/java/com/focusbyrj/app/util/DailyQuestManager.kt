@@ -57,6 +57,7 @@ object DailyQuestManager {
     private const val KEY_DRILLS_COMPLETED = "quest_drills_completed"
     private const val KEY_MORNING_CHEST_CLAIMED = "quest_morning_chest_claimed"
     private const val KEY_EVENING_CHEST_CLAIMED = "quest_evening_chest_claimed"
+    private const val KEY_QUEST_REWARD_CLAIMED = "quest_reward_claimed"
     private const val KEY_EARLY_BIRD_EARNED_DATE = "quest_early_bird_earned_date"
     private const val KEY_NIGHT_OWL_EARNED_DATE = "quest_early_bird_earned_date_night"
 
@@ -101,15 +102,24 @@ object DailyQuestManager {
                 .putInt(KEY_DRILLS_COMPLETED, 0)
                 .putBoolean(KEY_MORNING_CHEST_CLAIMED, false)
                 .putBoolean(KEY_EVENING_CHEST_CLAIMED, false)
+                .putBoolean(KEY_QUEST_REWARD_CLAIMED, false)
                 .apply()
         }
 
         val drills = p.getInt(KEY_DRILLS_COMPLETED, 0)
         val morningClaimed = p.getBoolean(KEY_MORNING_CHEST_CLAIMED, false)
         val eveningClaimed = p.getBoolean(KEY_EVENING_CHEST_CLAIMED, false)
+        val questClaimed = p.getBoolean(KEY_QUEST_REWARD_CLAIMED, false)
 
         val ebEarnedDate = p.getString(KEY_EARLY_BIRD_EARNED_DATE, "") ?: ""
         val noEarnedDate = p.getString(KEY_NIGHT_OWL_EARNED_DATE, "") ?: ""
+
+        val isCompleted = drills >= TARGET_DRILLS
+        if (isCompleted && !questClaimed) {
+            p.edit().putBoolean(KEY_QUEST_REWARD_CLAIMED, true).apply()
+            AptitudeManager.addAptitudeXp(100)
+            FocusEconomyManager.addDirectGold(50)
+        }
 
         val quest = DailyQuest(
             id = "quest_daily_drill",
@@ -118,7 +128,7 @@ object DailyQuestManager {
             icon = "🎯",
             currentProgress = minOf(drills, TARGET_DRILLS),
             target = TARGET_DRILLS,
-            isCompleted = drills >= TARGET_DRILLS,
+            isCompleted = isCompleted,
             rewardXp = 100,
             rewardGold = 50
         )

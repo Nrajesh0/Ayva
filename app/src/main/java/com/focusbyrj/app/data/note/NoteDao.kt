@@ -95,6 +95,9 @@ interface NoteDao {
     @Query("UPDATE keep_notes SET colorKey = :colorKey, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateColor(id: Long, colorKey: String, updatedAt: Long = System.currentTimeMillis())
 
+    @Query("UPDATE keep_notes SET fontKey = :fontKey, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateFont(id: Long, fontKey: String, updatedAt: Long = System.currentTimeMillis())
+
     @Query("SELECT * FROM keep_notes WHERE isTrashed = 1")
     suspend fun getTrashedNotesSync(): List<NoteEntity>
 

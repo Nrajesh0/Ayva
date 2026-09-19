@@ -32,6 +32,7 @@ data class NoteEntity(
     val isChecklist: Boolean = false,
     val checklistJson: String = "[]",
     val colorKey: String = "default",
+    val fontKey: String = "default",
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
     val isTrashed: Boolean = false,

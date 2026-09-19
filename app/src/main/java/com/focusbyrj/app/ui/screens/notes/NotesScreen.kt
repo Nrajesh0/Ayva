@@ -274,10 +274,7 @@ fun NotesScreen(
 
     val handleDrag: (NoteEntity, Offset) -> Unit = { note, delta ->
         fingerRootPosition += delta
-        val bounds = cardBounds[note.id]
-        if (bounds != null) {
-            dragOffset = (fingerRootPosition - touchPointInCard) - bounds.topLeft
-        }
+        dragOffset += delta
 
         val isPinned = note.isPinned
         val targetList = if (isPinned) localPinnedNotes else localOtherNotes
@@ -292,7 +289,7 @@ fun NotesScreen(
                     if (b != null) {
                         val dist = (b.center - fingerRootPosition).getDistance()
                         if (b.contains(fingerRootPosition)) dist
-                        else if (dist < 320f) dist + 300f
+                        else if (dist < 300f) dist + 150f
                         else Float.MAX_VALUE
                     } else Float.MAX_VALUE
                 }
@@ -1199,7 +1196,9 @@ fun NotesScreen(
                                     modifier = Modifier
                                         .animateItem()
                                         .onGloballyPositioned { coords ->
-                                            cardBounds[note.id] = coords.boundsInRoot()
+                                            if (draggedNoteId != note.id) {
+                                                cardBounds[note.id] = coords.boundsInRoot()
+                                            }
                                         }
                                 )
                             }
@@ -1257,7 +1256,9 @@ fun NotesScreen(
                                 modifier = Modifier
                                     .animateItem()
                                     .onGloballyPositioned { coords ->
-                                        cardBounds[note.id] = coords.boundsInRoot()
+                                        if (draggedNoteId != note.id) {
+                                            cardBounds[note.id] = coords.boundsInRoot()
+                                        }
                                     }
                             )
                         }
@@ -1317,6 +1318,7 @@ fun NotesScreen(
                         onContentChange = { viewModel.updateEditorContent(it) },
                         onTogglePin = { viewModel.toggleEditorPin() },
                         onColorChange = { viewModel.updateEditorColor(it) },
+                        onFontChange = { viewModel.updateEditorFont(it) },
                         onToggleChecklistMode = { viewModel.toggleChecklistMode() },
                         onToggleChecklistItem = { viewModel.toggleChecklistItem(it) },
                         onUpdateChecklistItemText = { idx, text -> viewModel.updateChecklistItemText(idx, text) },

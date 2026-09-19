@@ -26,7 +26,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import net.sqlcipher.database.SQLiteDatabase
 import net.sqlcipher.database.SupportFactory
 
-@Database(entities = [NoteEntity::class], version = 3, exportSchema = false)
+@Database(entities = [NoteEntity::class], version = 4, exportSchema = false)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -97,10 +97,35 @@ abstract class NoteDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE keep_notes ADD COLUMN fontKey TEXT NOT NULL DEFAULT 'default'")
+                } catch (e: Exception) {
+                    android.util.Log.e("NoteDatabase", "Error executing MIGRATION_3_4", e)
+                }
+            }
+        }
+
         val MIGRATION_1_3 = object : Migration(1, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 MIGRATION_1_2.migrate(db)
                 MIGRATION_2_3.migrate(db)
+            }
+        }
+
+        val MIGRATION_1_4 = object : Migration(1, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_1_2.migrate(db)
+                MIGRATION_2_3.migrate(db)
+                MIGRATION_3_4.migrate(db)
+            }
+        }
+
+        val MIGRATION_2_4 = object : Migration(2, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_2_3.migrate(db)
+                MIGRATION_3_4.migrate(db)
             }
         }
 
@@ -125,7 +150,7 @@ abstract class NoteDatabase : RoomDatabase() {
                         NoteDatabaseMigrationHelper.getEncryptedDatabaseName()
                     )
                         .openHelperFactory(factory)
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_1_3)
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_1_3, MIGRATION_1_4, MIGRATION_2_4)
                         .fallbackToDestructiveMigration()
                         .build()
                 } catch (t: Throwable) {
@@ -135,7 +160,7 @@ abstract class NoteDatabase : RoomDatabase() {
                         NoteDatabase::class.java,
                         "keep_notes_fallback.db"
                     )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_1_3)
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_1_3, MIGRATION_1_4, MIGRATION_2_4)
                         .fallbackToDestructiveMigration()
                         .build()
                 }

@@ -455,6 +455,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val isChecklist: Boolean = false,
         val checklistItems: List<ChecklistItem> = emptyList(),
         val colorKey: String = "default",
+        val fontKey: String = "default",
         val isPinned: Boolean = false,
         val isArchived: Boolean = false,
         val isTrashed: Boolean = false,
@@ -556,12 +557,31 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _editingState = MutableStateFlow<EditingNoteState?>(null)
     val editingState: StateFlow<EditingNoteState?> = _editingState.asStateFlow()
+    private var initialSnapshot: EditingNoteState? = null
+
+    private fun isNoteModified(current: EditingNoteState, initial: EditingNoteState?): Boolean {
+        if (initial == null) return true
+        if (current.originalId == 0L) return true
+        return current.title != initial.title ||
+                current.content != initial.content ||
+                current.isChecklist != initial.isChecklist ||
+                current.checklistItems != initial.checklistItems ||
+                current.colorKey != initial.colorKey ||
+                current.fontKey != initial.fontKey ||
+                current.isPinned != initial.isPinned ||
+                current.isArchived != initial.isArchived ||
+                current.isTrashed != initial.isTrashed ||
+                current.labels != initial.labels ||
+                current.imageUris != initial.imageUris ||
+                current.audioUris != initial.audioUris
+    }
 
     fun openNewNote(asChecklist: Boolean = false) {
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
         autoSaveJob?.cancel()
         resetUndoHistory()
+        initialSnapshot = null
         val initialItems = if (asChecklist) listOf(ChecklistItem(text = "", isChecked = false)) else emptyList()
         _editingState.value = EditingNoteState(
             originalId = 0L,
@@ -570,6 +590,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             isChecklist = asChecklist,
             checklistItems = initialItems,
             colorKey = "default",
+            fontKey = "default",
             isPinned = false,
             isArchived = false,
             isTrashed = false
@@ -584,13 +605,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val cached = latestNotesCache[note.id]
         val resolvedNote = if (cached != null && cached.updatedAt >= note.updatedAt) cached else note
 
-        _editingState.value = EditingNoteState(
+        val state = EditingNoteState(
             originalId = resolvedNote.id,
             title = resolvedNote.title,
             content = resolvedNote.content,
             isChecklist = resolvedNote.isChecklist,
             checklistItems = resolvedNote.getChecklistItems(),
             colorKey = resolvedNote.colorKey,
+            fontKey = resolvedNote.fontKey,
             isPinned = resolvedNote.isPinned,
             isArchived = resolvedNote.isArchived,
             isTrashed = resolvedNote.isTrashed,
@@ -600,6 +622,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             createdAt = resolvedNote.createdAt,
             updatedAt = resolvedNote.updatedAt
         )
+        _editingState.value = state
+        initialSnapshot = state
 
         if (resolvedNote.id != 0L) {
             viewModelScope.launch(Dispatchers.IO) {
@@ -609,12 +633,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     withContext(Dispatchers.Main) {
                         val curr = _editingState.value
                         if (curr != null && curr.originalId == fresh.id) {
-                            _editingState.value = curr.copy(
+                            val freshState = curr.copy(
                                 title = fresh.title,
                                 content = fresh.content,
                                 isChecklist = fresh.isChecklist,
                                 checklistItems = fresh.getChecklistItems(),
                                 colorKey = fresh.colorKey,
+                                fontKey = fresh.fontKey,
                                 isPinned = fresh.isPinned,
                                 isArchived = fresh.isArchived,
                                 isTrashed = fresh.isTrashed,
@@ -623,6 +648,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                                 audioUris = fresh.getAudioUris(),
                                 updatedAt = fresh.updatedAt
                             )
+                            _editingState.value = freshState
+                            initialSnapshot = freshState
                         }
                     }
                 }
@@ -715,6 +742,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateEditorColor(colorKey: String) {
         _editingState.value = _editingState.value?.copy(colorKey = colorKey, updatedAt = System.currentTimeMillis())
+        persistCurrentEditorState()
+    }
+
+    fun updateEditorFont(fontKey: String) {
+        _editingState.value = _editingState.value?.copy(fontKey = fontKey, updatedAt = System.currentTimeMillis())
         persistCurrentEditorState()
     }
 
@@ -818,6 +850,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 isChecklist = current.isChecklist,
                 checklistJson = ChecklistItem.listToJson(newChecklistItems),
                 colorKey = current.colorKey,
+                fontKey = current.fontKey,
                 isPinned = false,
                 isArchived = false,
                 isTrashed = false,
@@ -1237,9 +1270,18 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val current = _editingState.value ?: return
         _editingState.value = null
 
+        val initial = initialSnapshot
+        initialSnapshot = null
+        val modified = isNoteModified(current, initial)
+
+        // If existing note is unmodified, do NOT overwrite timestamp or re-save
+        if (!modified && current.originalId != 0L) {
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             persistMutex.withLock {
-                val entity = buildEntityFromState(current)
+                val entity = buildEntityFromState(current, isModified = modified)
                 if (entity.isEmptyNote()) {
                     if (entity.id != 0L) {
                         latestNotesCache.remove(entity.id)
@@ -1257,7 +1299,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun persistCurrentEditorState(immediate: Boolean = false) {
         val current = _editingState.value ?: return
-        val entityCandidate = buildEntityFromState(current)
+        val isModified = isNoteModified(current, initialSnapshot)
+        if (!isModified && current.originalId != 0L) return
+
+        val entityCandidate = buildEntityFromState(current, isModified = true)
         if (entityCandidate.isEmptyNote() && current.originalId == 0L) return
 
         autoSaveJob?.cancel()
@@ -1267,7 +1312,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             }
             persistMutex.withLock {
                 val latest = _editingState.value ?: return@withLock
-                val entity = buildEntityFromState(latest)
+                val latestModified = isNoteModified(latest, initialSnapshot)
+                if (!latestModified && latest.originalId != 0L) return@withLock
+
+                val entity = buildEntityFromState(latest, isModified = true)
                 if (entity.isEmptyNote() && latest.originalId == 0L) return@withLock
 
                 val savedId = repository.saveNote(entity)
@@ -1283,7 +1331,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun buildEntityFromState(state: EditingNoteState): NoteEntity {
+    private fun buildEntityFromState(state: EditingNoteState, isModified: Boolean = true): NoteEntity {
         val labelsArray = JSONArray()
         state.labels.forEach { labelsArray.put(it) }
 
@@ -1293,6 +1341,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val audiosArray = JSONArray()
         state.audioUris.forEach { audiosArray.put(it) }
 
+        val finalUpdatedAt = if (isModified || state.originalId == 0L) {
+            if (state.updatedAt > state.createdAt) state.updatedAt else System.currentTimeMillis()
+        } else {
+            state.updatedAt
+        }
+
         return NoteEntity(
             id = state.originalId,
             title = state.title.trim(),
@@ -1300,6 +1354,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             isChecklist = state.isChecklist,
             checklistJson = if (state.isChecklist) ChecklistItem.listToJson(state.checklistItems) else "[]",
             colorKey = state.colorKey,
+            fontKey = state.fontKey,
             isPinned = state.isPinned,
             isArchived = state.isArchived,
             isTrashed = state.isTrashed,
@@ -1307,7 +1362,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             imageUrisJson = imagesArray.toString(),
             audioUrisJson = audiosArray.toString(),
             createdAt = state.createdAt,
-            updatedAt = System.currentTimeMillis()
+            updatedAt = finalUpdatedAt
         )
     }
 
@@ -1337,6 +1392,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
             repository.setColor(note.id, colorKey)
+        }
+    }
+
+    fun setNoteFont(note: NoteEntity, fontKey: String) {
+        latestNotesCache.remove(note.id)
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.setFont(note.id, fontKey)
         }
     }
 

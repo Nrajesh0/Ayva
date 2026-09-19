@@ -431,27 +431,37 @@ object FocusEconomyManager {
         }
     }
         
+    fun addDirectGold(goldAmount: Int) {
+        if (goldAmount <= 0) return
+        prefs?.let { p ->
+            val currentGold = _profileFlow.value.gold
+            val newGold = currentGold + goldAmount
+            val maxGold = max(newGold, _profileFlow.value.maxGold)
+            p.edit()
+                .putInt("gold", newGold)
+                .putInt("max_gold", maxGold)
+                .apply()
+            loadProfile()
+            emitEvent(EconomyEvent.RewardsEarned(0, goldAmount, "Drill Reward"))
+        }
+    }
+
     fun syncStreaks(current: Int, longest: Int) {
         prefs?.let { p ->
-            val oldGold = _profileFlow.value.gold
-            var newGold = oldGold
-            
             val oldLongest = _profileFlow.value.longestStreak
+            var goldBonus = 0
             if (longest > oldLongest) {
-                if (longest >= 3 && oldLongest < 3) newGold += 100
-                if (longest >= 7 && oldLongest < 7) newGold += 500
-                if (longest >= 30 && oldLongest < 30) newGold += 5000
+                if (longest >= 3 && oldLongest < 3) goldBonus += 100
+                if (longest >= 7 && oldLongest < 7) goldBonus += 500
+                if (longest >= 30 && oldLongest < 30) goldBonus += 5000
             }
             
-            
-            val earnedGold = newGold - oldGold
-            val finalGold = oldGold // We don't add to real gold yet
             val pGold = _profileFlow.value.pendingGold
             
             p.edit()
                 .putInt("current_streak", current)
-                .putInt("longest_streak", longest)
-                .putInt("pending_gold", pGold + earnedGold)
+                .putInt("longest_streak", maxOf(oldLongest, longest))
+                .putInt("pending_gold", pGold + goldBonus)
                 .apply()
             loadProfile()
         }

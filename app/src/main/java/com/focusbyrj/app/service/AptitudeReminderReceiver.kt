@@ -250,7 +250,8 @@ class AptitudeReminderReceiver : BroadcastReceiver() {
             
             if (!isEnabled || isVacationMode) return
 
-        val profile = AptitudeManager.profileFlow.value
+            AptitudeManager.init(context)
+            val profile = AptitudeManager.profileFlow.value
         val streakText = if (profile.currentStreak > 0) "🔥 *${profile.currentStreak}-Day Streak Active!*\n" else ""
 
         val titles = listOf(

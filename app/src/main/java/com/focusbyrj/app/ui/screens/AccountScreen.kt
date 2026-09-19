@@ -528,6 +528,9 @@ fun ProfileStatItem(icon: ImageVector, value: String, label: String, color: Colo
 fun OverviewTab(stats: com.focusbyrj.app.util.FocusStats, heatmapTheme: com.focusbyrj.app.util.HeatmapTheme, profile: UserProfile) {
     val streakSource by com.focusbyrj.app.util.StreakManager.streakSourceFlow.collectAsState()
     val drillProfile by com.focusbyrj.app.util.AptitudeManager.profileFlow.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val isDrillMode = streakSource == com.focusbyrj.app.util.StreakSource.DRILL
 
     val (activeCurrentStreak, activeLongestStreak) = when (streakSource) {
         com.focusbyrj.app.util.StreakSource.DRILL -> drillProfile.currentStreak to drillProfile.longestStreak
@@ -538,6 +541,8 @@ fun OverviewTab(stats: com.focusbyrj.app.util.FocusStats, heatmapTheme: com.focu
         com.focusbyrj.app.util.StreakSource.DRILL -> "Streaks (Drills)"
         com.focusbyrj.app.util.StreakSource.FOCUS -> "Streaks (Focus)"
     }
+
+    val activeDailyUsage = if (isDrillMode) drillProfile.dailyDrillCounts else stats.dailyFocusMinutes
 
     Column(
         modifier = Modifier
@@ -551,12 +556,17 @@ fun OverviewTab(stats: com.focusbyrj.app.util.FocusStats, heatmapTheme: com.focu
 
         Spacer(modifier = Modifier.height(16.dp))
         com.focusbyrj.app.ui.components.HeatmapAndStreaksWidget(
-            dailyUsage = stats.dailyFocusMinutes,
+            dailyUsage = activeDailyUsage,
             theme = heatmapTheme,
             profile = profile,
             currentStreak = activeCurrentStreak,
             longestStreak = activeLongestStreak,
-            streakTypeLabel = streakHeaderTitle
+            streakTypeLabel = streakHeaderTitle,
+            isDrillMode = isDrillMode,
+            onToggleStreakSource = {
+                val nextSource = if (isDrillMode) com.focusbyrj.app.util.StreakSource.FOCUS else com.focusbyrj.app.util.StreakSource.DRILL
+                com.focusbyrj.app.util.StreakManager.setStreakSource(context, nextSource)
+            }
         )
         
         Spacer(modifier = Modifier.height(32.dp))

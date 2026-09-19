@@ -100,6 +100,7 @@ import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.FontDownload
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.Mic
@@ -137,6 +138,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.focus.FocusRequester
@@ -223,17 +225,20 @@ fun KeepNoteEditor(
     onSetAudioPlaybackSpeed: (Float) -> Unit = {},
     onSkipAudio: (Int) -> Unit = {},
     onRemoveAudio: (String) -> Unit = {},
+    onFontChange: (String) -> Unit = {},
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
 
     val isDark = isSystemInDarkTheme()
     val theme = KeepColorPalette.getColor(state.colorKey)
+    val fontStyle = KeepFontPalette.getFont(state.fontKey)
     val bgColor = theme.resolveBackgroundColor(isDark)
     val textColor = theme.resolveTextColor(isDark)
     val borderColor = theme.resolveBorderColor(isDark)
 
     var showColorPicker by remember { mutableStateOf(false) }
+    var showFontPicker by remember { mutableStateOf(false) }
     var showLabelDialog by remember { mutableStateOf(false) }
     var showSketchDialog by remember { mutableStateOf(false) }
     var showAddSheet by remember { mutableStateOf(false) }
@@ -247,6 +252,7 @@ fun KeepNoteEditor(
             viewingImageUri != null -> viewingImageUri = null
             showSketchDialog -> showSketchDialog = false
             showColorPicker -> showColorPicker = false
+            showFontPicker -> showFontPicker = false
             showAddSheet -> showAddSheet = false
             showLabelDialog -> showLabelDialog = false
             showMoreMenu -> showMoreMenu = false
@@ -433,7 +439,8 @@ fun KeepNoteEditor(
                     textStyle = TextStyle(
                         color = textColor,
                         fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = fontStyle.fontFamily
                     ),
                     cursorBrush = SolidColor(textColor),
                     decorationBox = { innerTextField ->
@@ -443,7 +450,8 @@ fun KeepNoteEditor(
                                 style = TextStyle(
                                     color = textColor.copy(alpha = 0.40f),
                                     fontSize = 22.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = fontStyle.fontFamily
                                 )
                             )
                         }
@@ -472,7 +480,8 @@ fun KeepNoteEditor(
                         textStyle = TextStyle(
                             color = textColor,
                             fontSize = 16.sp,
-                            lineHeight = 24.sp
+                            lineHeight = 24.sp,
+                            fontFamily = fontStyle.fontFamily
                         ),
                         cursorBrush = SolidColor(textColor),
                         decorationBox = { innerTextField ->
@@ -482,7 +491,8 @@ fun KeepNoteEditor(
                                     style = TextStyle(
                                         color = textColor.copy(alpha = 0.40f),
                                         fontSize = 16.sp,
-                                        lineHeight = 24.sp
+                                        lineHeight = 24.sp,
+                                        fontFamily = fontStyle.fontFamily
                                     )
                                 )
                             }
@@ -510,6 +520,7 @@ fun KeepNoteEditor(
                                 ChecklistRow(
                                     item = item,
                                     textColor = textColor,
+                                    fontFamily = fontStyle.fontFamily,
                                     canMoveUp = posInList > 0,
                                     canMoveDown = posInList < uncompletedItems.size - 1,
                                     isTargetFocus = item.id == targetFocusItemId,
@@ -613,6 +624,7 @@ fun KeepNoteEditor(
                                             ChecklistRow(
                                                 item = item,
                                                 textColor = textColor,
+                                                fontFamily = fontStyle.fontFamily,
                                                 canMoveUp = posInList > 0,
                                                 canMoveDown = posInList < completedItems.size - 1,
                                                 isTargetFocus = item.id == targetFocusItemId,
@@ -897,6 +909,133 @@ fun KeepNoteEditor(
             }
 
             // ==========================================
+            // FONT / TYPOGRAPHY DRAWER (IF OPEN)
+            // ==========================================
+            AnimatedVisibility(
+                visible = showFontPicker,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Surface(
+                    color = if (isDark) Color(0xFF101012) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                    tonalElevation = 6.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("editor_font_drawer")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "FONT STYLE",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.8.sp,
+                                    fontSize = 11.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "${fontStyle.name} · ${fontStyle.description}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontFamily = fontStyle.fontFamily
+                                ),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(KeepFontPalette.allFonts) { fontItem ->
+                                val isSelected = fontItem.key.equals(state.fontKey, ignoreCase = true)
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    },
+                                    border = BorderStroke(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                                        }
+                                    ),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { onFontChange(fontItem.key) }
+                                        .testTag("font_picker_${fontItem.key}")
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = fontItem.previewSample,
+                                                style = TextStyle(
+                                                    fontFamily = fontItem.fontFamily,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 17.sp
+                                                ),
+                                                color = if (isSelected) {
+                                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface
+                                                }
+                                            )
+                                            if (isSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Check,
+                                                    contentDescription = "Selected",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = fontItem.name,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.sp,
+                                                fontFamily = fontItem.fontFamily,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                            ),
+                                            color = if (isSelected) {
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
             // BOTTOM TOOLBAR (Authentic Google Keep Layout)
             // ==========================================
             Surface(
@@ -911,7 +1050,7 @@ fun KeepNoteEditor(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Left tools: [+] Add sheet and [Palette] Color
+                    // Left tools: [+] Add sheet, [Palette] Color, and [Font] Typography
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = { showAddSheet = true },
@@ -926,13 +1065,31 @@ fun KeepNoteEditor(
                         }
 
                         IconButton(
-                            onClick = { showColorPicker = !showColorPicker },
+                            onClick = {
+                                showColorPicker = !showColorPicker
+                                if (showColorPicker) showFontPicker = false
+                            },
                             modifier = Modifier.testTag("editor_palette_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Palette,
                                 contentDescription = "Color palette",
-                                tint = textColor.copy(alpha = 0.85f),
+                                tint = if (showColorPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                showFontPicker = !showFontPicker
+                                if (showFontPicker) showColorPicker = false
+                            },
+                            modifier = Modifier.testTag("editor_font_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.FontDownload,
+                                contentDescription = "Font settings",
+                                tint = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -1036,6 +1193,16 @@ fun KeepNoteEditor(
                         onClick = {
                             showMoreMenu = false
                             onCopyText()
+                        }
+                    )
+
+                    KeepAddOptionRow(
+                        icon = Icons.Outlined.FontDownload,
+                        title = "Font style",
+                        onClick = {
+                            showMoreMenu = false
+                            showFontPicker = true
+                            showColorPicker = false
                         }
                     )
 
@@ -1189,6 +1356,7 @@ private fun KeepAddOptionRow(
 private fun ChecklistRow(
     item: com.focusbyrj.app.data.note.ChecklistItem,
     textColor: Color,
+    fontFamily: FontFamily = FontFamily.Default,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     isTargetFocus: Boolean,
@@ -1361,7 +1529,8 @@ private fun ChecklistRow(
                 color = if (item.isChecked) textColor.copy(alpha = 0.45f) else textColor,
                 fontSize = 16.sp,
                 lineHeight = 22.sp,
-                textDecoration = if (item.isChecked) TextDecoration.LineThrough else null
+                textDecoration = if (item.isChecked) TextDecoration.LineThrough else null,
+                fontFamily = fontFamily
             ),
             cursorBrush = SolidColor(textColor),
             keyboardOptions = KeyboardOptions(
@@ -1376,7 +1545,11 @@ private fun ChecklistRow(
                 if (item.text.isEmpty()) {
                     Text(
                         text = "List item",
-                        style = TextStyle(color = textColor.copy(alpha = 0.35f), fontSize = 16.sp)
+                        style = TextStyle(
+                            color = textColor.copy(alpha = 0.35f),
+                            fontSize = 16.sp,
+                            fontFamily = fontFamily
+                        )
                     )
                 }
                 innerTextField()
