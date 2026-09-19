@@ -53,6 +53,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.widget.Toast
+import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 
 enum class NoteFolder(val title: String) {
     NOTES("Notes"),
@@ -67,6 +68,63 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("keep_notes_prefs", Context.MODE_PRIVATE)
     private val persistMutex = Mutex()
     private var autoSaveJob: Job? = null
+
+    // Secret Archive Vault Security State
+    private val _isVaultUnlocked = MutableStateFlow(false)
+    val isVaultUnlocked: StateFlow<Boolean> = _isVaultUnlocked.asStateFlow()
+
+    private val _vaultStatus = MutableStateFlow(ArchiveVaultSecurity.getVaultStatus(application))
+    val vaultStatus: StateFlow<ArchiveVaultSecurity.VaultStatus> = _vaultStatus.asStateFlow()
+
+    fun refreshVaultStatus() {
+        _vaultStatus.value = ArchiveVaultSecurity.getVaultStatus(getApplication())
+    }
+
+    fun verifyVaultPasscode(pin: String): ArchiveVaultSecurity.VerifyResult {
+        val result = ArchiveVaultSecurity.verifyPasscode(getApplication(), pin)
+        if (result is ArchiveVaultSecurity.VerifyResult.Success) {
+            _isVaultUnlocked.value = true
+            _currentFolder.value = NoteFolder.ARCHIVE
+            refreshVaultStatus()
+        }
+        return result
+    }
+
+    fun setVaultPasscode(pin: String): Boolean {
+        val success = ArchiveVaultSecurity.setPasscode(getApplication(), pin)
+        if (success) {
+            _isVaultUnlocked.value = true
+            _currentFolder.value = NoteFolder.ARCHIVE
+            refreshVaultStatus()
+        }
+        return success
+    }
+
+    fun skipVaultPasscode() {
+        ArchiveVaultSecurity.skipPasscodeSetup(getApplication())
+        _isVaultUnlocked.value = true
+        _currentFolder.value = NoteFolder.ARCHIVE
+        refreshVaultStatus()
+    }
+
+    fun disableVaultPasscode(): Boolean {
+        val success = ArchiveVaultSecurity.disablePasscode(getApplication())
+        if (success) {
+            refreshVaultStatus()
+        }
+        return success
+    }
+
+    fun lockVault() {
+        _isVaultUnlocked.value = false
+        if (_currentFolder.value == NoteFolder.ARCHIVE) {
+            _currentFolder.value = NoteFolder.NOTES
+        }
+    }
+
+    fun getRemainingLockoutSeconds(): Long {
+        return ArchiveVaultSecurity.getRemainingLockoutSeconds(getApplication())
+    }
 
     companion object {
         val latestNotesCache = ConcurrentHashMap<Long, NoteEntity>()
@@ -93,6 +151,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     val currentFolder: StateFlow<NoteFolder> = _currentFolder.asStateFlow()
 
     fun setFolder(folder: NoteFolder) {
+        if (folder != NoteFolder.ARCHIVE) {
+            _isVaultUnlocked.value = false
+        }
         _currentFolder.value = folder
         _selectedColorFilter.value = null
         _selectedLabelFilter.value = null
@@ -357,12 +418,19 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Notes stream based on folder and multi-token ranked search query
-    private val rawNotesFlow = combine(_currentFolder, _searchQuery) { folder, query ->
-        Pair(folder, query)
-    }.flatMapLatest { (folder, query) ->
+    private val rawNotesFlow = combine(_currentFolder, _searchQuery, _isVaultUnlocked) { folder, query, isUnlocked ->
+        Triple(folder, query, isUnlocked)
+    }.flatMapLatest { (folder, query, isUnlocked) ->
         val folderFlow = when (folder) {
             NoteFolder.NOTES -> repository.getActiveNotes()
-            NoteFolder.ARCHIVE -> repository.getArchivedNotes()
+            NoteFolder.ARCHIVE -> {
+                val status = ArchiveVaultSecurity.getVaultStatus(getApplication())
+                if (status == ArchiveVaultSecurity.VaultStatus.ENABLED && !isUnlocked) {
+                    kotlinx.coroutines.flow.flowOf(emptyList())
+                } else {
+                    repository.getArchivedNotes()
+                }
+            }
             NoteFolder.TRASH -> repository.getTrashedNotes()
         }
         if (query.isBlank()) {

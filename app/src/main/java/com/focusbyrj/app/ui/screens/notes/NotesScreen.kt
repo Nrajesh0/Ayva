@@ -72,6 +72,8 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
@@ -86,10 +88,13 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Label
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
@@ -153,6 +158,11 @@ import com.focusbyrj.app.util.ProfileAvatarManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import kotlinx.coroutines.launch
 
 @Composable
@@ -181,15 +191,46 @@ fun NotesScreen(
     val recordingState by viewModel.recordingState.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
     val economyProfile by FocusEconomyManager.profileFlow.collectAsState()
+    val vaultStatus by viewModel.vaultStatus.collectAsState()
+    val isVaultUnlocked by viewModel.isVaultUnlocked.collectAsState()
 
     var showSelectionColorPicker by remember { mutableStateOf(false) }
     var showSelectionLabelsDialog by remember { mutableStateOf(false) }
     var showSelectionMoreMenu by remember { mutableStateOf(false) }
+    var showVaultUnlockDialog by remember { mutableStateOf(false) }
+    var showVaultFirstTimeDialog by remember { mutableStateOf(false) }
+    var showVaultSettingsDialog by remember { mutableStateOf(false) }
+    var showVaultChangePinDialog by remember { mutableStateOf(false) }
+    var showVaultDisableConfirmDialog by remember { mutableStateOf(false) }
+
     val selectedNotes = remember(allNotes, selectedNoteIds) { allNotes.filter { it.id in selectedNoteIds } }
     val allSelectedPinned = remember(selectedNotes) { selectedNotes.isNotEmpty() && selectedNotes.all { it.isPinned } }
 
     BackHandler(enabled = isSelectionMode) {
         viewModel.clearSelection()
+    }
+
+    BackHandler(enabled = !isSelectionMode && currentFolder == NoteFolder.ARCHIVE) {
+        viewModel.lockVault()
+    }
+
+    // Auto-lock vault when screen goes into background or is disposed
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                if (viewModel.currentFolder.value == NoteFolder.ARCHIVE) {
+                    viewModel.lockVault()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            if (viewModel.currentFolder.value == NoteFolder.ARCHIVE) {
+                viewModel.lockVault()
+            }
+        }
     }
 
     var showEditLabelsDialog by remember { mutableStateOf(false) }
@@ -247,7 +288,6 @@ fun NotesScreen(
     val cardBounds = remember { mutableStateMapOf<Long, Rect>() }
     var draggedNoteId by remember { mutableStateOf<Long?>(null) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
-    var touchPointInCard by remember { mutableStateOf(Offset.Zero) }
     var fingerRootPosition by remember { mutableStateOf(Offset.Zero) }
 
     var localPinnedNotes by remember(pinnedNotes) { mutableStateOf(pinnedNotes) }
@@ -265,7 +305,6 @@ fun NotesScreen(
 
     val handleDragStart: (Long, Offset) -> Unit = { noteId, downPos ->
         draggedNoteId = noteId
-        touchPointInCard = downPos
         val bounds = cardBounds[noteId]
         val origin = bounds?.topLeft ?: Offset.Zero
         fingerRootPosition = origin + downPos
@@ -288,17 +327,32 @@ fun NotesScreen(
                     val b = cardBounds[other.id]
                     if (b != null) {
                         val dist = (b.center - fingerRootPosition).getDistance()
-                        if (b.contains(fingerRootPosition)) dist
-                        else if (dist < 300f) dist + 150f
-                        else Float.MAX_VALUE
+                        if (b.contains(fingerRootPosition)) {
+                            dist * 0.5f // Strongly prioritize bounding box overlap
+                        } else if (dist < 400f) {
+                            dist
+                        } else {
+                            Float.MAX_VALUE
+                        }
                     } else Float.MAX_VALUE
                 }
             } ?: -1
 
             if (toIndex != -1 && toIndex != fromIndex) {
+                val targetBounds = cardBounds[targetList[toIndex].id]
+                val currentBounds = cardBounds[note.id]
                 val updated = targetList.toMutableList()
                 val item = updated.removeAt(fromIndex)
                 updated.add(toIndex, item)
+                
+                // Adjust dragOffset smoothly so the dragging card doesn't jump when slots swap
+                if (targetBounds != null && currentBounds != null) {
+                    val posDelta = targetBounds.topLeft - currentBounds.topLeft
+                    dragOffset -= posDelta
+                    cardBounds[note.id] = targetBounds
+                    cardBounds[targetList[toIndex].id] = currentBounds
+                }
+                
                 if (isPinned) {
                     localPinnedNotes = updated
                 } else {
@@ -494,7 +548,7 @@ fun NotesScreen(
 
                 HorizontalDivider(color = contentTextColor.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 8.dp))
 
-                // 3. ARCHIVE FOLDER
+                // 3. ARCHIVE FOLDER (SECRET VAULT)
                 val isArchiveSelected = currentFolder == NoteFolder.ARCHIVE
                 NavigationDrawerItem(
                     icon = {
@@ -505,18 +559,46 @@ fun NotesScreen(
                         )
                     },
                     label = {
-                        Text(
-                            text = "Archive",
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontWeight = if (isArchiveSelected) FontWeight.Bold else FontWeight.Medium
-                            ),
-                            color = if (isArchiveSelected) MaterialTheme.colorScheme.primary else contentTextColor
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Archive",
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontWeight = if (isArchiveSelected) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (isArchiveSelected) MaterialTheme.colorScheme.primary else contentTextColor
+                            )
+                            if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                                Icon(
+                                    imageVector = if (isVaultUnlocked) Icons.Outlined.LockOpen else Icons.Outlined.Lock,
+                                    contentDescription = "Vault Protected",
+                                    tint = if (isArchiveSelected) MaterialTheme.colorScheme.primary else contentTextColor.copy(alpha = 0.50f),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
                     },
                     selected = isArchiveSelected,
                     onClick = {
-                        viewModel.setFolder(NoteFolder.ARCHIVE)
                         coroutineScope.launch { drawerState.close() }
+                        when (vaultStatus) {
+                            ArchiveVaultSecurity.VaultStatus.NOT_CONFIGURED -> {
+                                showVaultFirstTimeDialog = true
+                            }
+                            ArchiveVaultSecurity.VaultStatus.ENABLED -> {
+                                if (isVaultUnlocked) {
+                                    viewModel.setFolder(NoteFolder.ARCHIVE)
+                                } else {
+                                    showVaultUnlockDialog = true
+                                }
+                            }
+                            ArchiveVaultSecurity.VaultStatus.DISABLED -> {
+                                viewModel.setFolder(NoteFolder.ARCHIVE)
+                            }
+                        }
                     },
                     colors = NavigationDrawerItemDefaults.colors(
                         selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
@@ -981,11 +1063,77 @@ fun NotesScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = currentFolder.title,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = contentTextColor
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = currentFolder.title,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    letterSpacing = (-0.3).sp
+                                ),
+                                color = contentTextColor
+                            )
+                            if (currentFolder == NoteFolder.ARCHIVE && vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Shield,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Encrypted",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (currentFolder == NoteFolder.ARCHIVE) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.40f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .clickable { showVaultSettingsDialog = true }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) Icons.Outlined.Lock else Icons.Outlined.LockOpen,
+                                        contentDescription = "Vault Settings",
+                                        tint = if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) MaterialTheme.colorScheme.primary else contentTextColor.copy(alpha = 0.60f),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) "Vault Options" else "Set Passcode",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        color = if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) MaterialTheme.colorScheme.onSurface else contentTextColor.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
+                        }
 
                         if (currentFolder == NoteFolder.TRASH && allNotes.isNotEmpty()) {
                             Row(
@@ -1479,6 +1627,85 @@ fun NotesScreen(
                         ) {
                             Text("Cancel")
                         }
+                    }
+                )
+            }
+
+            // =========================================================
+            // SECRET ARCHIVE VAULT DIALOGS
+            // =========================================================
+            if (showVaultUnlockDialog) {
+                ArchiveVaultUnlockDialog(
+                    onDismiss = { showVaultUnlockDialog = false },
+                    onVerify = { pin -> viewModel.verifyVaultPasscode(pin) },
+                    onSuccess = {
+                        showVaultUnlockDialog = false
+                        Toast.makeText(context, "Archive Vault unlocked 🔓", Toast.LENGTH_SHORT).show()
+                    },
+                    initialLockoutSeconds = viewModel.getRemainingLockoutSeconds()
+                )
+            }
+
+            if (showVaultFirstTimeDialog) {
+                ArchiveVaultFirstTimeDialog(
+                    onDismiss = { showVaultFirstTimeDialog = false },
+                    onSkip = {
+                        showVaultFirstTimeDialog = false
+                        viewModel.skipVaultPasscode()
+                        Toast.makeText(context, "Passcode skipped. You can enable it anytime in Vault Options.", Toast.LENGTH_SHORT).show()
+                    },
+                    onPasscodeSet = { pin ->
+                        showVaultFirstTimeDialog = false
+                        viewModel.setVaultPasscode(pin)
+                        Toast.makeText(context, "Secret Vault passcode set! 🔒", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+
+            if (showVaultSettingsDialog) {
+                ArchiveVaultSettingsDialog(
+                    vaultStatus = vaultStatus,
+                    onDismiss = { showVaultSettingsDialog = false },
+                    onLockVault = {
+                        showVaultSettingsDialog = false
+                        viewModel.lockVault()
+                        Toast.makeText(context, "Archive Vault locked 🔒", Toast.LENGTH_SHORT).show()
+                    },
+                    onChangePasscode = {
+                        showVaultSettingsDialog = false
+                        showVaultChangePinDialog = true
+                    },
+                    onDisablePasscode = {
+                        showVaultSettingsDialog = false
+                        showVaultDisableConfirmDialog = true
+                    },
+                    onSetPasscode = {
+                        showVaultSettingsDialog = false
+                        showVaultFirstTimeDialog = true
+                    }
+                )
+            }
+
+            if (showVaultChangePinDialog) {
+                ArchiveVaultChangePasscodeDialog(
+                    onDismiss = { showVaultChangePinDialog = false },
+                    onVerifyCurrentPin = { pin -> viewModel.verifyVaultPasscode(pin) },
+                    onSaveNewPin = { newPin -> viewModel.setVaultPasscode(newPin) },
+                    onSuccess = {
+                        showVaultChangePinDialog = false
+                        Toast.makeText(context, "Vault passcode updated successfully! 🔒", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+
+            if (showVaultDisableConfirmDialog) {
+                ArchiveVaultDisableConfirmDialog(
+                    onDismiss = { showVaultDisableConfirmDialog = false },
+                    onVerifyCurrentPin = { pin -> viewModel.verifyVaultPasscode(pin) },
+                    onDisableConfirmed = {
+                        showVaultDisableConfirmDialog = false
+                        viewModel.disableVaultPasscode()
+                        Toast.makeText(context, "Passcode protection turned off 🔓", Toast.LENGTH_SHORT).show()
                     }
                 )
             }

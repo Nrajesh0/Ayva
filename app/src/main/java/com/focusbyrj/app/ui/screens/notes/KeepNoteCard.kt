@@ -120,8 +120,10 @@ fun KeepNoteCard(
     val cardBg = theme.resolveBackgroundColor(isDark)
     val baseBorderColor = theme.resolveBorderColor(isDark)
     val isBeingDragged = isDragging
-    val cardBorder = if (isBeingDragged || isSelected) {
-        BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary)
+    val cardBorder = if (isSelected) {
+        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+    } else if (isBeingDragged) {
+        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
     } else {
         BorderStroke(1.dp, baseBorderColor)
     }
@@ -136,18 +138,24 @@ fun KeepNoteCard(
     val currentOnEndDrag by rememberUpdatedState(onEndDrag)
     val currentOnLongClick by rememberUpdatedState(onLongClick)
 
+    val animatedElevation by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (isBeingDragged) 12.dp else if (isSelected) 3.dp else if (note.colorKey == "default") 1.dp else 0.dp,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        ),
+        label = "cardElevation"
+    )
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .zIndex(if (isBeingDragged) 1000f else if (isSelected) 2f else 1f)
+            .zIndex(if (isBeingDragged) 100f else if (isSelected) 2f else 1f)
             .graphicsLayer {
                 if (isBeingDragged) {
                     translationX = dragOffset.x
                     translationY = dragOffset.y
-                    scaleX = 1.05f
-                    scaleY = 1.05f
-                    shadowElevation = 18.dp.toPx()
-                    alpha = 0.95f
+                    shadowElevation = 14.dp.toPx()
                 }
             }
             .clip(RoundedCornerShape(16.dp))
@@ -174,8 +182,10 @@ fun KeepNoteCard(
                         }
                     } else if (isLongPress) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        if (!currentIsSelected) {
-                            currentOnToggleSelect()
+                        if (currentIsSelectionMode) {
+                            if (!currentIsSelected) {
+                                currentOnToggleSelect()
+                            }
                         }
                         currentOnLongClick?.invoke()
                         currentOnStartDrag?.invoke(down.position)
@@ -202,8 +212,8 @@ fun KeepNoteCard(
         colors = CardDefaults.cardColors(containerColor = cardBg),
         border = cardBorder,
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isBeingDragged) 16.dp else if (isSelected) 4.dp else if (note.colorKey == "default") 1.dp else 0.dp,
-            pressedElevation = 3.dp
+            defaultElevation = animatedElevation,
+            pressedElevation = 2.dp
         )
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
