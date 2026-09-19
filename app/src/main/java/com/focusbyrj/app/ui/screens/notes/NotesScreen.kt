@@ -1436,6 +1436,7 @@ fun NotesScreen(
                     elapsedSeconds = recordingState.elapsedSeconds,
                     amplitude = recordingState.currentAmplitude,
                     liveTranscript = recordingState.liveTranscript,
+                    statusMessage = recordingState.statusMessage,
                     onCancel = { viewModel.cancelVoiceRecording() },
                     onDone = { viewModel.stopVoiceRecordingAndAttach() }
                 )

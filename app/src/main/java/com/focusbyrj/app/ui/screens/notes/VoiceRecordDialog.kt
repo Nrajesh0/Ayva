@@ -84,6 +84,7 @@ fun VoiceRecordDialog(
     elapsedSeconds: Int,
     amplitude: Float,
     liveTranscript: String,
+    statusMessage: String = "Listening...",
     onCancel: () -> Unit,
     onDone: () -> Unit
 ) {
@@ -286,7 +287,7 @@ fun VoiceRecordDialog(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = "Speak now — live transcript will appear",
+                                    text = if (statusMessage.isNotBlank()) statusMessage else "Speak now — live transcript will appear",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                                     textAlign = TextAlign.Center
