@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Dynamic Background Image Layer -->
+    <ImageView
+        android:id="@+id/widget_note_bg_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_bg"
+        android:contentDescription="Note Widget Background" />
+
+    <LinearLayout
+        android:id="@+id/widget_note_main_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingLeft="14dp"
+        android:paddingRight="14dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="10dp">
+
+        <!-- Header Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="6dp">
+
+            <ImageView
+                android:id="@+id/widget_note_type_icon"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:padding="2dp"
+                android:src="@drawable/ic_widget_checklist"
+                android:contentDescription="Open Notes in App"
+                android:clickable="true" />
+
+            <!-- Title & Pinned Badge clickable to open note in quick edit -->
+            <LinearLayout
+                android:id="@+id/widget_note_header_clickable"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:clickable="true">
+
+                <TextView
+                    android:id="@+id/widget_note_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Groceries"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <ImageView
+                    android:id="@+id/widget_note_pinned_badge"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:layout_marginStart="6dp"
+                    android:src="@drawable/ic_widget_pin"
+                    android:contentDescription="Pinned Note"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- Carousel Navigation Pill & Actions -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <!-- Compact Carousel Capsule -->
+                <LinearLayout
+                    android:id="@+id/widget_note_carousel_pill"
+                    android:layout_width="wrap_content"
+                    android:layout_height="26dp"
+                    android:background="@drawable/widget_note_badge_bg"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingLeft="4dp"
+                    android:paddingRight="4dp">
+
+                    <!-- Previous Note Button -->
+                    <ImageView
+                        android:id="@+id/widget_note_btn_prev"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:background="@android:color/transparent"
+                        android:src="@drawable/ic_widget_arrow_left"
+                        android:padding="3dp"
+                        android:contentDescription="Previous Note" />
+
+                    <!-- Page Indicator: 1 / 3 -->
+                    <TextView
+                        android:id="@+id/widget_note_page_indicator"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingLeft="4dp"
+                        android:paddingRight="4dp"
+                        android:text="1/1"
+                        android:textColor="#9AA0A6"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+
+                    <!-- Next Note Button -->
+                    <ImageView
+                        android:id="@+id/widget_note_btn_next"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:background="@android:color/transparent"
+                        android:src="@drawable/ic_widget_arrow_right"
+                        android:padding="3dp"
+                        android:contentDescription="Next Note" />
+                </LinearLayout>
+
+                <!-- Filter Mode Capsule (All / Lists / Pinned) -->
+                <TextView
+                    android:id="@+id/widget_note_btn_filter_mode"
+                    android:layout_width="wrap_content"
+                    android:layout_height="26dp"
+                    android:layout_marginStart="6dp"
+                    android:gravity="center"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:text="All"
+                    android:textColor="#9AA0A6"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/widget_note_badge_bg"
+                    android:contentDescription="Filter Mode" />
+
+                <!-- Settings Button -->
+                <ImageView
+                    android:id="@+id/widget_note_btn_settings"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/widget_note_circle_action_bg"
+                    android:src="@drawable/ic_widget_settings"
+                    android:padding="5dp"
+                    android:contentDescription="Configure Widget" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Subtle Divider Line -->
+        <ImageView
+            android:id="@+id/widget_note_divider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:src="@drawable/widget_count_bg"
+            android:contentDescription="Divider" />
+
+        <!-- Content Area: ListView for checklists or TextView for note content -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:paddingTop="4dp">
+
+            <!-- Interactive Checklist Items List -->
+            <ListView
+                android:id="@+id/widget_note_list_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:divider="@null"
+                android:dividerHeight="0dp"
+                android:scrollbars="vertical" />
+
+            <!-- Plain Text Note Content View -->
+            <LinearLayout
+                android:id="@+id/widget_note_scroll_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+                
+                <ImageView
+                    android:id="@+id/widget_note_image"
+                    android:layout_width="match_parent"
+                    android:layout_height="160dp"
+                    android:layout_marginTop="8dp"
+                    android:scaleType="centerCrop"
+                    android:visibility="gone"
+                    android:layout_marginBottom="8dp"/>
+
+                <TextView
+                    android:id="@+id/widget_note_text_content"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingLeft="6dp"
+                    android:paddingRight="6dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp"
+                    android:textColor="#E8EAED"
+                    android:lineSpacingExtra="3.5dp" />
+            </LinearLayout>
+
+            <!-- Empty State -->
+            <LinearLayout
+                android:id="@+id/widget_note_empty_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:visibility="gone"
+                android:padding="16dp">
+
+                <ImageView
+                    android:id="@+id/widget_note_empty_icon"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_widget_notes"
+                    android:alpha="0.4"
+                    android:contentDescription="Empty Note" />
+
+                <TextView
+                    android:id="@+id/widget_note_empty_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="No items in this note"
+                    android:textColor="#9AA0A6"
+                    android:textSize="13.5sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_note_empty_subtext"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Tap below to capture ideas"
+                    android:textColor="#5F6368"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- Bottom Micro-Action Bar (Modern Material 3 Google Keep Style) -->
+        <LinearLayout
+            android:id="@+id/widget_note_bottom_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- Quick Add Item / Note Pill -->
+            <LinearLayout
+                android:id="@+id/widget_note_btn_add_item"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:background="@drawable/widget_note_pill_bg"
+                android:clickable="true">
+
+                <ImageView
+                    android:id="@+id/widget_note_add_icon"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_widget_add"
+                    android:contentDescription="Add" />
+
+                <TextView
+                    android:id="@+id/widget_note_add_hint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="Add item..."
+                    android:textColor="#9AA0A6" />
+            </LinearLayout>
+
+            <!-- Quick Voice Dictation Button (38x38 Circle) -->
+            <ImageView
+                android:id="@+id/widget_note_btn_voice"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:padding="10dp"
+                android:src="@drawable/ic_widget_mic"
+                android:background="@drawable/widget_note_circle_action_bg"
+                android:contentDescription="Add Voice Note" />
+
+            <!-- New Note Button (38x38 Circle) -->
+            <ImageView
+                android:id="@+id/widget_note_btn_new_note"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="6dp"
+                android:padding="10dp"
+                android:src="@drawable/ic_widget_notes"
+                android:background="@drawable/widget_note_circle_action_bg"
+                android:contentDescription="New Note" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

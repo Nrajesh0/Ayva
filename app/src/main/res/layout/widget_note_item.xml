@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_note_item_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="36dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="2dp"
+    android:paddingEnd="2dp"
+    android:paddingTop="3dp"
+    android:paddingBottom="3dp">
+
+    <!-- Drag Handle (6 Dots ::) -->
+    <ImageView
+        android:id="@+id/widget_note_item_drag_handle"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:src="@drawable/ic_widget_drag_handle"
+        android:contentDescription="Drag to Rearrange" />
+
+    <!-- Interactive Square Checkbox -->
+    <ImageView
+        android:id="@+id/widget_note_item_checkbox"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginStart="6dp"
+        android:background="@android:color/transparent"
+        android:src="@drawable/ic_widget_check_empty"
+        android:contentDescription="Toggle Item" />
+
+    <!-- Checklist Item Text -->
+    <TextView
+        android:id="@+id/widget_note_item_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:text="Checklist item"
+        android:textColor="#E8EAED"
+        android:maxLines="4"
+        android:ellipsize="end" />
+
+    <!-- Remove / Delete Item X Icon -->
+    <ImageView
+        android:id="@+id/widget_note_item_remove"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginStart="6dp"
+        android:background="@android:color/transparent"
+        android:src="@drawable/ic_widget_remove_x"
+        android:padding="2dp"
+        android:contentDescription="Remove Item" />
+</LinearLayout>

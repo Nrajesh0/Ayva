@@ -1,0 +1,1010 @@
+[
+  {
+    "id": "preferences_hub_navigation",
+    "title": "Preferences & Settings Hub",
+    "emoji": "⚙️",
+    "directExplanation": "The menu settings have moved to the centralized **Preferences & Settings Hub**. You can access App Settings, Security & Permissions, Bubble Settings, Profile Customization, Subscriptions, and the Setup Guide all in one place.",
+    "whereToGo": "Top Header Bar -> Tap Profile Avatar Ring (or tap button below)",
+    "whatToClick": [
+      "1. Tap your Profile Avatar in the top right corner of the home screen.",
+      "2. Choose Security & Permissions, App Settings, Bubble Settings, Subscription, or Profile.",
+      "3. Or tap 'Preferences Hub' below to jump directly there!"
+    ],
+    "keywords": [
+      "settings",
+      "preferences",
+      "where is settings",
+      "where are settings",
+      "where did menu go",
+      "sidebar",
+      "side bar",
+      "drawer",
+      "menu",
+      "open settings",
+      "preferences hub",
+      "how to open settings",
+      "settings location",
+      "where is menu",
+      "hamburger menu",
+      "how to find settings"
+    ],
+    "route": "preferences_hub",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "security_and_permissions",
+    "title": "Security & Permissions Overview",
+    "emoji": "🔒",
+    "directExplanation": "FocusByRj features tamper defense and system permissions to maintain your focus without needing a PIN lock. It includes:\n• **Usage Access**: Detects foreground apps to enforce focus blocks.\n• **Display Over Apps**: Direct window overlay for blocking screens.\n• **Battery Restrictions**: Prevents Android from killing background services.\n• **Uninstall Protection**: Device Administrator defense against impulsive deletion.\n• **Anti-Screenshot Protection**: Prevents screenshots of sensitive screens.\n• **Data Vault**: AES-256 password-encrypted backup and restore.",
+    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions",
+    "whatToClick": [
+      "Tap Profile Avatar in the top header",
+      "Tap Security & Permissions",
+      "Grant permissions or toggle Uninstall Protection and Anti-Screenshot"
+    ],
+    "keywords": [
+      "security",
+      "permissions",
+      "security settings",
+      "security and permissions",
+      "tamper defense",
+      "app permissions",
+      "system permissions",
+      "device admin permissions"
+    ],
+    "route": "security",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "no_pin_lock",
+    "title": "No PIN Lock Required",
+    "emoji": "🔐",
+    "directExplanation": "FocusByRj **does not have or use a PIN lock or passcode**. Instead, app restriction and tamper defense are managed directly through **Focus Routines**, **Soft Mode wait delays** (5s–30s pause), **Strict Mode** (zero bypass), and **Uninstall Protection (Device Admin)**. If you need data security, you can create a password-encrypted backup in the Data Vault.",
+    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions / App Settings",
+    "whatToClick": [
+      "• For blocking enforcement: Configure Soft Mode delays in App Settings or Strict Mode in Focus tab.",
+      "• To prevent app deletion: Enable Uninstall Protection in Security & Permissions.",
+      "• To protect exported data: Use AES-256 Encrypted Backup in Security & Permissions."
+    ],
+    "keywords": [
+      "pin",
+      "pin lock",
+      "password",
+      "passcode",
+      "pattern lock",
+      "security code",
+      "set pin",
+      "forgot pin",
+      "lock with pin",
+      "lock with password",
+      "pin code",
+      "app pin",
+      "app password",
+      "how to set pin"
+    ],
+    "route": "security",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "app_background_theme",
+    "title": "App Background Theme Mode",
+    "emoji": "🌓",
+    "directExplanation": "Controls the light/dark mode for the entire application (Light, Dark, or follow System).",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> App Background Theme",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Select Light, Dark, or System under Appearance"
+    ],
+    "keywords": [
+      "dark mode",
+      "light mode",
+      "theme",
+      "system mode",
+      "background color",
+      "app appearance",
+      "mode"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false,
+    "prefKey": "app_theme_mode",
+    "prefType": "string",
+    "diagnosticKey": "app_background_theme"
+  },
+  {
+    "id": "accent_theme",
+    "title": "App Accent Color",
+    "emoji": "🎨",
+    "directExplanation": "Sets the primary highlight color used for buttons, switches, and active elements across the app (Emerald, Ocean, Violet, Sunset, Amber, Rose, Crimson, Monolith).",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> Accent Theme",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Choose an accent color like Emerald, Ocean, Violet, Sunset, Amber, Rose, Crimson, or Monolith"
+    ],
+    "keywords": [
+      "accent color",
+      "primary color",
+      "highlight color",
+      "app color",
+      "change color",
+      "emerald",
+      "violet",
+      "palette"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false,
+    "prefKey": "app_theme_color",
+    "prefType": "string",
+    "diagnosticKey": "accent_theme"
+  },
+  {
+    "id": "heatmap_theme",
+    "title": "Activity Heatmap Color Theme",
+    "emoji": "🟩",
+    "directExplanation": "Select the color gradient palette for your productivity activity grid (Emerald, GitHub Classic, Ocean, Neon Violet, Sunset Fire, Monochrome).",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> Heatmap Theme",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Select your preferred Heatmap Theme"
+    ],
+    "keywords": [
+      "heatmap",
+      "heatmap color",
+      "activity grid",
+      "heatmap theme",
+      "github theme",
+      "emerald grid",
+      "stats color"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "locked_screen_overlay_theme",
+    "title": "Lock Screen Overlay Theme Mode",
+    "emoji": "🛡️",
+    "directExplanation": "Sets the theme strictly for the full-screen app blocker overlay.",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> Locked Screen Overlay",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Select Light, Dark, or System for the overlay"
+    ],
+    "keywords": [
+      "overlay theme",
+      "blocker theme",
+      "lock screen color",
+      "block mode color"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false,
+    "prefKey": "overlay_theme_mode",
+    "prefType": "string",
+    "diagnosticKey": "locked_screen_overlay_theme"
+  },
+  {
+    "id": "soft_mode_wait_timer",
+    "title": "Soft Mode Wait Timer",
+    "emoji": "⏱️",
+    "directExplanation": "The number of seconds you must wait mindfully on the block screen before you can bypass it in Soft Mode (5s to 30s).",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Soft Mode Delay",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Adjust the Soft Mode Delay slider (5s to 30s)"
+    ],
+    "keywords": [
+      "soft mode wait timer",
+      "wait timer",
+      "delay",
+      "soft mode timer",
+      "soft block delay",
+      "wait time",
+      "block timer",
+      "soft lock duration"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false,
+    "prefKey": "soft_lock_duration",
+    "prefType": "int",
+    "diagnosticKey": "soft_mode_wait_timer"
+  },
+  {
+    "id": "soft_mode_relief_duration",
+    "title": "Soft Mode Relief Duration",
+    "emoji": "🕊️",
+    "directExplanation": "How many minutes an app stays unlocked after you wait out the Soft Mode timer (1m to 15m).",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Temporary Access Relief Window",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Adjust the Temporary Access Relief Window (1m to 15m)"
+    ],
+    "keywords": [
+      "relief duration",
+      "unlock time",
+      "soft mode relief",
+      "how long unlocked",
+      "unblock time",
+      "soft unlock duration",
+      "temporary access"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false,
+    "prefKey": "soft_unlock_duration",
+    "prefType": "int",
+    "diagnosticKey": "soft_mode_relief_duration"
+  },
+  {
+    "id": "strict_mode",
+    "title": "Strict Mode (Hard Block)",
+    "emoji": "🧱",
+    "directExplanation": "Strict Mode blocks apps completely without a wait timer option. You cannot bypass it until your scheduled routine or focus session ends.",
+    "whereToGo": "Bottom Bar -> Focus tab -> Set category mode to Strict",
+    "whatToClick": [
+      "Go to Focus Tab",
+      "Toggle the mode switch on a blocked category to Strict/Hard"
+    ],
+    "keywords": [
+      "strict mode",
+      "hard block",
+      "no bypass",
+      "total lock",
+      "completely blocked"
+    ],
+    "route": "dashboard",
+    "isPackageSettingUri": false,
+    "diagnosticKey": "strict_mode"
+  },
+  {
+    "id": "emergency_relief",
+    "title": "Emergency Relief",
+    "emoji": "🆘",
+    "directExplanation": "If you are in a hard block during an unexpected emergency, you can use an Emergency Relief charge to get 5 minutes of mindful temporary access.",
+    "whereToGo": "Block Screen -> Tap Emergency Relief button",
+    "whatToClick": [
+      "When blocked on screen in strict mode, tap the Emergency Relief button at the bottom."
+    ],
+    "keywords": [
+      "emergency",
+      "relief",
+      "stuck",
+      "need access",
+      "help bypass",
+      "emergency unlock"
+    ],
+    "isPackageSettingUri": false,
+    "diagnosticKey": "emergency_relief"
+  },
+  {
+    "id": "persistent_reminders",
+    "title": "Persistent Task Reminders",
+    "emoji": "🔔",
+    "directExplanation": "Sets how often FocusByRj persistently reminds you about overdue or pending priority tasks (e.g., 5m, 15m, 30m, 1h, 2h).",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Persistent Reminders Interval",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Choose your reminder interval (e.g., 5m, 15m, 30m, 1h, 2h)"
+    ],
+    "keywords": [
+      "persistent reminders",
+      "remind me often",
+      "nag me",
+      "task reminders",
+      "reminder interval",
+      "alarm interval"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false,
+    "prefKey": "persistent_reminder_interval",
+    "prefType": "int",
+    "diagnosticKey": "persistent_reminders"
+  },
+  {
+    "id": "routine_notifications",
+    "title": "Routine Start/End Notifications",
+    "emoji": "📅",
+    "directExplanation": "Alerts you when a scheduled focus routine begins or finishes.",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Routine Alerts",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Toggle Routine Alerts on or off"
+    ],
+    "keywords": [
+      "routine notifications",
+      "schedule alerts",
+      "routine alerts",
+      "start notification"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false,
+    "prefKey": "routine_notifications",
+    "prefType": "boolean",
+    "diagnosticKey": "routine_notifications"
+  },
+  {
+    "id": "task_notification_style",
+    "title": "Task Notification Style",
+    "emoji": "📱",
+    "directExplanation": "Choose whether task reminders show as a top banner, play an audio alarm, or both (Both, Sound Only, Popups Only, Silent).",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Notification Style",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Select Both, Sound Only, Popups Only, or Silent"
+    ],
+    "keywords": [
+      "notification style",
+      "banner",
+      "silent notification",
+      "how to notify",
+      "sound or banner"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false,
+    "prefKey": "task_notification_style",
+    "prefType": "string",
+    "diagnosticKey": "task_notification_style"
+  },
+  {
+    "id": "bubble_enable_disable",
+    "title": "Floating Ayva Bubble",
+    "emoji": "💬",
+    "directExplanation": "An omnipresent floating assistant bubble that provides instant access to tasks, focus controls, and mindful advice from any app.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Enable Chat Bubble",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Toggle 'Enable Chat Bubble'"
+    ],
+    "keywords": [
+      "enable bubble",
+      "disable bubble",
+      "turn off bubble",
+      "floating bubble",
+      "hide bubble",
+      "ayva bubble",
+      "chat bubble"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false,
+    "prefKey": "bubble_enabled",
+    "prefType": "boolean",
+    "diagnosticKey": "bubble_enable_disable"
+  },
+  {
+    "id": "bubble_docking_customization",
+    "title": "Hidden Bubble Docking & Glow",
+    "emoji": "✨",
+    "directExplanation": "Customize how the floating bubble looks when parked at the edge of your screen, including Accent Color, Hidden Opacity (20%–100%), Amount Hidden / Tuck Depth (25%–85%), and Glow Ring Intensity (0%–100%) with a live interactive preview.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Hidden Bubble Docking & Glow",
+    "whatToClick": [
+      "Tap Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Expand 'Hidden Bubble Docking & Glow'",
+      "Select accent color and adjust opacity, tuck depth, and glow sliders"
+    ],
+    "keywords": [
+      "bubble docking",
+      "bubble glow",
+      "bubble opacity",
+      "bubble tuck depth",
+      "amount hidden",
+      "glow ring",
+      "bubble preview",
+      "bubble color",
+      "customize bubble"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "bubble_auto_hide_duration",
+    "title": "Bubble Auto-Hide Inactivity Timer",
+    "emoji": "⏱️",
+    "directExplanation": "The number of idle seconds before the floating bubble automatically peeks into the edge of your screen (1s to 15s).",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Auto-hide Bubble",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Adjust the Auto-hide Bubble stepper (1s to 15s or Off)"
+    ],
+    "keywords": [
+      "hide bubble timer",
+      "auto hide duration",
+      "auto hide timer",
+      "bubble hide time",
+      "inactivity timer"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false,
+    "prefKey": "auto_hide_duration_sec",
+    "prefType": "int",
+    "diagnosticKey": "bubble_auto_hide_duration"
+  },
+  {
+    "id": "bubble_smart_regex",
+    "title": "Smart Regex Parsing",
+    "emoji": "🪄",
+    "directExplanation": "Automatically extracts task priorities (e.g., !high, !urgent), dates, and category tags when chatting with Ayva.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Smart Regex Parsing",
+    "whatToClick": [
+      "Tap Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Toggle 'Smart Regex Parsing'"
+    ],
+    "keywords": [
+      "smart regex",
+      "regex parsing",
+      "tags in chat",
+      "priority regex",
+      "chat regex"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "bubble_hide_in_landscape",
+    "title": "Hide Bubble in Landscape & Video Mode",
+    "emoji": "📱",
+    "directExplanation": "Automatically suppresses the floating bubble when watching videos or playing games in landscape orientation.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Hide in Landscape / Video Mode",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Toggle 'Hide in Landscape / Video Mode'"
+    ],
+    "keywords": [
+      "hide in landscape",
+      "landscape mode",
+      "gaming bubble",
+      "fullscreen video",
+      "landscape gaming",
+      "video mode"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false,
+    "prefKey": "hide_in_landscape",
+    "prefType": "boolean",
+    "diagnosticKey": "bubble_hide_in_landscape"
+  },
+  {
+    "id": "vacation_mode",
+    "title": "Vacation Mode (Streak Freeze)",
+    "emoji": "🏖️",
+    "directExplanation": "Freezes your daily streak so you won't lose progress while traveling or resting, and silences all practice reminders.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Daily Summaries & Practice -> Vacation Mode",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Scroll to Daily Summaries & Practice",
+      "Toggle Vacation Mode (Freeze Streak)"
+    ],
+    "keywords": [
+      "vacation mode",
+      "vacation",
+      "freeze streak",
+      "streak freeze",
+      "pause streak",
+      "holiday mode",
+      "travel mode",
+      "trip",
+      "holiday",
+      "pause tests",
+      "freeze daily tests",
+      "stop practice notifications"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false,
+    "prefKey": "vacation_mode",
+    "prefType": "boolean",
+    "diagnosticKey": "vacation_mode"
+  },
+  {
+    "id": "anti_screenshot_protection",
+    "title": "Anti-Screenshot Protection",
+    "emoji": "🛡️",
+    "directExplanation": "Blocks Android screen captures and hides app contents in recent apps overview to secure private notes, tasks, and credentials.",
+    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Anti-Screenshot Protection",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Security & Permissions",
+      "Toggle 'Anti-Screenshot Protection'"
+    ],
+    "keywords": [
+      "anti screenshot",
+      "prevent screenshot",
+      "block screenshot",
+      "secure recents",
+      "privacy blur",
+      "blur recents",
+      "screenshot protection"
+    ],
+    "route": "security",
+    "isPackageSettingUri": false,
+    "prefKey": "secure_recents",
+    "prefType": "boolean",
+    "diagnosticKey": "secure_recents_blur"
+  },
+  {
+    "id": "uninstall_protection",
+    "title": "Uninstall Protection (Device Admin)",
+    "emoji": "🔒",
+    "directExplanation": "Prevents deleting the app during impulsive moments by requiring Device Administrator deactivation.",
+    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Uninstall Protection",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Security & Permissions",
+      "Toggle 'Uninstall Protection' to enable or disable"
+    ],
+    "keywords": [
+      "uninstall protection",
+      "prevent delete",
+      "cant uninstall",
+      "device administrator",
+      "device admin",
+      "protect app"
+    ],
+    "route": "security",
+    "isPackageSettingUri": false,
+    "diagnosticKey": "uninstall_protection"
+  },
+  {
+    "id": "backup_and_restore",
+    "title": "Data Vault & Encrypted Backup",
+    "emoji": "📦",
+    "directExplanation": "Export or restore a secure AES-256 password-encrypted archive containing all your notes, tasks, habits, math drills, and application preferences.",
+    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Data Vault & Backup",
+    "whatToClick": [
+      "Tap Profile Avatar -> Security & Permissions",
+      "Tap 'Export Encrypted Backup' and set an archive password to save",
+      "Or tap 'Restore from Backup' to select an archive file and decrypt"
+    ],
+    "keywords": [
+      "backup",
+      "restore",
+      "export backup",
+      "import backup",
+      "data vault",
+      "backup data",
+      "transfer data",
+      "encrypted backup",
+      "save data"
+    ],
+    "route": "security",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "default_launch_tab",
+    "title": "Default Launch Tab",
+    "emoji": "🏠",
+    "directExplanation": "Configures which screen opens automatically when you launch FocusByRj (Focus, Tasks, Routines, Time Stats, Notes, or Account).",
+    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Default Launch Tab",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap App Settings",
+      "Select your default startup screen"
+    ],
+    "keywords": [
+      "start tab",
+      "default tab",
+      "launch screen",
+      "startup screen",
+      "first screen"
+    ],
+    "route": "settings",
+    "isPackageSettingUri": false,
+    "prefKey": "default_start_tab",
+    "prefType": "string",
+    "diagnosticKey": "default_launch_tab"
+  },
+  {
+    "id": "account_profile_economy",
+    "title": "Account, Avatars & Focus Economy",
+    "emoji": "👤",
+    "directExplanation": "Customize your avatar, earn XP from focus sessions and tasks to level up, build your gold multiplier, and collect trophy achievements.",
+    "whereToGo": "Top Header -> Profile Avatar -> Tap Executive Profile Card",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap the top Executive Profile Card to open Account",
+      "Switch Avatars, view your Gold & Level Multiplier, or review Trophy Achievements"
+    ],
+    "keywords": [
+      "account",
+      "avatar",
+      "profile",
+      "gold",
+      "level",
+      "xp",
+      "trophies",
+      "achievements",
+      "multiplier",
+      "change avatar"
+    ],
+    "route": "account",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "pro_subscription",
+    "title": "Focus Pro Subscription & Cloud Sync",
+    "emoji": "⭐",
+    "directExplanation": "Unlock Pro capabilities, lifetime access, cloud sync, and exclusive avatar tiers.",
+    "whereToGo": "Top Header -> Profile Avatar -> Subscription",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Subscription to view Pro benefits and upgrade"
+    ],
+    "keywords": [
+      "subscription",
+      "pro",
+      "upgrade",
+      "premium",
+      "unlock pro",
+      "cloud sync",
+      "purchase"
+    ],
+    "route": "subscription",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "practice_alert_time",
+    "title": "Practice Alert Time",
+    "emoji": "⏰",
+    "directExplanation": "The specific time when you want to receive your daily arithmetic aptitude drill alert, or choose randomized 2x daily alerts between 9am and 8pm.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Daily Summaries & Practice -> Practice Alert Time",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Scroll to Daily Summaries & Practice",
+      "Set Practice Alert Time"
+    ],
+    "keywords": [
+      "practice time",
+      "practice alert",
+      "streak time",
+      "streak alert",
+      "drill time",
+      "when to practice"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false,
+    "prefKey": "streak_notification_time",
+    "prefType": "string",
+    "diagnosticKey": "practice_alert_time"
+  },
+  {
+    "id": "morning_brief_time",
+    "title": "Morning Brief Time",
+    "emoji": "🌅",
+    "directExplanation": "The time you receive your daily morning focus summary.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Daily Summaries & Practice -> Morning Brief Time",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Scroll to Daily Summaries & Practice",
+      "Set Morning Brief Time"
+    ],
+    "keywords": [
+      "morning brief",
+      "morning time",
+      "morning summary time",
+      "morning alert"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false,
+    "prefKey": "morning_brief_time",
+    "prefType": "string",
+    "diagnosticKey": "morning_brief_time"
+  },
+  {
+    "id": "evening_brief_time",
+    "title": "Evening Brief Time",
+    "emoji": "🌙",
+    "directExplanation": "The time you receive your daily evening reflection summary.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Daily Summaries & Practice -> Evening Brief Time",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Scroll to Daily Summaries & Practice",
+      "Set Evening Brief Time"
+    ],
+    "keywords": [
+      "evening brief",
+      "evening time",
+      "evening summary time",
+      "evening alert"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false,
+    "prefKey": "evening_brief_time",
+    "prefType": "string",
+    "diagnosticKey": "evening_brief_time"
+  },
+  {
+    "id": "streak_notification_enabled",
+    "title": "Streak & Practice Alerts",
+    "emoji": "🔥",
+    "directExplanation": "Whether you receive daily alerts to practice and build your streak.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Daily Summaries & Practice -> Streak & Practice Alerts",
+    "whatToClick": [
+      "Tap the Profile Avatar in the top header",
+      "Tap Bubble Settings",
+      "Scroll to Daily Summaries & Practice",
+      "Toggle Streak & Practice Alerts"
+    ],
+    "keywords": [
+      "practice alerts",
+      "streak notifications",
+      "drill notifications",
+      "daily practice",
+      "streak alerts"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false,
+    "prefKey": "streak_notification_enabled",
+    "prefType": "boolean",
+    "diagnosticKey": "streak_notification_enabled"
+  },
+  {
+    "id": "troubleshoot_why_not_blocking",
+    "title": "Troubleshooting: Why are apps NOT being blocked?",
+    "emoji": "🔍",
+    "directExplanation": "Apps opening without the blocker screen is usually caused by a missing permission or battery sleep.",
+    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> System Permissions",
+    "whatToClick": [
+      "1. Check Usage Access: Ensures app foreground launches are detected.",
+      "2. Check Display Over Other Apps: Ensures direct overlay can be drawn.",
+      "3. Check Battery Optimization: Set to Unrestricted so Android does not kill the service."
+    ],
+    "whyOrTip": "FocusByRj uses direct window manager overlays (`TYPE_APPLICATION_OVERLAY`) to reliably block apps on Android 14+.",
+    "keywords": [
+      "why not blocking",
+      "apps not blocking",
+      "blocker not working",
+      "overlay not showing",
+      "not locked",
+      "apps still open",
+      "not blocking"
+    ],
+    "route": "security",
+    "isPackageSettingUri": false,
+    "diagnosticKey": "troubleshoot_why_not_blocking"
+  },
+  {
+    "id": "troubleshoot_why_no_notifications",
+    "title": "Troubleshooting: Why am I not getting task reminders/sounds?",
+    "emoji": "🔍",
+    "directExplanation": "Missing or delayed task alarms are usually caused by disabled notification permissions, battery sleep, or system Do Not Disturb.",
+    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Notifications",
+    "whatToClick": [
+      "1. Verify 'Post Notifications' is allowed in Android App Settings.",
+      "2. Set Battery Optimization to Unrestricted.",
+      "3. Check if your phone is in Do Not Disturb (DND) mode.",
+      "4. In App Settings -> Persistent Reminders Interval, ensure an interval (e.g. 15m) is selected."
+    ],
+    "keywords": [
+      "why no notification",
+      "reminder not working",
+      "sound not playing",
+      "alarm not ringing",
+      "missing notifications",
+      "delayed notification",
+      "no sound"
+    ],
+    "route": "security",
+    "systemSettingAction": "android.settings.APP_NOTIFICATION_SETTINGS",
+    "isPackageSettingUri": true,
+    "diagnosticKey": "troubleshoot_why_no_notifications"
+  },
+  {
+    "id": "troubleshoot_why_cant_uninstall",
+    "title": "Troubleshooting: Why can't I uninstall FocusByRj?",
+    "emoji": "🔍",
+    "directExplanation": "You cannot uninstall FocusByRj because **Uninstall Protection (Device Administrator)** is currently active.",
+    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Uninstall Protection",
+    "whatToClick": [
+      "1. Tap the Profile Avatar in the top header",
+      "2. Tap Security & Permissions",
+      "3. Toggle 'Uninstall Protection' to OFF",
+      "4. Follow the system prompt to deactivate Device Administrator",
+      "5. You can now uninstall the app normally from Android"
+    ],
+    "keywords": [
+      "why cant i uninstall",
+      "cant uninstall",
+      "cant delete app",
+      "uninstall disabled",
+      "delete app",
+      "cannot uninstall",
+      "uninstal"
+    ],
+    "route": "security",
+    "isPackageSettingUri": false,
+    "diagnosticKey": "troubleshoot_why_cant_uninstall"
+  },
+  {
+    "id": "troubleshoot_why_streak_reset",
+    "title": "Troubleshooting: Why did my focus streak reset?",
+    "emoji": "🔍",
+    "directExplanation": "A streak resets to 0 when a full calendar day (midnight to 11:59 PM) elapses without completing at least one 10-minute focus session or checking off a due task.",
+    "whereToGo": "Bottom Bar -> Time tab / Account tab",
+    "whatToClick": [
+      "Complete at least 1 focus session (10m minimum) OR check off 1 due task every day before 11:59 PM.",
+      "Your streak will increment automatically upon claiming rewards."
+    ],
+    "keywords": [
+      "why streak reset",
+      "streak reset",
+      "lost streak",
+      "streak broken",
+      "streak zero",
+      "streak broke"
+    ],
+    "route": "time",
+    "isPackageSettingUri": false,
+    "diagnosticKey": "troubleshoot_why_streak_reset"
+  },
+  {
+    "id": "troubleshoot_why_bubble_missing",
+    "title": "Troubleshooting: Why did the floating bubble disappear?",
+    "emoji": "🔍",
+    "directExplanation": "The floating bubble may disappear if your device is in landscape mode or if Android put the background service to sleep.",
+    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings",
+    "whatToClick": [
+      "1. Check if your phone is rotated: 'Hide in Landscape' automatically hides the bubble during videos or games.",
+      "2. Check 'Enable Chat Bubble' toggle in Bubble Settings.",
+      "3. Ensure Battery optimization is set to Unrestricted for FocusByRj."
+    ],
+    "keywords": [
+      "why bubble disappeared",
+      "bubble gone",
+      "bubble missing",
+      "bubble disappeared",
+      "bubble not showing"
+    ],
+    "route": "bubble_settings",
+    "isPackageSettingUri": false,
+    "diagnosticKey": "troubleshoot_why_bubble_missing"
+  },
+  {
+    "id": "homescreen_widget",
+    "title": "Interactive Home Screen Widget",
+    "emoji": "📱",
+    "directExplanation": "Add an interactive task checklist or Keep-style note widget to your home screen with direct tap check-off, category cycling, and custom OLED/Glass styling.",
+    "whereToGo": "Phone Home Screen -> Long Press -> Widgets -> FocusByRj -> Todo List or Note Widget",
+    "whatToClick": [
+      "Long press an empty space on your phone's home screen.",
+      "Tap Widgets -> FocusByRj -> drag Todo List or Note Widget to home screen.",
+      "Configure widget theme (OLED Black, Glass, Material 3), opacity, and tap Save."
+    ],
+    "keywords": [
+      "widget",
+      "home screen widget",
+      "todo widget",
+      "note widget",
+      "desktop widget",
+      "add widget",
+      "interactive widget"
+    ],
+    "isPackageSettingUri": false,
+    "diagnosticKey": "homescreen_widget"
+  },
+  {
+    "id": "arithmetic_drills",
+    "title": "Arithmetic Drills & Neuro-Agility",
+    "emoji": "🧠",
+    "directExplanation": "Engage your prefrontal cortex with quick math drills to overcome brain fog and initiate flow state.",
+    "whereToGo": "Top Header -> Profile Avatar -> Account -> Start Drill Session (or type /drill in chat)",
+    "whatToClick": [
+      "Open Chat and type /drill.",
+      "Or tap Profile Avatar -> Account -> Start Drill Session."
+    ],
+    "keywords": [
+      "math drills",
+      "arithmetic",
+      "brain fog",
+      "math",
+      "test",
+      "quiz",
+      "calculate"
+    ],
+    "route": "account",
+    "isPackageSettingUri": false,
+    "diagnosticKey": "arithmetic_drills"
+  },
+  {
+    "id": "focus_briefing",
+    "title": "Focus Status & Telemetry Briefing",
+    "emoji": "📊",
+    "directExplanation": "Provides a comprehensive overview of your active focus posture, including screen time, active routines, locked apps, streak status, and pending tasks.",
+    "whereToGo": "Ask Ayva 'status' or '/status' in the chat bubble, or open Focus tab.",
+    "whatToClick": [
+      "Open Ayva Chat Bubble",
+      "Type 'status' or tap 'Focus Status'"
+    ],
+    "keywords": [
+      "status",
+      "focus status",
+      "briefing",
+      "posture",
+      "how am i doing",
+      "check in",
+      "overview",
+      "daily report"
+    ],
+    "route": "dashboard",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "screentime_tracking",
+    "title": "Screen Time & App Usage Telemetry",
+    "emoji": "📱",
+    "directExplanation": "Tracks how many minutes you've spent on your device and inside individual apps today, highlighting top time-sink apps and productivity patterns.",
+    "whereToGo": "Bottom Bar -> Time tab (or ask Ayva 'screentime' in chat)",
+    "whatToClick": [
+      "Tap Time tab in bottom navigation",
+      "Or type 'screentime' or 'usage' in Ayva chat"
+    ],
+    "keywords": [
+      "screentime",
+      "screen time",
+      "app usage",
+      "phone usage",
+      "time spent",
+      "daily screen time",
+      "usage stats"
+    ],
+    "route": "time",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "box_breathing",
+    "title": "1-Minute Box Breathing Session",
+    "emoji": "🫁",
+    "directExplanation": "An interactive 4-4-4-4 physiological reset exercise (Inhale, Hold, Exhale, Hold) designed to eliminate anxiety and cognitive clutter.",
+    "whereToGo": "Ask Ayva 'breathe' or '/breathe' in the chat bubble.",
+    "whatToClick": [
+      "Open Ayva Chat Bubble",
+      "Type 'breathe' or tap the breathe button"
+    ],
+    "keywords": [
+      "breathe",
+      "breathing",
+      "box breathing",
+      "relax",
+      "calm down",
+      "stress relief",
+      "deep breath",
+      "anxiety"
+    ],
+    "route": "dashboard",
+    "isPackageSettingUri": false
+  },
+  {
+    "id": "battery_optimization",
+    "title": "Battery Optimization & Background Reliability",
+    "emoji": "🔋",
+    "directExplanation": "To prevent Android from killing Ayva's blocker service and floating bubble in the background, exclude FocusByRj from battery optimization.",
+    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Battery Restrictions",
+    "whatToClick": [
+      "Tap Profile Avatar -> Security & Permissions",
+      "Tap Battery Restrictions -> select 'Don't optimize' or 'Unrestricted'"
+    ],
+    "keywords": [
+      "battery",
+      "battery optimization",
+      "background killed",
+      "service stopped",
+      "autostart",
+      "keep alive",
+      "background restriction"
+    ],
+    "route": "security",
+    "isPackageSettingUri": true,
+    "packageUri": "android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS"
+  }
+]

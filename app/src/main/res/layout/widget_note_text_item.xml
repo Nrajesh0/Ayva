@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_note_text_item_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="6dp"
+    android:paddingEnd="6dp"
+    android:paddingTop="2dp"
+    android:paddingBottom="2dp">
+
+    <!-- Attached Image (Only visible on top item if image exists) -->
+    <ImageView
+        android:id="@+id/widget_note_text_item_image"
+        android:layout_width="match_parent"
+        android:layout_height="140dp"
+        android:scaleType="centerCrop"
+        android:visibility="gone"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="6dp" />
+
+    <!-- Text Paragraph / Line -->
+    <TextView
+        android:id="@+id/widget_note_text_item_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#E8EAED"
+        android:lineSpacingExtra="3.5dp" />
+</LinearLayout>

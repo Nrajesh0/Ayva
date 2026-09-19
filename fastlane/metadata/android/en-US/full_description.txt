@@ -1,0 +1,10 @@
+Focus by Rj is a strictly offline, privacy-first Android application designed to help you stay focused and manage screen time without compromising your personal data. 
+
+Features:
+- Block distracting apps using powerful App Restrictions.
+- Schedule Deep Work sessions with timers.
+- Schedule automatic locking routines (e.g., Bedtime or Work hours).
+- Detailed battery health and usage statistics.
+- Secure fallback mechanisms, biometric lock, and device administrator protections to prevent circumvention.
+
+This application is fully open source (GPLv3), contains zero analytics or tracking software, and operates 100% offline. All data is stored locally on your device.

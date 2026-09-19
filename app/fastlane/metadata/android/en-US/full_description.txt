@@ -1,0 +1,10 @@
+Focus by Rj is an offline, privacy-respecting App Locker and Focus Tracker designed to help you stay productive and maintain screen time boundaries. 
+
+Key Features:
+- Fully Offline: No cloud syncing or analytics. All data stays locally on your device.
+- App Locking: Restrict access to distracting applications securely.
+- Focus Schedules: Set up automated routines for work, study, or sleep where specific apps are blocked automatically.
+- Screen Time Tracking: Monitor your usage statistics locally using Android's built-in UsageStatsManager. 
+- Privacy First: Operates without requiring invasive Accessibility Services, maintaining your privacy while still keeping you focused.
+
+Stay focused without sacrificing your privacy!

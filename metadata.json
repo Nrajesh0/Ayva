@@ -1,0 +1,8 @@
+{
+  "name": "Focus by Rj",
+  "description": "A fully offline App Locker \u0026 Focus Tracker app.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
