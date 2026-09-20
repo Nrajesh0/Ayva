@@ -349,8 +349,20 @@ fun KeepNoteCard(
                 }
             } else if (note.content.isNotBlank()) {
                 Spacer(modifier = Modifier.height(6.dp))
+                val primaryColor = MaterialTheme.colorScheme.primary
+                val formattedContent = remember(note.content, textColor, primaryColor, isDark) {
+                    val parsed = RichTextEngine.parse(note.content)
+                    RichTextEngine.toAnnotatedString(
+                        plainText = parsed.first,
+                        spans = parsed.second,
+                        textColor = textColor.copy(alpha = 0.85f),
+                        accentColor = primaryColor,
+                        isDark = isDark,
+                        baseFontSizeSp = 14f
+                    )
+                }
                 Text(
-                    text = note.content,
+                    text = formattedContent,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 14.sp,
                         lineHeight = 20.sp,

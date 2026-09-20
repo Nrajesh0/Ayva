@@ -212,16 +212,6 @@ fun QuickEditNoteOverlay(
     var targetFocusItemId by remember { mutableStateOf<String?>(initialTargetItemId) }
     val checklistListState = rememberLazyListState()
 
-    // Auto-scroll to newly added or targeted item
-    LaunchedEffect(targetFocusItemId) {
-        val id = targetFocusItemId ?: return@LaunchedEffect
-        kotlinx.coroutines.delay(40)
-        val idx = checklistItems.indexOfFirst { it.id == id }
-        if (idx != -1) {
-            checklistListState.animateScrollToItem(idx)
-        }
-    }
-
     val titleFocusRequester = remember { FocusRequester() }
     val contentFocusRequester = remember { FocusRequester() }
     val addItemFocusRequester = remember { FocusRequester() }
@@ -709,9 +699,6 @@ fun QuickEditNoteOverlay(
                                         )
                                     )
                                     saveNote(andFinish = false)
-                                    scope.launch {
-                                        checklistListState.animateScrollToItem(insertIdx)
-                                    }
                                 },
                                 onDelete = {
                                     val idx = checklistItems.indexOfFirst { it.id == item.id }
@@ -746,9 +733,6 @@ fun QuickEditNoteOverlay(
                                             )
                                         )
                                         saveNote(andFinish = false)
-                                        scope.launch {
-                                            checklistListState.animateScrollToItem(uncompletedCount)
-                                        }
                                     }
                                     .padding(vertical = 8.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -855,9 +839,6 @@ fun QuickEditNoteOverlay(
                                                 )
                                             )
                                             saveNote(andFinish = false)
-                                            scope.launch {
-                                                checklistListState.animateScrollToItem(uncompletedCount)
-                                            }
                                         },
                                         onDelete = {
                                             val idx = checklistItems.indexOfFirst { it.id == item.id }
@@ -958,6 +939,7 @@ private fun QuickEditChecklistRow(
     onDelete: () -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
     val haptic = LocalHapticFeedback.current
 
     var isDragging by remember { mutableStateOf(false) }
@@ -972,11 +954,13 @@ private fun QuickEditChecklistRow(
         if (isTargetFocus) {
             kotlinx.coroutines.delay(40)
             try {
+                bringIntoViewRequester.bringIntoView()
                 focusRequester.requestFocus()
                 onFocused()
             } catch (e: Exception) {
                 kotlinx.coroutines.delay(80)
                 runCatching {
+                    bringIntoViewRequester.bringIntoView()
                     focusRequester.requestFocus()
                     onFocused()
                 }
@@ -987,6 +971,7 @@ private fun QuickEditChecklistRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .bringIntoViewRequester(bringIntoViewRequester)
             .offset { IntOffset(0, dragOffsetY.toInt()) }
             .zIndex(if (isDragging) 10f else 0f)
             .background(

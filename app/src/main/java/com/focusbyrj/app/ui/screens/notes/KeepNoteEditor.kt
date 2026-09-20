@@ -74,6 +74,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -95,6 +98,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.AddBox
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
@@ -143,6 +147,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -155,6 +160,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -247,13 +254,168 @@ fun KeepNoteEditor(
     var completedExpanded by remember { mutableStateOf(true) }
     var targetFocusItemId by remember { mutableStateOf<String?>(null) }
 
+    var showNotesnookInsertSheet by remember { mutableStateOf(false) }
+    var showCodeBlockDialog by remember { mutableStateOf(false) }
+    var showMathDialog by remember { mutableStateOf(false) }
+    var showCalloutDialog by remember { mutableStateOf(false) }
+    var showEmbedDialog by remember { mutableStateOf(false) }
+    var showTableDialog by remember { mutableStateOf(false) }
+    var showImageOptionsSheet by remember { mutableStateOf(false) }
+    var showAttachmentOptionsSheet by remember { mutableStateOf(false) }
+
+    val initialParsed = remember(state.originalId) { RichTextEngine.parse(state.content) }
+    var richSpans by remember(state.originalId) { mutableStateOf(initialParsed.second) }
+    var pendingTypingStyles by remember { mutableStateOf(setOf<RichSpanType>()) }
+
+    val contentFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
+
+    fun safeRequestFocus() {
+        coroutineScope.launch {
+            kotlinx.coroutines.delay(120)
+            try {
+                contentFocusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (_: Exception) {}
+        }
+    }
+
+    var contentTfv by remember(state.originalId) {
+        mutableStateOf(
+            TextFieldValue(
+                text = initialParsed.first,
+                selection = TextRange(initialParsed.first.length)
+            )
+        )
+    }
+
+    var blocks by remember(state.originalId) {
+        mutableStateOf(NotesnookBlockManager.parse(state.content))
+    }
+
+    var activeBlockIndex by remember(state.originalId) { mutableIntStateOf(0) }
+    val textBlockStates = remember(state.originalId) { mutableStateMapOf<String, TextFieldValue>() }
+
+    fun syncAndCommitBlocks(newBlocks: List<NotesnookBlock>) {
+        blocks = newBlocks
+        val serialized = NotesnookBlockManager.serialize(newBlocks)
+        onContentChange(serialized)
+    }
+
+    fun getActiveTextState(): Triple<Int, TextFieldValue, List<RichSpan>>? {
+        if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
+            return Triple(0, contentTfv, richSpans)
+        }
+        val idx = activeBlockIndex.coerceIn(0, (blocks.size - 1).coerceAtLeast(0))
+        val block = blocks.getOrNull(idx)
+        if (block is NotesnookBlock.Text) {
+            val tfv = textBlockStates[block.id] ?: TextFieldValue(block.text, TextRange(block.text.length))
+            return Triple(idx, tfv, block.spans)
+        }
+        val firstTextIdx = blocks.indexOfFirst { it is NotesnookBlock.Text }
+        if (firstTextIdx != -1) {
+            val b = blocks[firstTextIdx] as NotesnookBlock.Text
+            val tfv = textBlockStates[b.id] ?: TextFieldValue(b.text, TextRange(b.text.length))
+            return Triple(firstTextIdx, tfv, b.spans)
+        }
+        return null
+    }
+
+    fun updateActiveTextState(
+        blockIdx: Int,
+        newTfv: TextFieldValue,
+        newSpans: List<RichSpan>
+    ) {
+        if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
+            contentTfv = newTfv
+            richSpans = newSpans
+            val id = blocks.firstOrNull()?.id ?: java.util.UUID.randomUUID().toString()
+            val updatedBlock = NotesnookBlock.Text(id = id, text = newTfv.text, spans = newSpans)
+            blocks = listOf(updatedBlock)
+            onContentChange(NotesnookBlockManager.serialize(blocks))
+        } else {
+            val block = blocks.getOrNull(blockIdx)
+            if (block is NotesnookBlock.Text) {
+                textBlockStates[block.id] = newTfv
+                val updatedBlock = block.copy(text = newTfv.text, spans = newSpans)
+                val newBlocks = blocks.toMutableList()
+                newBlocks[blockIdx] = updatedBlock
+                syncAndCommitBlocks(newBlocks)
+            }
+        }
+    }
+
+    val currentActiveText = remember(blocks, activeBlockIndex, contentTfv, richSpans, textBlockStates) {
+        if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
+            Triple(contentTfv.text, contentTfv.selection, richSpans)
+        } else {
+            val idx = activeBlockIndex.coerceIn(0, (blocks.size - 1).coerceAtLeast(0))
+            val block = blocks.getOrNull(idx)
+            if (block is NotesnookBlock.Text) {
+                val tfv = textBlockStates[block.id] ?: TextFieldValue(block.text, TextRange(block.text.length))
+                Triple(tfv.text, tfv.selection, block.spans)
+            } else {
+                Triple(contentTfv.text, contentTfv.selection, richSpans)
+            }
+        }
+    }
+
+    val activeStyles = remember(currentActiveText, pendingTypingStyles) {
+        RichTextEngine.getActiveStyles(
+            currentActiveText.third,
+            currentActiveText.second,
+            currentActiveText.first,
+            pendingTypingStyles
+        )
+    }
+
+    var fontSizeSp by remember { mutableFloatStateOf(16f) }
+    var lineHeightSp by remember { mutableFloatStateOf(24f) }
+
+    val documentMetrics = remember(state.title, state.content, blocks, state.checklistItems, state.isChecklist, contentTfv.text) {
+        DocumentMetricsCalculator.calculate(
+            title = state.title,
+            content = if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) contentTfv.text else state.content,
+            blocks = blocks,
+            checklistItems = state.checklistItems,
+            isChecklist = state.isChecklist
+        )
+    }
+    var showDocumentStatsSheet by remember { mutableStateOf(false) }
+
+    fun insertBlockItem(blockToInsert: NotesnookBlock) {
+        val newBlocks = blocks.toMutableList()
+        if (newBlocks.size == 1 && newBlocks[0] is NotesnookBlock.Text && (newBlocks[0] as NotesnookBlock.Text).text.isBlank()) {
+            newBlocks.clear()
+        } else if (newBlocks.size == 1 && newBlocks[0] is NotesnookBlock.Text) {
+            newBlocks[0] = NotesnookBlock.Text(text = contentTfv.text, spans = richSpans)
+        }
+        val insertedIdx = newBlocks.size
+        newBlocks.add(blockToInsert)
+        val followingText = NotesnookBlock.Text()
+        newBlocks.add(followingText)
+        activeBlockIndex = insertedIdx + 1
+        syncAndCommitBlocks(newBlocks)
+        showNotesnookInsertSheet = false
+    }
+
     BackHandler {
         when {
+            showDocumentStatsSheet -> showDocumentStatsSheet = false
             viewingImageUri != null -> viewingImageUri = null
             showSketchDialog -> showSketchDialog = false
             showColorPicker -> showColorPicker = false
             showFontPicker -> showFontPicker = false
             showAddSheet -> showAddSheet = false
+            showNotesnookInsertSheet -> showNotesnookInsertSheet = false
+            showCodeBlockDialog -> showCodeBlockDialog = false
+            showMathDialog -> showMathDialog = false
+            showCalloutDialog -> showCalloutDialog = false
+            showEmbedDialog -> showEmbedDialog = false
+            showTableDialog -> showTableDialog = false
+            showImageOptionsSheet -> showImageOptionsSheet = false
+            showAttachmentOptionsSheet -> showAttachmentOptionsSheet = false
             showLabelDialog -> showLabelDialog = false
             showMoreMenu -> showMoreMenu = false
             else -> onClose()
@@ -262,6 +424,15 @@ fun KeepNoteEditor(
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(),
+        onResult = { uris ->
+            uris.forEach { uri ->
+                onAddImageUri(uri)
+            }
+        }
+    )
+
+    val documentPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents(),
         onResult = { uris ->
             uris.forEach { uri ->
                 onAddImageUri(uri)
@@ -304,7 +475,6 @@ fun KeepNoteEditor(
 
     val scrollState = rememberScrollState()
     val contentBringIntoViewRequester = remember { BringIntoViewRequester() }
-    val coroutineScope = rememberCoroutineScope()
 
     val formattedTime = remember(state.updatedAt) {
         val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
@@ -463,42 +633,325 @@ fun KeepNoteEditor(
 
                 // NOTE CONTENT OR CHECKLIST
                 if (!state.isChecklist) {
-                    // Plain Text Note
-                    BasicTextField(
-                        value = state.content,
-                        onValueChange = { newContent ->
-                            onContentChange(newContent)
-                            coroutineScope.launch {
-                                contentBringIntoViewRequester.bringIntoView()
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .defaultMinSize(minHeight = 260.dp)
-                            .bringIntoViewRequester(contentBringIntoViewRequester)
-                            .testTag("editor_content_input"),
-                        textStyle = TextStyle(
-                            color = textColor,
-                            fontSize = 16.sp,
-                            lineHeight = 24.sp,
-                            fontFamily = fontStyle.fontFamily
-                        ),
-                        cursorBrush = SolidColor(textColor),
-                        decorationBox = { innerTextField ->
-                            if (state.content.isEmpty()) {
-                                Text(
-                                    text = "Note",
-                                    style = TextStyle(
-                                        color = textColor.copy(alpha = 0.40f),
-                                        fontSize = 16.sp,
-                                        lineHeight = 24.sp,
-                                        fontFamily = fontStyle.fontFamily
-                                    )
-                                )
-                            }
-                            innerTextField()
+                    val primaryColor = MaterialTheme.colorScheme.primary
+
+                    if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
+                        // Standard WYSIWYG Single Text Note
+                        val richVisualTransformation = remember(richSpans, textColor, primaryColor, isDark, fontSizeSp) {
+                            RichTextEngine.createVisualTransformation(
+                                spans = richSpans,
+                                textColor = textColor,
+                                accentColor = primaryColor,
+                                isDark = isDark,
+                                baseFontSizeSp = fontSizeSp
+                            )
                         }
-                    )
+
+                        BasicTextField(
+                            value = contentTfv,
+                            onValueChange = { newTfv ->
+                                val enterHandled = NotesnookFormattingHelper.handleEnterKey(contentTfv, newTfv)
+                                val effectiveTfv = enterHandled ?: newTfv
+
+                                val oldText = contentTfv.text
+                                val newText = effectiveTfv.text
+                                if (oldText != newText) {
+                                    val updatedSpans = RichTextEngine.updateSpansOnTextChange(
+                                        oldText = oldText,
+                                        newText = newText,
+                                        spans = richSpans,
+                                        pendingTypes = pendingTypingStyles
+                                    )
+                                    richSpans = updatedSpans
+                                    val updatedBlock = NotesnookBlock.Text(text = newText, spans = updatedSpans)
+                                    blocks = listOf(updatedBlock)
+                                    onContentChange(NotesnookBlockManager.serialize(blocks))
+                                }
+                                contentTfv = effectiveTfv
+                                coroutineScope.launch {
+                                    contentBringIntoViewRequester.bringIntoView()
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 260.dp)
+                                .focusRequester(contentFocusRequester)
+                                .bringIntoViewRequester(contentBringIntoViewRequester)
+                                .testTag("editor_content_input"),
+                            visualTransformation = richVisualTransformation,
+                            textStyle = TextStyle(
+                                color = textColor,
+                                fontSize = fontSizeSp.sp,
+                                lineHeight = lineHeightSp.sp,
+                                fontFamily = fontStyle.fontFamily
+                            ),
+                            cursorBrush = SolidColor(textColor),
+                            decorationBox = { innerTextField ->
+                                if (contentTfv.text.isEmpty()) {
+                                    Text(
+                                        text = "Note",
+                                        style = TextStyle(
+                                            color = textColor.copy(alpha = 0.40f),
+                                            fontSize = fontSizeSp.sp,
+                                            lineHeight = lineHeightSp.sp,
+                                            fontFamily = fontStyle.fontFamily
+                                        )
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        )
+                    } else {
+                        // Multi-Block Note (Seamless Tables, Code Blocks, Callouts, Formulas, Quotes, etc.)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 260.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            blocks.forEachIndexed { index, block ->
+                                when (block) {
+                                    is NotesnookBlock.Text -> {
+                                        val blockId = block.id
+                                        var textVal by remember(blockId) {
+                                            val initTfv = textBlockStates[blockId] ?: TextFieldValue(block.text, TextRange(block.text.length))
+                                            textBlockStates[blockId] = initTfv
+                                            mutableStateOf(initTfv)
+                                        }
+                                        if (textVal.text != block.text) {
+                                            val safeCursor = textVal.selection.start.coerceIn(0, block.text.length)
+                                            textVal = textVal.copy(text = block.text, selection = TextRange(safeCursor))
+                                            textBlockStates[blockId] = textVal
+                                        }
+                                        val textVisualTrans = remember(block.spans, textColor, primaryColor, isDark, fontSizeSp) {
+                                            RichTextEngine.createVisualTransformation(
+                                                spans = block.spans,
+                                                textColor = textColor,
+                                                accentColor = primaryColor,
+                                                isDark = isDark,
+                                                baseFontSizeSp = fontSizeSp
+                                            )
+                                        }
+                                        BasicTextField(
+                                            value = textVal,
+                                            onValueChange = { newTfv ->
+                                                val enterHandled = NotesnookFormattingHelper.handleEnterKey(textVal, newTfv)
+                                                val eff = enterHandled ?: newTfv
+                                                textVal = eff
+                                                textBlockStates[blockId] = eff
+                                                activeBlockIndex = index
+                                                val oldT = block.text
+                                                val newT = eff.text
+                                                if (oldT != newT) {
+                                                    val updatedS = RichTextEngine.updateSpansOnTextChange(oldT, newT, block.spans)
+                                                    val updatedBlock = block.copy(text = newT, spans = updatedS)
+                                                    val newBlocks = blocks.toMutableList()
+                                                    newBlocks[index] = updatedBlock
+                                                    syncAndCommitBlocks(newBlocks)
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp)
+                                                .onFocusChanged {
+                                                    if (it.isFocused) {
+                                                        activeBlockIndex = index
+                                                    }
+                                                },
+                                            visualTransformation = textVisualTrans,
+                                            textStyle = TextStyle(
+                                                color = textColor,
+                                                fontSize = fontSizeSp.sp,
+                                                lineHeight = lineHeightSp.sp,
+                                                fontFamily = fontStyle.fontFamily
+                                            ),
+                                            cursorBrush = SolidColor(textColor),
+                                            decorationBox = { innerTextField ->
+                                                if (block.text.isEmpty()) {
+                                                    Text(
+                                                        text = if (index == 0) "Note" else "Continue writing...",
+                                                        style = TextStyle(
+                                                            color = textColor.copy(alpha = 0.35f),
+                                                            fontSize = fontSizeSp.sp,
+                                                            lineHeight = lineHeightSp.sp,
+                                                            fontFamily = fontStyle.fontFamily
+                                                        )
+                                                    )
+                                                }
+                                                innerTextField()
+                                            }
+                                        )
+                                    }
+                                    is NotesnookBlock.Table -> {
+                                        NotesnookTableWidget(
+                                            table = block,
+                                            onUpdate = {
+                                                val newBlocks = blocks.toMutableList()
+                                                newBlocks[index] = block
+                                                syncAndCommitBlocks(newBlocks)
+                                            },
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            isDark = isDark,
+                                            textColor = textColor
+                                        )
+                                    }
+                                    is NotesnookBlock.Code -> {
+                                        NotesnookCodeBlockWidget(
+                                            block = block,
+                                            onUpdate = {
+                                                val newBlocks = blocks.toMutableList()
+                                                newBlocks[index] = block
+                                                syncAndCommitBlocks(newBlocks)
+                                            },
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            isDark = isDark
+                                        )
+                                    }
+                                    is NotesnookBlock.Callout -> {
+                                        NotesnookCalloutWidget(
+                                            block = block,
+                                            onUpdate = {
+                                                val newBlocks = blocks.toMutableList()
+                                                newBlocks[index] = block
+                                                syncAndCommitBlocks(newBlocks)
+                                            },
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            isDark = isDark,
+                                            noteTextColor = textColor
+                                        )
+                                    }
+                                    is NotesnookBlock.MathFormula -> {
+                                        NotesnookMathWidget(
+                                            block = block,
+                                            onUpdate = {
+                                                val newBlocks = blocks.toMutableList()
+                                                newBlocks[index] = block
+                                                syncAndCommitBlocks(newBlocks)
+                                            },
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            isDark = isDark,
+                                            noteTextColor = textColor
+                                        )
+                                    }
+                                    is NotesnookBlock.HorizontalRule -> {
+                                        NotesnookHorizontalRuleWidget(
+                                            block = block,
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            isDark = isDark
+                                        )
+                                    }
+                                    is NotesnookBlock.Quote -> {
+                                        NotesnookQuoteWidget(
+                                            block = block,
+                                            onUpdate = {
+                                                val newBlocks = blocks.toMutableList()
+                                                newBlocks[index] = block
+                                                syncAndCommitBlocks(newBlocks)
+                                            },
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            isDark = isDark,
+                                            noteTextColor = textColor
+                                        )
+                                    }
+                                    is NotesnookBlock.OutlineItem -> {
+                                        NotesnookOutlineWidget(
+                                            block = block,
+                                            onUpdate = {
+                                                val newBlocks = blocks.toMutableList()
+                                                newBlocks[index] = block
+                                                syncAndCommitBlocks(newBlocks)
+                                            },
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            isDark = isDark,
+                                            noteTextColor = textColor
+                                        )
+                                    }
+                                    is NotesnookBlock.Embed -> {
+                                        NotesnookEmbedWidget(
+                                            block = block,
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            isDark = isDark,
+                                            noteTextColor = textColor
+                                        )
+                                    }
+                                    is NotesnookBlock.Attachment -> {
+                                        NotesnookAttachmentWidget(
+                                            block = block,
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            isDark = isDark,
+                                            noteTextColor = textColor
+                                        )
+                                    }
+                                    is NotesnookBlock.Image -> {
+                                        NotesnookImageBlockWidget(
+                                            block = block,
+                                            onUpdate = {
+                                                val newBlocks = blocks.toMutableList()
+                                                newBlocks[index] = block
+                                                syncAndCommitBlocks(newBlocks)
+                                            },
+                                            onDelete = {
+                                                val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                            },
+                                            onClick = { viewingImageUri = block.uri },
+                                            isDark = isDark,
+                                            noteTextColor = textColor
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (blocks.isNotEmpty() && blocks.last() !is NotesnookBlock.Text) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val newBlocks = blocks.toMutableList()
+                                            newBlocks.add(NotesnookBlock.Text())
+                                            syncAndCommitBlocks(newBlocks)
+                                        }
+                                        .padding(vertical = 12.dp)
+                                ) {
+                                    Text(
+                                        text = "Tap to write...",
+                                        style = TextStyle(
+                                            color = textColor.copy(alpha = 0.35f),
+                                            fontSize = fontSizeSp.sp,
+                                            fontFamily = fontStyle.fontFamily
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
                 } else {
                     // Checklist Items
                     val uncompletedItems = remember(state.checklistItems) {
@@ -531,11 +984,6 @@ fun KeepNoteEditor(
                                         val newId = java.util.UUID.randomUUID().toString()
                                         targetFocusItemId = newId
                                         onAddChecklistItem(globalIndex, extraText, newId)
-                                        if (posInList == uncompletedItems.size - 1) {
-                                            coroutineScope.launch {
-                                                scrollState.animateScrollTo(scrollState.maxValue)
-                                            }
-                                        }
                                     },
                                     onDelete = { onRemoveChecklistItem(globalIndex) },
                                     onMoveUp = {
@@ -565,9 +1013,6 @@ fun KeepNoteEditor(
                                     targetFocusItemId = newId
                                     val lastUncompletedGlobalIndex = uncompletedItems.lastOrNull()?.first
                                     onAddChecklistItem(lastUncompletedGlobalIndex, "", newId)
-                                    coroutineScope.launch {
-                                        scrollState.animateScrollTo(scrollState.maxValue)
-                                    }
                                 }
                                 .padding(vertical = 8.dp, horizontal = 4.dp)
                         ) {
@@ -909,130 +1354,177 @@ fun KeepNoteEditor(
             }
 
             // ==========================================
-            // FONT / TYPOGRAPHY DRAWER (IF OPEN)
+            // NOTESNOOK EDITING & TYPOGRAPHY DRAWER (IF OPEN)
             // ==========================================
             AnimatedVisibility(
                 visible = showFontPicker,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
-                Surface(
-                    color = if (isDark) Color(0xFF101012) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                    tonalElevation = 6.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("editor_font_drawer")
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "FONT STYLE",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.8.sp,
-                                    fontSize = 11.sp
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "${fontStyle.name} · ${fontStyle.description}",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    fontFamily = fontStyle.fontFamily
-                                ),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                fun keepFocus() {
+                    try {
+                        contentFocusRequester.requestFocus()
+                        keyboardController?.show()
+                    } catch (_: Exception) {}
+                }
 
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            items(KeepFontPalette.allFonts) { fontItem ->
-                                val isSelected = fontItem.key.equals(state.fontKey, ignoreCase = true)
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isSelected) {
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                    },
-                                    border = BorderStroke(
-                                        width = if (isSelected) 2.dp else 1.dp,
-                                        color = if (isSelected) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-                                        }
-                                    ),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { onFontChange(fontItem.key) }
-                                        .testTag("font_picker_${fontItem.key}")
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = fontItem.previewSample,
-                                                style = TextStyle(
-                                                    fontFamily = fontItem.fontFamily,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 17.sp
-                                                ),
-                                                color = if (isSelected) {
-                                                    MaterialTheme.colorScheme.onPrimaryContainer
-                                                } else {
-                                                    MaterialTheme.colorScheme.onSurface
-                                                }
-                                            )
-                                            if (isSelected) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Check,
-                                                    contentDescription = "Selected",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(15.dp)
-                                                )
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = fontItem.name,
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 11.sp,
-                                                fontFamily = fontItem.fontFamily,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                            ),
-                                            color = if (isSelected) {
-                                                MaterialTheme.colorScheme.onPrimaryContainer
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurfaceVariant
-                                            }
-                                        )
-                                    }
-                                }
+                fun toggleSpanStyle(type: RichSpanType) {
+                    val active = getActiveTextState()
+                    if (active != null) {
+                        val (idx, curTfv, curSpans) = active
+                        val sel = curTfv.selection
+                        if (sel.start != sel.end) {
+                            val newSpans = RichTextEngine.toggleSpan(curSpans, type, sel, curTfv.text.length)
+                            updateActiveTextState(idx, curTfv, newSpans)
+                        } else {
+                            pendingTypingStyles = if (pendingTypingStyles.contains(type)) {
+                                pendingTypingStyles - type
+                            } else {
+                                pendingTypingStyles + type
                             }
                         }
                     }
+                    keepFocus()
                 }
+
+                NotesnookEditorDrawer(
+                    activeStyles = activeStyles,
+                    onToggleBold = { toggleSpanStyle(RichSpanType.BOLD) },
+                    onToggleItalic = { toggleSpanStyle(RichSpanType.ITALIC) },
+                    onToggleUnderline = { toggleSpanStyle(RichSpanType.UNDERLINE) },
+                    onToggleStrikethrough = { toggleSpanStyle(RichSpanType.STRIKETHROUGH) },
+                    onToggleHighlight = { toggleSpanStyle(RichSpanType.HIGHLIGHT) },
+                    onToggleCode = { toggleSpanStyle(RichSpanType.CODE) },
+                    onToggleSubscript = { toggleSpanStyle(RichSpanType.SUBSCRIPT) },
+                    onToggleSuperscript = { toggleSpanStyle(RichSpanType.SUPERSCRIPT) },
+                    onToggleHeading = { level ->
+                        val active = getActiveTextState()
+                        if (active != null) {
+                            val (idx, curTfv, curSpans) = active
+                            val cursor = curTfv.selection.start
+                            val newSpans = if (level == 0) {
+                                val lineStart = curTfv.text.lastIndexOf('\n', startIndex = maxOf(0, cursor - 1)).let { if (it == -1) 0 else it + 1 }
+                                val lineEnd = curTfv.text.indexOf('\n', startIndex = cursor).let { if (it == -1) curTfv.text.length else it }
+                                curSpans.filterNot {
+                                    it.start >= lineStart && it.end <= lineEnd &&
+                                            (it.type == RichSpanType.HEADING_1 || it.type == RichSpanType.HEADING_2 ||
+                                                    it.type == RichSpanType.HEADING_3 || it.type == RichSpanType.HEADING_4 ||
+                                                    it.type == RichSpanType.HEADING_5 || it.type == RichSpanType.HEADING_6)
+                                }
+                            } else {
+                                val type = when (level) {
+                                    1 -> RichSpanType.HEADING_1
+                                    2 -> RichSpanType.HEADING_2
+                                    3 -> RichSpanType.HEADING_3
+                                    4 -> RichSpanType.HEADING_4
+                                    5 -> RichSpanType.HEADING_5
+                                    else -> RichSpanType.HEADING_6
+                                }
+                                RichTextEngine.toggleLineStyle(curSpans, type, cursor, curTfv.text)
+                            }
+                            updateActiveTextState(idx, curTfv, newSpans)
+                        }
+                        keepFocus()
+                    },
+                    onToggleBullet = {
+                        val active = getActiveTextState()
+                        if (active != null) {
+                            val (idx, curTfv, curSpans) = active
+                            val newTfv = NotesnookFormattingHelper.applyLinePrefix(curTfv, "- ")
+                            val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newTfv.text, curSpans)
+                            updateActiveTextState(idx, newTfv, updatedSpans)
+                        }
+                        keepFocus()
+                    },
+                    onToggleNumbered = { prefix ->
+                        val active = getActiveTextState()
+                        if (active != null) {
+                            val (idx, curTfv, curSpans) = active
+                            val newTfv = NotesnookFormattingHelper.applyLinePrefix(curTfv, prefix)
+                            val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newTfv.text, curSpans)
+                            updateActiveTextState(idx, newTfv, updatedSpans)
+                        }
+                        keepFocus()
+                    },
+                    onToggleQuote = {
+                        val active = getActiveTextState()
+                        if (active != null) {
+                            val (idx, curTfv, curSpans) = active
+                            val cursor = curTfv.selection.start
+                            val newSpans = RichTextEngine.toggleLineStyle(curSpans, RichSpanType.QUOTE, cursor, curTfv.text)
+                            updateActiveTextState(idx, curTfv, newSpans)
+                        }
+                        keepFocus()
+                    },
+                    onInsertDivider = {
+                        insertBlockItem(NotesnookBlock.HorizontalRule())
+                    },
+                    onInsertLink = {
+                        val active = getActiveTextState()
+                        if (active != null) {
+                            val (idx, curTfv, curSpans) = active
+                            val newTfv = NotesnookFormattingHelper.insertLinkTemplate(curTfv)
+                            val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newTfv.text, curSpans)
+                            updateActiveTextState(idx, newTfv, updatedSpans)
+                        }
+                        keepFocus()
+                    },
+                    onInsertCallout = { tag ->
+                        insertBlockItem(NotesnookBlock.Callout(calloutType = tag.lowercase(), text = ""))
+                    },
+                    onInsertTimestamp = {
+                        val active = getActiveTextState()
+                        if (active != null) {
+                            val (idx, curTfv, curSpans) = active
+                            val newTfv = NotesnookFormattingHelper.insertTimestamp(curTfv)
+                            val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newTfv.text, curSpans)
+                            updateActiveTextState(idx, newTfv, updatedSpans)
+                        }
+                        keepFocus()
+                    },
+                    onOpenInsertMenu = {
+                        showNotesnookInsertSheet = true
+                    },
+                    onIndent = { isOutdent ->
+                        val active = getActiveTextState()
+                        if (active != null) {
+                            val (idx, curTfv, curSpans) = active
+                            val newTfv = NotesnookFormattingHelper.indent(curTfv, isOutdent)
+                            val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newTfv.text, curSpans)
+                            updateActiveTextState(idx, newTfv, updatedSpans)
+                        }
+                        keepFocus()
+                    },
+                    onClearFormatting = {
+                        val active = getActiveTextState()
+                        if (active != null) {
+                            val (idx, curTfv, curSpans) = active
+                            val sel = curTfv.selection
+                            val s = minOf(sel.start, sel.end)
+                            val e = maxOf(sel.start, sel.end)
+                            val newSpans = if (s != e) {
+                                curSpans.filterNot { it.start < e && it.end > s }
+                            } else {
+                                val lineStart = curTfv.text.lastIndexOf('\n', startIndex = maxOf(0, s - 1)).let { if (it == -1) 0 else it + 1 }
+                                val lineEnd = curTfv.text.indexOf('\n', startIndex = s).let { if (it == -1) contentTfv.text.length else it }
+                                curSpans.filterNot { it.start >= lineStart && it.end <= lineEnd }
+                            }
+                            pendingTypingStyles = emptySet()
+                            updateActiveTextState(idx, curTfv, newSpans)
+                        }
+                        keepFocus()
+                    },
+                    selectedFontKey = state.fontKey,
+                    onFontChange = onFontChange,
+                    fontSizeSp = fontSizeSp,
+                    onFontSizeChange = { fontSizeSp = it },
+                    lineHeightSp = lineHeightSp,
+                    onLineHeightChange = { lineHeightSp = it },
+                    isChecklistMode = state.isChecklist,
+                    onToggleChecklistMode = onToggleChecklistMode,
+                    onCloseDrawer = { showFontPicker = false },
+                    isDark = isDark
+                )
             }
 
             // ==========================================
@@ -1086,21 +1578,48 @@ fun KeepNoteEditor(
                             },
                             modifier = Modifier.testTag("editor_font_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.FontDownload,
-                                contentDescription = "Font settings",
-                                tint = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp)
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .border(
+                                        width = 1.5.dp,
+                                        color = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "A",
+                                    style = TextStyle(
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f)
+                                    )
+                                )
+                            }
                         }
                     }
 
-                    // Center: Edited time
-                    Text(
-                        text = "Edited $formattedTime",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
-                        color = textColor.copy(alpha = 0.65f)
-                    )
+                    // Center: Word Count & Edited Time Pill
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = textColor.copy(alpha = 0.07f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showDocumentStatsSheet = true }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .testTag("editor_document_stats_pill")
+                    ) {
+                        Text(
+                            text = if (documentMetrics.words > 0) {
+                                "${documentMetrics.words} words · ~${if (documentMetrics.readingTimeMinutes <= 1) 1 else documentMetrics.readingTimeMinutes} min"
+                            } else {
+                                "Edited $formattedTime"
+                            },
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
+                            color = textColor.copy(alpha = 0.8f)
+                        )
+                    }
 
                     // Right action: Undo, Redo, 3-dots Overflow Menu
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1161,6 +1680,15 @@ fun KeepNoteEditor(
                         .padding(bottom = 28.dp, top = 4.dp)
                 ) {
                     KeepAddOptionRow(
+                        icon = Icons.Outlined.Article,
+                        title = "Document statistics",
+                        onClick = {
+                            showMoreMenu = false
+                            showDocumentStatsSheet = true
+                        }
+                    )
+
+                    KeepAddOptionRow(
                         icon = Icons.Outlined.Delete,
                         title = "Delete",
                         onClick = {
@@ -1216,6 +1744,165 @@ fun KeepNoteEditor(
                     )
                 }
             }
+        }
+
+        // ==========================================
+        // NOTESNOOK AUTHENTIC INSERT BOTTOM SHEET
+        // ==========================================
+        if (showNotesnookInsertSheet) {
+            NotesnookInsertBottomSheet(
+                onDismissRequest = { showNotesnookInsertSheet = false },
+                onInsertOutlineList = {
+                    insertBlockItem(NotesnookBlock.OutlineItem(level = 0, text = ""))
+                },
+                onInsertHorizontalRule = {
+                    insertBlockItem(NotesnookBlock.HorizontalRule())
+                },
+                onOpenCodeBlockDialog = {
+                    showCodeBlockDialog = true
+                },
+                onOpenMathDialog = {
+                    showMathDialog = true
+                },
+                onOpenCalloutDialog = {
+                    showCalloutDialog = true
+                },
+                onInsertQuote = {
+                    insertBlockItem(NotesnookBlock.Quote(text = ""))
+                },
+                onOpenImageDialog = {
+                    showImageOptionsSheet = true
+                },
+                onOpenAttachmentDialog = {
+                    showAttachmentOptionsSheet = true
+                },
+                onOpenEmbedDialog = {
+                    showEmbedDialog = true
+                },
+                onOpenTableDialog = {
+                    showTableDialog = true
+                },
+                isDark = isDark
+            )
+        }
+
+        // ==========================================
+        // NOTESNOOK TABLE BUILDER DIALOG
+        // ==========================================
+        if (showTableDialog) {
+            NotesnookTableBuilderDialog(
+                onDismiss = { showTableDialog = false },
+                onInsertTable = { rows, cols, data ->
+                    insertBlockItem(
+                        NotesnookBlock.Table(
+                            rows = rows,
+                            cols = cols,
+                            data = data.map { it.toMutableList() }.toMutableList()
+                        )
+                    )
+                },
+                isDark = isDark
+            )
+        }
+
+        // ==========================================
+        // NOTESNOOK MATH & FORMULAS DIALOG
+        // ==========================================
+        if (showMathDialog) {
+            NotesnookMathDialog(
+                onDismiss = { showMathDialog = false },
+                onInsertFormula = { formula, isInline ->
+                    insertBlockItem(
+                        NotesnookBlock.MathFormula(formula = formula, isInline = isInline)
+                    )
+                },
+                isDark = isDark
+            )
+        }
+
+        // ==========================================
+        // NOTESNOOK CODE BLOCK DIALOG
+        // ==========================================
+        if (showCodeBlockDialog) {
+            NotesnookCodeBlockDialog(
+                onDismiss = { showCodeBlockDialog = false },
+                onInsertCodeBlock = { lang ->
+                    insertBlockItem(
+                        NotesnookBlock.Code(language = lang, code = "")
+                    )
+                },
+                isDark = isDark
+            )
+        }
+
+        // ==========================================
+        // NOTESNOOK CALLOUT DIALOG
+        // ==========================================
+        if (showCalloutDialog) {
+            NotesnookCalloutDialog(
+                onDismiss = { showCalloutDialog = false },
+                onSelectCallout = { type ->
+                    insertBlockItem(
+                        NotesnookBlock.Callout(calloutType = type, text = "")
+                    )
+                },
+                isDark = isDark
+            )
+        }
+
+        // ==========================================
+        // NOTESNOOK EMBED DIALOG
+        // ==========================================
+        if (showEmbedDialog) {
+            NotesnookEmbedDialog(
+                onDismiss = { showEmbedDialog = false },
+                onInsertEmbed = { type, url, title ->
+                    insertBlockItem(
+                        NotesnookBlock.Embed(type = type, url = url, title = title)
+                    )
+                },
+                isDark = isDark
+            )
+        }
+
+        // ==========================================
+        // NOTESNOOK IMAGE OPTIONS SHEET
+        // ==========================================
+        if (showImageOptionsSheet) {
+            NotesnookImageOptionsSheet(
+                onDismiss = { showImageOptionsSheet = false },
+                onTakePhoto = { cameraLauncher.launch(null) },
+                onPickGallery = {
+                    photoPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                },
+                onInsertUrl = { url, altCaption ->
+                    insertBlockItem(
+                        NotesnookBlock.Image(uri = url, caption = altCaption)
+                    )
+                },
+                isDark = isDark
+            )
+        }
+
+        // ==========================================
+        // NOTESNOOK ATTACHMENT OPTIONS SHEET
+        // ==========================================
+        if (showAttachmentOptionsSheet) {
+            NotesnookAttachmentOptionsSheet(
+                onDismiss = { showAttachmentOptionsSheet = false },
+                onPickDocument = {
+                    documentPickerLauncher.launch("*/*")
+                },
+                onRecordAudio = {
+                    onStartVoiceRecording()
+                },
+                onOpenSketch = {
+                    showSketchDialog = true
+                },
+                isDark = isDark
+            )
         }
 
         // ==========================================
@@ -1305,6 +1992,17 @@ fun KeepNoteEditor(
                     onAddDrawing(bitmap)
                     showSketchDialog = false
                 }
+            )
+        }
+
+        // ==========================================
+        // DOCUMENT STATISTICS BOTTOM SHEET
+        // ==========================================
+        if (showDocumentStatsSheet) {
+            DocumentStatsBottomSheet(
+                metrics = documentMetrics,
+                isDark = isDark,
+                onDismiss = { showDocumentStatsSheet = false }
             )
         }
 
