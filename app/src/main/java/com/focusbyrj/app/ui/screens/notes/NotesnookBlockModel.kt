@@ -73,7 +73,8 @@ sealed interface NotesnookBlock {
         override val id: String = UUID.randomUUID().toString(),
         var level: Int = 0, // 0 = root, 1 = sub, 2 = sub-sub
         var text: String = "",
-        var isCollapsed: Boolean = false
+        var isCollapsed: Boolean = false,
+        var isNumbered: Boolean = true
     ) : NotesnookBlock
 
     data class Embed(
@@ -182,6 +183,7 @@ object NotesnookBlockManager {
                         obj.put("level", block.level)
                         obj.put("text", block.text)
                         obj.put("isCollapsed", block.isCollapsed)
+                        obj.put("isNumbered", block.isNumbered)
                     }
                     is NotesnookBlock.Embed -> {
                         obj.put("type", "embed")
@@ -321,7 +323,8 @@ object NotesnookBlockManager {
                                             id = id,
                                             level = obj.optInt("level", 0),
                                             text = obj.optString("text", ""),
-                                            isCollapsed = obj.optBoolean("isCollapsed", false)
+                                            isCollapsed = obj.optBoolean("isCollapsed", false),
+                                            isNumbered = obj.optBoolean("isNumbered", true)
                                         )
                                     )
                                 }

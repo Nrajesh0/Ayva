@@ -105,11 +105,16 @@ import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FontDownload
+import androidx.compose.material.icons.outlined.FormatLineSpacing
+import androidx.compose.material.icons.outlined.FormatListNumbered
+import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Publish
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.DropdownMenu
@@ -263,6 +268,12 @@ fun KeepNoteEditor(
     var showImageOptionsSheet by remember { mutableStateOf(false) }
     var showAttachmentOptionsSheet by remember { mutableStateOf(false) }
 
+    var isZenMode by remember { mutableStateOf(false) }
+    var showTocSheet by remember { mutableStateOf(false) }
+    var showExportSheet by remember { mutableStateOf(false) }
+    var showEditorialSheet by remember { mutableStateOf(false) }
+    var lineSpacingPreset by remember { mutableStateOf(LineSpacingPreset.COMFORTABLE) }
+
     val initialParsed = remember(state.originalId) { RichTextEngine.parse(state.content) }
     var richSpans by remember(state.originalId) { mutableStateOf(initialParsed.second) }
     var pendingTypingStyles by remember { mutableStateOf(setOf<RichSpanType>()) }
@@ -402,6 +413,10 @@ fun KeepNoteEditor(
 
     BackHandler {
         when {
+            isZenMode -> isZenMode = false
+            showTocSheet -> showTocSheet = false
+            showExportSheet -> showExportSheet = false
+            showEditorialSheet -> showEditorialSheet = false
             showDocumentStatsSheet -> showDocumentStatsSheet = false
             viewingImageUri != null -> viewingImageUri = null
             showSketchDialog -> showSketchDialog = false
@@ -503,50 +518,101 @@ fun KeepNoteEditor(
 
         Column(modifier = Modifier.fillMaxSize()) {
             // ==========================================
-            // TOP ACTION BAR (Google Keep Style)
+            // TOP ACTION BAR (Google Keep & Article Style)
             // ==========================================
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.testTag("editor_back_button")
+            if (isZenMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Save and Back",
-                        tint = textColor
+                    Text(
+                        text = "Zen Focus Mode",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                        color = textColor.copy(alpha = 0.5f)
                     )
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Pin Note
                     IconButton(
-                        onClick = onTogglePin,
-                        modifier = Modifier.testTag("editor_pin_button")
+                        onClick = { isZenMode = false },
+                        modifier = Modifier.testTag("exit_zen_mode_button")
                     ) {
                         Icon(
-                            imageVector = if (state.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = if (state.isPinned) "Unpin" else "Pin",
-                            tint = if (state.isPinned) MaterialTheme.colorScheme.primary else textColor
+                            imageVector = Icons.Outlined.FullscreenExit,
+                            contentDescription = "Exit Zen Mode",
+                            tint = textColor.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.testTag("editor_back_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Save and Back",
+                            tint = textColor
                         )
                     }
 
-                    // Archive
-                    IconButton(
-                        onClick = onArchive,
-                        modifier = Modifier.testTag("editor_archive_button")
-                    ) {
-                        Icon(
-                            imageVector = if (state.isArchived) Icons.Filled.Archive else Icons.Outlined.Archive,
-                            contentDescription = "Archive",
-                            tint = textColor
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Table of Contents
+                        IconButton(
+                            onClick = { showTocSheet = true },
+                            modifier = Modifier.testTag("editor_toc_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.FormatListNumbered,
+                                contentDescription = "Table of contents",
+                                tint = textColor.copy(alpha = 0.85f)
+                            )
+                        }
+
+                        // Zen Focus Mode
+                        IconButton(
+                            onClick = { isZenMode = true },
+                            modifier = Modifier.testTag("editor_zen_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Fullscreen,
+                                contentDescription = "Zen Focus Mode",
+                                tint = textColor.copy(alpha = 0.85f)
+                            )
+                        }
+
+                        // Pin Note
+                        IconButton(
+                            onClick = onTogglePin,
+                            modifier = Modifier.testTag("editor_pin_button")
+                        ) {
+                            Icon(
+                                imageVector = if (state.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                contentDescription = if (state.isPinned) "Unpin" else "Pin",
+                                tint = if (state.isPinned) MaterialTheme.colorScheme.primary else textColor
+                            )
+                        }
+
+                        // Archive
+                        IconButton(
+                            onClick = onArchive,
+                            modifier = Modifier.testTag("editor_archive_button")
+                        ) {
+                            Icon(
+                                imageVector = if (state.isArchived) Icons.Filled.Archive else Icons.Outlined.Archive,
+                                contentDescription = "Archive",
+                                tint = textColor
+                            )
+                        }
                     }
                 }
             }
@@ -1530,135 +1596,137 @@ fun KeepNoteEditor(
             // ==========================================
             // BOTTOM TOOLBAR (Authentic Google Keep Layout)
             // ==========================================
-            Surface(
-                color = bgColor,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+            if (!isZenMode) {
+                Surface(
+                    color = bgColor,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Left tools: [+] Add sheet, [Palette] Color, and [Font] Typography
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = { showAddSheet = true },
-                            modifier = Modifier.testTag("editor_plus_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.AddBox,
-                                contentDescription = "Add options",
-                                tint = textColor.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                showColorPicker = !showColorPicker
-                                if (showColorPicker) showFontPicker = false
-                            },
-                            modifier = Modifier.testTag("editor_palette_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Palette,
-                                contentDescription = "Color palette",
-                                tint = if (showColorPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                showFontPicker = !showFontPicker
-                                if (showFontPicker) showColorPicker = false
-                            },
-                            modifier = Modifier.testTag("editor_font_button")
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .border(
-                                        width = 1.5.dp,
-                                        color = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
-                                        shape = RoundedCornerShape(4.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Left tools: [+] Add sheet, [Palette] Color, and [Font] Typography
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { showAddSheet = true },
+                                modifier = Modifier.testTag("editor_plus_button")
                             ) {
-                                Text(
-                                    text = "A",
-                                    style = TextStyle(
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f)
-                                    )
+                                Icon(
+                                    imageVector = Icons.Outlined.AddBox,
+                                    contentDescription = "Add options",
+                                    tint = textColor.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
+
+                            IconButton(
+                                onClick = {
+                                    showColorPicker = !showColorPicker
+                                    if (showColorPicker) showFontPicker = false
+                                },
+                                modifier = Modifier.testTag("editor_palette_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Palette,
+                                    contentDescription = "Color palette",
+                                    tint = if (showColorPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    showFontPicker = !showFontPicker
+                                    if (showFontPicker) showColorPicker = false
+                                },
+                                modifier = Modifier.testTag("editor_font_button")
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .border(
+                                            width = 1.5.dp,
+                                            color = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "A",
+                                        style = TextStyle(
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f)
+                                        )
+                                    )
+                                }
+                            }
                         }
-                    }
 
-                    // Center: Word Count & Edited Time Pill
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = textColor.copy(alpha = 0.07f),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { showDocumentStatsSheet = true }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                            .testTag("editor_document_stats_pill")
-                    ) {
-                        Text(
-                            text = if (documentMetrics.words > 0) {
-                                "${documentMetrics.words} words · ~${if (documentMetrics.readingTimeMinutes <= 1) 1 else documentMetrics.readingTimeMinutes} min"
-                            } else {
-                                "Edited $formattedTime"
-                            },
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
-                            color = textColor.copy(alpha = 0.8f)
-                        )
-                    }
-
-                    // Right action: Undo, Redo, 3-dots Overflow Menu
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = onUndo,
-                            enabled = canUndo,
-                            modifier = Modifier.size(36.dp).testTag("editor_undo_button")
+                        // Center: Word Count & Edited Time Pill
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = textColor.copy(alpha = 0.07f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { showDocumentStatsSheet = true }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .testTag("editor_document_stats_pill")
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Undo,
-                                contentDescription = "Undo",
-                                tint = if (canUndo) textColor else textColor.copy(alpha = 0.28f),
-                                modifier = Modifier.size(20.dp)
+                            Text(
+                                text = if (documentMetrics.words > 0) {
+                                    "${documentMetrics.words} words · ~${if (documentMetrics.readingTimeMinutes <= 1) 1 else documentMetrics.readingTimeMinutes} min"
+                                } else {
+                                    "Edited $formattedTime"
+                                },
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
+                                color = textColor.copy(alpha = 0.8f)
                             )
                         }
 
-                        IconButton(
-                            onClick = onRedo,
-                            enabled = canRedo,
-                            modifier = Modifier.size(36.dp).testTag("editor_redo_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Redo,
-                                contentDescription = "Redo",
-                                tint = if (canRedo) textColor else textColor.copy(alpha = 0.28f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        // Right action: Undo, Redo, 3-dots Overflow Menu
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = onUndo,
+                                enabled = canUndo,
+                                modifier = Modifier.size(36.dp).testTag("editor_undo_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                                    contentDescription = "Undo",
+                                    tint = if (canUndo) textColor else textColor.copy(alpha = 0.28f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
 
-                        IconButton(
-                            onClick = { showMoreMenu = true },
-                            modifier = Modifier.size(36.dp).testTag("editor_more_options_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.MoreVert,
-                                contentDescription = "More options",
-                                tint = textColor.copy(alpha = 0.85f),
-                                modifier = Modifier.size(20.dp)
-                            )
+                            IconButton(
+                                onClick = onRedo,
+                                enabled = canRedo,
+                                modifier = Modifier.size(36.dp).testTag("editor_redo_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Redo,
+                                    contentDescription = "Redo",
+                                    tint = if (canRedo) textColor else textColor.copy(alpha = 0.28f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { showMoreMenu = true },
+                                modifier = Modifier.size(36.dp).testTag("editor_more_options_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = "More options",
+                                    tint = textColor.copy(alpha = 0.85f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1679,6 +1747,42 @@ fun KeepNoteEditor(
                         .fillMaxWidth()
                         .padding(bottom = 28.dp, top = 4.dp)
                 ) {
+                    KeepAddOptionRow(
+                        icon = Icons.Outlined.FormatListNumbered,
+                        title = "Table of contents",
+                        onClick = {
+                            showMoreMenu = false
+                            showTocSheet = true
+                        }
+                    )
+
+                    KeepAddOptionRow(
+                        icon = Icons.Outlined.Publish,
+                        title = "Export & Publish (MD / HTML)",
+                        onClick = {
+                            showMoreMenu = false
+                            showExportSheet = true
+                        }
+                    )
+
+                    KeepAddOptionRow(
+                        icon = Icons.Outlined.FormatLineSpacing,
+                        title = "Editorial typography & elements",
+                        onClick = {
+                            showMoreMenu = false
+                            showEditorialSheet = true
+                        }
+                    )
+
+                    KeepAddOptionRow(
+                        icon = Icons.Outlined.Fullscreen,
+                        title = "Zen Focus mode",
+                        onClick = {
+                            showMoreMenu = false
+                            isZenMode = true
+                        }
+                    )
+
                     KeepAddOptionRow(
                         icon = Icons.Outlined.Article,
                         title = "Document statistics",
@@ -2003,6 +2107,82 @@ fun KeepNoteEditor(
                 metrics = documentMetrics,
                 isDark = isDark,
                 onDismiss = { showDocumentStatsSheet = false }
+            )
+        }
+
+        // ==========================================
+        // TABLE OF CONTENTS SHEET
+        // ==========================================
+        if (showTocSheet) {
+            val tocItems = remember(state.title, blocks, state.content, contentTfv.text) {
+                ArticleTocHelper.extractToc(
+                    title = state.title,
+                    blocks = blocks,
+                    fallbackContent = contentTfv.text
+                )
+            }
+            ArticleTocBottomSheet(
+                tocItems = tocItems,
+                isDark = isDark,
+                onSelectTocItem = { tocItem ->
+                    activeBlockIndex = tocItem.blockIndex
+                    showTocSheet = false
+                },
+                onDismiss = { showTocSheet = false }
+            )
+        }
+
+        // ==========================================
+        // ARTICLE EXPORT SHEET
+        // ==========================================
+        if (showExportSheet) {
+            ArticleExportBottomSheet(
+                title = state.title,
+                blocks = blocks,
+                content = contentTfv.text,
+                labels = state.labels,
+                isChecklist = state.isChecklist,
+                checklistItems = state.checklistItems,
+                isDark = isDark,
+                onDismiss = { showExportSheet = false }
+            )
+        }
+
+        // ==========================================
+        // EDITORIAL TYPOGRAPHY SHEET
+        // ==========================================
+        if (showEditorialSheet) {
+            ArticleEditorialBottomSheet(
+                currentLineSpacing = lineSpacingPreset,
+                onSelectLineSpacing = { preset ->
+                    lineSpacingPreset = preset
+                    lineHeightSp = preset.lineHeightSp
+                },
+                onInsertPullQuote = {
+                    insertBlockItem(NotesnookBlock.Quote(text = "Insert pull quote text..."))
+                },
+                onInsertFootnote = {
+                    val active = getActiveTextState()
+                    if (active != null) {
+                        val (idx, curTfv, curSpans) = active
+                        val sel = curTfv.selection
+                        val cursor = sel.start.coerceIn(0, curTfv.text.length)
+                        val footnoteNum = (blocks.count { it is NotesnookBlock.Text && it.text.contains("[^") } + 1)
+                        val fnMarker = "[^$footnoteNum]"
+                        val newText = curTfv.text.substring(0, cursor) + fnMarker + curTfv.text.substring(cursor)
+                        val newTfv = TextFieldValue(newText, TextRange(cursor + fnMarker.length))
+                        updateActiveTextState(idx, newTfv, curSpans)
+
+                        val fnDefBlock = NotesnookBlock.Text(
+                            text = "$fnMarker Footnote reference detail...",
+                            spans = listOf(RichSpan(RichSpanType.ITALIC, 0, fnMarker.length + 28))
+                        )
+                        val newBlocks = blocks.toMutableList().apply { add(fnDefBlock) }
+                        syncAndCommitBlocks(newBlocks)
+                    }
+                },
+                isDark = isDark,
+                onDismiss = { showEditorialSheet = false }
             )
         }
 
