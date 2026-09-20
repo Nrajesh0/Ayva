@@ -94,21 +94,16 @@ fun SetupPermissionsDialog(
                 ) {
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                Box(
+                Image(
+                    painter = painterResource(id = R.drawable.app_icon),
+                    contentDescription = "RuN Logo",
                     modifier = Modifier
-                        .size(80.dp)
+                        .size(76.dp)
                         .clip(CircleShape)
-                        .background(Color.Black),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_app_logo),
-                        contentDescription = "App Logo",
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
+                        .border(1.5.dp, Color(0x33FFFFFF), CircleShape)
+                )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
                     text = "System Access",
@@ -122,7 +117,7 @@ fun SetupPermissionsDialog(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "To help you stay on track and block distracting apps, Focus needs a few core permissions to work properly.",
+                    text = "To help you stay on track and block distracting apps, RuN needs a few core permissions to work properly.",
                     style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,

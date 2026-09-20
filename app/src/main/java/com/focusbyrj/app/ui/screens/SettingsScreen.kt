@@ -606,7 +606,7 @@ fun SettingsScreen(navController: NavController) {
             
             // Footer info
             Text(
-                text = "Focus by RJ",
+                text = "RuN",
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.Bold, 
                     letterSpacing = 2.sp

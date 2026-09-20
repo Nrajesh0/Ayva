@@ -42,9 +42,9 @@ object AppIconManager {
     val iconOptions = listOf(
         AppIconOption(
             id = "default",
-            title = "Default Focus",
+            title = "Default RuN",
             subtitle = "Classic Minimalist Emblem",
-            previewRes = R.drawable.ic_app_logo,
+            previewRes = R.drawable.app_icon,
             aliasName = "com.focusbyrj.app.MainActivity"
         ),
         AppIconOption(

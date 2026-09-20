@@ -2898,20 +2898,14 @@ fun ChatBubble(
             horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
         ) {
             if (!message.isUser) {
-                Box(
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = com.focusbyrj.app.R.drawable.app_icon),
+                    contentDescription = "Ayva",
                     modifier = Modifier
                         .size(28.dp)
                         .clip(CircleShape)
-                        .background(Color.Black)
-                        .border(1.5.dp, category.getComposeNotificationAccent(context).copy(alpha = 0.85f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.foundation.Image(
-                        painter = androidx.compose.ui.res.painterResource(id = com.focusbyrj.app.R.drawable.ic_app_logo),
-                        contentDescription = "Ayva",
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                        .border(1.5.dp, category.getComposeNotificationAccent(context).copy(alpha = 0.85f), CircleShape)
+                )
                 Spacer(modifier = Modifier.width(8.dp))
             }
             
@@ -3122,20 +3116,14 @@ fun TaskSummaryCard(
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.Start
         ) {
-            Box(
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = com.focusbyrj.app.R.drawable.app_icon),
+                contentDescription = "Ayva",
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(Color.Black)
-                    .border(1.dp, Color(0x33FFFFFF), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(id = com.focusbyrj.app.R.drawable.ic_app_logo),
-                    contentDescription = "Ayva",
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+                    .border(1.dp, Color(0x33FFFFFF), CircleShape)
+            )
             Spacer(modifier = Modifier.width(8.dp))
 
             Surface(
@@ -3481,20 +3469,14 @@ fun StreakPromptCard(
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.Start
         ) {
-            Box(
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = com.focusbyrj.app.R.drawable.app_icon),
+                contentDescription = "Ayva",
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(Color.Black)
-                    .border(1.dp, Color(0x33FFFFFF), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(id = com.focusbyrj.app.R.drawable.ic_app_logo),
-                    contentDescription = "Ayva",
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+                    .border(1.dp, Color(0x33FFFFFF), CircleShape)
+            )
             Spacer(modifier = Modifier.width(8.dp))
 
             Surface(

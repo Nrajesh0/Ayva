@@ -1190,7 +1190,7 @@ class BubbleService : Service() {
             builder.addAction(android.R.drawable.ic_media_play, "Resume", resumePendingIntent)
         } else {
             builder.setContentTitle("Ayva is active")
-                .setContentText("Tap to open Focus by RJ")
+                .setContentText("Tap to open RuN")
 
             val snoozeIntent = Intent(this, BubbleService::class.java).apply {
                 action = ACTION_SNOOZE_BUBBLE

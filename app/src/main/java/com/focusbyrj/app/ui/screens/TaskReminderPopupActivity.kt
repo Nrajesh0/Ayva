@@ -320,32 +320,18 @@ fun TaskReminderPopupScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             // App Logo in top left
-                            Box(
+                            Image(
+                                painter = painterResource(id = R.drawable.app_icon),
+                                contentDescription = "RuN App Logo",
                                 modifier = Modifier
                                     .size(38.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(
-                                                MaterialTheme.colorScheme.primary,
-                                                MaterialTheme.colorScheme.secondary
-                                            )
-                                        )
-                                    )
                                     .border(
                                         width = 1.dp,
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                        color = Color(0x33FFFFFF),
                                         shape = RoundedCornerShape(10.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_app_logo),
-                                    contentDescription = "Focus App Logo",
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
+                                    )
+                            )
 
                             Column {
                                 Row(
@@ -353,7 +339,7 @@ fun TaskReminderPopupScreen(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Text(
-                                        text = "Focus",
+                                        text = "RuN",
                                         style = MaterialTheme.typography.titleMedium.copy(
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp

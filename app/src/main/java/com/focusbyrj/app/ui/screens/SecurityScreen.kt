@@ -411,7 +411,7 @@ fun SecurityScreen(navController: NavController) {
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "Setting this to Unrestricted allows Focus by Rj to guard your boundaries 24/7 without consuming significant battery.",
+                        "Setting this to Unrestricted allows RuN to guard your boundaries 24/7 without consuming significant battery.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

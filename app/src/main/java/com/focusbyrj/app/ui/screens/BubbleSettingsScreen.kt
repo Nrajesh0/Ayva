@@ -743,20 +743,14 @@ private fun LiveBubblePreviewCard(
                     contentAlignment = Alignment.Center
                 ) {
                     // Base bubble circle with app icon
-                    Box(
+                    Image(
+                        painter = painterResource(id = R.drawable.app_icon),
+                        contentDescription = "Hidden Bubble Preview",
                         modifier = Modifier
                             .size(bubbleDiameter)
                             .clip(CircleShape)
-                            .background(Color.Black)
-                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_app_logo),
-                            contentDescription = "Hidden Bubble Preview",
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                    )
 
                     // Accent glow ring
                     if (glowIntensity > 0) {

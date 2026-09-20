@@ -502,7 +502,7 @@ fun PreferencesHubScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Focus by Rj • v${BuildConfig.VERSION_NAME}",
+                        text = "RuN • v${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.sp

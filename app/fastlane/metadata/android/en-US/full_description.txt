@@ -1,4 +1,4 @@
-Focus by Rj is an offline, privacy-respecting App Locker and Focus Tracker designed to help you stay productive and maintain screen time boundaries. 
+RuN is an offline, privacy-respecting App Locker and Focus Tracker designed to help you stay productive and maintain screen time boundaries. 
 
 Key Features:
 - Fully Offline: No cloud syncing or analytics. All data stays locally on your device.

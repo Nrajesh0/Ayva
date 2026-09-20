@@ -1,6 +1,6 @@
-# Focus by Rj
+# RuN
 
-Focus by Rj is a privacy-first, fully offline App Locker & Focus Tracker.
+RuN is a privacy-first, fully offline App Locker & Focus Tracker.
 
 ## F-Droid Compatibility
 This application is fully compatible with F-Droid and meets all F-Droid Inclusion Requirements:

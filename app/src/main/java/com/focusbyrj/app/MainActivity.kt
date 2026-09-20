@@ -408,27 +408,20 @@ fun MainAppScreen(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            Box(
+                                            Image(
+                                                painter = painterResource(id = R.drawable.app_icon),
+                                                contentDescription = "RuN App Logo",
                                                 modifier = Modifier
                                                     .size(30.dp)
                                                     .clip(RoundedCornerShape(8.dp))
-                                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(8.dp)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    painter = painterResource(id = R.drawable.ic_app_logo),
-                                                    contentDescription = "Focus App Logo",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
+                                                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                                            )
                                             Text(
-                                                text = "Focus by Rj",
+                                                text = "RuN",
                                                 style = MaterialTheme.typography.titleLarge.copy(
                                                     fontWeight = FontWeight.Bold,
-                                                    fontSize = 19.sp,
-                                                    letterSpacing = 0.3.sp
+                                                    fontSize = 20.sp,
+                                                    letterSpacing = 0.5.sp
                                                 ),
                                                 color = MaterialTheme.colorScheme.onBackground
                                             )
@@ -489,30 +482,23 @@ fun MainAppScreen(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(30.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(8.dp)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    painter = painterResource(id = R.drawable.ic_app_logo),
-                                                    contentDescription = "Focus App Logo",
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-                                            Text(
-                                                text = "Focus by Rj",
-                                                style = MaterialTheme.typography.titleLarge.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 19.sp,
-                                                    letterSpacing = 0.3.sp
-                                                ),
-                                                color = MaterialTheme.colorScheme.onBackground
+                                            Image(
+                                                 painter = painterResource(id = R.drawable.app_icon),
+                                                 contentDescription = "RuN App Logo",
+                                                 modifier = Modifier
+                                                     .size(30.dp)
+                                                     .clip(RoundedCornerShape(8.dp))
+                                                     .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
                                             )
+                                            Text(
+                                                 text = "RuN",
+                                                 style = MaterialTheme.typography.titleLarge.copy(
+                                                     fontWeight = FontWeight.Bold,
+                                                     fontSize = 20.sp,
+                                                     letterSpacing = 0.5.sp
+                                                 ),
+                                                 color = MaterialTheme.colorScheme.onBackground
+                                             )
                                         }
                                     }
                                 }

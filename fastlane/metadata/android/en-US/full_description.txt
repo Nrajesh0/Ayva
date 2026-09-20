@@ -1,4 +1,4 @@
-Focus by Rj is a strictly offline, privacy-first Android application designed to help you stay focused and manage screen time without compromising your personal data. 
+RuN is a strictly offline, privacy-first Android application designed to help you stay focused and manage screen time without compromising your personal data. 
 
 Features:
 - Block distracting apps using powerful App Restrictions.
