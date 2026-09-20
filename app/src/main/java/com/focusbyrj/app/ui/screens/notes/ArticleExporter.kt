@@ -45,7 +45,8 @@ enum class ExportFormat(
     MARKDOWN_FRONTMATTER("Markdown + Frontmatter (.md)", "md", "text/markdown", false),
     DOCX("Word Document (.docx)", "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", true),
     HTML("Webpage (.html)", "html", "text/html", false),
-    PLAIN_TEXT("Plain Text (.txt)", "txt", "text/plain", false)
+    PLAIN_TEXT("Plain Text (.txt)", "txt", "text/plain", false),
+    JSON("JSON Format (.json)", "json", "application/json", false)
 }
 
 object ArticleExporter {
@@ -494,6 +495,29 @@ object ArticleExporter {
                     }
                 }.trim()
                 text.toByteArray(StandardCharsets.UTF_8)
+            }
+            ExportFormat.JSON -> {
+                val json = org.json.JSONObject().apply {
+                    put("title", title)
+                    put("isChecklist", isChecklist)
+                    put("labels", org.json.JSONArray(labels))
+                    put("exportedAt", System.currentTimeMillis())
+                    if (isChecklist) {
+                        val checkArr = org.json.JSONArray()
+                        checklistItems.forEach { item ->
+                            checkArr.put(org.json.JSONObject().apply {
+                                put("id", item.id)
+                                put("text", item.text)
+                                put("isChecked", item.isChecked)
+                            })
+                        }
+                        put("checklist", checkArr)
+                    } else {
+                        put("blocksJson", NotesnookBlockManager.serialize(blocks))
+                        put("fallbackContent", fallbackContent)
+                    }
+                }
+                json.toString(2).toByteArray(StandardCharsets.UTF_8)
             }
         }
     }

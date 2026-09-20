@@ -400,6 +400,40 @@ fun PreferencesHubScreen(
                                 modifier = Modifier.padding(start = 64.dp, end = 16.dp)
                             )
 
+                            // PC Sync & Encrypted Vault
+                            HubMenuItemRow(
+                                icon = Icons.Filled.Laptop,
+                                title = "PC Sync & Security",
+                                subtitle = "Web app link & zero-knowledge vault",
+                                testTag = "menu_device_sync",
+                                trailingContent = {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                    ) {
+                                        Text(
+                                            text = "E2EE",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    navController.navigate(Screen.DeviceSync.route) {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            )
+
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
+                                modifier = Modifier.padding(start = 64.dp, end = 16.dp)
+                            )
+
                             // Bubble Settings
                             HubMenuItemRow(
                                 icon = Icons.Filled.Chat,

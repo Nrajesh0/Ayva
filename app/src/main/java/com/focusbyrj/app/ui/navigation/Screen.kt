@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Laptop
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Dashboard : Screen("dashboard", "Focus", Icons.Filled.Home)
@@ -50,4 +51,5 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Habits : Screen("habits", "Habits", Icons.Filled.Schedule)
     object Empty : Screen("empty", "Notes", Icons.AutoMirrored.Filled.StickyNote2)
     object PreferencesHub : Screen("preferences_hub", "Preferences", Icons.Filled.Settings)
+    object DeviceSync : Screen("device_sync", "PC Sync & Security", Icons.Filled.Laptop)
 }

@@ -596,7 +596,8 @@ fun MainAppScreen(
                     Screen.BubbleSettings.route,
                     Screen.Subscription.route,
                     Screen.Habits.route,
-                    Screen.PreferencesHub.route
+                    Screen.PreferencesHub.route,
+                    Screen.DeviceSync.route
                 )
                 val notesEditingState by notesViewModel.editingState.collectAsStateWithLifecycle()
                 val isEditingNote = currentDestination?.route == Screen.Empty.route && notesEditingState != null
@@ -771,6 +772,15 @@ fun MainAppScreen(
                         habitViewModel = habitViewModel,
                         onBack = { navController.popBackStack() },
                         initialOpenCreate = initialOpenAdd || pendingOpenAdd
+                    )
+                }
+                composable(Screen.DeviceSync.route) {
+                    val app = context.applicationContext as FocusApplication
+                    val noteDb = com.focusbyrj.app.data.note.NoteDatabase.getInstance(app)
+                    com.focusbyrj.app.ui.screens.sync.DeviceSyncScreen(
+                        navController = navController,
+                        noteDao = noteDb.noteDao(),
+                        taskDao = app.database.taskDao()
                     )
                 }
             }

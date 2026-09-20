@@ -134,6 +134,9 @@ dependencies {
   ksp(libs.androidx.room.compiler)
   implementation(libs.sqlcipher.android)
 
+  // QR Generation for PC Sync
+  implementation(libs.zxing.core)
+
   // Coil for Note Image Attachments
   implementation("io.coil-kt:coil-compose:2.7.0")
 

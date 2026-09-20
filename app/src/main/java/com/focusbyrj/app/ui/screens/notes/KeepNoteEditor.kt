@@ -852,8 +852,14 @@ fun KeepNoteEditor(
                                         NotesnookTableWidget(
                                             table = block,
                                             onUpdate = {
+                                                val freshTable = block.copy(
+                                                    rows = block.rows,
+                                                    cols = block.cols,
+                                                    data = block.data.map { it.toMutableList() }.toMutableList(),
+                                                    columnWidths = block.columnWidths.toMutableList()
+                                                )
                                                 val newBlocks = blocks.toMutableList()
-                                                newBlocks[index] = block
+                                                newBlocks[index] = freshTable
                                                 syncAndCommitBlocks(newBlocks)
                                             },
                                             onDelete = {

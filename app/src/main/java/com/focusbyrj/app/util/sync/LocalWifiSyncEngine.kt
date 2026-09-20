@@ -1,0 +1,381 @@
+/*
+ * Copyright (C) 2024-2026 Focus by Rj
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package com.focusbyrj.app.util.sync
+
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.io.PrintWriter
+import java.net.HttpURLConnection
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+
+/**
+ * Local Wi-Fi Direct E2EE Sync Server & Client.
+ *
+ * Supports bidirectional communication:
+ * 1. Android scans PC's QR code -> Android pushes/pulls directly from PC Web app.
+ * 2. Or Android generates QR -> PC connects to Android.
+ */
+object LocalWifiSyncEngine {
+
+    private const val DEFAULT_PORT = 8998
+    private var serverSocket: ServerSocket? = null
+    private val isRunning = AtomicBoolean(false)
+    private var currentSessionKey: String = ""
+
+    data class ServerStatus(
+        val isRunning: Boolean,
+        val localIp: String?,
+        val port: Int,
+        val sessionKey: String,
+        val pairingUrl: String?
+    )
+
+    data class ParsedSyncQrPayload(
+        val url: String?,
+        val ip: String?,
+        val port: Int?,
+        val key: String?,
+        val passphrase: String?
+    )
+
+    /**
+     * Parses a scanned QR string payload (either JSON format or raw http URL).
+     */
+    fun parseQrPayload(rawContent: String): ParsedSyncQrPayload {
+        val trimmed = rawContent.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            try {
+                val obj = JSONObject(trimmed)
+                return ParsedSyncQrPayload(
+                    url = obj.optString("url").takeIf { it.isNotBlank() },
+                    ip = obj.optString("ip").takeIf { it.isNotBlank() },
+                    port = if (obj.has("port")) obj.getInt("port") else null,
+                    key = obj.optString("key").takeIf { it.isNotBlank() },
+                    passphrase = obj.optString("passphrase").takeIf { it.isNotBlank() }
+                )
+            } catch (_: Exception) {}
+        }
+        // Direct URL fallback
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return ParsedSyncQrPayload(
+                url = trimmed,
+                ip = null,
+                port = null,
+                key = null,
+                passphrase = null
+            )
+        }
+        return ParsedSyncQrPayload(null, null, null, null, null)
+    }
+
+    /**
+     * Pulls encrypted vault package from the target endpoint (e.g. PC web server).
+     */
+    suspend fun fetchVaultFromPc(targetUrl: String, sessionKey: String? = null): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val endpoint = if (targetUrl.endsWith("/api/vault") || targetUrl.endsWith("/vault")) targetUrl
+                           else "${targetUrl.removeSuffix("/")}/api/vault"
+            val url = URL(endpoint)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 8000
+                readTimeout = 15000
+                if (!sessionKey.isNullOrBlank()) {
+                    setRequestProperty("Authorization", "Bearer $sessionKey")
+                    setRequestProperty("X-Auth-Token", sessionKey)
+                }
+            }
+
+            val responseCode = conn.responseCode
+            if (responseCode in 200..299) {
+                val text = conn.inputStream.bufferedReader().use { it.readText() }
+                Result.success(text)
+            } else {
+                Result.failure(Exception("HTTP Error $responseCode: ${conn.responseMessage}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Pushes current encrypted vault package to target endpoint (e.g. PC web server).
+     */
+    suspend fun pushVaultToPc(targetUrl: String, encryptedPayload: String, sessionKey: String? = null): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val endpoint = if (targetUrl.endsWith("/api/vault") || targetUrl.endsWith("/vault")) targetUrl
+                           else "${targetUrl.removeSuffix("/")}/api/vault"
+            val url = URL(endpoint)
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 8000
+                readTimeout = 15000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                if (!sessionKey.isNullOrBlank()) {
+                    setRequestProperty("Authorization", "Bearer $sessionKey")
+                    setRequestProperty("X-Auth-Token", sessionKey)
+                }
+            }
+
+            conn.outputStream.bufferedWriter().use { it.write(encryptedPayload) }
+            val responseCode = conn.responseCode
+            if (responseCode in 200..299) {
+                val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                Result.success(resp)
+            } else {
+                Result.failure(Exception("HTTP Error $responseCode: ${conn.responseMessage}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Resolves the primary local IPv4 address on the current Wi-Fi network.
+     */
+    fun getLocalWifiIpAddress(): String? {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                if (networkInterface.isLoopback || !networkInterface.isUp) continue
+
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (address is Inet4Address && !address.isLoopbackAddress) {
+                        val host = address.hostAddress
+                        if (host != null && (host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("172."))) {
+                            return host
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return null
+    }
+
+    /**
+     * Generates a QR Code bitmap from a payload string using ZXing.
+     */
+    suspend fun generateQrBitmap(
+        content: String,
+        widthPx: Int = 512,
+        heightPx: Int = 512,
+        darkColor: Color = Color.Black,
+        lightColor: Color = Color.White
+    ): Bitmap? = withContext(Dispatchers.Default) {
+        try {
+            val hints = mapOf(
+                EncodeHintType.MARGIN to 1,
+                EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M
+            )
+            val bitMatrix = QRCodeWriter().encode(
+                content,
+                BarcodeFormat.QR_CODE,
+                widthPx,
+                heightPx,
+                hints
+            )
+            val dark = darkColor.toArgb()
+            val light = lightColor.toArgb()
+            val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+            for (x in 0 until widthPx) {
+                for (y in 0 until heightPx) {
+                    bitmap.setPixel(x, y, if (bitMatrix.get(x, y)) dark else light)
+                }
+            }
+            bitmap
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Starts local Wi-Fi sync server.
+     */
+    suspend fun startServer(
+        passphrase: String,
+        onVaultReceived: suspend (encryptedJson: String) -> Pair<Int, Int>,
+        provideCurrentVault: suspend () -> String
+    ): ServerStatus = withContext(Dispatchers.IO) {
+        stopServer()
+
+        val localIp = getLocalWifiIpAddress() ?: "127.0.0.1"
+        val sessionKey = VaultCryptoEngine.generate12WordMnemonic().take(4).joinToString("-")
+        currentSessionKey = sessionKey
+
+        try {
+            val socket = ServerSocket(DEFAULT_PORT)
+            serverSocket = socket
+            isRunning.set(true)
+
+            Thread {
+                while (isRunning.get() && !socket.isClosed) {
+                    try {
+                        val client = socket.accept()
+                        handleClient(client, onVaultReceived, provideCurrentVault)
+                    } catch (_: Exception) {
+                        break
+                    }
+                }
+            }.apply {
+                isDaemon = true
+                start()
+            }
+
+            val pairingUrl = "http://$localIp:$DEFAULT_PORT"
+            ServerStatus(
+                isRunning = true,
+                localIp = localIp,
+                port = DEFAULT_PORT,
+                sessionKey = sessionKey,
+                pairingUrl = pairingUrl
+            )
+        } catch (e: Exception) {
+            ServerStatus(
+                isRunning = false,
+                localIp = localIp,
+                port = DEFAULT_PORT,
+                sessionKey = "",
+                pairingUrl = null
+            )
+        }
+    }
+
+    private fun handleClient(
+        client: Socket,
+        onVaultReceived: suspend (String) -> Pair<Int, Int>,
+        provideCurrentVault: suspend () -> String
+    ) {
+        Thread {
+            try {
+                client.soTimeout = 10000
+                val reader = BufferedReader(InputStreamReader(client.getInputStream()))
+                val writer = PrintWriter(OutputStreamWriter(client.getOutputStream()), true)
+
+                val requestLine = reader.readLine() ?: return@Thread
+                val parts = requestLine.split(" ")
+                if (parts.size < 2) return@Thread
+
+                val method = parts[0]
+                val path = parts[1]
+
+                var contentLength = 0
+                var headerLine: String? = reader.readLine()
+                while (!headerLine.isNullOrEmpty()) {
+                    if (headerLine.startsWith("Content-Length:", ignoreCase = true)) {
+                        contentLength = headerLine.substringAfter(":").trim().toIntOrNull() ?: 0
+                    }
+                    headerLine = reader.readLine()
+                }
+
+                // Handle CORS pre-flight
+                if (method.equals("OPTIONS", ignoreCase = true)) {
+                    writer.print("HTTP/1.1 204 No Content\r\n")
+                    writer.print("Access-Control-Allow-Origin: *\r\n")
+                    writer.print("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n")
+                    writer.print("Access-Control-Allow-Headers: Content-Type, Authorization, X-Auth-Token\r\n\r\n")
+                    writer.flush()
+                    return@Thread
+                }
+
+                when {
+                    path == "/status" || path == "/ping" -> {
+                        val json = JSONObject().apply {
+                            put("status", "ok")
+                            put("app", "Focus by RJ")
+                            put("version", "2.0")
+                            put("syncReady", true)
+                        }
+                        sendResponse(writer, 200, "application/json", json.toString())
+                    }
+                    path.startsWith("/api/vault") && method.equals("GET", ignoreCase = true) -> {
+                        val encVault = kotlinx.coroutines.runBlocking { provideCurrentVault() }
+                        sendResponse(writer, 200, "application/json", encVault)
+                    }
+                    path.startsWith("/api/vault") && method.equals("POST", ignoreCase = true) -> {
+                        val bodyChars = CharArray(contentLength)
+                        var readTotal = 0
+                        while (readTotal < contentLength) {
+                            val r = reader.read(bodyChars, readTotal, contentLength - readTotal)
+                            if (r == -1) break
+                            readTotal += r
+                        }
+                        val body = String(bodyChars, 0, readTotal)
+                        val counts = kotlinx.coroutines.runBlocking { onVaultReceived(body) }
+                        val resp = JSONObject().apply {
+                            put("success", true)
+                            put("notesImported", counts.first)
+                            put("tasksImported", counts.second)
+                        }
+                        sendResponse(writer, 200, "application/json", resp.toString())
+                    }
+                    else -> {
+                        sendResponse(writer, 404, "text/plain", "Endpoint not found")
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                try {
+                    client.close()
+                } catch (_: Exception) {}
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun sendResponse(writer: PrintWriter, statusCode: Int, contentType: String, body: String) {
+        val bytes = body.toByteArray(Charsets.UTF_8)
+        writer.print("HTTP/1.1 $statusCode OK\r\n")
+        writer.print("Content-Type: $contentType; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Access-Control-Allow-Headers: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.print(body)
+        writer.flush()
+    }
+
+    fun stopServer() {
+        isRunning.set(false)
+        try {
+            serverSocket?.close()
+        } catch (_: Exception) {}
+        serverSocket = null
+    }
+}

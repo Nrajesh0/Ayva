@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Schedule
@@ -597,6 +598,32 @@ fun SettingsScreen(navController: NavController) {
                         context.getSharedPreferences("focus_app_prefs", Context.MODE_PRIVATE)
                             .edit().putString("default_start_tab", option.route).apply()
                         showTabDropdown = false
+                    }
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+                )
+
+                // PC Sync & Zero-Knowledge Vault Navigation Row
+                SettingsNavigationRow(
+                    icon = Icons.Filled.Laptop,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = "PC Sync & Encrypted Vault",
+                    subtitle = "Pair Web App, export/import zero-knowledge package",
+                    onClick = {
+                        navController.navigate(com.focusbyrj.app.ui.navigation.Screen.DeviceSync.route) {
+                            launchSingleTop = true
+                        }
+                    },
+                    trailing = {
+                        Icon(
+                            imageVector = Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 )
             }

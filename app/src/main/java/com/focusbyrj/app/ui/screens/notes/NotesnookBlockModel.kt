@@ -39,7 +39,8 @@ sealed interface NotesnookBlock {
         override val id: String = UUID.randomUUID().toString(),
         var rows: Int = 2,
         var cols: Int = 2,
-        val data: MutableList<MutableList<String>> = mutableListOf()
+        val data: MutableList<MutableList<String>> = mutableListOf(),
+        val columnWidths: MutableList<Int> = mutableListOf()
     ) : NotesnookBlock
 
     data class HorizontalRule(
@@ -146,6 +147,11 @@ object NotesnookBlockManager {
                         obj.put("type", "table")
                         obj.put("rows", block.rows)
                         obj.put("cols", block.cols)
+                        val widthsArr = JSONArray()
+                        for (w in block.columnWidths) {
+                            widthsArr.put(w)
+                        }
+                        obj.put("columnWidths", widthsArr)
                         val dataArr = JSONArray()
                         for (r in 0 until block.rows) {
                             val rowArr = JSONArray()
@@ -267,6 +273,13 @@ object NotesnookBlockManager {
                                 "table" -> {
                                     val rows = obj.optInt("rows", 2)
                                     val cols = obj.optInt("cols", 2)
+                                    val columnWidths = mutableListOf<Int>()
+                                    val widthsArr = obj.optJSONArray("columnWidths")
+                                    if (widthsArr != null) {
+                                        for (i in 0 until widthsArr.length()) {
+                                            columnWidths.add(widthsArr.optInt(i, 110))
+                                        }
+                                    }
                                     val data = mutableListOf<MutableList<String>>()
                                     val dataArr = obj.optJSONArray("data")
                                     for (r in 0 until rows) {
@@ -277,7 +290,7 @@ object NotesnookBlockManager {
                                         }
                                         data.add(rowList)
                                     }
-                                    blocks.add(NotesnookBlock.Table(id = id, rows = rows, cols = cols, data = data))
+                                    blocks.add(NotesnookBlock.Table(id = id, rows = rows, cols = cols, data = data, columnWidths = columnWidths))
                                 }
                                 "horizontal_rule" -> {
                                     blocks.add(NotesnookBlock.HorizontalRule(id = id))
