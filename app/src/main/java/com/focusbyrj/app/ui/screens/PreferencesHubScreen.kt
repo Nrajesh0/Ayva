@@ -42,6 +42,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,11 +52,16 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.focusbyrj.app.BuildConfig
+import com.focusbyrj.app.FocusApplication
+import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.ui.components.SetupPermissionsDialog
 import com.focusbyrj.app.ui.navigation.Screen
 import com.focusbyrj.app.util.FocusEconomyManager
 import com.focusbyrj.app.util.PermissionUtils
 import com.focusbyrj.app.util.ProfileAvatarManager
+import com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager
+import com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,7 +70,40 @@ fun PreferencesHubScreen(
     onOpenSetupGuide: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val economyProfile by FocusEconomyManager.profileFlow.collectAsStateWithLifecycle()
+
+    var sessionState by remember { mutableStateOf(SupabaseKeyManager.getSessionState(context)) }
+    var isSyncingNow by remember { mutableStateOf(false) }
+    var syncErrorMessage by remember { mutableStateOf<String?>(null) }
+    var syncSuccessMessage by remember { mutableStateOf<String?>(null) }
+
+    val noteDao = remember { NoteDatabase.getInstance(context).noteDao() }
+    val taskDao = remember { (context.applicationContext as FocusApplication).database.taskDao() }
+
+    fun triggerManualSync() {
+        if (isSyncingNow) return
+        isSyncingNow = true
+        syncErrorMessage = null
+        syncSuccessMessage = null
+        scope.launch {
+            try {
+                val result = SupabaseSyncEngine.performSync(context, noteDao, taskDao)
+                result.onSuccess { res ->
+                    syncSuccessMessage = res.message
+                    Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
+                }.onFailure { err ->
+                    syncErrorMessage = err.message ?: "Sync failed"
+                    Toast.makeText(context, "Sync failed: ${err.message}", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                syncErrorMessage = e.message ?: "Sync error"
+            } finally {
+                isSyncingNow = false
+                sessionState = SupabaseKeyManager.getSessionState(context)
+            }
+        }
+    }
 
     var hasUsageStats by remember { mutableStateOf(PermissionUtils.hasUsageStatsPermission(context)) }
     var hasOverlay by remember { mutableStateOf(PermissionUtils.hasOverlayPermission(context)) }
@@ -77,6 +118,7 @@ fun PreferencesHubScreen(
                 hasOverlay = PermissionUtils.hasOverlayPermission(context)
                 isBatteryUnrestricted = PermissionUtils.isIgnoringBatteryOptimizations(context)
                 hasNotifications = PermissionUtils.hasNotificationPermission(context)
+                sessionState = SupabaseKeyManager.getSessionState(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -102,11 +144,7 @@ fun PreferencesHubScreen(
                 title = {
                     Text(
                         text = "Settings",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 20.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onBackground
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 },
                 navigationIcon = {
@@ -133,39 +171,46 @@ fun PreferencesHubScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Column(
                 modifier = Modifier
+                    .weight(1f)
                     .fillMaxWidth()
                     .widthIn(max = 600.dp)
-                    .padding(horizontal = 18.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(horizontal = 20.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                // Executive Profile Card
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Profile & Cloud Account Card
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .clickable {
-                            navController.navigate(Screen.Account.route) {
-                                launchSingleTop = true
+                            if (sessionState.isSignedIn) {
+                                navController.navigate(Screen.DeviceSync.route) {
+                                    launchSingleTop = true
+                                }
+                            } else {
+                                navController.navigate(Screen.CloudAuth.route) {
+                                    launchSingleTop = true
+                                }
                             }
                         }
                         .testTag("preferences_profile_card"),
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp)
+                            .padding(16.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             val avatarRes = ProfileAvatarManager.getAvatarImageRes(
                                 economyProfile.selectedAvatar,
@@ -182,75 +227,118 @@ fun PreferencesHubScreen(
 
                             Box(
                                 modifier = Modifier
-                                    .size(60.dp)
+                                    .size(52.dp)
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.surface)
-                                    .border(2.5.dp, avatarBorder, CircleShape),
+                                    .border(2.dp, avatarBorder, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Image(
                                     painter = painterResource(id = avatarRes),
                                     contentDescription = "User Avatar",
                                     modifier = Modifier
-                                        .size(48.dp)
+                                        .size(42.dp)
                                         .clip(CircleShape)
                                 )
                             }
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = economyProfile.name.ifBlank { "Focus Master" },
-                                    style = MaterialTheme.typography.titleLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 19.sp
+                                    text = if (sessionState.isSignedIn && !sessionState.userEmail.isNullOrBlank()) {
+                                        sessionState.userEmail!!
+                                    } else {
+                                        economyProfile.name.ifBlank { "Focus Warrior" }
+                                    },
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 16.sp
                                     ),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "$rankTitle • Level ${economyProfile.level}",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = FontWeight.Medium
-                                    ),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    if (sessionState.isSignedIn) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color(0xFF2E7D32).copy(alpha = 0.15f),
+                                            border = BorderStroke(0.8.dp, Color(0xFF2E7D32).copy(alpha = 0.3f))
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(5.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color(0xFF2E7D32))
+                                                )
+                                                Text(
+                                                    text = "E2EE ACTIVE",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 8.5.sp
+                                                    ),
+                                                    color = Color(0xFF2E7D32)
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Text(
+                                            text = "Tap to Sign In / Sync",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.5.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+                                        )
+                                    }
+
+                                    Text(
+                                        text = "• Level ${economyProfile.level}",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                }
                             }
 
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                                 contentDescription = "View Profile",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                modifier = Modifier.size(16.dp)
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                modifier = Modifier.size(13.dp)
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         // Multiplier & Gold Pills Row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             // Multiplier Pill
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Text("⚡", fontSize = 13.sp)
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("⚡", fontSize = 11.sp)
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "${FocusEconomyManager.getGoldMultiplier(economyProfile.level)}x Multiplier",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.primary,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -259,21 +347,25 @@ fun PreferencesHubScreen(
 
                             // Gold Pill
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFFF59E0B).copy(alpha = 0.12f),
-                                border = BorderStroke(0.8.dp, Color(0xFFF59E0B).copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Text("🪙", fontSize = 13.sp)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFF59E0B))
+                                    )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "${economyProfile.gold} Gold",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
                                         color = Color(0xFFF59E0B),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -281,273 +373,325 @@ fun PreferencesHubScreen(
                                 }
                             }
                         }
-                    }
-                }
 
-                // Section: Preferences
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "PREFERENCES",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 1.4.sp,
-                            fontSize = 11.5.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                        modifier = Modifier.padding(start = 6.dp, bottom = 4.dp)
-                    )
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth()
+                        // Account Profile Options: Sync Button & Cloud Actions
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Security & Permissions
-                            HubMenuItemRow(
-                                icon = Icons.Filled.Security,
-                                title = "Security & Permissions",
-                                subtitle = "Device shield & lock access",
-                                testTag = "menu_security_permissions",
-                                trailingContent = {
-                                    if (allConfigured) {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(6.dp)
-                                                        .clip(CircleShape)
-                                                        .background(MaterialTheme.colorScheme.primary)
-                                                )
-                                                Text(
-                                                    "Active",
-                                                    style = MaterialTheme.typography.labelSmall.copy(
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = FontWeight.SemiBold
-                                                    ),
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                        }
+                            // Primary Sync Test Button
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1.1f)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (isSyncingNow) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    )
+                                    .clickable(enabled = !isSyncingNow) { triggerManualSync() }
+                                    .padding(vertical = 8.dp, horizontal = 12.dp),
+                                shape = CircleShape,
+                                color = Color.Transparent
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (isSyncingNow) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(13.dp),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Syncing...", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                                     } else {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.14f)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(6.dp)
-                                                        .clip(CircleShape)
-                                                        .background(MaterialTheme.colorScheme.error)
-                                                )
-                                                Text(
-                                                    "Setup",
-                                                    style = MaterialTheme.typography.labelSmall.copy(
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = FontWeight.SemiBold
-                                                    ),
-                                                    color = MaterialTheme.colorScheme.error
-                                                )
+                                        Icon(Icons.Filled.Sync, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text("Sync Now", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
+
+                            if (!sessionState.isSignedIn) {
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1.1f)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                                        .clickable {
+                                            navController.navigate(Screen.CloudAuth.route) {
+                                                launchSingleTop = true
                                             }
                                         }
-                                    }
-                                },
-                                onClick = {
-                                    navController.navigate(Screen.Security.route) {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            )
-
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
-                                modifier = Modifier.padding(start = 64.dp, end = 16.dp)
-                            )
-
-                            // App Settings
-                            HubMenuItemRow(
-                                icon = Icons.Filled.Palette,
-                                title = "App Settings",
-                                subtitle = "Theme, sounds & preferences",
-                                testTag = "menu_app_settings",
-                                onClick = {
-                                    navController.navigate(Screen.Settings.route) {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            )
-
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
-                                modifier = Modifier.padding(start = 64.dp, end = 16.dp)
-                            )
-
-                            // PC Sync & Encrypted Vault
-                            HubMenuItemRow(
-                                icon = Icons.Filled.Laptop,
-                                title = "PC Sync & Security",
-                                subtitle = "Web app link & zero-knowledge vault",
-                                testTag = "menu_device_sync",
-                                trailingContent = {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                        .padding(vertical = 8.dp, horizontal = 10.dp),
+                                    shape = CircleShape,
+                                    color = Color.Transparent
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = "E2EE",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
-                                        )
-                                    }
-                                },
-                                onClick = {
-                                    navController.navigate(Screen.DeviceSync.route) {
-                                        launchSingleTop = true
+                                        Icon(Icons.Filled.Login, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f), modifier = Modifier.size(13.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Sign In / Up", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
                                     }
                                 }
-                            )
-
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
-                                modifier = Modifier.padding(start = 64.dp, end = 16.dp)
-                            )
-
-                            // Bubble Settings
-                            HubMenuItemRow(
-                                icon = Icons.Filled.Chat,
-                                title = "Bubble Settings",
-                                subtitle = "Floating timer & quick dock",
-                                testTag = "menu_bubble_settings",
-                                onClick = {
-                                    navController.navigate(Screen.BubbleSettings.route) {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            )
-
-                            HorizontalDivider(
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
-                                modifier = Modifier.padding(start = 64.dp, end = 16.dp)
-                            )
-
-                            // Subscription
-                            HubMenuItemRow(
-                                icon = Icons.Filled.Star,
-                                title = "Subscription",
-                                subtitle = "Unlock Pro & cloud sync",
-                                testTag = "menu_subscription",
-                                trailingContent = {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            } else {
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                                        .clickable {
+                                            navController.navigate(Screen.DeviceSync.route) {
+                                                launchSingleTop = true
+                                            }
+                                        }
+                                        .padding(vertical = 8.dp, horizontal = 8.dp),
+                                    shape = CircleShape,
+                                    color = Color.Transparent
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = "PRO",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold
-                                            ),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
-                                        )
-                                    }
-                                },
-                                onClick = {
-                                    navController.navigate(Screen.Subscription.route) {
-                                        launchSingleTop = true
+                                        Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f), modifier = Modifier.size(13.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Vault", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
                                     }
                                 }
-                            )
+                            }
+
+                            // Stats & Avatars shortcut button
+                            Surface(
+                                modifier = Modifier
+                                    .weight(0.9f)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                                    .clickable {
+                                        navController.navigate(Screen.Account.route) {
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                    .padding(vertical = 8.dp, horizontal = 8.dp),
+                                shape = CircleShape,
+                                color = Color.Transparent
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Stats", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
                         }
-                    }
-                }
 
-                // Section: Assistance & Help
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "ASSISTANCE",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 1.4.sp,
-                            fontSize = 11.5.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                        modifier = Modifier.padding(start = 6.dp, bottom = 4.dp)
-                    )
-
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            HubMenuItemRow(
-                                icon = Icons.Filled.Info,
-                                title = "Setup Guide",
-                                subtitle = "Tour & permissions guide",
-                                testTag = "menu_setup_guide",
-                                onClick = {
-                                    if (onOpenSetupGuide != null) {
-                                        onOpenSetupGuide()
-                                    } else {
-                                        showSetupDialog = true
+                        // Sync Error Inspector
+                        syncErrorMessage?.let { errText ->
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.ErrorOutline,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                "Sync Error Detected",
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { syncErrorMessage = null },
+                                            modifier = Modifier.size(20.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Close,
+                                                contentDescription = "Dismiss",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
                                     }
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = errText,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
                                 }
-                            )
+                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // --- PREFERENCES SECTION ---
+                SettingsSectionHeader(title = "PREFERENCES")
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                ) {
+                    // Security & Permissions
+                    SettingsNavigationRow(
+                        icon = Icons.Filled.Security,
+                        title = "Security & Permissions",
+                        subtitle = "Device shield & lock access",
+                        testTag = "menu_security_permissions",
+                        statusText = if (allConfigured) "Active" else "Setup",
+                        isStatusError = !allConfigured,
+                        onClick = {
+                            navController.navigate(Screen.Security.route) {
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                        modifier = Modifier.padding(start = 54.dp, end = 6.dp)
+                    )
+
+                    // App Settings
+                    SettingsNavigationRow(
+                        icon = Icons.Filled.Palette,
+                        title = "App Settings",
+                        subtitle = "Theme, sounds & preferences",
+                        testTag = "menu_app_settings",
+                        onClick = {
+                            navController.navigate(Screen.Settings.route) {
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                        modifier = Modifier.padding(start = 54.dp, end = 6.dp)
+                    )
+
+                    // Cloud Vault & Security
+                    SettingsNavigationRow(
+                        icon = Icons.Filled.Lock,
+                        title = "Cloud Vault & Security",
+                        subtitle = "E2EE Supabase sync & backup",
+                        testTag = "menu_device_sync",
+                        badgeText = "E2EE",
+                        onClick = {
+                            navController.navigate(Screen.DeviceSync.route) {
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                        modifier = Modifier.padding(start = 54.dp, end = 6.dp)
+                    )
+
+                    // Bubble Settings
+                    SettingsNavigationRow(
+                        icon = Icons.Filled.Chat,
+                        title = "Bubble Settings",
+                        subtitle = "Floating timer & quick dock",
+                        testTag = "menu_bubble_settings",
+                        onClick = {
+                            navController.navigate(Screen.BubbleSettings.route) {
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                        modifier = Modifier.padding(start = 54.dp, end = 6.dp)
+                    )
+
+                    // Subscription
+                    SettingsNavigationRow(
+                        icon = Icons.Filled.Star,
+                        title = "Subscription",
+                        subtitle = "Unlock Pro & cloud sync",
+                        testTag = "menu_subscription",
+                        badgeText = "PRO",
+                        onClick = {
+                            navController.navigate(Screen.Subscription.route) {
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // --- ASSISTANCE SECTION ---
+                SettingsSectionHeader(title = "ASSISTANCE")
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                ) {
+                    SettingsNavigationRow(
+                        icon = Icons.Filled.Info,
+                        title = "Setup Guide",
+                        subtitle = "Tour & permissions guide",
+                        testTag = "menu_setup_guide",
+                        onClick = {
+                            if (onOpenSetupGuide != null) {
+                                onOpenSetupGuide()
+                            } else {
+                                showSetupDialog = true
+                            }
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
+
                 // Footer Branding
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 16.dp),
+                        .padding(vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = "RuN • v${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Medium,
-                            fontSize = 13.sp
+                            fontSize = 12.sp
                         ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = "Stay present. Guard your mind.",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
                     )
                 }
 
@@ -558,77 +702,133 @@ fun PreferencesHubScreen(
 }
 
 @Composable
-private fun HubMenuItemRow(
+private fun SettingsSectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.4.sp,
+            fontSize = 11.sp
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+        modifier = Modifier.padding(start = 6.dp, top = 20.dp, bottom = 6.dp)
+    )
+}
+
+@Composable
+private fun SettingsNavigationRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
     testTag: String,
-    onClick: () -> Unit,
-    trailingContent: @Composable (() -> Unit)? = null
+    statusText: String? = null,
+    isStatusError: Boolean = false,
+    badgeText: String? = null,
+    onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .padding(horizontal = 6.dp, vertical = 10.dp)
             .testTag(testTag),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.weight(1f)
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(34.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                    modifier = Modifier.size(17.dp)
                 )
             }
-
-            Column(modifier = Modifier.weight(1f)) {
+            Spacer(modifier = Modifier.width(14.dp))
+            Column {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 12.sp
+                        fontSize = 11.5.sp
                     ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
             }
         }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (trailingContent != null) {
-                trailingContent()
+            if (statusText != null) {
+                val statusBg = if (isStatusError) MaterialTheme.colorScheme.error.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                val statusFg = if (isStatusError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                Surface(
+                    shape = CircleShape,
+                    color = statusBg
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .clip(CircleShape)
+                                .background(statusFg)
+                        )
+                        Text(
+                            statusText,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = statusFg
+                        )
+                    }
+                }
             }
+
+            if (badgeText != null) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                ) {
+                    Text(
+                        text = badgeText,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                modifier = Modifier.size(14.dp)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
+                modifier = Modifier.size(11.dp)
             )
         }
     }

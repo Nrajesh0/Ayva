@@ -189,6 +189,9 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Apply Anti-Screenshot / FLAG_SECURE protection dynamically based on user preference (defaults to false / off)
+        applySecureWindowFlags()
+
         val app = application as FocusApplication
         val vm: FocusViewModel by viewModels {
             FocusViewModelFactory(app.repository, app)
@@ -234,8 +237,28 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
+        applySecureWindowFlags()
         kotlin.runCatching { com.focusbyrj.app.widget.TodoWidgetProvider.updateAllWidgets(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(this) }
+        kotlin.runCatching { com.focusbyrj.app.util.sync.supabase.AutoSyncManager.checkAndSyncIfStale(this, staleThresholdMs = 2 * 60 * 1000L) }
+    }
+
+    private fun applySecureWindowFlags() {
+        try {
+            val prefs = getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
+            val isSecureEnabled = prefs.getBoolean("secure_recents", false)
+            if (isSecureEnabled) {
+                window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            } else {
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            }
+        } catch (_: Exception) {}
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Zero-Knowledge security: securely wipe vault sub-key from volatile memory when app backgrounds
+        kotlin.runCatching { com.focusbyrj.app.data.note.ArchiveVaultSecurity.lockVault() }
     }
 }
 
@@ -389,7 +412,9 @@ fun MainAppScreen(
                     Screen.Security.route,
                     Screen.BubbleSettings.route,
                     Screen.Subscription.route,
-                    Screen.AddRestriction.route
+                    Screen.AddRestriction.route,
+                    Screen.CloudAuth.route,
+                    Screen.DeviceSync.route
                 )
                 if (!isSessionActive && currentDestination?.route !in hideTopBarRoutes) {
                     TopAppBar(
@@ -597,7 +622,8 @@ fun MainAppScreen(
                     Screen.Subscription.route,
                     Screen.Habits.route,
                     Screen.PreferencesHub.route,
-                    Screen.DeviceSync.route
+                    Screen.DeviceSync.route,
+                    Screen.CloudAuth.route
                 )
                 val notesEditingState by notesViewModel.editingState.collectAsStateWithLifecycle()
                 val isEditingNote = currentDestination?.route == Screen.Empty.route && notesEditingState != null
@@ -778,6 +804,15 @@ fun MainAppScreen(
                     val app = context.applicationContext as FocusApplication
                     val noteDb = com.focusbyrj.app.data.note.NoteDatabase.getInstance(app)
                     com.focusbyrj.app.ui.screens.sync.DeviceSyncScreen(
+                        navController = navController,
+                        noteDao = noteDb.noteDao(),
+                        taskDao = app.database.taskDao()
+                    )
+                }
+                composable(Screen.CloudAuth.route) {
+                    val app = context.applicationContext as FocusApplication
+                    val noteDb = com.focusbyrj.app.data.note.NoteDatabase.getInstance(app)
+                    com.focusbyrj.app.ui.screens.sync.supabase.SupabaseAuthScreen(
                         navController = navController,
                         noteDao = noteDb.noteDao(),
                         taskDao = app.database.taskDao()

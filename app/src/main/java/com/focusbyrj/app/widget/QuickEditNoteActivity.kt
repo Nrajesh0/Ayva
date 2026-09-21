@@ -152,6 +152,9 @@ class QuickEditNoteActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        } catch (_: Exception) {}
 
         val noteId = intent.getLongExtra(EXTRA_NOTE_ID, -1L).takeIf { it != -1L }
         val createNew = intent.getBooleanExtra(EXTRA_CREATE_NEW, false)
@@ -229,6 +232,13 @@ fun QuickEditNoteOverlay(
                     else -> null
                 }
                 if (entity != null) {
+                    if (entity.isArchived && com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultStatus(appContext) == com.focusbyrj.app.data.note.ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(appContext, "Secret Vault note is protected. Open main app to unlock.", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                        return@withContext
+                    }
                     loadedNote = entity
                     title = entity.title
                     content = entity.content
@@ -313,6 +323,7 @@ fun QuickEditNoteOverlay(
                 // If it was already in DB and completely empty (no text, checklist, images, audio, labels), delete it
                 if (loadedNote != null && loadedNote!!.id > 0) {
                     val toDelete = loadedNote!!
+                    com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(appContext, "NOTE", toDelete.id)
                     com.focusbyrj.app.data.note.NoteMediaManager.deleteNoteMediaFiles(toDelete)
                     noteDao.deleteNote(toDelete)
                     NotesViewModel.latestNotesCache.remove(toDelete.id)

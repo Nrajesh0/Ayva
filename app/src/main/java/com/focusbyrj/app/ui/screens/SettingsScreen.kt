@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.Stars
@@ -183,7 +184,9 @@ fun SettingsScreen(navController: NavController) {
             SettingsSectionHeader(title = "APPEARANCE")
 
             Column(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
             ) {
                 SettingsStringDropdownRow(
                     icon = Icons.Filled.DarkMode,
@@ -410,13 +413,15 @@ fun SettingsScreen(navController: NavController) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // --- BLOCKING & CONTROLS SECTION (2026 Calm Minimal) ---
             SettingsSectionHeader(title = "BLOCKING & PREFERENCES")
 
             Column(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
             ) {
                 // Soft Lock Wait Timer Stepper
                 SettingsStepperRow(
@@ -608,10 +613,10 @@ fun SettingsScreen(navController: NavController) {
 
                 // PC Sync & Zero-Knowledge Vault Navigation Row
                 SettingsNavigationRow(
-                    icon = Icons.Filled.Laptop,
+                    icon = Icons.Filled.Lock,
                     iconTint = MaterialTheme.colorScheme.primary,
-                    title = "PC Sync & Encrypted Vault",
-                    subtitle = "Pair Web App, export/import zero-knowledge package",
+                    title = "Cloud Vault & Security",
+                    subtitle = "Zero-Knowledge E2EE Supabase sync, backup & recovery",
                     onClick = {
                         navController.navigate(com.focusbyrj.app.ui.navigation.Screen.DeviceSync.route) {
                             launchSingleTop = true
@@ -628,7 +633,7 @@ fun SettingsScreen(navController: NavController) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(24.dp))
             }
             
             // Footer info
@@ -1181,7 +1186,7 @@ private fun SettingsNavigationRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
-            .padding(horizontal = 6.dp, vertical = 10.dp),
+            .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -1239,7 +1244,7 @@ private fun SettingsStepperRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 10.dp),
+            .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -1407,7 +1412,7 @@ private fun SettingsDropdownRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 10.dp),
+            .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -1441,7 +1446,7 @@ private fun SettingsDropdownRow(
                 )
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.labelSmall.copy(
+                    style = MaterialTheme.typography.bodySmall.copy(
                         fontSize = 11.5.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
@@ -1540,7 +1545,7 @@ private fun SettingsStringDropdownRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 10.dp),
+            .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -1574,7 +1579,7 @@ private fun SettingsStringDropdownRow(
                 )
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.labelSmall.copy(
+                    style = MaterialTheme.typography.bodySmall.copy(
                         fontSize = 11.5.sp
                     ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)

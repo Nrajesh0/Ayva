@@ -29,6 +29,9 @@ import java.util.UUID
 
 object NoteImageHelper {
 
+    const val MAX_IMAGE_DIMENSION: Int = 1920
+    const val COMPRESSION_QUALITY: Int = 80
+
     fun processAndSaveImage(context: Context, contentUri: Uri): String? {
         return try {
             val imagesDir = File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
@@ -57,7 +60,7 @@ object NoteImageHelper {
 
             val origWidth = boundsOptions.outWidth
             val origHeight = boundsOptions.outHeight
-            val maxDim = 2048
+            val maxDim = MAX_IMAGE_DIMENSION
 
             var sampleSize = 1
             if (origWidth > maxDim || origHeight > maxDim) {
@@ -87,7 +90,7 @@ object NoteImageHelper {
                 else -> rawBitmap
             }
 
-            // Clamp max dimension to 2048 if sampleSize left it slightly larger
+            // Clamp max dimension to 1920 if sampleSize left it slightly larger
             val finalBitmap = if (orientedBitmap.width > maxDim || orientedBitmap.height > maxDim) {
                 val ratio = minOf(maxDim.toFloat() / orientedBitmap.width, maxDim.toFloat() / orientedBitmap.height)
                 val targetW = (orientedBitmap.width * ratio).toInt().coerceAtLeast(1)
@@ -97,10 +100,13 @@ object NoteImageHelper {
                 orientedBitmap
             }
 
-            // 5. Save as high-quality compressed JPEG (85%)
-            FileOutputStream(outputFile).use { out ->
-                finalBitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
-            }
+            // 5. Save as balanced high-quality compressed JPEG (80%) encrypted with AES-256-GCM
+            val byteStream = java.io.ByteArrayOutputStream()
+            finalBitmap.compress(Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream)
+            val imageBytes = byteStream.toByteArray()
+
+            com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(outputFile, imageBytes)
+
             if (rawBitmap != orientedBitmap && rawBitmap != finalBitmap) {
                 rawBitmap.recycle()
             }
@@ -108,6 +114,42 @@ object NoteImageHelper {
                 orientedBitmap.recycle()
             }
             finalBitmap.recycle()
+
+            outputFile.absolutePath
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * Processes and compresses a raw in-memory Bitmap (e.g., from camera or sketch pad)
+     * using the same 1920px max dimension, 80% compression standard, and AES-256-GCM disk encryption.
+     */
+    fun processAndSaveBitmap(context: Context, bitmap: Bitmap, prefix: String = "img"): String? {
+        return try {
+            val imagesDir = File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
+            val outputFile = File(imagesDir, "${prefix}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg")
+
+            val maxDim = MAX_IMAGE_DIMENSION
+            val finalBitmap = if (bitmap.width > maxDim || bitmap.height > maxDim) {
+                val ratio = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height)
+                val targetW = (bitmap.width * ratio).toInt().coerceAtLeast(1)
+                val targetH = (bitmap.height * ratio).toInt().coerceAtLeast(1)
+                Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+            } else {
+                bitmap
+            }
+
+            val byteStream = java.io.ByteArrayOutputStream()
+            finalBitmap.compress(Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream)
+            val imageBytes = byteStream.toByteArray()
+
+            com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(outputFile, imageBytes)
+
+            if (finalBitmap != bitmap) {
+                finalBitmap.recycle()
+            }
 
             outputFile.absolutePath
         } catch (e: Exception) {
@@ -171,7 +213,9 @@ object NoteImageHelper {
                         context.contentResolver.openInputStream(android.net.Uri.parse(pathOrUri))
                     } else {
                         val file = File(pathOrUri)
-                        if (file.exists()) file.inputStream() else null
+                        if (!file.exists()) return null
+                        val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
+                        if (decryptedBytes != null) java.io.ByteArrayInputStream(decryptedBytes) else file.inputStream()
                     }
                 } catch (_: Exception) {
                     null

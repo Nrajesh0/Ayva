@@ -31,6 +31,7 @@ class TaskViewModel(
             val id = repository.insertTask(task)
             TaskReminderHelper.scheduleReminder(getApplication(), task.copy(id = id))
             TodoWidgetProvider.updateAllWidgets(getApplication())
+            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }
     }
 
@@ -39,19 +40,23 @@ class TaskViewModel(
             repository.updateTask(task)
             TaskReminderHelper.scheduleReminder(getApplication(), task)
             TodoWidgetProvider.updateAllWidgets(getApplication())
+            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }
     }
 
     fun deleteTask(task: Task) {
         viewModelScope.launch {
+            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "TASK", task.id)
             repository.deleteTask(task)
             TaskReminderHelper.cancelReminder(getApplication(), task)
             TodoWidgetProvider.updateAllWidgets(getApplication())
+            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }
     }
 
     fun toggleTaskCompletion(task: Task) {
         TaskReminderHelper.toggleTaskById(getApplication(), task.id)
+        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
     }
 }
 

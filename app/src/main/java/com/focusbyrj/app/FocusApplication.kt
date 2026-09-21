@@ -19,14 +19,28 @@ package com.focusbyrj.app
 
 import android.app.Application
 import androidx.room.Room
+import coil.ImageLoader
+import coil.ImageLoaderFactory
 import com.focusbyrj.app.data.AppRepository
 import com.focusbyrj.app.data.FocusDatabase
+import com.focusbyrj.app.data.FocusDatabaseMigrationHelper
 import com.focusbyrj.app.data.TaskRepository
+import com.focusbyrj.app.data.note.DatabaseKeyProvider
+import net.sqlcipher.database.SupportFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-class FocusApplication : Application() {
+class FocusApplication : Application(), ImageLoaderFactory {
+    
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .components {
+                add(com.focusbyrj.app.util.crypto.EncryptedMediaFetcher.Factory())
+            }
+            .respectCacheHeaders(false)
+            .build()
+    }
     
     override fun onCreate() {
         super.onCreate()
@@ -58,38 +72,79 @@ class FocusApplication : Application() {
             }
         }
 
-        // Warm up Ayva knowledge base in background IO thread for instant 0ms responses
+        // Warm up Ayva knowledge base and start intelligent AutoSyncManager
         CoroutineScope(Dispatchers.IO).launch {
             com.focusbyrj.app.util.AyvaTalkEngine.warmUp(this@FocusApplication)
+            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.init(this@FocusApplication)
         }
     }
 
     val database by lazy { 
-        Room.databaseBuilder(
-            this,
-            FocusDatabase::class.java,
-            "focus_database"
-        )
-        .addMigrations(
-            FocusDatabase.MIGRATION_1_2,
-            FocusDatabase.MIGRATION_2_3,
-            FocusDatabase.MIGRATION_3_4,
-            FocusDatabase.MIGRATION_1_4,
-            FocusDatabase.MIGRATION_2_4,
-            FocusDatabase.MIGRATION_4_5,
-            FocusDatabase.MIGRATION_1_5,
-            FocusDatabase.MIGRATION_5_6,
-            FocusDatabase.MIGRATION_1_6,
-            FocusDatabase.MIGRATION_6_7,
-            FocusDatabase.MIGRATION_1_7,
-            FocusDatabase.MIGRATION_7_8,
-            FocusDatabase.MIGRATION_1_8,
-            FocusDatabase.MIGRATION_8_9,
-            FocusDatabase.MIGRATION_7_9,
-            FocusDatabase.MIGRATION_1_9
-        )
-        .fallbackToDestructiveMigration()
-        .build() 
+        val instance = try {
+            val passphrase = DatabaseKeyProvider.getOrCreatePassphrase(this)
+            val factory = SupportFactory(passphrase)
+            Room.databaseBuilder(
+                this,
+                FocusDatabase::class.java,
+                FocusDatabaseMigrationHelper.getEncryptedDatabaseName()
+            )
+            .openHelperFactory(factory)
+            .addMigrations(
+                FocusDatabase.MIGRATION_1_2,
+                FocusDatabase.MIGRATION_2_3,
+                FocusDatabase.MIGRATION_3_4,
+                FocusDatabase.MIGRATION_1_4,
+                FocusDatabase.MIGRATION_2_4,
+                FocusDatabase.MIGRATION_4_5,
+                FocusDatabase.MIGRATION_1_5,
+                FocusDatabase.MIGRATION_5_6,
+                FocusDatabase.MIGRATION_1_6,
+                FocusDatabase.MIGRATION_6_7,
+                FocusDatabase.MIGRATION_1_7,
+                FocusDatabase.MIGRATION_7_8,
+                FocusDatabase.MIGRATION_1_8,
+                FocusDatabase.MIGRATION_8_9,
+                FocusDatabase.MIGRATION_7_9,
+                FocusDatabase.MIGRATION_1_9
+            )
+            .fallbackToDestructiveMigration()
+            .build()
+        } catch (t: Throwable) {
+            android.util.Log.e("FocusApplication", "Failed to initialize SQLCipher FocusDatabase, falling back to standard Room database", t)
+            Room.databaseBuilder(
+                this,
+                FocusDatabase::class.java,
+                "focus_database_fallback.db"
+            )
+            .addMigrations(
+                FocusDatabase.MIGRATION_1_2,
+                FocusDatabase.MIGRATION_2_3,
+                FocusDatabase.MIGRATION_3_4,
+                FocusDatabase.MIGRATION_1_4,
+                FocusDatabase.MIGRATION_2_4,
+                FocusDatabase.MIGRATION_4_5,
+                FocusDatabase.MIGRATION_1_5,
+                FocusDatabase.MIGRATION_5_6,
+                FocusDatabase.MIGRATION_1_6,
+                FocusDatabase.MIGRATION_6_7,
+                FocusDatabase.MIGRATION_1_7,
+                FocusDatabase.MIGRATION_7_8,
+                FocusDatabase.MIGRATION_1_8,
+                FocusDatabase.MIGRATION_8_9,
+                FocusDatabase.MIGRATION_7_9,
+                FocusDatabase.MIGRATION_1_9
+            )
+            .fallbackToDestructiveMigration()
+            .build()
+        }
+
+        try {
+            FocusDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(this, instance)
+        } catch (t: Throwable) {
+            android.util.Log.e("FocusApplication", "FocusDatabase legacy migration failed gracefully", t)
+        }
+
+        instance
     }
     
     val vocabDatabase by lazy {

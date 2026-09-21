@@ -154,16 +154,17 @@ abstract class NoteDatabase : RoomDatabase() {
                         .fallbackToDestructiveMigration()
                         .build()
                 } catch (t: Throwable) {
-                    android.util.Log.e("NoteDatabase", "Failed to initialize SQLCipher NoteDatabase, building fallback Room database", t)
-                    Room.databaseBuilder(
-                        appContext,
-                        NoteDatabase::class.java,
-                        "keep_notes_fallback.db"
-                    )
-                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_1_3, MIGRATION_1_4, MIGRATION_2_4)
-                        .fallbackToDestructiveMigration()
-                        .build()
+                    android.util.Log.e("NoteDatabase", "FATAL: Failed to securely initialize SQLCipher NoteDatabase", t)
+                    throw SecurityException("Database encryption failure: unable to securely initialize SQLCipher database. Fail-closed security enforced.", t)
                 }
+
+                // Delete any insecure legacy fallback database if one existed
+                try {
+                    val fallbackDb = appContext.getDatabasePath("keep_notes_fallback.db")
+                    if (fallbackDb.exists()) {
+                        fallbackDb.delete()
+                    }
+                } catch (_: Exception) {}
 
                 // Check and migrate legacy unencrypted notes if any exist
                 try {

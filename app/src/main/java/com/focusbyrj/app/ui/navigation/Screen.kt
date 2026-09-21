@@ -51,5 +51,6 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Habits : Screen("habits", "Habits", Icons.Filled.Schedule)
     object Empty : Screen("empty", "Notes", Icons.AutoMirrored.Filled.StickyNote2)
     object PreferencesHub : Screen("preferences_hub", "Preferences", Icons.Filled.Settings)
-    object DeviceSync : Screen("device_sync", "PC Sync & Security", Icons.Filled.Laptop)
+    object DeviceSync : Screen("device_sync", "Cloud Vault & Security", Icons.Filled.Lock)
+    object CloudAuth : Screen("cloud_auth", "Sign In & Sign Up", Icons.Filled.Lock)
 }

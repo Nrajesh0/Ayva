@@ -356,8 +356,22 @@ class AudioMemoManager(private val context: Context) {
             val file = File(audioPath)
             if (!file.exists()) return
 
+            val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
             val player = MediaPlayer().apply {
-                setDataSource(audioPath)
+                if (decryptedBytes != null && com.focusbyrj.app.util.crypto.EncryptedMediaStorage.isEncrypted(file)) {
+                    setDataSource(object : android.media.MediaDataSource() {
+                        override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+                            if (position >= decryptedBytes.size) return -1
+                            val length = minOf(size, (decryptedBytes.size - position).toInt())
+                            System.arraycopy(decryptedBytes, position.toInt(), buffer, offset, length)
+                            return length
+                        }
+                        override fun getSize(): Long = decryptedBytes.size.toLong()
+                        override fun close() {}
+                    })
+                } else {
+                    setDataSource(audioPath)
+                }
                 prepare()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && _playbackState.value.speed != 1.0f) {
                     try {
@@ -486,8 +500,23 @@ class AudioMemoManager(private val context: Context) {
 
         fun getAudioDurationMs(path: String): Long {
             return try {
+                val file = File(path)
                 val mmr = android.media.MediaMetadataRetriever()
-                mmr.setDataSource(path)
+                val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
+                if (decryptedBytes != null && com.focusbyrj.app.util.crypto.EncryptedMediaStorage.isEncrypted(file)) {
+                    mmr.setDataSource(object : android.media.MediaDataSource() {
+                        override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+                            if (position >= decryptedBytes.size) return -1
+                            val length = minOf(size, (decryptedBytes.size - position).toInt())
+                            System.arraycopy(decryptedBytes, position.toInt(), buffer, offset, length)
+                            return length
+                        }
+                        override fun getSize(): Long = decryptedBytes.size.toLong()
+                        override fun close() {}
+                    })
+                } else {
+                    mmr.setDataSource(path)
+                }
                 val durationStr = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                 mmr.release()
                 durationStr?.toLongOrNull() ?: 0L
@@ -503,7 +532,8 @@ class AudioMemoManager(private val context: Context) {
                 val audioDir = File(context.filesDir, "keep_audio").apply { if (!exists()) mkdirs() }
                 val ext = src.extension.ifEmpty { "m4a" }
                 val dest = File(audioDir, "audio_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext")
-                src.copyTo(dest, overwrite = true)
+                val rawBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(src) ?: src.readBytes()
+                com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(dest, rawBytes)
                 dest.absolutePath
             } catch (e: Exception) {
                 e.printStackTrace()

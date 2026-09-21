@@ -50,7 +50,7 @@ fun SecurityScreen(navController: NavController) {
     val context = LocalContext.current
     val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     val prefs = remember { context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE) }
-    var secureRecents by remember { mutableStateOf(prefs.getBoolean("secure_recents", true)) }
+    var secureRecents by remember { mutableStateOf(prefs.getBoolean("secure_recents", false)) }
     val adminComponent = ComponentName(context, FocusDeviceAdminReceiver::class.java)
     var isUninstallProtectionEnabled by remember { mutableStateOf(dpm.isAdminActive(adminComponent)) }
     
@@ -261,11 +261,18 @@ fun SecurityScreen(navController: NavController) {
                         icon = Icons.Filled.VisibilityOff,
                         iconTint = MaterialTheme.colorScheme.primary,
                         title = "Anti-Screenshot Protection",
-                        subtitle = "Prevents screenshots of the lock screen.",
+                        subtitle = "Prevents screenshots of the app & lock screen.",
                         checked = secureRecents,
                         onCheckedChange = { checked ->
                             secureRecents = checked
                             prefs.edit().putBoolean("secure_recents", checked).apply()
+                            (context as? android.app.Activity)?.let { activity ->
+                                if (checked) {
+                                    activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                                } else {
+                                    activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                                }
+                            }
                         }
                     )
                 }

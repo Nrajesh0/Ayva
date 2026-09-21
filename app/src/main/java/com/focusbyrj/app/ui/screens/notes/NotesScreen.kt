@@ -163,6 +163,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
+import com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager
 import kotlinx.coroutines.launch
 
 @Composable
@@ -1031,6 +1032,7 @@ fun NotesScreen(
                         // Account Profile Avatar - matching MainActivity TopAppBar profile avatar alignment & border
                         val avatarRes = ProfileAvatarManager.getAvatarImageRes(economyProfile.selectedAvatar, economyProfile.avatarTier)
                         val avatarBorder = ProfileAvatarManager.getAvatarBorderColor(economyProfile.selectedAvatar, economyProfile.avatarTier)
+                        val supabaseSession = remember { SupabaseKeyManager.getSessionState(context) }
 
                         Box(
                             modifier = Modifier
@@ -1039,17 +1041,27 @@ fun NotesScreen(
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
                                 .border(1.8.dp, avatarBorder, CircleShape)
-                                .clickable(onClick = onOpenAccount),
+                                .clickable { onOpenAccount() },
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
                                 painter = painterResource(id = avatarRes),
-                                contentDescription = "Profile Account",
+                                contentDescription = "Profile Account & Preferences",
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(2.dp)
                                     .clip(CircleShape)
                             )
+                            if (supabaseSession.isSignedIn) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF4CAF50))
+                                        .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                                )
+                            }
                         }
                     }
                 }

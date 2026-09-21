@@ -18,8 +18,10 @@
 package com.focusbyrj.app.data.note
 
 import android.util.Log
+import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
 
 class NoteRepository(private val noteDao: NoteDao) {
 
@@ -30,10 +32,20 @@ class NoteRepository(private val noteDao: NoteDao) {
         emit(emptyList())
     }
 
-    fun getArchivedNotes(): Flow<List<NoteEntity>> = noteDao.getArchivedNotes().catch { e ->
-        Log.e(TAG, "Error collecting archived notes", e)
-        emit(emptyList())
-    }
+    fun getArchivedNotes(): Flow<List<NoteEntity>> = noteDao.getArchivedNotes()
+        .map { notes ->
+            notes.map { note ->
+                if (VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                    VaultPayloadEncryptor.decryptNotePayload(note)
+                } else {
+                    note
+                }
+            }
+        }
+        .catch { e ->
+            Log.e(TAG, "Error collecting archived notes", e)
+            emit(emptyList())
+        }
 
     fun getTrashedNotes(): Flow<List<NoteEntity>> = noteDao.getTrashedNotes().catch { e ->
         Log.e(TAG, "Error collecting trashed notes", e)
@@ -45,24 +57,43 @@ class NoteRepository(private val noteDao: NoteDao) {
         emit(emptyList())
     }
 
-    fun getNoteById(id: Long): Flow<NoteEntity?> = noteDao.getNoteById(id).catch { e ->
-        Log.e(TAG, "Error getting note by id $id", e)
-        emit(null)
-    }
+    fun getNoteById(id: Long): Flow<NoteEntity?> = noteDao.getNoteById(id)
+        .map { note ->
+            if (note != null && VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                VaultPayloadEncryptor.decryptNotePayload(note)
+            } else {
+                note
+            }
+        }
+        .catch { e ->
+            Log.e(TAG, "Error getting note by id $id", e)
+            emit(null)
+        }
 
     suspend fun getNoteByIdSync(id: Long): NoteEntity? = try {
-        noteDao.getNoteByIdSync(id)
+        val note = noteDao.getNoteByIdSync(id)
+        if (note != null && VaultPayloadEncryptor.isVaultEncrypted(note)) {
+            VaultPayloadEncryptor.decryptNotePayload(note)
+        } else {
+            note
+        }
     } catch (e: Exception) {
         Log.e(TAG, "Error in getNoteByIdSync $id", e)
         null
     }
 
     suspend fun saveNote(note: NoteEntity): Long = try {
-        if (note.id == 0L) {
-            noteDao.insertNote(note)
+        val entityToSave = if (note.isArchived && !VaultPayloadEncryptor.isVaultEncrypted(note)) {
+            VaultPayloadEncryptor.encryptNotePayload(note)
         } else {
-            noteDao.updateNote(note)
-            note.id
+            note
+        }
+
+        if (entityToSave.id == 0L) {
+            noteDao.insertNote(entityToSave)
+        } else {
+            noteDao.updateNote(entityToSave)
+            entityToSave.id
         }
     } catch (e: Exception) {
         Log.e(TAG, "Error in saveNote", e)
@@ -103,7 +134,20 @@ class NoteRepository(private val noteDao: NoteDao) {
 
     suspend fun setArchived(id: Long, isArchived: Boolean) {
         try {
-            noteDao.updateArchiveStatus(id, isArchived)
+            val existing = noteDao.getNoteByIdSync(id)
+            if (existing != null) {
+                if (isArchived && !VaultPayloadEncryptor.isVaultEncrypted(existing)) {
+                    val encrypted = VaultPayloadEncryptor.encryptNotePayload(existing.copy(isArchived = true))
+                    noteDao.updateNote(encrypted)
+                } else if (!isArchived && VaultPayloadEncryptor.isVaultEncrypted(existing)) {
+                    val decrypted = VaultPayloadEncryptor.decryptNotePayload(existing).copy(isArchived = false)
+                    noteDao.updateNote(decrypted)
+                } else {
+                    noteDao.updateArchiveStatus(id, isArchived)
+                }
+            } else {
+                noteDao.updateArchiveStatus(id, isArchived)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error in setArchived", e)
         }

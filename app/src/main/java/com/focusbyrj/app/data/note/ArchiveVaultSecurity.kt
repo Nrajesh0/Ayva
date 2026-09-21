@@ -53,6 +53,7 @@ object ArchiveVaultSecurity {
     private const val KEY_SALT = "enc_salt"
     private const val KEY_HASH = "enc_hash"
     private const val KEY_IV = "enc_iv"
+    private const val KEY_KDF_TYPE = "kdf_type" // "argon2id" or "pbkdf2"
     private const val KEY_FAILED_ATTEMPTS = "failed_attempts_count"
     private const val KEY_LOCKOUT_UNTIL = "lockout_until_epoch_ms"
 
@@ -63,6 +64,23 @@ object ArchiveVaultSecurity {
     private const val PBKDF2_ITERATIONS = 100_000
     private const val KEY_LENGTH_BITS = 256
     private const val SALT_BYTE_LENGTH = 16
+
+    // Ephemeral in-memory Vault Sub-Key cache while vault is unlocked
+    @Volatile
+    private var ephemeralVaultSubKey: ByteArray? = null
+
+    /**
+     * Retrieves the active in-memory Vault Sub-Key if vault is unlocked, or null if locked.
+     */
+    fun getActiveVaultSubKey(): ByteArray? = ephemeralVaultSubKey
+
+    /**
+     * Locks the vault and completely wipes the in-memory sub-key bytes.
+     */
+    fun lockVault() {
+        ephemeralVaultSubKey?.let { Arrays.fill(it, 0.toByte()) }
+        ephemeralVaultSubKey = null
+    }
 
     enum class VaultStatus {
         NOT_CONFIGURED,
@@ -90,7 +108,7 @@ object ArchiveVaultSecurity {
     }
 
     /**
-     * Configures a new 6-digit passcode for the Archive Secret Vault.
+     * Configures a new 6-digit passcode for the Archive Secret Vault using Argon2id.
      */
     @Synchronized
     fun setPasscode(context: Context, pin: String): Boolean {
@@ -108,7 +126,10 @@ object ArchiveVaultSecurity {
         val pinChars = pin.toCharArray()
         var derivedHash: ByteArray? = null
         try {
-            derivedHash = derivePbkdf2Hash(pinChars, salt)
+            derivedHash = deriveArgon2idHash(pinChars, salt)
+
+            // Cache active subkey in memory upon initial setup
+            ephemeralVaultSubKey = derivedHash.copyOf()
 
             // Encrypt derived hash with KeyStore master key
             val (encryptedHash, iv) = try {
@@ -123,6 +144,7 @@ object ArchiveVaultSecurity {
                 .putString(KEY_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
                 .putString(KEY_HASH, Base64.encodeToString(encryptedHash, Base64.NO_WRAP))
                 .putString(KEY_IV, Base64.encodeToString(iv, Base64.NO_WRAP))
+                .putString(KEY_KDF_TYPE, "argon2id")
                 .putInt(KEY_FAILED_ATTEMPTS, 0)
                 .putLong(KEY_LOCKOUT_UNTIL, 0L)
 
@@ -138,7 +160,7 @@ object ArchiveVaultSecurity {
     }
 
     /**
-     * Verifies the 6-digit passcode against the encrypted PBKDF2 hash.
+     * Verifies the 6-digit passcode against the encrypted hash (Argon2id with PBKDF2 backward compatibility).
      * Protected by progressive brute-force rate-limiting and timing-attack-resistant comparison.
      */
     @Synchronized
@@ -163,6 +185,7 @@ object ArchiveVaultSecurity {
         val saltBase64 = prefs.getString(KEY_SALT, null)
         val hashBase64 = prefs.getString(KEY_HASH, null)
         val ivBase64 = prefs.getString(KEY_IV, null)
+        val kdfType = prefs.getString(KEY_KDF_TYPE, "pbkdf2")
 
         if (saltBase64 == null || hashBase64 == null) {
             return VerifyResult.Error("Vault passcode is not configured.")
@@ -187,13 +210,35 @@ object ArchiveVaultSecurity {
         val pinChars = inputPin.toCharArray()
         var computedHash: ByteArray? = null
         try {
-            computedHash = derivePbkdf2Hash(pinChars, salt)
+            computedHash = if (kdfType == "argon2id") {
+                deriveArgon2idHash(pinChars, salt)
+            } else {
+                derivePbkdf2Hash(pinChars, salt)
+            }
 
             // Constant-time comparison to prevent timing attacks
-            val isMatch = MessageDigest.isEqual(computedHash, expectedHash)
+            var isMatch = MessageDigest.isEqual(computedHash, expectedHash)
+
+            // Fallback check for legacy PBKDF2 accounts needing auto-upgrade
+            if (!isMatch && kdfType != "pbkdf2") {
+                val legacyHash = derivePbkdf2Hash(pinChars, salt)
+                if (MessageDigest.isEqual(legacyHash, expectedHash)) {
+                    isMatch = true
+                    // Auto-upgrade to Argon2id
+                    val upgradedHash = deriveArgon2idHash(pinChars, salt)
+                    val (newEncHash, newIv) = encryptWithMasterKey(upgradedHash)
+                    prefs.edit()
+                        .putString(KEY_HASH, Base64.encodeToString(newEncHash, Base64.NO_WRAP))
+                        .putString(KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
+                        .putString(KEY_KDF_TYPE, "argon2id")
+                        .apply()
+                }
+            }
 
             if (isMatch) {
-                // Success: reset brute force trackers
+                // Success: store active Vault Sub-Key in memory and reset brute force trackers
+                ephemeralVaultSubKey = computedHash.copyOf()
+
                 prefs.edit()
                     .putInt(KEY_FAILED_ATTEMPTS, 0)
                     .putLong(KEY_LOCKOUT_UNTIL, 0L)
@@ -206,19 +251,16 @@ object ArchiveVaultSecurity {
 
                 return when {
                     currentAttempts >= 10 -> {
-                        // 5-minute lockout (300 seconds)
                         val lockoutEnd = now + 300_000L
                         editor.putLong(KEY_LOCKOUT_UNTIL, lockoutEnd).commit()
                         VerifyResult.LockedOut(300L)
                     }
                     currentAttempts in 6..9 -> {
-                        // 60-second lockout
                         val lockoutEnd = now + 60_000L
                         editor.putLong(KEY_LOCKOUT_UNTIL, lockoutEnd).commit()
                         VerifyResult.LockedOut(60L)
                     }
                     currentAttempts == 5 -> {
-                        // 30-second lockout
                         val lockoutEnd = now + 30_000L
                         editor.putLong(KEY_LOCKOUT_UNTIL, lockoutEnd).commit()
                         VerifyResult.LockedOut(30L)
@@ -254,12 +296,14 @@ object ArchiveVaultSecurity {
      */
     @Synchronized
     fun disablePasscode(context: Context): Boolean {
+        lockVault()
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.edit()
             .putString(KEY_STATUS, "disabled")
             .remove(KEY_SALT)
             .remove(KEY_HASH)
             .remove(KEY_IV)
+            .remove(KEY_KDF_TYPE)
             .putInt(KEY_FAILED_ATTEMPTS, 0)
             .putLong(KEY_LOCKOUT_UNTIL, 0L)
             .commit()
@@ -270,6 +314,7 @@ object ArchiveVaultSecurity {
      */
     @Synchronized
     fun skipPasscodeSetup(context: Context): Boolean {
+        lockVault()
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.edit()
             .putString(KEY_STATUS, "disabled")
@@ -281,6 +326,19 @@ object ArchiveVaultSecurity {
     // =========================================================================
     // CRYPTOGRAPHIC INTERNALS
     // =========================================================================
+
+    private fun deriveArgon2idHash(pinChars: CharArray, salt: ByteArray): ByteArray {
+        return com.focusbyrj.app.util.crypto.Argon2idKdf.deriveKey(
+            password = pinChars,
+            salt = salt,
+            params = com.focusbyrj.app.util.crypto.Argon2idKdf.Parameters(
+                iterations = 3,
+                memoryCostKb = 65536,
+                parallelism = 4,
+                outputLengthBytes = 32
+            )
+        )
+    }
 
     private fun derivePbkdf2Hash(pinChars: CharArray, salt: ByteArray): ByteArray {
         val keySpec = PBEKeySpec(pinChars, salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)

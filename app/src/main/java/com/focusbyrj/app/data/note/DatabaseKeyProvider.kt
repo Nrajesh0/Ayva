@@ -64,47 +64,30 @@ object DatabaseKeyProvider {
         val encryptedBase64 = prefs.getString(KEY_ENCRYPTED_PASSPHRASE, null)
         val ivBase64 = prefs.getString(KEY_PASSPHRASE_IV, null)
 
-        if (encryptedBase64 != null) {
-            if (ivBase64 != null) {
-                var lastException: Exception? = null
-                for (attempt in 1..MAX_DECRYPT_RETRIES) {
-                    try {
-                        val encryptedBytes = Base64.decode(encryptedBase64, Base64.NO_WRAP)
-                        val iv = Base64.decode(ivBase64, Base64.NO_WRAP)
-                        val decrypted = decryptPassphrase(encryptedBytes, iv)
-                        if (decrypted != null && decrypted.size == PASSPHRASE_BYTE_LENGTH) {
-                            cachedPassphrase = decrypted
-                            return decrypted
-                        }
-                    } catch (e: Exception) {
-                        lastException = e
-                        Log.w(TAG, "KeyStore decryption attempt $attempt failed, retrying...", e)
-                        try {
-                            Thread.sleep(50L * attempt)
-                        } catch (_: InterruptedException) {}
-                    }
-                }
-                Log.w(TAG, "KeyStore decryption failed after retries. Using device fallback key", lastException)
-            } else {
-                // Unencrypted fallback key mode stored in private app sandbox
+        if (encryptedBase64 != null && ivBase64 != null) {
+            var lastException: Exception? = null
+            for (attempt in 1..MAX_DECRYPT_RETRIES) {
                 try {
-                    val fallbackBytes = Base64.decode(encryptedBase64, Base64.NO_WRAP)
-                    if (fallbackBytes != null && fallbackBytes.size == PASSPHRASE_BYTE_LENGTH) {
-                        cachedPassphrase = fallbackBytes
-                        return fallbackBytes
+                    val encryptedBytes = Base64.decode(encryptedBase64, Base64.NO_WRAP)
+                    val iv = Base64.decode(ivBase64, Base64.NO_WRAP)
+                    val decrypted = decryptPassphrase(encryptedBytes, iv)
+                    if (decrypted != null && decrypted.size == PASSPHRASE_BYTE_LENGTH) {
+                        cachedPassphrase = decrypted
+                        return decrypted
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to decode fallback passphrase", e)
+                    lastException = e
+                    Log.w(TAG, "KeyStore decryption attempt $attempt failed, retrying...", e)
+                    try {
+                        Thread.sleep(50L * attempt)
+                    } catch (_: InterruptedException) {}
                 }
             }
-
-            // Fallback for extreme KeyStore invalidation cases: derive deterministic key so database remains accessible
-            val deviceFallbackKey = getDeviceFallbackKey(appContext)
-            cachedPassphrase = deviceFallbackKey
-            return deviceFallbackKey
+            Log.e(TAG, "KeyStore decryption failed after retries. Fail-closed security enforced.", lastException)
+            throw SecurityException("KeyStore hardware security failure: unable to securely retrieve database encryption key.", lastException)
         }
 
-        // Generate new random 256-bit passphrase for fresh install
+        // Generate new cryptographically secure 256-bit passphrase
         val newPassphrase = ByteArray(PASSPHRASE_BYTE_LENGTH)
         SecureRandom().nextBytes(newPassphrase)
 
@@ -113,31 +96,17 @@ object DatabaseKeyProvider {
             val success = prefs.edit()
                 .putString(KEY_ENCRYPTED_PASSPHRASE, Base64.encodeToString(encryptedBytes, Base64.NO_WRAP))
                 .putString(KEY_PASSPHRASE_IV, Base64.encodeToString(iv, Base64.NO_WRAP))
-                .commit() // Use synchronous commit for critical security state
+                .commit()
             if (!success) {
-                Log.w(TAG, "Failed to commit encrypted passphrase to SharedPreferences")
+                throw SecurityException("Failed to commit encrypted passphrase to secure SharedPreferences")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to encrypt database passphrase via KeyStore, storing in private sandbox fallback", e)
-            val fallbackKey = Base64.encodeToString(newPassphrase, Base64.NO_WRAP)
-            prefs.edit()
-                .putString(KEY_ENCRYPTED_PASSPHRASE, fallbackKey)
-                .remove(KEY_PASSPHRASE_IV)
-                .commit()
+            Log.e(TAG, "Failed to encrypt database passphrase via KeyStore", e)
+            throw SecurityException("Failed to securely initialize KeyStore master key for database encryption", e)
         }
 
         cachedPassphrase = newPassphrase
         return newPassphrase
-    }
-
-    private fun getDeviceFallbackKey(context: Context): ByteArray {
-        return try {
-            val seed = context.packageName + "_" + (android.os.Build.FINGERPRINT ?: "fallback_seed")
-            val sha256 = java.security.MessageDigest.getInstance("SHA-256")
-            sha256.digest(seed.toByteArray(Charsets.UTF_8))
-        } catch (_: Exception) {
-            ByteArray(PASSPHRASE_BYTE_LENGTH) { (it + 7).toByte() }
-        }
     }
 
     /**

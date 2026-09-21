@@ -259,9 +259,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val notes = displayedNotes.value.filter { it.id in ids }
         viewModelScope.launch(Dispatchers.IO) {
             notes.forEach { note ->
+                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
                 deleteNoteMediaFiles(note)
                 repository.deletePermanently(note)
             }
+            triggerAutoSync()
         }
         clearSelection()
     }
@@ -496,16 +498,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = emptyList()
     )
 
-    // All available labels across all notes & custom labels
+    // All available labels across active notes & custom labels (never leaks vault metadata)
     val allLabels: StateFlow<List<String>> = combine(
         repository.getActiveNotes(),
-        repository.getArchivedNotes(),
         _customLabels
-    ) { active, archived, custom ->
+    ) { active, custom ->
         val set = linkedSetOf<String>()
         custom.forEach { if (it.isNotBlank()) set.add(it) }
         active.forEach { note -> set.addAll(note.getLabels()) }
-        archived.forEach { note -> set.addAll(note.getLabels()) }
         set.toList().sorted()
     }.stateIn(
         scope = viewModelScope,
@@ -736,6 +736,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 else -> null
             }
             if (noteToOpen != null) {
+                if (noteToOpen.isArchived) {
+                    val status = ArchiveVaultSecurity.getVaultStatus(getApplication())
+                    if (status == ArchiveVaultSecurity.VaultStatus.ENABLED && !_isVaultUnlocked.value) {
+                        // Secret vault is locked, navigate to Archive screen to prompt PIN
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            setFolder(NoteFolder.ARCHIVE)
+                        }
+                        return@launch
+                    }
+                }
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
                     openExistingNote(noteToOpen)
                 }
@@ -764,12 +774,24 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val context = getApplication<Application>()
-                val imagesDir = java.io.File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
-                val file = java.io.File(imagesDir, "sketch_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.png")
-                file.outputStream().use { out ->
-                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                val localPath = com.focusbyrj.app.data.note.NoteImageHelper.processAndSaveBitmap(context, bitmap, "sketch") ?: return@launch
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    val current = _editingState.value ?: return@withContext
+                    val updated = current.imageUris + localPath
+                    _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
+                    persistCurrentEditorState()
                 }
-                val localPath = file.absolutePath
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun addPhotoToEditor(bitmap: android.graphics.Bitmap) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                val localPath = com.focusbyrj.app.data.note.NoteImageHelper.processAndSaveBitmap(context, bitmap, "photo") ?: return@launch
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
                     val current = _editingState.value ?: return@withContext
                     val updated = current.imageUris + localPath
@@ -1191,27 +1213,24 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val context = getApplication<Application>()
-                val imagesDir = java.io.File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
-                val file = java.io.File(imagesDir, "photo_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg")
-                java.io.FileOutputStream(file).use { out ->
-                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
-                }
-                val localPath = file.absolutePath
-                val current = _editingState.value
-                if (current != null) {
-                    val updated = current.imageUris + localPath
-                    _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
-                    persistCurrentEditorState()
-                } else {
-                    _editingState.value = EditingNoteState(
-                        originalId = 0L,
-                        title = "",
-                        content = "",
-                        imageUris = listOf(localPath),
-                        colorKey = "default",
-                        createdAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis()
-                    )
+                val localPath = com.focusbyrj.app.data.note.NoteImageHelper.processAndSaveBitmap(context, bitmap, "photo") ?: return@launch
+                withContext(Dispatchers.Main) {
+                    val current = _editingState.value
+                    if (current != null) {
+                        val updated = current.imageUris + localPath
+                        _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
+                        persistCurrentEditorState()
+                    } else {
+                        _editingState.value = EditingNoteState(
+                            originalId = 0L,
+                            title = "",
+                            content = "",
+                            imageUris = listOf(localPath),
+                            colorKey = "default",
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1255,12 +1274,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun restoreNote(note: NoteEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.restoreFromTrash(note.id)
+            triggerAutoSync()
         }
     }
 
     fun unarchiveNote(note: NoteEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.setArchived(note.id, false)
+            triggerAutoSync()
         }
     }
 
@@ -1271,8 +1292,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePermanently(note: NoteEntity) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
+            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
             deleteNoteMediaFiles(note)
             repository.deletePermanently(note)
+            triggerAutoSync()
         }
     }
 
@@ -1281,9 +1304,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val trashedNotes = repository.getTrashedNotesSync()
             trashedNotes.forEach { note ->
+                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
                 deleteNoteMediaFiles(note)
             }
             repository.emptyTrash()
+            triggerAutoSync()
         }
     }
 
@@ -1299,6 +1324,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 persistMutex.withLock {
                     repository.moveToTrash(current.originalId)
                 }
+                triggerAutoSync()
             }
         }
     }
@@ -1315,6 +1341,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 persistMutex.withLock {
                     repository.setArchived(current.originalId, true)
                 }
+                triggerAutoSync()
             }
         }
     }
@@ -1362,6 +1389,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     latestNotesCache[savedId] = finalEntity
                 }
             }
+            triggerAutoSync()
         }
     }
 
@@ -1396,6 +1424,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+            triggerAutoSync()
         }
     }
 
@@ -1446,6 +1475,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
             repository.setArchived(note.id, true)
+            triggerAutoSync()
         }
     }
 
@@ -1453,6 +1483,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
             repository.moveToTrash(note.id)
+            triggerAutoSync()
         }
     }
 
@@ -1460,6 +1491,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
             repository.setColor(note.id, colorKey)
+            triggerAutoSync()
         }
     }
 
@@ -1467,7 +1499,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
             repository.setFont(note.id, fontKey)
+            triggerAutoSync()
         }
+    }
+
+    private fun triggerAutoSync() {
+        try {
+            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
+        } catch (_: Exception) {}
     }
 
     override fun onCleared() {

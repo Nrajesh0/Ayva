@@ -22,6 +22,7 @@ import android.util.Log
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
+import java.util.Arrays
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
@@ -146,6 +147,181 @@ object VaultCryptoEngine {
             Result.success(String(decryptedBytes, StandardCharsets.UTF_8))
         } catch (e: Exception) {
             Log.e(TAG, "Decryption error: invalid passphrase or corrupted payload", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Encrypts plaintext string into an EncryptedPackage using AES-256-GCM and a pre-derived raw key.
+     */
+    fun encryptWithRawKey(plaintext: String, rawKey: ByteArray): EncryptedPackage {
+        val random = SecureRandom()
+        val salt = ByteArray(SALT_BYTES).also { random.nextBytes(it) }
+        val iv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
+
+        val keySpec = SecretKeySpec(rawKey, "AES")
+        val cipher = Cipher.getInstance(AES_GCM)
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+
+        val ciphertext = cipher.doFinal(plaintext.toByteArray(StandardCharsets.UTF_8))
+
+        return EncryptedPackage(
+            saltBase64 = Base64.encodeToString(salt, Base64.NO_WRAP),
+            ivBase64 = Base64.encodeToString(iv, Base64.NO_WRAP),
+            ciphertextBase64 = Base64.encodeToString(ciphertext, Base64.NO_WRAP)
+        )
+    }
+
+    /**
+     * Decrypts an EncryptedPackage back into original plaintext using a pre-derived raw key.
+     */
+    fun decryptWithRawKey(pkg: EncryptedPackage, rawKey: ByteArray): Result<String> {
+        return try {
+            val iv = Base64.decode(pkg.ivBase64, Base64.NO_WRAP)
+            val ciphertext = Base64.decode(pkg.ciphertextBase64, Base64.NO_WRAP)
+
+            val keySpec = SecretKeySpec(rawKey, "AES")
+            val cipher = Cipher.getInstance(AES_GCM)
+            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+
+            val decryptedBytes = cipher.doFinal(ciphertext)
+            Result.success(String(decryptedBytes, StandardCharsets.UTF_8))
+        } catch (e: Exception) {
+            Log.e(TAG, "Raw key decryption error", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Envelope Encryption Package.
+     * Content is encrypted with an ephemeral 256-bit Content Encryption Key (CEK),
+     * and the CEK is wrapped (authenticated encrypted) with the user's master Data Encryption Key (DEK).
+     */
+    data class EnvelopeResult(
+        val wrappedKeyBase64: String,
+        val keyIvBase64: String,
+        val contentIvBase64: String,
+        val ciphertextBase64: String
+    )
+
+    /**
+     * Multi-tier Envelope Encryption:
+     * 1. Generates an ephemeral 256-bit AES Content Encryption Key (CEK) per individual item.
+     * 2. Encrypts payload content with CEK using AES-256-GCM.
+     * 3. Wraps (encrypts) the CEK using the user's master DEK using AES-256-GCM with a distinct random IV.
+     * 4. Zeroizes intermediate CEK bytes from memory immediately.
+     */
+    fun encryptEnvelope(plaintext: String, dek: ByteArray): EnvelopeResult {
+        val random = SecureRandom()
+        val cek = ByteArray(32).also { random.nextBytes(it) }
+        val contentIv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
+        val keyIv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
+
+        try {
+            // 1. Encrypt payload content with CEK
+            val cekSpec = SecretKeySpec(cek, "AES")
+            val cipher = Cipher.getInstance(AES_GCM)
+            cipher.init(Cipher.ENCRYPT_MODE, cekSpec, GCMParameterSpec(GCM_TAG_LENGTH, contentIv))
+            val ciphertext = cipher.doFinal(plaintext.toByteArray(StandardCharsets.UTF_8))
+
+            // 2. Wrap CEK with DEK
+            val dekSpec = SecretKeySpec(dek, "AES")
+            val wrapCipher = Cipher.getInstance(AES_GCM)
+            wrapCipher.init(Cipher.ENCRYPT_MODE, dekSpec, GCMParameterSpec(GCM_TAG_LENGTH, keyIv))
+            val wrappedKey = wrapCipher.doFinal(cek)
+
+            return EnvelopeResult(
+                wrappedKeyBase64 = Base64.encodeToString(wrappedKey, Base64.NO_WRAP),
+                keyIvBase64 = Base64.encodeToString(keyIv, Base64.NO_WRAP),
+                contentIvBase64 = Base64.encodeToString(contentIv, Base64.NO_WRAP),
+                ciphertextBase64 = Base64.encodeToString(ciphertext, Base64.NO_WRAP)
+            )
+        } finally {
+            Arrays.fill(cek, 0.toByte())
+        }
+    }
+
+    /**
+     * Decrypts an Envelope Encryption payload:
+     * 1. Unwraps CEK using master DEK.
+     * 2. Decrypts ciphertext using unwrapped CEK.
+     * 3. Zeroizes CEK bytes immediately.
+     */
+    fun decryptEnvelope(
+        wrappedKeyBase64: String,
+        keyIvBase64: String,
+        contentIvBase64: String,
+        ciphertextBase64: String,
+        dek: ByteArray
+    ): Result<String> {
+        val wrappedKey = Base64.decode(wrappedKeyBase64, Base64.NO_WRAP)
+        val keyIv = Base64.decode(keyIvBase64, Base64.NO_WRAP)
+        val contentIv = Base64.decode(contentIvBase64, Base64.NO_WRAP)
+        val ciphertext = Base64.decode(ciphertextBase64, Base64.NO_WRAP)
+
+        var cek: ByteArray? = null
+        return try {
+            val dekSpec = SecretKeySpec(dek, "AES")
+            val wrapCipher = Cipher.getInstance(AES_GCM)
+            wrapCipher.init(Cipher.DECRYPT_MODE, dekSpec, GCMParameterSpec(GCM_TAG_LENGTH, keyIv))
+            cek = wrapCipher.doFinal(wrappedKey)
+
+            val cekSpec = SecretKeySpec(cek, "AES")
+            val cipher = Cipher.getInstance(AES_GCM)
+            cipher.init(Cipher.DECRYPT_MODE, cekSpec, GCMParameterSpec(GCM_TAG_LENGTH, contentIv))
+            val decryptedBytes = cipher.doFinal(ciphertext)
+
+            Result.success(String(decryptedBytes, StandardCharsets.UTF_8))
+        } catch (e: Exception) {
+            Log.e(TAG, "Envelope decryption failed", e)
+            Result.failure(e)
+        } finally {
+            cek?.let { Arrays.fill(it, 0.toByte()) }
+        }
+    }
+
+    /**
+     * Encrypts arbitrary binary data (like media attachments) using AES-256-GCM and a pre-derived raw key.
+     * Prepend 12-byte IV directly to the ciphertext.
+     */
+    fun encryptBytesWithRawKey(data: ByteArray, rawKey: ByteArray): ByteArray {
+        val random = SecureRandom()
+        val iv = ByteArray(IV_BYTES).also { random.nextBytes(it) }
+        val keySpec = SecretKeySpec(rawKey, "AES")
+        val cipher = Cipher.getInstance(AES_GCM)
+        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
+        val ciphertext = cipher.doFinal(data)
+
+        val combined = ByteArray(iv.size + ciphertext.size)
+        System.arraycopy(iv, 0, combined, 0, iv.size)
+        System.arraycopy(ciphertext, 0, combined, iv.size, ciphertext.size)
+        return combined
+    }
+
+    /**
+     * Decrypts binary data previously encrypted with encryptBytesWithRawKey.
+     */
+    fun decryptBytesWithRawKey(encryptedData: ByteArray, rawKey: ByteArray): Result<ByteArray> {
+        return try {
+            if (encryptedData.size < IV_BYTES) {
+                return Result.failure(IllegalArgumentException("Encrypted media data is too short"))
+            }
+            val iv = ByteArray(IV_BYTES)
+            System.arraycopy(encryptedData, 0, iv, 0, IV_BYTES)
+            val ciphertext = ByteArray(encryptedData.size - IV_BYTES)
+            System.arraycopy(encryptedData, IV_BYTES, ciphertext, 0, ciphertext.size)
+
+            val keySpec = SecretKeySpec(rawKey, "AES")
+            val cipher = Cipher.getInstance(AES_GCM)
+            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+            val decrypted = cipher.doFinal(ciphertext)
+            Result.success(decrypted)
+        } catch (e: Exception) {
+            Log.e(TAG, "Binary media decryption error", e)
             Result.failure(e)
         }
     }
