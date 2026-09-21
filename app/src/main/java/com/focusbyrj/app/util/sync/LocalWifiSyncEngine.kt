@@ -162,6 +162,37 @@ object LocalWifiSyncEngine {
     }
 
     /**
+     * Extracts the base server URL (protocol + host + port), stripping any trailing API endpoint paths.
+     */
+    fun getBaseServerUrl(rawUrl: String): String {
+        var url = normalizeTargetUrl(rawUrl)
+        if (url.isBlank()) return ""
+
+        val suffixes = listOf(
+            "/api/sync/push", "/api/sync/push/",
+            "/api/vault", "/api/vault/",
+            "/vault", "/vault/"
+        )
+        for (suffix in suffixes) {
+            if (url.endsWith(suffix)) {
+                url = url.substring(0, url.length - suffix.length)
+                break
+            }
+        }
+        return url.removeSuffix("/")
+    }
+
+    fun getVaultEndpointUrl(rawUrl: String): String {
+        val baseUrl = getBaseServerUrl(rawUrl)
+        return if (baseUrl.isBlank()) "" else "$baseUrl/api/vault"
+    }
+
+    fun getPushEndpointUrl(rawUrl: String): String {
+        val baseUrl = getBaseServerUrl(rawUrl)
+        return if (baseUrl.isBlank()) "" else "$baseUrl/api/sync/push"
+    }
+
+    /**
      * Pushes a Note or Task item to the Desktop Web App sync endpoint (/api/sync/push).
      */
     suspend fun pushDesktopSyncItem(
@@ -171,11 +202,8 @@ object LocalWifiSyncEngine {
         type: String, // "NOTE" or "TASK"
         itemPayload: JSONObject
     ): Result<String> = withContext(Dispatchers.IO) {
+        val endpointUrl = getPushEndpointUrl(syncEndpoint)
         try {
-            val cleanUrl = normalizeTargetUrl(syncEndpoint)
-            val endpointUrl = if (cleanUrl.endsWith("/api/sync/push")) cleanUrl
-                              else "${cleanUrl.removeSuffix("/")}/api/sync/push"
-
             val bodyJson = JSONObject().apply {
                 put("sessionId", sessionId)
                 put("pinCode", pinCode)
@@ -198,10 +226,11 @@ object LocalWifiSyncEngine {
                 val resp = conn.inputStream.bufferedReader().use { it.readText() }
                 Result.success(resp.ifBlank { "OK" })
             } else {
-                Result.failure(Exception("HTTP $responseCode: ${conn.responseMessage}"))
+                val errText = try { conn.errorStream?.bufferedReader()?.readText() ?: "" } catch (_: Exception) { "" }
+                Result.failure(Exception("HTTP $responseCode on $endpointUrl: ${conn.responseMessage} ${errText.take(100)}"))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception("Failed connecting to $endpointUrl: ${e.localizedMessage ?: e.message}"))
         }
     }
 
@@ -209,10 +238,8 @@ object LocalWifiSyncEngine {
      * Pulls encrypted vault package from the target endpoint (e.g. PC web server).
      */
     suspend fun fetchVaultFromPc(targetUrl: String, sessionKey: String? = null): Result<String> = withContext(Dispatchers.IO) {
+        val endpoint = getVaultEndpointUrl(targetUrl)
         try {
-            val cleanUrl = normalizeTargetUrl(targetUrl)
-            val endpoint = if (cleanUrl.endsWith("/api/vault") || cleanUrl.endsWith("/vault")) cleanUrl
-                           else "${cleanUrl.removeSuffix("/")}/api/vault"
             val url = URL(endpoint)
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
@@ -229,10 +256,11 @@ object LocalWifiSyncEngine {
                 val text = conn.inputStream.bufferedReader().use { it.readText() }
                 Result.success(text)
             } else {
-                Result.failure(Exception("HTTP Error $responseCode: ${conn.responseMessage}"))
+                val errText = try { conn.errorStream?.bufferedReader()?.readText() ?: "" } catch (_: Exception) { "" }
+                Result.failure(Exception("HTTP $responseCode on $endpoint: ${conn.responseMessage} ${errText.take(100)}"))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception("Failed connecting to $endpoint: ${e.localizedMessage ?: e.message}"))
         }
     }
 
@@ -240,10 +268,8 @@ object LocalWifiSyncEngine {
      * Pushes current encrypted vault package to target endpoint (e.g. PC web server).
      */
     suspend fun pushVaultToPc(targetUrl: String, encryptedPayload: String, sessionKey: String? = null): Result<String> = withContext(Dispatchers.IO) {
+        val endpoint = getVaultEndpointUrl(targetUrl)
         try {
-            val cleanUrl = normalizeTargetUrl(targetUrl)
-            val endpoint = if (cleanUrl.endsWith("/api/vault") || cleanUrl.endsWith("/vault")) cleanUrl
-                           else "${cleanUrl.removeSuffix("/")}/api/vault"
             val url = URL(endpoint)
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -263,10 +289,11 @@ object LocalWifiSyncEngine {
                 val resp = conn.inputStream.bufferedReader().use { it.readText() }
                 Result.success(resp)
             } else {
-                Result.failure(Exception("HTTP Error $responseCode: ${conn.responseMessage}"))
+                val errText = try { conn.errorStream?.bufferedReader()?.readText() ?: "" } catch (_: Exception) { "" }
+                Result.failure(Exception("HTTP $responseCode on $endpoint: ${conn.responseMessage} ${errText.take(100)}"))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception("Failed connecting to $endpoint: ${e.localizedMessage ?: e.message}"))
         }
     }
 
