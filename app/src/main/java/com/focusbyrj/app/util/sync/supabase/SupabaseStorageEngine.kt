@@ -166,13 +166,69 @@ object SupabaseStorageEngine {
         }
     }
 
+    private const val MEDIA_DELETIONS_PREFS = "focus_supabase_media_deletions"
+    private const val KEY_PENDING_MEDIA = "pending_media_deletions"
+
     /**
-     * Removes an object from Supabase Storage when a user permanently deletes an attachment.
+     * Records a deleted media file name or path into the pending queue for cloud storage cleanup.
      */
-    fun deleteMedia(
-        cloudPath: String,
+    fun recordPendingMediaDeletion(context: Context, pathOrFileName: String) {
+        val cleanName = pathOrFileName.trim().substringAfterLast('/')
+        if (cleanName.isBlank()) return
+        val prefs = context.getSharedPreferences(MEDIA_DELETIONS_PREFS, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_PENDING_MEDIA, emptySet()) ?: emptySet()
+        val updated = current.toMutableSet().apply { add(cleanName) }
+        prefs.edit().putStringSet(KEY_PENDING_MEDIA, updated).commit()
+    }
+
+    /**
+     * Records all media attachments (images and audio) associated with a note for cloud storage deletion.
+     */
+    fun recordNoteMediaDeletions(context: Context, note: com.focusbyrj.app.data.note.NoteEntity) {
+        val images = note.getImageUris()
+        val audio = note.getAudioUris()
+        if (images.isEmpty() && audio.isEmpty()) return
+        val prefs = context.getSharedPreferences(MEDIA_DELETIONS_PREFS, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_PENDING_MEDIA, emptySet()) ?: emptySet()
+        val updated = current.toMutableSet()
+        images.forEach { path ->
+            val clean = path.trim().substringAfterLast('/')
+            if (clean.isNotBlank()) updated.add(clean)
+        }
+        audio.forEach { path ->
+            val clean = path.trim().substringAfterLast('/')
+            if (clean.isNotBlank()) updated.add(clean)
+        }
+        prefs.edit().putStringSet(KEY_PENDING_MEDIA, updated).commit()
+    }
+
+    /**
+     * Retrieves all media file names pending deletion from Supabase Storage.
+     */
+    fun getPendingMediaDeletions(context: Context): Set<String> {
+        val prefs = context.getSharedPreferences(MEDIA_DELETIONS_PREFS, Context.MODE_PRIVATE)
+        return prefs.getStringSet(KEY_PENDING_MEDIA, emptySet()) ?: emptySet()
+    }
+
+    /**
+     * Clears successfully deleted media files from the pending deletion queue.
+     */
+    fun clearPendingMediaDeletions(context: Context, successfullyDeleted: Set<String>) {
+        if (successfullyDeleted.isEmpty()) return
+        val prefs = context.getSharedPreferences(MEDIA_DELETIONS_PREFS, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_PENDING_MEDIA, emptySet()) ?: emptySet()
+        val updated = current.toMutableSet().apply { removeAll(successfullyDeleted) }
+        prefs.edit().putStringSet(KEY_PENDING_MEDIA, updated).commit()
+    }
+
+    /**
+     * Removes multiple objects from Supabase Storage in a single batch request.
+     */
+    fun deleteMediaBatch(
+        cloudPaths: List<String>,
         accessToken: String
     ): Boolean {
+        if (cloudPaths.isEmpty()) return true
         val endpointUrl = "${SupabaseConfig.STORAGE_OBJECT_URL}/${SupabaseConfig.STORAGE_BUCKET}"
         return try {
             val url = URL(endpointUrl)
@@ -187,15 +243,35 @@ object SupabaseStorageEngine {
             }
 
             val body = JSONObject().apply {
-                val prefixes = JSONArray().apply { put(cloudPath) }
+                val prefixes = JSONArray().apply {
+                    cloudPaths.distinct().forEach { put(it) }
+                }
                 put("prefixes", prefixes)
             }
 
             conn.outputStream.use { it.write(body.toString().toByteArray()) }
-            conn.responseCode in 200..299
+            val responseCode = conn.responseCode
+            if (responseCode in 200..299) {
+                Log.d(TAG, "Successfully deleted batch cloud media: $cloudPaths")
+                true
+            } else {
+                val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                Log.e(TAG, "Batch delete failed with HTTP $responseCode: $err")
+                false
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception deleting cloud media $cloudPath", e)
+            Log.e(TAG, "Exception deleting batch cloud media $cloudPaths", e)
             false
         }
+    }
+
+    /**
+     * Removes an object from Supabase Storage when a user permanently deletes an attachment.
+     */
+    fun deleteMedia(
+        cloudPath: String,
+        accessToken: String
+    ): Boolean {
+        return deleteMediaBatch(listOf(cloudPath), accessToken)
     }
 }

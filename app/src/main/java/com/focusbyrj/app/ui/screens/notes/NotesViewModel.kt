@@ -259,6 +259,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val notes = displayedNotes.value.filter { it.id in ids }
         viewModelScope.launch(Dispatchers.IO) {
             notes.forEach { note ->
+                com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), note)
                 com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
                 deleteNoteMediaFiles(note)
                 repository.deletePermanently(note)
@@ -809,7 +810,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val updated = current.imageUris.filter { it != imageUri }
         _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
         persistCurrentEditorState()
+        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(getApplication(), imageUri)
         NoteMediaManager.secureDeleteMediaFile(imageUri)
+        triggerAutoSync()
     }
 
     fun updateEditorTitle(title: String) {
@@ -1154,7 +1157,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         if (playbackState.value.currentPath == audioUri) {
             audioMemoManager.stopPlayback()
         }
+        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(getApplication(), audioUri)
         NoteMediaManager.secureDeleteMediaFile(audioUri)
+        triggerAutoSync()
     }
 
     fun toggleAudioPlayback(audioUri: String) {
@@ -1292,6 +1297,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePermanently(note: NoteEntity) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
+            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), note)
             com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
             deleteNoteMediaFiles(note)
             repository.deletePermanently(note)
@@ -1304,6 +1310,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val trashedNotes = repository.getTrashedNotesSync()
             trashedNotes.forEach { note ->
+                com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), note)
                 com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
                 deleteNoteMediaFiles(note)
             }
@@ -1380,6 +1387,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 if (entity.isEmptyNote()) {
                     if (entity.id != 0L) {
                         latestNotesCache.remove(entity.id)
+                        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), entity)
+                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", entity.id)
                         deleteNoteMediaFiles(entity)
                         repository.deletePermanently(entity)
                     }

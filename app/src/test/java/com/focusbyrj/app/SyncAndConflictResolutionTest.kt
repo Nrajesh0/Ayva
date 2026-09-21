@@ -108,4 +108,59 @@ class SyncAndConflictResolutionTest {
         val sameSyncId = SupabaseSyncEngine.getOrCreateSyncId(context, userId, "NOTE", localId)
         assertEquals(syncId, sameSyncId)
     }
+
+    @Test
+    fun testMediaPendingDeletionQueue() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val imgName = "note_photo_abc.jpg"
+        val audioName = "voice_memo_xyz.mp3"
+
+        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, "/path/to/files/$imgName")
+        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, audioName)
+
+        val pending = com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.getPendingMediaDeletions(context)
+        assertTrue(pending.contains(imgName))
+        assertTrue(pending.contains(audioName))
+
+        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.clearPendingMediaDeletions(context, setOf(imgName))
+        val remaining = com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.getPendingMediaDeletions(context)
+        assertFalse(remaining.contains(imgName))
+        assertTrue(remaining.contains(audioName))
+    }
+
+    @Test
+    fun testCompletedTaskHistoryRecordingAndMidnightPurge() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val startOfToday = com.focusbyrj.app.util.CompletedTaskHistoryManager.getStartOfTodayMs()
+        
+        // 1. Record a task completed today
+        val taskToday = com.focusbyrj.app.data.Task(
+            id = 101L,
+            title = "Morning Gym Routine",
+            details = "Completed 5 sets",
+            isCompleted = false
+        )
+        com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, taskToday, startOfToday + 3600000L) // 1 hour into today
+
+        val todayRecords = com.focusbyrj.app.util.CompletedTaskHistoryManager.getTodayCompletedTasks(context)
+        assertEquals(1, todayRecords.size)
+        assertEquals("Morning Gym Routine", todayRecords[0].title)
+
+        // 2. Add an old yesterday task (completed before midnight)
+        val taskYesterday = com.focusbyrj.app.data.Task(
+            id = 102L,
+            title = "Yesterday Task",
+            isCompleted = false
+        )
+        com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, taskYesterday, startOfToday - 10000L)
+
+        // Only today's task should be returned by getTodayCompletedTasks
+        val todayAfterYesterday = com.focusbyrj.app.util.CompletedTaskHistoryManager.getTodayCompletedTasks(context)
+        assertEquals(1, todayAfterYesterday.size)
+        assertEquals("Morning Gym Routine", todayAfterYesterday[0].title)
+
+        // 3. Explicit purge call
+        com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(context)
+        assertEquals(1, com.focusbyrj.app.util.CompletedTaskHistoryManager.getTodayCompletedCount(context))
+    }
 }

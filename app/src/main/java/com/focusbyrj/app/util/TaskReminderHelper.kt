@@ -164,16 +164,19 @@ object TaskReminderHelper {
             kotlin.runCatching {
                 val taskDao = app.database.taskDao()
                 val existing = taskDao.getTaskById(taskId)
-                if (existing != null && !existing.isCompleted) {
-                    val updated = existing.copy(isCompleted = true, completedAt = System.currentTimeMillis())
-                    taskDao.updateTask(updated)
+                if (existing != null) {
+                    val completedAt = System.currentTimeMillis()
+                    com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, existing, completedAt)
+                    com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", existing.id)
+                    taskDao.deleteTask(existing)
                     FocusEconomyManager.completeTaskReward(existing.title, existing.isPriority, existing.type)
-                    if (updated.recurrence != RecurrencePattern.NONE) {
-                        val nextTask = generateNextRecurringTask(updated)
+                    if (existing.recurrence != RecurrencePattern.NONE) {
+                        val nextTask = generateNextRecurringTask(existing.copy(isCompleted = true, completedAt = completedAt))
                         val newId = taskDao.insertTask(nextTask)
                         scheduleReminder(context, nextTask.copy(id = newId))
                     }
                     TodoWidgetProvider.updateAllWidgets(context)
+                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 }
             }
             if (onDone != null) {
@@ -200,6 +203,7 @@ object TaskReminderHelper {
                     taskDao.updateTask(updated)
                     scheduleReminder(context, updated)
                     TodoWidgetProvider.updateAllWidgets(context)
+                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 }
             }
             if (onDone != null) {
@@ -217,28 +221,21 @@ object TaskReminderHelper {
                 val taskDao = app.database.taskDao()
                 val existing = taskDao.getTaskById(taskId)
                 if (existing != null) {
-                    val newStatus = !existing.isCompleted
-                    val updated = existing.copy(
-                        isCompleted = newStatus,
-                        completedAt = if (newStatus) System.currentTimeMillis() else null
-                    )
-                    taskDao.updateTask(updated)
-
-                    if (updated.isCompleted) {
-                        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                        notificationManager?.cancel(taskId.toInt())
-                        cancelReminderById(context, taskId)
-                        FocusEconomyManager.completeTaskReward(existing.title, existing.isPriority, existing.type)
-                        if (updated.recurrence != RecurrencePattern.NONE) {
-                            val nextTask = generateNextRecurringTask(updated)
-                            val newId = taskDao.insertTask(nextTask)
-                            scheduleReminder(context, nextTask.copy(id = newId))
-                        }
-                    } else {
-                        FocusEconomyManager.uncompleteTaskReward(existing.isPriority, existing.type)
-                        scheduleReminder(context, updated)
+                    val completedAt = System.currentTimeMillis()
+                    com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, existing, completedAt)
+                    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                    notificationManager?.cancel(taskId.toInt())
+                    cancelReminderById(context, taskId)
+                    com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", existing.id)
+                    taskDao.deleteTask(existing)
+                    FocusEconomyManager.completeTaskReward(existing.title, existing.isPriority, existing.type)
+                    if (existing.recurrence != RecurrencePattern.NONE) {
+                        val nextTask = generateNextRecurringTask(existing.copy(isCompleted = true, completedAt = completedAt))
+                        val newId = taskDao.insertTask(nextTask)
+                        scheduleReminder(context, nextTask.copy(id = newId))
                     }
                     TodoWidgetProvider.updateAllWidgets(context)
+                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 }
             }
             if (onDone != null) {

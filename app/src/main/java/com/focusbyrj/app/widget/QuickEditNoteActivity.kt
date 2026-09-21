@@ -323,10 +323,12 @@ fun QuickEditNoteOverlay(
                 // If it was already in DB and completely empty (no text, checklist, images, audio, labels), delete it
                 if (loadedNote != null && loadedNote!!.id > 0) {
                     val toDelete = loadedNote!!
+                    com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(appContext, toDelete)
                     com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(appContext, "NOTE", toDelete.id)
                     com.focusbyrj.app.data.note.NoteMediaManager.deleteNoteMediaFiles(toDelete)
                     noteDao.deleteNote(toDelete)
                     NotesViewModel.latestNotesCache.remove(toDelete.id)
+                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(appContext)
                     loadedNote = null
                 }
             } else {

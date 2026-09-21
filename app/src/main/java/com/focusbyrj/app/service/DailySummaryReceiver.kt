@@ -39,8 +39,10 @@ class DailySummaryReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_MORNING_SUMMARY = "com.focusbyrj.app.ACTION_MORNING_SUMMARY"
         const val ACTION_EVENING_SUMMARY = "com.focusbyrj.app.ACTION_EVENING_SUMMARY"
+        const val ACTION_MIDNIGHT_PURGE = "com.focusbyrj.app.ACTION_MIDNIGHT_PURGE"
         private const val REQUEST_CODE_MORNING = 2001
         private const val REQUEST_CODE_EVENING = 2002
+        private const val REQUEST_CODE_MIDNIGHT = 2003
 
         fun scheduleDailySummaries(context: Context) {
             val prefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
@@ -49,6 +51,7 @@ class DailySummaryReceiver : BroadcastReceiver() {
 
             scheduleSingleSummary(context, morningTimeStr, ACTION_MORNING_SUMMARY, REQUEST_CODE_MORNING)
             scheduleSingleSummary(context, eveningTimeStr, ACTION_EVENING_SUMMARY, REQUEST_CODE_EVENING)
+            scheduleSingleSummary(context, "00:00 AM", ACTION_MIDNIGHT_PURGE, REQUEST_CODE_MIDNIGHT)
         }
 
         private fun scheduleSingleSummary(
@@ -144,13 +147,19 @@ class DailySummaryReceiver : BroadcastReceiver() {
             try {
                 when (action) {
                     ACTION_MORNING_SUMMARY -> {
+                        com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(context)
                         handleMorningSummary(context, app)
                         // Reschedule next morning
                         scheduleDailySummaries(context)
                     }
                     ACTION_EVENING_SUMMARY -> {
+                        com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(context)
                         handleEveningSummary(context, app)
                         // Reschedule next evening
+                        scheduleDailySummaries(context)
+                    }
+                    ACTION_MIDNIGHT_PURGE -> {
+                        com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(context)
                         scheduleDailySummaries(context)
                     }
                 }

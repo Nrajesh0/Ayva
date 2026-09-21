@@ -1144,7 +1144,7 @@ fun ChatInterface() {
                                 repo.deleteCompletedTasksBefore(startOfDay)
                                 
                                 val allTasks = repo.allTasks.first()
-                                val completedToday = allTasks.filter { it.isCompleted && it.completedAt != null && it.completedAt >= startOfDay }
+                                val completedToday = com.focusbyrj.app.util.CompletedTaskHistoryManager.getTodayCompletedTasks(context)
                                 val pendingTasks = allTasks.filter { !it.isCompleted }
                                 
                                 val targetTasks = if (isAll) {
@@ -2216,18 +2216,19 @@ fun ChatInterface() {
                                     val repo = app.taskRepository
                                     val task = repo.getTaskById(taskId)
                                     if (task != null) {
-                                        val newCompleted = !task.isCompleted
-                                        val updatedTask = task.copy(
-                                            isCompleted = newCompleted,
-                                            completedAt = if (newCompleted) System.currentTimeMillis() else null
-                                        )
-                                        repo.updateTask(updatedTask)
-                                        if (newCompleted) {
-                                            TaskReminderHelper.cancelReminderById(context, taskId)
-                                        } else if (updatedTask.dueDate != null) {
-                                            TaskReminderHelper.scheduleReminder(context, updatedTask)
+                                        val completedAt = System.currentTimeMillis()
+                                        com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, task, completedAt)
+                                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", task.id)
+                                        repo.deleteTask(task)
+                                        TaskReminderHelper.cancelReminderById(context, taskId)
+                                        FocusEconomyManager.completeTaskReward(task.title, task.isPriority, task.type)
+                                        if (task.recurrence != com.focusbyrj.app.data.RecurrencePattern.NONE) {
+                                            val nextTask = TaskReminderHelper.generateNextRecurringTask(task.copy(isCompleted = true, completedAt = completedAt))
+                                            val newId = app.database.taskDao().insertTask(nextTask)
+                                            TaskReminderHelper.scheduleReminder(context, nextTask.copy(id = newId))
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         
                                         withContext(Dispatchers.Main) {
                                             messages = messages.map { m ->
@@ -2238,7 +2239,7 @@ fun ChatInterface() {
                                                         for (i in 0 until arr.length()) {
                                                             val item = arr.getJSONObject(i)
                                                             if (item.optLong("id") == taskId) {
-                                                                item.put("isCompleted", newCompleted)
+                                                                item.put("isCompleted", true)
                                                             }
                                                             newArr.put(item)
                                                         }
@@ -2246,14 +2247,12 @@ fun ChatInterface() {
                                                     } catch (e: Exception) { m }
                                                 } else m
                                             }
-                                            if (newCompleted) {
-                                                val ackMsg = ChatMessage(
-                                                    id = "done_${System.currentTimeMillis()}",
-                                                    text = "Checked off: *${task.title}* 🎉",
-                                                    isUser = false
-                                                )
-                                                messages = messages + ackMsg
-                                            }
+                                            val ackMsg = ChatMessage(
+                                                id = "done_${System.currentTimeMillis()}",
+                                                text = "Checked off: *${task.title}* 🎉",
+                                                isUser = false
+                                            )
+                                            messages = messages + ackMsg
                                         }
                                     }
                                 }

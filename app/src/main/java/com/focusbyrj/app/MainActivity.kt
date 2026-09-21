@@ -210,6 +210,7 @@ class MainActivity : FragmentActivity() {
 
         kotlin.runCatching { FocusBlockerService.startService(this) }
         kotlin.runCatching { com.focusbyrj.app.service.BubbleService.startIfEnabled(this) }
+        kotlin.runCatching { com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(this) }
         kotlin.runCatching { com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(this) }
         kotlin.runCatching { com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleRandomDrillReminders(this) }
         kotlin.runCatching { com.focusbyrj.app.util.TaskReminderHelper.scheduleAllPendingReminders(this) }
@@ -238,6 +239,7 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         applySecureWindowFlags()
+        kotlin.runCatching { com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.TodoWidgetProvider.updateAllWidgets(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(this) }
         kotlin.runCatching { com.focusbyrj.app.util.sync.supabase.AutoSyncManager.checkAndSyncIfStale(this, staleThresholdMs = 2 * 60 * 1000L) }

@@ -617,7 +617,7 @@ object AyvaTalkEngine {
                         val endOfDay = startOfDay + 86400000L - 1
 
                         val allTasks = app.taskRepository.allTasks.firstOrNull() ?: emptyList()
-                        val completedToday = allTasks.filter { it.isCompleted && it.completedAt != null && it.completedAt >= startOfDay }
+                        val completedToday = com.focusbyrj.app.util.CompletedTaskHistoryManager.getTodayCompletedTasks(context)
                         val pendingTasks = allTasks.filter { !it.isCompleted }
                         val todayTasks = pendingTasks.filter { it.dueDate == null || (it.dueDate in startOfDay..endOfDay) || it.dueDate < startOfDay }
                         val overdueCount = todayTasks.count { it.dueDate != null && it.dueDate < now }
@@ -976,7 +976,7 @@ object AyvaTalkEngine {
                         cal.set(java.util.Calendar.SECOND, 0)
                         cal.set(java.util.Calendar.MILLISECOND, 0)
                         val startOfDay = cal.timeInMillis
-                        val completedTodayCount = tasks.count { it.isCompleted && (it.completedAt ?: 0L) >= startOfDay }
+                        val completedTodayCount = com.focusbyrj.app.util.CompletedTaskHistoryManager.getTodayCompletedCount(context)
 
                         // Telemetry
                         var totalScreenTimeMins = 0
@@ -1342,10 +1342,12 @@ object AyvaTalkEngine {
                                     if (nluResult.intent == NluIntent.DELETE) {
                                         // User wants to clean/clear overdue tasks
                                         overdueTasks.forEach { 
+                                            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", it.id)
                                             app.taskRepository.deleteTask(it)
                                             TaskReminderHelper.cancelReminder(context, it)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val praise = AyvaDialogueEngine.getOverdueCleanPraise(context, overdueTasks.size)
                                         val actions = listOf(
                                             TalkAction.AskQuery("/tasks", "📋 View Remaining Tasks"),
@@ -1361,6 +1363,7 @@ object AyvaTalkEngine {
                                             TaskReminderHelper.scheduleReminder(context, updated)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val timeStr = SmartDateParser.formatDueDate(targetDate)
                                         val praise = AyvaDialogueEngine.getOverdueTriagePraise(context, overdueTasks.size, timeStr)
                                         val actions = listOf(
@@ -1380,31 +1383,53 @@ object AyvaTalkEngine {
                                             TaskReminderHelper.scheduleReminder(context, updated)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val dateStr = SmartDateParser.formatDueDate(newDate)
                                         return TalkResponse("⏰ **Rescheduled all ${pending.size} tasks** to $dateStr.")
                                     } else if (nluResult.intent == NluIntent.COMPLETE) {
-                                        pending.forEach { 
-                                            app.taskRepository.updateTask(it.copy(isCompleted = true, completedAt = System.currentTimeMillis()))
-                                            TaskReminderHelper.cancelReminder(context, it)
+                                        val now = System.currentTimeMillis()
+                                        pending.forEach { task ->
+                                            com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, task, now)
+                                            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", task.id)
+                                            app.taskRepository.deleteTask(task)
+                                            TaskReminderHelper.cancelReminder(context, task)
+                                            FocusEconomyManager.completeTaskReward(task.title, task.isPriority, task.type)
+                                            if (task.recurrence != com.focusbyrj.app.data.RecurrencePattern.NONE) {
+                                                val nextTask = TaskReminderHelper.generateNextRecurringTask(task.copy(isCompleted = true, completedAt = now))
+                                                val newId = app.database.taskDao().insertTask(nextTask)
+                                                TaskReminderHelper.scheduleReminder(context, nextTask.copy(id = newId))
+                                            }
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val actions = listOf(TalkAction.AskQuery("/summary", "📊 Daily Summary"), TalkAction.AskQuery("/advice", "💡 Focus Advice"))
                                         return TalkResponse("🎉 **All ${pending.size} tasks marked complete!** Entire radar is clear. Outstanding work!", actions, "tasks", serializeActionsJson("tasks", actions))
                                     } else if (nluResult.intent == NluIntent.DELETE) {
                                         pending.forEach { 
+                                            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", it.id)
                                             app.taskRepository.deleteTask(it)
                                             TaskReminderHelper.cancelReminder(context, it)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         return TalkResponse("🗑️ **Deleted all ${pending.size} pending tasks.**")
                                     }
                                 } else if (nluResult.targetTask != null) {
                                     val targetTask = nluResult.targetTask
                                     if (nluResult.intent == NluIntent.COMPLETE) {
-                                        val completed = targetTask.copy(isCompleted = true, completedAt = System.currentTimeMillis())
-                                        app.taskRepository.updateTask(completed)
+                                        val now = System.currentTimeMillis()
+                                        com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, targetTask, now)
+                                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", targetTask.id)
+                                        app.taskRepository.deleteTask(targetTask)
                                         TaskReminderHelper.cancelReminder(context, targetTask)
+                                        FocusEconomyManager.completeTaskReward(targetTask.title, targetTask.isPriority, targetTask.type)
+                                        if (targetTask.recurrence != com.focusbyrj.app.data.RecurrencePattern.NONE) {
+                                            val nextTask = TaskReminderHelper.generateNextRecurringTask(targetTask.copy(isCompleted = true, completedAt = now))
+                                            val newId = app.database.taskDao().insertTask(nextTask)
+                                            TaskReminderHelper.scheduleReminder(context, nextTask.copy(id = newId))
+                                        }
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val remaining = pending.size - 1
                                         val praise = AyvaDialogueEngine.getTaskCompletedPraise(context, targetTask.title, remaining)
                                         val actions = listOf(
@@ -1413,9 +1438,11 @@ object AyvaTalkEngine {
                                         )
                                         return TalkResponse(praise, actions, "tasks", serializeActionsJson("tasks", actions))
                                     } else if (nluResult.intent == NluIntent.DELETE) {
+                                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", targetTask.id)
                                         app.taskRepository.deleteTask(targetTask)
                                         TaskReminderHelper.cancelReminder(context, targetTask)
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val remaining = pending.size - 1
                                         val actions = listOf(
                                             TalkAction.AskQuery("/tasks", "📋 View Tasks ($remaining)")

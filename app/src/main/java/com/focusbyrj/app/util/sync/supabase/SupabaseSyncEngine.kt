@@ -566,6 +566,19 @@ object SupabaseSyncEngine {
                 deletionPrefs.edit().putStringSet("pending_deletions", updatedDeletions).commit()
             }
 
+            // 4.1 Process Pending Media Deletions (Photos & Audio Memos in Supabase Storage)
+            val pendingMedia = SupabaseStorageEngine.getPendingMediaDeletions(context)
+            if (pendingMedia.isNotEmpty() && userId.isNotBlank()) {
+                val cloudPathsToDelete = pendingMedia.map { fileName ->
+                    if (fileName.contains("/")) fileName else "$userId/$fileName"
+                }
+                val mediaDeleteSuccess = SupabaseStorageEngine.deleteMediaBatch(cloudPathsToDelete, currentToken)
+                if (mediaDeleteSuccess) {
+                    SupabaseStorageEngine.clearPendingMediaDeletions(context, pendingMedia)
+                    Log.d(TAG, "Successfully purged ${pendingMedia.size} deleted media attachments from Supabase Storage.")
+                }
+            }
+
             // 5. Save last sync timestamp
             SupabaseKeyManager.setLastSyncedTime(context, System.currentTimeMillis())
 

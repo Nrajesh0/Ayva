@@ -105,6 +105,7 @@ object NoteMediaManager {
                         val ageMs = System.currentTimeMillis() - file.lastModified()
                         if (ageMs > 300_000L) {
                             Log.i(TAG, "Removing orphaned image: ${file.name}")
+                            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, file.name)
                             secureDeleteMediaFile(file)
                         }
                     }
@@ -119,6 +120,7 @@ object NoteMediaManager {
                         val ageMs = System.currentTimeMillis() - file.lastModified()
                         if (ageMs > 300_000L) {
                             Log.i(TAG, "Removing orphaned audio: ${file.name}")
+                            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, file.name)
                             secureDeleteMediaFile(file)
                         }
                     }
