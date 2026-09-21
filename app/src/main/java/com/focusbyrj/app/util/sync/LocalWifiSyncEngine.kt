@@ -66,37 +66,143 @@ object LocalWifiSyncEngine {
         val ip: String?,
         val port: Int?,
         val key: String?,
-        val passphrase: String?
+        val passphrase: String?,
+        val syncEndpoint: String? = null,
+        val sessionId: String? = null,
+        val pinCode: String? = null,
+        val appName: String? = null
     )
 
     /**
-     * Parses a scanned QR string payload (either JSON format or raw http URL).
+     * Parses a scanned QR string payload (JSON format, RuN_Notes_Desktop schema, web deep links, or direct URLs).
      */
     fun parseQrPayload(rawContent: String): ParsedSyncQrPayload {
         val trimmed = rawContent.trim()
         if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
             try {
                 val obj = JSONObject(trimmed)
+                val app = obj.optString("app")
+                val syncEndpoint = obj.optString("syncEndpoint").takeIf { it.isNotBlank() }
+                val sessionId = obj.optString("sessionId").takeIf { it.isNotBlank() }
+                val pinCode = obj.optString("pinCode").takeIf { it.isNotBlank() }
+
+                val url = syncEndpoint ?: obj.optString("url").takeIf { it.isNotBlank() }
+                val key = sessionId ?: obj.optString("key").takeIf { it.isNotBlank() }
+                val passphrase = pinCode ?: obj.optString("passphrase").takeIf { it.isNotBlank() }
+
                 return ParsedSyncQrPayload(
-                    url = obj.optString("url").takeIf { it.isNotBlank() },
+                    url = url,
                     ip = obj.optString("ip").takeIf { it.isNotBlank() },
                     port = if (obj.has("port")) obj.getInt("port") else null,
-                    key = obj.optString("key").takeIf { it.isNotBlank() },
-                    passphrase = obj.optString("passphrase").takeIf { it.isNotBlank() }
+                    key = key,
+                    passphrase = passphrase,
+                    syncEndpoint = syncEndpoint,
+                    sessionId = sessionId,
+                    pinCode = pinCode,
+                    appName = app.takeIf { it.isNotBlank() }
                 )
             } catch (_: Exception) {}
         }
-        // Direct URL fallback
+
+        // Direct URL or Deep Link fallback
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            return ParsedSyncQrPayload(
-                url = trimmed,
-                ip = null,
-                port = null,
-                key = null,
-                passphrase = null
-            )
+            try {
+                val uri = URL(trimmed)
+                val query = uri.query
+                var sessionId: String? = null
+                var pinCode: String? = null
+
+                if (!query.isNullOrBlank()) {
+                    query.split("&").forEach { param ->
+                        val parts = param.split("=")
+                        if (parts.size == 2) {
+                            if (parts[0] == "syncSession" || parts[0] == "sessionId") sessionId = parts[1]
+                            if (parts[0] == "pin" || parts[0] == "pinCode") pinCode = parts[1]
+                        }
+                    }
+                }
+
+                val endpoint = if (trimmed.contains("?")) trimmed.substringBefore("?") else trimmed
+                val finalSyncEndpoint = if (endpoint.endsWith("/api/sync/push")) endpoint
+                                        else if (endpoint.endsWith("/api/vault") || endpoint.endsWith("/vault")) endpoint
+                                        else "${endpoint.removeSuffix("/")}/api/sync/push"
+
+                return ParsedSyncQrPayload(
+                    url = finalSyncEndpoint,
+                    ip = null,
+                    port = null,
+                    key = sessionId,
+                    passphrase = pinCode,
+                    syncEndpoint = finalSyncEndpoint,
+                    sessionId = sessionId,
+                    pinCode = pinCode,
+                    appName = "RuN_Notes_Desktop"
+                )
+            } catch (_: Exception) {
+                return ParsedSyncQrPayload(url = trimmed, ip = null, port = null, key = null, passphrase = null)
+            }
         }
         return ParsedSyncQrPayload(null, null, null, null, null)
+    }
+
+    fun normalizeTargetUrl(rawUrl: String): String {
+        var trimmed = rawUrl.trim()
+        if (trimmed.isBlank()) return ""
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            trimmed = "http://$trimmed"
+        }
+        try {
+            val uri = URL(trimmed)
+            if (uri.port == -1 && (uri.host.matches(Regex("""^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$""")) || uri.host == "localhost")) {
+                val path = uri.path ?: ""
+                return "http://${uri.host}:3000$path"
+            }
+        } catch (_: Exception) {}
+        return trimmed
+    }
+
+    /**
+     * Pushes a Note or Task item to the Desktop Web App sync endpoint (/api/sync/push).
+     */
+    suspend fun pushDesktopSyncItem(
+        syncEndpoint: String,
+        sessionId: String,
+        pinCode: String,
+        type: String, // "NOTE" or "TASK"
+        itemPayload: JSONObject
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val cleanUrl = normalizeTargetUrl(syncEndpoint)
+            val endpointUrl = if (cleanUrl.endsWith("/api/sync/push")) cleanUrl
+                              else "${cleanUrl.removeSuffix("/")}/api/sync/push"
+
+            val bodyJson = JSONObject().apply {
+                put("sessionId", sessionId)
+                put("pinCode", pinCode)
+                put("type", type.uppercase())
+                put("deviceInfo", "Android (${android.os.Build.MODEL})")
+                put("payload", itemPayload)
+            }
+
+            val conn = (URL(endpointUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 8000
+                readTimeout = 15000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+
+            conn.outputStream.bufferedWriter().use { it.write(bodyJson.toString()) }
+            val responseCode = conn.responseCode
+            if (responseCode in 200..299) {
+                val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                Result.success(resp.ifBlank { "OK" })
+            } else {
+                Result.failure(Exception("HTTP $responseCode: ${conn.responseMessage}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     /**
@@ -104,8 +210,9 @@ object LocalWifiSyncEngine {
      */
     suspend fun fetchVaultFromPc(targetUrl: String, sessionKey: String? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val endpoint = if (targetUrl.endsWith("/api/vault") || targetUrl.endsWith("/vault")) targetUrl
-                           else "${targetUrl.removeSuffix("/")}/api/vault"
+            val cleanUrl = normalizeTargetUrl(targetUrl)
+            val endpoint = if (cleanUrl.endsWith("/api/vault") || cleanUrl.endsWith("/vault")) cleanUrl
+                           else "${cleanUrl.removeSuffix("/")}/api/vault"
             val url = URL(endpoint)
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
@@ -134,8 +241,9 @@ object LocalWifiSyncEngine {
      */
     suspend fun pushVaultToPc(targetUrl: String, encryptedPayload: String, sessionKey: String? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val endpoint = if (targetUrl.endsWith("/api/vault") || targetUrl.endsWith("/vault")) targetUrl
-                           else "${targetUrl.removeSuffix("/")}/api/vault"
+            val cleanUrl = normalizeTargetUrl(targetUrl)
+            val endpoint = if (cleanUrl.endsWith("/api/vault") || cleanUrl.endsWith("/vault")) cleanUrl
+                           else "${cleanUrl.removeSuffix("/")}/api/vault"
             val url = URL(endpoint)
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"

@@ -93,12 +93,23 @@ fun DeviceSyncScreen(
     var selectedTab by remember { mutableStateOf(SyncTab.LINK_DEVICE) }
     var linkMode by remember { mutableStateOf(LinkMode.SCAN_PC_QR) }
 
+    val syncPrefs = remember { context.getSharedPreferences("desktop_sync_prefs", Context.MODE_PRIVATE) }
+
     // PC QR Scanner / Client Connection State
-    var pcSyncUrl by remember { mutableStateOf("") }
-    var pcSyncPassphrase by remember { mutableStateOf("FocusSecureSync2026") }
-    var pcSessionToken by remember { mutableStateOf("") }
+    var pcSyncUrl by remember { mutableStateOf(syncPrefs.getString("sync_endpoint", "") ?: "") }
+    var pcSyncPassphrase by remember { mutableStateOf(syncPrefs.getString("pin_code", "FocusSecureSync2026") ?: "FocusSecureSync2026") }
+    var pcSessionToken by remember { mutableStateOf(syncPrefs.getString("session_id", "") ?: "") }
     var isConnectingToPc by remember { mutableStateOf(false) }
     var clientSyncSummary by remember { mutableStateOf<String?>(null) }
+    var showLiveCameraDialog by remember { mutableStateOf(false) }
+
+    fun saveDesktopSyncPrefs(url: String, session: String, pin: String) {
+        syncPrefs.edit()
+            .putString("sync_endpoint", url)
+            .putString("session_id", session)
+            .putString("pin_code", pin)
+            .apply()
+    }
 
     // Image Picker for scanning QR from photo/screenshot
     val pickQrImageLauncher = rememberLauncherForActivityResult(
@@ -124,7 +135,14 @@ fun DeviceSyncScreen(
                         if (parsed.url != null) pcSyncUrl = parsed.url
                         if (parsed.passphrase != null) pcSyncPassphrase = parsed.passphrase
                         if (parsed.key != null) pcSessionToken = parsed.key
-                        Toast.makeText(context, "QR Code decoded successfully!", Toast.LENGTH_SHORT).show()
+
+                        saveDesktopSyncPrefs(
+                            url = parsed.url ?: pcSyncUrl,
+                            session = parsed.key ?: pcSessionToken,
+                            pin = parsed.passphrase ?: pcSyncPassphrase
+                        )
+
+                        Toast.makeText(context, "Desktop QR parsed! Connected to session.", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, "Could not find a valid QR code in the selected image.", Toast.LENGTH_LONG).show()
                     }
@@ -385,6 +403,44 @@ fun DeviceSyncScreen(
 
                                 Spacer(modifier = Modifier.height(16.dp))
 
+                                // Live Camera Scanner Button
+                                Button(
+                                    onClick = {
+                                        try {
+                                            val options = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+                                                .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                                                .build()
+                                            val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(context, options)
+                                            scanner.startScan()
+                                                .addOnSuccessListener { barcode ->
+                                                    val rawValue = barcode.rawValue
+                                                    if (!rawValue.isNullOrBlank()) {
+                                                        val parsed = LocalWifiSyncEngine.parseQrPayload(rawValue)
+                                                        if (parsed.url != null) pcSyncUrl = parsed.url
+                                                        if (parsed.passphrase != null) pcSyncPassphrase = parsed.passphrase
+                                                        if (parsed.key != null) pcSessionToken = parsed.key
+                                                        saveDesktopSyncPrefs(pcSyncUrl, pcSessionToken, pcSyncPassphrase)
+                                                        Toast.makeText(context, "QR code scanned! Connected to session.", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                                .addOnFailureListener {
+                                                    showLiveCameraDialog = true
+                                                }
+                                        } catch (_: Exception) {
+                                            showLiveCameraDialog = true
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.Camera, contentDescription = null, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Open Live Camera Scanner", fontWeight = FontWeight.Bold)
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
                                 // Quick QR Image Scan Button
                                 OutlinedButton(
                                     onClick = { pickQrImageLauncher.launch("image/*") },
@@ -400,9 +456,12 @@ fun DeviceSyncScreen(
 
                                 OutlinedTextField(
                                     value = pcSyncUrl,
-                                    onValueChange = { pcSyncUrl = it },
-                                    label = { Text("PC Pairing URL / IP (e.g. http://192.168.1.5:8998)") },
-                                    placeholder = { Text("http://192.168.x.x:8998") },
+                                    onValueChange = { 
+                                        pcSyncUrl = it 
+                                        saveDesktopSyncPrefs(it, pcSessionToken, pcSyncPassphrase)
+                                    },
+                                    label = { Text("PC Pairing URL / IP (e.g. http://192.168.1.5:3000)") },
+                                    placeholder = { Text("http://192.168.x.x:3000") },
                                     singleLine = true,
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.fillMaxWidth()
@@ -412,12 +471,37 @@ fun DeviceSyncScreen(
 
                                 OutlinedTextField(
                                     value = pcSyncPassphrase,
-                                    onValueChange = { pcSyncPassphrase = it },
-                                    label = { Text("E2EE Sync Passphrase") },
+                                    onValueChange = { 
+                                        pcSyncPassphrase = it
+                                        saveDesktopSyncPrefs(pcSyncUrl, pcSessionToken, it)
+                                    },
+                                    label = { Text("E2EE Sync Passphrase / PIN") },
                                     singleLine = true,
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 )
+
+                                if (pcSyncUrl.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text("Desktop Target Configured", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                                Text("Session: ${pcSessionToken.ifBlank { "DEFAULT_SESSION" }} | Target: $pcSyncUrl", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                                            }
+                                        }
+                                    }
+                                }
 
                                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -500,7 +584,54 @@ fun DeviceSyncScreen(
                                     }
                                 }
 
-                                clientSyncSummary?.let { summary ->
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                OutlinedButton(
+                                    onClick = {
+                                        if (pcSyncUrl.isBlank()) {
+                                            Toast.makeText(context, "Please scan or set Desktop URL", Toast.LENGTH_SHORT).show()
+                                            return@OutlinedButton
+                                        }
+                                        saveDesktopSyncPrefs(pcSyncUrl, pcSessionToken, pcSyncPassphrase)
+                                        scope.launch {
+                                            isConnectingToPc = true
+                                            try {
+                                                val testPayload = JSONObject().apply {
+                                                    put("id", "note_test_${System.currentTimeMillis()}")
+                                                    put("title", "Test Note from RUN Android")
+                                                    put("content", "Connection verified! Desktop and Android are actively linked.")
+                                                    put("colorKey", "mint")
+                                                    put("isChecklist", false)
+                                                    put("checklistJson", "[]")
+                                                    put("labelsJson", "[\"Android Sync\"]")
+                                                }
+                                                val res = LocalWifiSyncEngine.pushDesktopSyncItem(
+                                                    syncEndpoint = pcSyncUrl.trim(),
+                                                    sessionId = pcSessionToken.ifBlank { "DEFAULT_SESSION" },
+                                                    pinCode = pcSyncPassphrase.ifBlank { "123-456" },
+                                                    type = "NOTE",
+                                                    itemPayload = testPayload
+                                                )
+                                                res.getOrThrow()
+                                                clientSyncSummary = "Sent Test Note to Desktop successfully!"
+                                                Toast.makeText(context, clientSyncSummary, Toast.LENGTH_LONG).show()
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Test note failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                            } finally {
+                                                isConnectingToPc = false
+                                            }
+                                        }
+                                    },
+                                    enabled = !isConnectingToPc && pcSyncUrl.isNotBlank(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Send Test Note to Desktop")
+                                }
+
+                                 clientSyncSummary?.let { summary ->
                                     Spacer(modifier = Modifier.height(14.dp))
                                     Surface(
                                         shape = RoundedCornerShape(10.dp),
@@ -515,6 +646,21 @@ fun DeviceSyncScreen(
                                             textAlign = TextAlign.Center
                                         )
                                     }
+                                }
+
+                                if (showLiveCameraDialog) {
+                                    CameraQrScannerDialog(
+                                        onDismiss = { showLiveCameraDialog = false },
+                                        onQrScanned = { rawValue ->
+                                            showLiveCameraDialog = false
+                                            val parsed = LocalWifiSyncEngine.parseQrPayload(rawValue)
+                                            if (parsed.url != null) pcSyncUrl = parsed.url
+                                            if (parsed.passphrase != null) pcSyncPassphrase = parsed.passphrase
+                                            if (parsed.key != null) pcSessionToken = parsed.key
+                                            saveDesktopSyncPrefs(pcSyncUrl, pcSessionToken, pcSyncPassphrase)
+                                            Toast.makeText(context, "QR code scanned! Connected to session.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
                                 }
                             }
                         }

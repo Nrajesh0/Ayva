@@ -15,8 +15,8 @@ android {
     multiDexEnabled = true
     minSdk = 24
     targetSdk = 35
-    versionCode = 92
-    versionName = "1.9.2"
+    versionCode = 93
+    versionName = "1.9.3"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -136,6 +136,10 @@ dependencies {
 
   // QR Generation for PC Sync
   implementation(libs.zxing.core)
+  implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+  implementation("androidx.camera:camera-camera2:1.3.4")
+  implementation("androidx.camera:camera-lifecycle:1.3.4")
+  implementation("androidx.camera:camera-view:1.3.4")
 
   // Coil for Note Image Attachments
   implementation("io.coil-kt:coil-compose:2.7.0")
