@@ -80,8 +80,19 @@ object SupabaseSyncEngine {
     /**
      * Unbinds a local SQLite ID and remote cloud UUID from the sync map upon permanent deletion.
      * Prevents recycled SQLite rowids from colliding with deleted cloud UUIDs.
+     *
+     * [performOrphanScan]: B2-P3-005 — When true (default), performs an O(n) scan of prefs.all
+     * to purge any orphaned forward-keys pointing to cloudSyncId. Set to false in the hot sync
+     * path where localId is already known, to avoid O(n²) behaviour with many tombstones.
      */
-    fun unbindSyncId(context: Context, userId: String, type: String, localId: Long?, cloudSyncId: String) {
+    fun unbindSyncId(
+        context: Context,
+        userId: String,
+        type: String,
+        localId: Long?,
+        cloudSyncId: String,
+        performOrphanScan: Boolean = true
+    ) {
         if (userId.isBlank() || cloudSyncId.isBlank()) return
         val prefs = context.getSharedPreferences(SYNC_MAP_PREFS, Context.MODE_PRIVATE)
         val editor = prefs.edit().remove("$userId:$type:rev:$cloudSyncId")
@@ -89,12 +100,15 @@ object SupabaseSyncEngine {
         if (resolvedLocalId != null && resolvedLocalId > 0L) {
             editor.remove("$userId:$type:$resolvedLocalId")
         }
-        // Also scan and purge any forward keys pointing to cloudSyncId to prevent resurrected mappings
-        val prefix = "$userId:$type:"
-        val revPrefix = "$userId:$type:rev:"
-        for ((k, v) in prefs.all) {
-            if (k.startsWith(prefix) && !k.startsWith(revPrefix) && v == cloudSyncId) {
-                editor.remove(k)
+        // O(n) orphan scan: only perform when callers do not already have the localId.
+        // Skip (performOrphanScan=false) in hot-path tombstone loops to prevent O(n²) complexity.
+        if (performOrphanScan) {
+            val prefix = "$userId:$type:"
+            val revPrefix = "$userId:$type:rev:"
+            for ((k, v) in prefs.all) {
+                if (k.startsWith(prefix) && !k.startsWith(revPrefix) && v == cloudSyncId) {
+                    editor.remove(k)
+                }
             }
         }
         editor.commit()
@@ -194,6 +208,21 @@ object SupabaseSyncEngine {
         }
     }
 
+    /**
+     * Checks if note content has diverged between local note and incoming cloud JSON.
+     * Evaluates title, content, checklist, images, audio memos, labels, and trash state.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun hasNoteContentDiverged(cleanMatch: NoteEntity, root: JSONObject): Boolean {
+        return cleanMatch.content != root.optString("content", "") ||
+                cleanMatch.title != root.optString("title", "") ||
+                cleanMatch.checklistJson != root.optString("checklistJson", "[]") ||
+                cleanMatch.imageUrisJson != root.optString("imageUrisJson", "[]") ||
+                cleanMatch.audioUrisJson != root.optString("audioUrisJson", "[]") ||
+                cleanMatch.labelsJson != root.optString("labelsJson", "[]") ||
+                cleanMatch.isTrashed != root.optBoolean("isTrashed", false)
+    }
+
     private fun recordTaskTimestamp(context: Context, taskId: Long, fingerprint: String, timestamp: Long) {
         val prefs = context.getSharedPreferences(TASK_TIMESTAMPS_PREFS, Context.MODE_PRIVATE)
         prefs.edit()
@@ -204,6 +233,11 @@ object SupabaseSyncEngine {
 
     /**
      * Records a local deletion event so that it can be synced as a tombstone to the cloud.
+     *
+     * B2-P3-009 FIX: Only records deletions for items that have already been synced at least
+     * once (have an existing cloud UUID). Items created and deleted without ever syncing have
+     * no cloud counterpart, so creating a UUID for them would push orphan tombstones that
+     * waste bandwidth and pollute the cloud with records that no device can match.
      */
     fun recordLocalDeletion(context: Context, type: String, localId: Long) {
         val session = SupabaseKeyManager.getSessionState(context)
@@ -212,7 +246,10 @@ object SupabaseSyncEngine {
             ?: ""
         if (userId.isBlank() || localId <= 0L) return
 
-        val syncId = getOrCreateSyncId(context, userId, type, localId)
+        // B2-P3-009: Use getExistingSyncId() to avoid creating a new UUID for never-synced items.
+        // If the item has never been pushed to the cloud, there is nothing on the server to tombstone.
+        val syncId = getExistingSyncId(context, userId, type, localId) ?: return
+
         val prefs = context.getSharedPreferences(DELETIONS_PREFS, Context.MODE_PRIVATE)
         val currentDeletions = prefs.getStringSet("pending_deletions", mutableSetOf()) ?: mutableSetOf()
         val newDeletions = currentDeletions.toMutableSet()
@@ -240,6 +277,11 @@ object SupabaseSyncEngine {
                 return@withContext Result.failure(Exception("User is not signed in to Cloud Vault."))
             }
 
+            if (session.isOfflineMode) {
+                Log.d(TAG, "Sync skipped: Vault is in offline mode.")
+                return@withContext Result.failure(Exception("Cloud Vault is currently in Offline Mode. Sync is paused."))
+            }
+
             val userId = session.userId ?: ""
             val token = SupabaseAuthManager.getValidAccessToken(context) ?: session.accessToken
             if (token.isNullOrBlank()) {
@@ -260,6 +302,10 @@ object SupabaseSyncEngine {
             // data loss caused by a bug in the sync engine (e.g., mass tombstone application).
             val preSyncNoteCount = try { noteDao.getAllNotesList().size } catch (_: Exception) { -1 }
             val preSyncTaskCount = try { taskDao.getAllTasksList().size } catch (_: Exception) { -1 }
+
+            // Write pre-sync safety snapshot before any pull/tombstone/deletion operations
+            val focusDb = (context.applicationContext as? com.focusbyrj.app.FocusApplication)?.database
+            com.focusbyrj.app.util.backup.DataSafetyManager.writePreOpSnapshot(context, noteDao, "pre_sync", focusDb)
 
             // 1. Fetch Cloud Vault items
             val fetchResult = fetchCloudItems(context, token)
@@ -286,6 +332,46 @@ object SupabaseSyncEngine {
 
             var uploaded = 0
             var downloaded = 0
+
+            // B2-P3-007: Track IDs of [Conflict]/[Restored] copies created during this pull phase.
+            // The push phase skips these IDs to prevent them from being immediately re-synced
+            // to the cloud and triggering recursive duplication on other devices.
+            val sameCycleConflictIds = mutableSetOf<Long>()
+
+            // B2-P3-004 FIX: Pre-deletion anomaly guard.
+            // Count projected tombstone deletions BEFORE applying any to SQLite.
+            // If >40% of local data would be deleted in one cycle, abort without touching the DB.
+            if (session.lastSyncedTime > 0L && (preSyncNoteCount > 5 || preSyncTaskCount > 5)) {
+                var projectedNoteDeletes = 0
+                var projectedTaskDeletes = 0
+                cloudItems.filter { it.isDeleted }.forEach { tombstone ->
+                    val resolvedType = if (tombstone.type == "OPAQUE" || tombstone.type.isBlank()) {
+                        when {
+                            getLocalIdForSyncId(context, userId, "NOTE", tombstone.id) != null -> "NOTE"
+                            getLocalIdForSyncId(context, userId, "TASK", tombstone.id) != null -> "TASK"
+                            else -> ""
+                        }
+                    } else tombstone.type
+                    when (resolvedType) {
+                        "NOTE" -> if (getLocalIdForSyncId(context, userId, "NOTE", tombstone.id) != null) projectedNoteDeletes++
+                        "TASK" -> if (getLocalIdForSyncId(context, userId, "TASK", tombstone.id) != null) projectedTaskDeletes++
+                    }
+                }
+                val noteDropPct = if (preSyncNoteCount > 5) projectedNoteDeletes.toFloat() / preSyncNoteCount else 0f
+                val taskDropPct = if (preSyncTaskCount > 5) projectedTaskDeletes.toFloat() / preSyncTaskCount else 0f
+                if (noteDropPct > 0.40f || taskDropPct > 0.40f) {
+                    Log.e(TAG, "PRE-DELETION ANOMALY GUARD: projected $projectedNoteDeletes note deletes / $preSyncNoteCount " +
+                        "(${(noteDropPct * 100).toInt()}%), $projectedTaskDeletes task deletes / $preSyncTaskCount. " +
+                        "Aborting sync BEFORE any deletions to prevent data loss.")
+                    com.focusbyrj.app.util.backup.DataSafetyManager.writeEmergencySnapshot(
+                        context, noteDao, (context.applicationContext as? com.focusbyrj.app.FocusApplication)?.database)
+                    return@withContext Result.failure(Exception(
+                        "Sync anomaly detected: $projectedNoteDeletes notes / $projectedTaskDeletes tasks " +
+                        "would be deleted (>${(noteDropPct.coerceAtLeast(taskDropPct) * 100).toInt()}% of local data). " +
+                        "Sync aborted for safety. An emergency snapshot was created."
+                    ))
+                }
+            }
 
             // 2. Process Cloud-to-Local (PULL SYNC)
             cloudItems.forEach { cloudItem ->
@@ -360,13 +446,14 @@ object SupabaseSyncEngine {
                             if (match.updatedAt > cloudItem.updatedAt) {
                                 // Note was edited locally after cloud deletion timestamp: revive item under fresh sync ID
                                 Log.w(TAG, "Note ${match.id} was edited locally after remote deletion. Reviving item.")
-                                unbindSyncId(context, userId, "NOTE", match.id, cloudItem.id)
+                                unbindSyncId(context, userId, "NOTE", match.id, cloudItem.id, performOrphanScan = false)
                             } else {
                                 val cleanNote = if (match.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(match)) {
                                     com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(match)
                                 } else {
                                     match
                                 }
+                                var hadRestoredCopy = false
                                 // If note was edited offline since last sync, preserve content as restored copy
                                 if (session.lastSyncedTime > 0L && match.updatedAt > session.lastSyncedTime) {
                                     var restoredCopy = cleanNote.copy(
@@ -377,12 +464,17 @@ object SupabaseSyncEngine {
                                     if (restoredCopy.isArchived) {
                                         restoredCopy = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(restoredCopy)
                                     }
-                                    noteDao.insertNote(restoredCopy)
+                                    val restoredId = noteDao.insertNote(restoredCopy)
+                                    // B2-P3-007: Mark this copy so the push phase does not re-sync it this cycle
+                                    if (restoredId > 0L) sameCycleConflictIds.add(restoredId)
+                                    hadRestoredCopy = true
                                     Log.w(TAG, "Preserved offline edit for remotely deleted note ${match.id} as restored copy.")
                                 }
-                                com.focusbyrj.app.data.note.NoteMediaManager.deleteNoteMediaFiles(cleanNote)
+                                if (!hadRestoredCopy) {
+                                    com.focusbyrj.app.data.note.NoteMediaManager.deleteNoteMediaFiles(cleanNote)
+                                }
                                 noteDao.deleteNote(match)
-                                unbindSyncId(context, userId, "NOTE", match.id, cloudItem.id)
+                                unbindSyncId(context, userId, "NOTE", match.id, cloudItem.id, performOrphanScan = false)
                                 downloaded++
                             }
                         }
@@ -394,22 +486,24 @@ object SupabaseSyncEngine {
                             taskDao.getAllTasksList().find { isMatchingItem(context, cloudItem.id, userId, "TASK", it.id) }
                         }
                         if (match != null) {
-                            val matchFingerprint = "${match.title}|${match.details}|${match.dueDate}|${match.isCompleted}|${match.type}|${match.recurrence}|${match.isPersistent}|${match.isPriority}|${match.isTrashed}|${match.trashedAt}|${match.subtasksJson}"
+                            val matchFingerprint = "${match.title}|${match.details}|${match.dueDate}|${match.isCompleted}|${match.type}|${match.recurrence}|${match.isPersistent}|${match.isPriority}|${match.isTrashed}|${match.trashedAt}|${match.deletedAt}|${match.subtasksJson}"
                             val localUpdatedAt = getOrUpdateTaskTimestamp(context, match.id, matchFingerprint, match.completedAt)
                             if (localUpdatedAt > cloudItem.updatedAt) {
                                 Log.w(TAG, "Task ${match.id} was edited locally after remote deletion. Reviving item.")
-                                unbindSyncId(context, userId, "TASK", match.id, cloudItem.id)
+                                unbindSyncId(context, userId, "TASK", match.id, cloudItem.id, performOrphanScan = false)
                             } else {
                                 if (session.lastSyncedTime > 0L && localUpdatedAt > session.lastSyncedTime) {
                                     val restoredCopy = match.copy(
                                         id = 0L,
                                         title = if (match.title.startsWith("[Restored]")) match.title else "[Restored] ${match.title.ifBlank { "Untitled Task" }}"
                                     )
-                                    taskDao.insertTask(restoredCopy)
+                                    val restoredId = taskDao.insertTask(restoredCopy)
+                                    // B2-P3-007: Mark restored task copy to skip push this cycle
+                                    if (restoredId > 0L) sameCycleConflictIds.add(restoredId)
                                     Log.w(TAG, "Preserved offline edit for remotely deleted task ${match.id} as restored copy.")
                                 }
                                 taskDao.deleteTask(match)
-                                unbindSyncId(context, userId, "TASK", match.id, cloudItem.id)
+                                unbindSyncId(context, userId, "TASK", match.id, cloudItem.id, performOrphanScan = false)
                                 val taskTsPrefs = context.getSharedPreferences(TASK_TIMESTAMPS_PREFS, Context.MODE_PRIVATE)
                                 taskTsPrefs.edit().remove("fp_${match.id}").remove("ts_${match.id}").apply()
                                 downloaded++
@@ -465,9 +559,7 @@ object SupabaseSyncEngine {
                                     } else {
                                         match
                                     }
-                                    val hasContentDiverged = cleanMatch.content != root.optString("content", "") ||
-                                            cleanMatch.title != root.optString("title", "") ||
-                                            cleanMatch.checklistJson != root.optString("checklistJson", "[]")
+                                    val hasContentDiverged = hasNoteContentDiverged(cleanMatch, root)
 
                                     if (hasContentDiverged) {
                                         // Both sides made offline edits. Preserve the local version as a distinct [Conflict] note
@@ -549,6 +641,7 @@ object SupabaseSyncEngine {
 
                                     val isTrashed = root.optBoolean("isTrashed", false)
                                     val trashedAt = if (root.has("trashedAt") && !root.isNull("trashedAt")) root.optLong("trashedAt").takeIf { it > 0L } else null
+                                    val deletedAt = if (root.has("deletedAt") && !root.isNull("deletedAt")) root.optLong("deletedAt").takeIf { it > 0L } else null
 
                                     var note = NoteEntity(
                                         id = match?.id ?: 0L,
@@ -562,6 +655,7 @@ object SupabaseSyncEngine {
                                         isArchived = root.optBoolean("isArchived", false),
                                         isTrashed = isTrashed,
                                         trashedAt = trashedAt,
+                                        deletedAt = deletedAt,
                                         labelsJson = root.optString("labelsJson", "[]"),
                                         imageUrisJson = JSONArray(localImagePaths).toString(),
                                         audioUrisJson = JSONArray(localAudioPaths).toString(),
@@ -593,7 +687,7 @@ object SupabaseSyncEngine {
                                 }
 
                                 val cloudUpdatedAt = cloudItem.updatedAt
-                                val matchFingerprint = match?.let { "${it.title}|${it.details}|${it.dueDate}|${it.isCompleted}|${it.type}|${it.recurrence}|${it.isPersistent}|${it.isPriority}|${it.isTrashed}|${it.trashedAt}|${it.subtasksJson}" } ?: ""
+                                val matchFingerprint = match?.let { "${it.title}|${it.details}|${it.dueDate}|${it.isCompleted}|${it.type}|${it.recurrence}|${it.isPersistent}|${it.isPriority}|${it.isTrashed}|${it.trashedAt}|${it.deletedAt}|${it.subtasksJson}" } ?: ""
                                 val localUpdatedAt = if (match != null) getOrUpdateTaskTimestamp(context, match.id, matchFingerprint, match.completedAt) else 0L
 
                                 val isTaskConcurrentConflict = match != null && session.lastSyncedTime > 0L &&
@@ -602,7 +696,11 @@ object SupabaseSyncEngine {
 
                                 if (isTaskConcurrentConflict) {
                                     val hasTaskDiverged = match!!.title != root.optString("title", "") ||
-                                            match.details != root.optString("details", "")
+                                            match.details != root.optString("details", "") ||
+                                            match.dueDate != (if (root.isNull("dueDate")) null else root.optLong("dueDate").takeIf { it > 0L }) ||
+                                            match.isCompleted != root.optBoolean("isCompleted", false) ||
+                                            match.subtasksJson != root.optString("subtasksJson", "[]") ||
+                                            match.isTrashed != root.optBoolean("isTrashed", false)
                                     if (hasTaskDiverged) {
                                         val conflictTask = match.copy(
                                             id = 0L,
@@ -618,6 +716,7 @@ object SupabaseSyncEngine {
                                     val recName = root.optString("recurrence", RecurrencePattern.NONE.name)
                                     val isTrashed = root.optBoolean("isTrashed", false)
                                     val trashedAt = if (root.has("trashedAt") && !root.isNull("trashedAt")) root.optLong("trashedAt").takeIf { it > 0L } else null
+                                    val deletedAt = if (root.has("deletedAt") && !root.isNull("deletedAt")) root.optLong("deletedAt").takeIf { it > 0L } else null
                                     val subtasksJson = root.optString("subtasksJson", "[]")
 
                                     val task = Task(
@@ -626,20 +725,21 @@ object SupabaseSyncEngine {
                                         details = root.optString("details", ""),
                                         dueDate = if (root.isNull("dueDate")) null else root.optLong("dueDate").takeIf { it > 0L },
                                         isCompleted = root.optBoolean("isCompleted", false),
-                                        type = try { TaskType.valueOf(typeName) } catch (e: Exception) { TaskType.TASK },
-                                        recurrence = try { RecurrencePattern.valueOf(recName) } catch (e: Exception) { RecurrencePattern.NONE },
+                                        type = try { TaskType.valueOf(typeName.trim().uppercase()) } catch (e: Exception) { TaskType.TASK },
+                                        recurrence = try { RecurrencePattern.valueOf(recName.trim().uppercase()) } catch (e: Exception) { RecurrencePattern.NONE },
                                         isPersistent = root.optBoolean("isPersistent", false),
                                         isPriority = root.optBoolean("isPriority", false),
                                         completedAt = if (root.isNull("completedAt")) null else root.optLong("completedAt").takeIf { it > 0L },
                                         updatedAt = cloudUpdatedAt,
                                         isTrashed = isTrashed,
                                         trashedAt = trashedAt,
+                                        deletedAt = deletedAt,
                                         subtasksJson = subtasksJson
                                     )
                                     val newTaskId = taskDao.insertTask(task)
                                     val finalTaskId = if (match != null) match.id else newTaskId
                                     bindSyncId(context, userId, "TASK", finalTaskId, cloudItem.id)
-                                    val newFingerprint = "${task.title}|${task.details}|${task.dueDate}|${task.isCompleted}|${task.type}|${task.recurrence}|${task.isPersistent}|${task.isPriority}|${task.isTrashed}|${task.trashedAt}|${task.subtasksJson}"
+                                    val newFingerprint = "${task.title}|${task.details}|${task.dueDate}|${task.isCompleted}|${task.type}|${task.recurrence}|${task.isPersistent}|${task.isPriority}|${task.isTrashed}|${task.trashedAt}|${task.deletedAt}|${task.subtasksJson}"
                                     recordTaskTimestamp(context, finalTaskId, newFingerprint, cloudUpdatedAt)
                                     downloaded++
                                 } else {
@@ -661,6 +761,10 @@ object SupabaseSyncEngine {
 
             val localNotes = noteDao.getAllNotesList()
             localNotes.forEach { rawNote ->
+                // B2-P3-007: Skip notes inserted during this pull phase ([Conflict]/[Restored] copies)
+                // to prevent them from being immediately re-synced as NEW items, which would trigger
+                // recursive duplication across other devices on the next sync cycle.
+                if (rawNote.id in sameCycleConflictIds) return@forEach
                 // Decrypt archived vault notes so cloud receives clean payload instead of local subkey ciphertext
                 val note = if (rawNote.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
                     com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(rawNote)
@@ -806,6 +910,7 @@ object SupabaseSyncEngine {
                         put("isArchived", note.isArchived)
                         put("isTrashed", note.isTrashed)
                         put("trashedAt", note.trashedAt ?: JSONObject.NULL)
+                        put("deletedAt", note.deletedAt ?: JSONObject.NULL)
                         put("labelsJson", note.labelsJson)
                         put("imageUrisJson", JSONArray(cloudImagePaths).toString())
                         put("audioUrisJson", JSONArray(cloudAudioPaths).toString())
@@ -851,12 +956,14 @@ object SupabaseSyncEngine {
 
             val localTasks = taskDao.getAllTasksList()
             localTasks.forEach { task ->
+                // B2-P3-007: Skip tasks inserted during this pull phase ([Restored] copies)
+                if (task.id in sameCycleConflictIds) return@forEach
                 val syncId = getOrCreateSyncId(context, userId, "TASK", task.id)
                 val legacySyncId = if (userId.isNotBlank()) UUID.nameUUIDFromBytes("$userId:TASK:${task.id}".toByteArray(Charsets.UTF_8)).toString() else ""
                 val legacyUnscoped = UUID.nameUUIDFromBytes("TASK:${task.id}".toByteArray(Charsets.UTF_8)).toString()
                 val cloudMatch = cloudItemMap[syncId] ?: (if (legacySyncId.isNotBlank()) cloudItemMap[legacySyncId] else null) ?: cloudItemMap[legacyUnscoped]
 
-                val taskFingerprint = "${task.title}|${task.details}|${task.dueDate}|${task.isCompleted}|${task.type}|${task.recurrence}|${task.isPersistent}|${task.isPriority}|${task.isTrashed}|${task.trashedAt}|${task.subtasksJson}"
+                val taskFingerprint = "${task.title}|${task.details}|${task.dueDate}|${task.isCompleted}|${task.type}|${task.recurrence}|${task.isPersistent}|${task.isPriority}|${task.isTrashed}|${task.trashedAt}|${task.deletedAt}|${task.subtasksJson}"
                 val localUpdatedAt = getOrUpdateTaskTimestamp(context, task.id, taskFingerprint, task.completedAt)
                 if (cloudMatch == null || localUpdatedAt > cloudMatch.updatedAt) {
                     // Embed 'type' INSIDE the encrypted JSON — Supabase column receives 'OPAQUE'
@@ -873,6 +980,7 @@ object SupabaseSyncEngine {
                         put("completedAt", task.completedAt ?: JSONObject.NULL)
                         put("isTrashed", task.isTrashed)
                         put("trashedAt", task.trashedAt ?: JSONObject.NULL)
+                        put("deletedAt", task.deletedAt ?: JSONObject.NULL)
                         put("subtasksJson", task.subtasksJson)
                     }
 
@@ -966,21 +1074,26 @@ object SupabaseSyncEngine {
             }
 
             if (successfullySyncedDeletions.isNotEmpty()) {
-                val updatedDeletions = pendingDeletions.toMutableSet()
-                updatedDeletions.removeAll(successfullySyncedDeletions)
-                deletionPrefs.edit().putStringSet("pending_deletions", updatedDeletions).commit()
+                // B2-P3-012 FIX: Re-read the current set before writing back to pick up any
+                // new deletion entries added concurrently by the UI thread during this sync cycle.
+                // This prevents a read-modify-write race that would silently drop concurrent additions.
+                val currentDeletions = deletionPrefs.getStringSet("pending_deletions", emptySet())?.toMutableSet() ?: mutableSetOf()
+                currentDeletions.removeAll(successfullySyncedDeletions)
+                deletionPrefs.edit().putStringSet("pending_deletions", currentDeletions).commit()
             }
 
             // 4.1 Process Pending Media Deletions (Photos & Audio Memos in Supabase Storage)
-            val pendingMedia = SupabaseStorageEngine.getPendingMediaDeletions(context)
+            val pendingMedia = SupabaseStorageEngine.getPendingMediaDeletions(context, userId)
             if (pendingMedia.isNotEmpty() && userId.isNotBlank()) {
                 val cloudPathsToDelete = pendingMedia.map { fileName ->
                     if (fileName.contains("/")) fileName else "$userId/$fileName"
-                }
-                val mediaDeleteSuccess = SupabaseStorageEngine.deleteMediaBatch(cloudPathsToDelete, currentToken)
-                if (mediaDeleteSuccess) {
-                    SupabaseStorageEngine.clearPendingMediaDeletions(context, pendingMedia)
-                    Log.d(TAG, "Successfully purged ${pendingMedia.size} deleted media attachments from Supabase Storage.")
+                }.filter { it.startsWith("$userId/") }
+                if (cloudPathsToDelete.isNotEmpty()) {
+                    val mediaDeleteSuccess = SupabaseStorageEngine.deleteMediaBatch(cloudPathsToDelete, currentToken)
+                    if (mediaDeleteSuccess) {
+                        SupabaseStorageEngine.clearPendingMediaDeletions(context, pendingMedia, userId)
+                        Log.d(TAG, "Successfully purged ${pendingMedia.size} deleted media attachments from Supabase Storage.")
+                    }
                 }
             }
 
@@ -999,7 +1112,8 @@ object SupabaseSyncEngine {
                         "post-sync notes=$postSyncNoteCount tasks=$postSyncTaskCount. " +
                         "Drop exceeds 40% threshold — aborting sync result and rolling back lastSyncedTime.")
                 // Capture emergency pre-op snapshot before aborting so user never loses state
-                com.focusbyrj.app.util.backup.DataSafetyManager.writeEmergencySnapshot(context, noteDao)
+                val emergencyFocusDb = (context.applicationContext as? com.focusbyrj.app.FocusApplication)?.database
+                com.focusbyrj.app.util.backup.DataSafetyManager.writeEmergencySnapshot(context, noteDao, emergencyFocusDb)
                 // Roll back lastSyncedTime so the next sync re-evaluates from the previous safe baseline
                 SupabaseKeyManager.setLastSyncedTime(context, session.lastSyncedTime)
                 return@withContext Result.failure(
@@ -1072,7 +1186,7 @@ object SupabaseSyncEngine {
 
             // If 401 or 403 due to expired token, try refreshing once
             if (errMsg.contains("401") || errMsg.contains("403") || errMsg.contains("expired")) {
-                val refreshedToken = SupabaseAuthManager.refreshSession(context).getOrNull()
+                val refreshedToken = SupabaseAuthManager.refreshSession(context, force = true).getOrNull()
                 if (refreshedToken != null) {
                     token = refreshedToken
                     val retryResult = queryCloudEndpoint(endpoint, typeCol, token)
@@ -1208,7 +1322,7 @@ object SupabaseSyncEngine {
         if (success) return true
 
         // Try token refresh if unauthorized/forbidden
-        val refreshed = SupabaseAuthManager.refreshSession(context).getOrNull()
+        val refreshed = SupabaseAuthManager.refreshSession(context, force = true).getOrNull()
         if (refreshed != null) {
             token = refreshed
             success = executeUpload(endpoint, token, body)

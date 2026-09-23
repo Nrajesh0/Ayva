@@ -215,6 +215,9 @@ object SupabaseStorageEngine {
         val endpointUrl = "${SupabaseConfig.STORAGE_OBJECT_URL}/authenticated/${SupabaseConfig.STORAGE_BUCKET}/$normalizedCloudPath"
         val fallbackUrl = "${SupabaseConfig.STORAGE_OBJECT_URL}/${SupabaseConfig.STORAGE_BUCKET}/$normalizedCloudPath"
 
+        // B2-P3-006 FIX: Use a chunked 8 KB buffered read instead of readBytes() to prevent OOM.
+        // readBytes() allocates one contiguous array equal to the full file size; for large
+        // encrypted media (high-res photos, long audio) this caused heap spikes on constrained devices.
         fun attemptDownload(urlStr: String): ByteArray? {
             var conn: HttpURLConnection? = null
             return try {
@@ -227,7 +230,15 @@ object SupabaseStorageEngine {
                     setRequestProperty("Authorization", "Bearer $accessToken")
                 }
                 if (conn.responseCode in 200..299) {
-                    conn.inputStream.use { it.readBytes() }
+                    val baos = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(8 * 1024)
+                    conn.inputStream.use { input ->
+                        var n: Int
+                        while (input.read(buf).also { n = it } != -1) {
+                            baos.write(buf, 0, n)
+                        }
+                    }
+                    baos.toByteArray()
                 } else {
                     null
                 }
@@ -290,6 +301,10 @@ object SupabaseStorageEngine {
     private const val MEDIA_DELETIONS_PREFS = "focus_supabase_media_deletions"
     private const val KEY_PENDING_MEDIA = "pending_media_deletions"
 
+    private fun getPendingMediaKey(userId: String?): String {
+        return if (!userId.isNullOrBlank()) "pending_media_$userId" else KEY_PENDING_MEDIA
+    }
+
     /**
      * Records a deleted media file path or cloud reference into the pending queue for cloud storage cleanup.
      * Resolves local paths to their anonymized cloud path ("$userId/$uuid.enc") to prevent storage leakage.
@@ -323,10 +338,11 @@ object SupabaseStorageEngine {
             else -> cleanName
         }
 
+        val key = getPendingMediaKey(userId)
         val prefs = context.getSharedPreferences(MEDIA_DELETIONS_PREFS, Context.MODE_PRIVATE)
-        val current = prefs.getStringSet(KEY_PENDING_MEDIA, emptySet()) ?: emptySet()
+        val current = prefs.getStringSet(key, emptySet()) ?: emptySet()
         val updated = current.toMutableSet().apply { add(cloudPath) }
-        prefs.edit().putStringSet(KEY_PENDING_MEDIA, updated).commit()
+        prefs.edit().putStringSet(key, updated).commit()
     }
 
     /**
@@ -348,22 +364,43 @@ object SupabaseStorageEngine {
     }
 
     /**
-     * Retrieves all media file names pending deletion from Supabase Storage.
+     * Retrieves all media file names pending deletion from Supabase Storage for the active user.
      */
-    fun getPendingMediaDeletions(context: Context): Set<String> {
+    fun getPendingMediaDeletions(context: Context, userId: String? = null): Set<String> {
+        val targetUserId = userId ?: SupabaseKeyManager.getSessionState(context).userId ?: ""
         val prefs = context.getSharedPreferences(MEDIA_DELETIONS_PREFS, Context.MODE_PRIVATE)
-        return prefs.getStringSet(KEY_PENDING_MEDIA, emptySet()) ?: emptySet()
+        val userDeletions = if (targetUserId.isNotBlank()) {
+            prefs.getStringSet(getPendingMediaKey(targetUserId), emptySet()) ?: emptySet()
+        } else {
+            emptySet()
+        }
+        val legacyDeletions = prefs.getStringSet(KEY_PENDING_MEDIA, emptySet()) ?: emptySet()
+        val filteredLegacy = if (targetUserId.isNotBlank()) {
+            legacyDeletions.filter { it.startsWith("$targetUserId/") || !it.contains("/") }
+        } else {
+            legacyDeletions
+        }
+        return (userDeletions + filteredLegacy).toSet()
     }
 
     /**
      * Clears successfully deleted media files from the pending deletion queue.
      */
-    fun clearPendingMediaDeletions(context: Context, successfullyDeleted: Set<String>) {
+    fun clearPendingMediaDeletions(context: Context, successfullyDeleted: Set<String>, userId: String? = null) {
         if (successfullyDeleted.isEmpty()) return
+        val targetUserId = userId ?: SupabaseKeyManager.getSessionState(context).userId ?: ""
         val prefs = context.getSharedPreferences(MEDIA_DELETIONS_PREFS, Context.MODE_PRIVATE)
-        val current = prefs.getStringSet(KEY_PENDING_MEDIA, emptySet()) ?: emptySet()
-        val updated = current.toMutableSet().apply { removeAll(successfullyDeleted) }
-        prefs.edit().putStringSet(KEY_PENDING_MEDIA, updated).commit()
+        if (targetUserId.isNotBlank()) {
+            val key = getPendingMediaKey(targetUserId)
+            val current = prefs.getStringSet(key, emptySet()) ?: emptySet()
+            val updated = current.toMutableSet().apply { removeAll(successfullyDeleted) }
+            prefs.edit().putStringSet(key, updated).commit()
+        }
+        val legacy = prefs.getStringSet(KEY_PENDING_MEDIA, emptySet()) ?: emptySet()
+        if (legacy.isNotEmpty()) {
+            val updatedLegacy = legacy.toMutableSet().apply { removeAll(successfullyDeleted) }
+            prefs.edit().putStringSet(KEY_PENDING_MEDIA, updatedLegacy).commit()
+        }
     }
 
     /**

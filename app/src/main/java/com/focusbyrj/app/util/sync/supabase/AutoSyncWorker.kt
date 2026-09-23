@@ -33,8 +33,8 @@ class AutoSyncWorker(
 
         // Verify user is authenticated and auto-sync is enabled
         val session = SupabaseKeyManager.getSessionState(app)
-        if (!session.isSignedIn || !AutoSyncManager.isAutoSyncEnabled(app)) {
-            Log.d(TAG, "Skipping WorkManager sync: user not signed in or auto-sync disabled")
+        if (!session.isSignedIn || session.isOfflineMode || !AutoSyncManager.isAutoSyncEnabled(app)) {
+            Log.d(TAG, "Skipping WorkManager sync: user not signed in, offline mode active, or auto-sync disabled")
             return@withContext Result.success()
         }
 

@@ -318,10 +318,15 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val notes = displayedNotes.value.filter { it.id in ids }
         viewModelScope.launch(Dispatchers.IO) {
             notes.forEach { note ->
-                com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), note)
-                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
-                deleteNoteMediaFiles(note)
-                repository.deletePermanently(note)
+                val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                    com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
+                } else {
+                    note
+                }
+                com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), targetNote)
+                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", targetNote.id)
+                deleteNoteMediaFiles(targetNote)
+                repository.deletePermanently(targetNote)
             }
             triggerAutoSync()
         }

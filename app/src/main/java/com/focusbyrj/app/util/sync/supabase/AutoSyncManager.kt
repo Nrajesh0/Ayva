@@ -49,8 +49,12 @@ object AutoSyncManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var debouncedJob: Job? = null
     private val isInitialized = AtomicBoolean(false)
+    // B2-P3-011: Store references so the network callback can be unregistered in shutdown()
+    @Volatile private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    @Volatile private var connectivityManager: ConnectivityManager? = null
     @Volatile
-    private var lastSyncCompletedTime: Long = 0L
+    @androidx.annotation.VisibleForTesting
+    internal var lastSyncCompletedTime: Long = 0L
 
     /**
      * Initializes background sync listeners:
@@ -100,12 +104,16 @@ object AutoSyncManager {
                     val request = NetworkRequest.Builder()
                         .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                         .build()
-                    cm.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
+                    // B2-P3-011 FIX: Store callback reference for later unregistration in shutdown()
+                    val callback = object : ConnectivityManager.NetworkCallback() {
                         override fun onAvailable(network: Network) {
                             Log.d(TAG, "Network restored. Checking stale sync...")
                             checkAndSyncIfStale(application, staleThresholdMs = 30_000L)
                         }
-                    })
+                    }
+                    connectivityManager = cm
+                    networkCallback = callback
+                    cm.registerNetworkCallback(request, callback)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Could not register network callback for auto-sync", e)
@@ -208,6 +216,28 @@ object AutoSyncManager {
     }
 
     /**
+     * B2-P3-011 FIX: Unregisters the network connectivity callback and cancels the coroutine scope.
+     * Call this from Application.onTerminate() or when the user signs out to prevent the system
+     * from holding a permanent reference to the NetworkCallback after this object is no longer needed.
+     */
+    fun shutdown() {
+        try {
+            val cb = networkCallback
+            val cm = connectivityManager
+            if (cb != null && cm != null) {
+                cm.unregisterNetworkCallback(cb)
+                networkCallback = null
+                connectivityManager = null
+                Log.d(TAG, "Network callback unregistered")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to unregister network callback", e)
+        }
+        debouncedJob?.cancel()
+        _syncState.value = SyncState.Idle
+    }
+
+    /**
      * Executes immediate sync (e.g. on Pull-to-refresh or "Sync Now" tap).
      */
     fun triggerImmediateSync(context: Context, onComplete: ((Result<SupabaseSyncEngine.SyncResult>) -> Unit)? = null) {
@@ -216,6 +246,14 @@ object AutoSyncManager {
                 debouncedJob?.cancel()
             } else {
                 debouncedJob?.join()
+                if (System.currentTimeMillis() - lastSyncCompletedTime < 5000L) {
+                    val lastSuccessMsg = (_syncState.value as? SyncState.Success)?.message ?: "Cloud sync up to date."
+                    val cachedResult = Result.success(SupabaseSyncEngine.SyncResult(true, 0, 0, lastSuccessMsg))
+                    withContext(Dispatchers.Main) {
+                        onComplete?.invoke(cachedResult)
+                    }
+                    return@launch
+                }
             }
             val result = performAutoSync(context.applicationContext, isManual = true)
             withContext(Dispatchers.Main) {
@@ -264,8 +302,8 @@ object AutoSyncManager {
             }
 
             val syncResult = SupabaseSyncEngine.performSync(appContext, noteDao, taskDao)
-            lastSyncCompletedTime = System.currentTimeMillis()
             syncResult.onSuccess { res ->
+                lastSyncCompletedTime = System.currentTimeMillis()
                 _syncState.value = SyncState.Success(res.message, System.currentTimeMillis())
                 Log.d(TAG, "Auto-sync successful: ${res.message}")
                 try {

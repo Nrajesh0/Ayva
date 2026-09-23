@@ -177,7 +177,7 @@ class SyncAndConflictResolutionTest {
             explicitUserId = userId
         )
 
-        val pending = com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.getPendingMediaDeletions(context)
+        val pending = com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.getPendingMediaDeletions(context, userId = userId)
         val expectedCloudPath = "$userId/63f1000c-f1bf-443f-a653-9da56fd83982.enc"
         assertTrue(
             "Pending deletion should contain sanitized cloud path '$expectedCloudPath', but had: $pending",

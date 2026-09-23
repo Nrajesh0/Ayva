@@ -261,12 +261,12 @@ fun DeviceSyncScreen(
 
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFF2E7D32).copy(alpha = 0.12f)
+                                    color = if (sessionState.isOfflineMode) Color(0xFFE65100).copy(alpha = 0.12f) else Color(0xFF2E7D32).copy(alpha = 0.12f)
                                 ) {
                                     Text(
-                                        text = "Active",
+                                        text = if (sessionState.isOfflineMode) "Offline" else "Active",
                                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = Color(0xFF2E7D32),
+                                        color = if (sessionState.isOfflineMode) Color(0xFFE65100) else Color(0xFF2E7D32),
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
@@ -364,6 +364,34 @@ fun DeviceSyncScreen(
                                         }
                                     )
                                 }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Offline Mode",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Suspend cloud sync and keep changes strictly on this device",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+                                Switch(
+                                    checked = sessionState.isOfflineMode,
+                                    onCheckedChange = { enabled ->
+                                        SupabaseKeyManager.setOfflineMode(context, enabled)
+                                        refreshState()
+                                    },
+                                    modifier = Modifier.testTag("switch_offline_mode")
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(14.dp))

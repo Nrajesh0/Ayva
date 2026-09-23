@@ -84,6 +84,8 @@ object VaultSyncManager {
                 put("isPinned", note.isPinned)
                 put("isArchived", note.isArchived)
                 put("isTrashed", note.isTrashed)
+                put("trashedAt", note.trashedAt ?: JSONObject.NULL)
+                put("deletedAt", note.deletedAt ?: JSONObject.NULL)
                 put("labelsJson", note.labelsJson)
                 put("imageUrisJson", note.imageUrisJson)
                 put("audioUrisJson", note.audioUrisJson)
@@ -107,6 +109,9 @@ object VaultSyncManager {
                 put("isPersistent", task.isPersistent)
                 put("isPriority", task.isPriority)
                 put("completedAt", task.completedAt ?: JSONObject.NULL)
+                put("isTrashed", task.isTrashed)
+                put("trashedAt", task.trashedAt ?: JSONObject.NULL)
+                put("deletedAt", task.deletedAt ?: JSONObject.NULL)
                 put("subtasksJson", task.subtasksJson)
             }
             tasksArray.put(tObj)
@@ -138,11 +143,31 @@ object VaultSyncManager {
             if (!mergeMode) {
                 noteDao.deleteAllNotes()
                 taskDao.deleteAllTasks()
+                if (context != null) {
+                    val session = com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager.getSessionState(context)
+                    val userId = session.userId ?: ""
+                    if (userId.isNotBlank()) {
+                        val syncPrefs = context.getSharedPreferences("focus_supabase_sync_id_mapping", Context.MODE_PRIVATE)
+                        val editor = syncPrefs.edit()
+                        for (k in syncPrefs.all.keys) {
+                            if (k.startsWith("$userId:")) {
+                                editor.remove(k)
+                            }
+                        }
+                        editor.commit()
+
+                        val tsPrefs = context.getSharedPreferences("focus_task_sync_timestamps", Context.MODE_PRIVATE)
+                        tsPrefs.edit().clear().commit()
+                    }
+                }
             }
 
             // Restore Notes
             for (i in 0 until notesArray.length()) {
                 val nObj = notesArray.getJSONObject(i)
+                val isTrashed = nObj.optBoolean("isTrashed", false)
+                val trashedAt = if (nObj.has("trashedAt") && !nObj.isNull("trashedAt")) nObj.optLong("trashedAt").takeIf { it > 0L } else null
+                val deletedAt = if (nObj.has("deletedAt") && !nObj.isNull("deletedAt")) nObj.optLong("deletedAt").takeIf { it > 0L } else null
                 var note = NoteEntity(
                     id = if (mergeMode) 0L else nObj.optLong("id", 0L),
                     title = nObj.optString("title", ""),
@@ -153,7 +178,9 @@ object VaultSyncManager {
                     fontKey = nObj.optString("fontKey", "default"),
                     isPinned = nObj.optBoolean("isPinned", false),
                     isArchived = nObj.optBoolean("isArchived", false),
-                    isTrashed = nObj.optBoolean("isTrashed", false),
+                    isTrashed = isTrashed,
+                    trashedAt = trashedAt,
+                    deletedAt = deletedAt,
                     labelsJson = nObj.optString("labelsJson", "[]"),
                     imageUrisJson = nObj.optString("imageUrisJson", "[]"),
                     audioUrisJson = nObj.optString("audioUrisJson", "[]"),
@@ -172,6 +199,9 @@ object VaultSyncManager {
                 val tObj = tasksArray.getJSONObject(i)
                 val typeName = tObj.optString("type", TaskType.TASK.name)
                 val recName = tObj.optString("recurrence", RecurrencePattern.NONE.name)
+                val isTrashed = tObj.optBoolean("isTrashed", false)
+                val trashedAt = if (tObj.has("trashedAt") && !tObj.isNull("trashedAt")) tObj.optLong("trashedAt").takeIf { it > 0L } else null
+                val deletedAt = if (tObj.has("deletedAt") && !tObj.isNull("deletedAt")) tObj.optLong("deletedAt").takeIf { it > 0L } else null
 
                 val task = Task(
                     id = if (mergeMode) 0L else tObj.optLong("id", 0L),
@@ -179,11 +209,14 @@ object VaultSyncManager {
                     details = tObj.optString("details", ""),
                     dueDate = if (tObj.isNull("dueDate")) null else tObj.optLong("dueDate").takeIf { it > 0L },
                     isCompleted = tObj.optBoolean("isCompleted", false),
-                    type = try { TaskType.valueOf(typeName) } catch (_: Exception) { TaskType.TASK },
-                    recurrence = try { RecurrencePattern.valueOf(recName) } catch (_: Exception) { RecurrencePattern.NONE },
+                    type = TaskType.values().firstOrNull { it.name.equals(typeName, ignoreCase = true) } ?: TaskType.TASK,
+                    recurrence = RecurrencePattern.values().firstOrNull { it.name.equals(recName, ignoreCase = true) } ?: RecurrencePattern.NONE,
                     isPersistent = tObj.optBoolean("isPersistent", false),
                     isPriority = tObj.optBoolean("isPriority", false),
                     completedAt = if (tObj.isNull("completedAt")) null else tObj.optLong("completedAt").takeIf { it > 0L },
+                    isTrashed = isTrashed,
+                    trashedAt = trashedAt,
+                    deletedAt = deletedAt,
                     subtasksJson = tObj.optString("subtasksJson", "[]")
                 )
                 taskDao.insertTask(task)

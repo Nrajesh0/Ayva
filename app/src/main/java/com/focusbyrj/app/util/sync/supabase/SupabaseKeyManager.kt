@@ -91,6 +91,9 @@ object SupabaseKeyManager {
     private const val KEY_USER_SALT = "user_vault_salt_b64"
     private const val KEY_OFFLINE_MODE = "is_offline_mode"
     private const val KEY_LAST_SYNCED_TIME = "last_synced_time"
+    // B2-P3-001: Dedicated legacy key for sandbox-plaintext HMAC storage.
+    // Distinct from KEY_HMAC_KEY_CIPHERTEXT to eliminate naming ambiguity.
+    private const val KEY_HMAC_KEY_BASE64_LEGACY = "hmac_key_b64_plain"
 
     // HKDF domain separation info strings — one per derived key purpose
     private const val HKDF_INFO_AUTH = "ayva_auth_v1"
@@ -188,45 +191,59 @@ object SupabaseKeyManager {
      *
      * Algorithm: Argon2id (m=32MB, t=3, p=1) → 32-byte master key → HKDF-RFC5869 fan-out.
      *
-     * The [customSalt] parameter is used when re-deriving keys after sign-in to ensure
-     * the same salt is used that was recorded at sign-up time (fetched from Supabase metadata).
-     * If null, a fresh 16-byte cryptographic salt is generated (sign-up flow).
+     * [customSalt]: Replaces the deterministic email-based salt entirely (legacy compat path).
+     *              If null, the deterministic SHA-256(email) salt is used.
      *
-     * REMOVED: PBKDF2-100K + SHA-256 split (was GPU-crackable; hash of MasterKey with
-     *          a constant suffix offers zero additional hardness beyond PBKDF2 itself).
+     * [vaultSalt]: B2-P3-002 — A per-account random 32-byte value mixed ONLY into the DEK and
+     *              HMAC HKDF info strings. Auth password is intentionally left deterministic so
+     *              the user can re-authenticate after app reinstall without server round-trips.
+     *              For legacy accounts (no vault_salt stored), passing null preserves old keys.
+     *              For new accounts, pass a random 32-byte vaultSalt generated at sign-up.
      */
     fun deriveKeys(
         email: String,
         masterPassword: CharArray,
-        customSalt: ByteArray? = null
+        customSalt: ByteArray? = null,
+        vaultSalt: ByteArray? = null
     ): DerivedKeys {
         val normalizedEmail = email.trim().lowercase(Locale.ROOT)
 
-        // Deterministic per-user salt derived from email (unique per account, reproducible on sign-in)
-        // or customSalt if explicitly provided.
+        // Deterministic per-user salt derived from email, or customSalt if explicitly provided.
         val salt = customSalt ?: java.security.MessageDigest.getInstance("SHA-256")
             .digest("ayva_master_salt_v1:$normalizedEmail".toByteArray(StandardCharsets.UTF_8))
 
         // Argon2id master key derivation (memory-hard, GPU/ASIC resistant)
+        val passwordCopy = masterPassword.copyOf()
         val masterKey = try {
             Argon2idKdf.deriveKey(
-                password = masterPassword,
+                password = passwordCopy,
                 salt = salt,
                 params = Argon2idKdf.Parameters.LOGIN
             )
         } finally {
-            Arrays.fill(masterPassword, '\u0000')
+            Arrays.fill(passwordCopy, '\u0000')
         }
 
         return try {
-            // HKDF domain separation: three independent subkeys from one master key
+            // Auth password: ALWAYS derived from deterministic HKDF info — never includes vaultSalt.
+            // This ensures signIn works correctly even after app reinstall (no vault_salt in local prefs).
             val authTokenBytes = HkdfUtil.deriveKey(masterKey, HKDF_INFO_AUTH, length = 32)
-            val userKey = HkdfUtil.deriveKey(masterKey, HKDF_INFO_VAULT, length = 32)
-            val hmacKey = HkdfUtil.deriveKey(masterKey, HKDF_INFO_HMAC, length = 32)
 
-            // Encode authToken as Base64 for use as Supabase password string
+            // DEK + HMAC: B2-P3-002 — If a per-account vaultSalt is supplied, append it (Base64) to
+            // the HKDF info string. This makes DEK/HMAC unique per account with the same email+password,
+            // defeating pre-computed dictionary attack while requiring only ONE Argon2id call.
+            // Legacy accounts (vaultSalt == null) use the unchanged HKDF info strings → same old keys.
+            val dekInfo = if (vaultSalt != null && vaultSalt.isNotEmpty()) {
+                "$HKDF_INFO_VAULT:${Base64.encodeToString(vaultSalt, Base64.NO_WRAP)}"
+            } else HKDF_INFO_VAULT
+            val hmacInfo = if (vaultSalt != null && vaultSalt.isNotEmpty()) {
+                "$HKDF_INFO_HMAC:${Base64.encodeToString(vaultSalt, Base64.NO_WRAP)}"
+            } else HKDF_INFO_HMAC
+
+            val userKey = HkdfUtil.deriveKey(masterKey, dekInfo, length = 32)
+            val hmacKey = HkdfUtil.deriveKey(masterKey, hmacInfo, length = 32)
+
             val authPassword = Base64.encodeToString(authTokenBytes, Base64.NO_WRAP)
-
             Arrays.fill(authTokenBytes, 0.toByte())
 
             DerivedKeys(
@@ -283,8 +300,12 @@ object SupabaseKeyManager {
                 apply()
             }
         } catch (e: Exception) {
-            // Fallback: private sandbox storage (still protected by Android app sandbox, no hardware)
-            Log.e(TAG, "KeyStore encryption failed, falling back to sandbox storage", e)
+            if (e is SecurityException) throw e
+            // B2-P3-001 FIX: Fallback plaintext sandbox storage.
+            // HMAC key is stored in KEY_HMAC_KEY_BASE64_LEGACY (distinct field from the encrypted path)
+            // to eliminate naming ambiguity and prevent future misread as hardware-encrypted ciphertext.
+            Log.w(TAG, "SECURITY: KeyStore unavailable — DEK and HMAC key stored in plaintext " +
+                "app-private SharedPreferences. Hardware attestation is not available on this device configuration.")
             prefs.edit().apply {
                 putString(KEY_USER_ID, userId)
                 putString(KEY_USER_EMAIL, email.trim().lowercase(Locale.ROOT))
@@ -294,8 +315,10 @@ object SupabaseKeyManager {
                 remove(KEY_DATA_KEY_CIPHERTEXT)
                 remove(KEY_DATA_KEY_IV)
                 putString(KEY_DATA_KEY_BASE64_LEGACY, Base64.encodeToString(dataEncryptionKey, Base64.NO_WRAP))
-                putString(KEY_HMAC_KEY_CIPHERTEXT, Base64.encodeToString(hmacKey, Base64.NO_WRAP))
-                putString(KEY_HMAC_KEY_IV, "SANDBOX_PLAIN")
+                // Use dedicated legacy key for HMAC plaintext (clear any stale ciphertext fields)
+                putString(KEY_HMAC_KEY_BASE64_LEGACY, Base64.encodeToString(hmacKey, Base64.NO_WRAP))
+                remove(KEY_HMAC_KEY_CIPHERTEXT)
+                remove(KEY_HMAC_KEY_IV)
                 if (userSalt != null) putString(KEY_USER_SALT, Base64.encodeToString(userSalt, Base64.NO_WRAP))
                 putBoolean(KEY_OFFLINE_MODE, false)
                 apply()
@@ -351,8 +374,16 @@ object SupabaseKeyManager {
      */
     fun getHmacKey(context: Context): ByteArray? {
         val prefs = getPrefs(context)
+
+        // B2-P3-001 FIX: Check dedicated plaintext legacy key first (new sandbox fallback path)
+        val legacyPlain = prefs.getString(KEY_HMAC_KEY_BASE64_LEGACY, null)
+        if (legacyPlain != null) {
+            return try { Base64.decode(legacyPlain, Base64.NO_WRAP) } catch (_: Exception) { null }
+        }
+
         val encKeyB64 = prefs.getString(KEY_HMAC_KEY_CIPHERTEXT, null) ?: return null
         val ivB64 = prefs.getString(KEY_HMAC_KEY_IV, null) ?: return null
+        // Legacy sessions from before B2-P3-001 fix used SANDBOX_PLAIN sentinel on KEY_HMAC_KEY_IV
         if (ivB64 == "SANDBOX_PLAIN") {
             return try { Base64.decode(encKeyB64, Base64.NO_WRAP) } catch (_: Exception) { null }
         }
@@ -433,11 +464,16 @@ object SupabaseKeyManager {
      * @return The new (post-increment) sequence number to use in this push.
      */
     fun nextSequenceNumber(context: Context, itemId: String): Long {
+        // B2-P3-008 FIX: Use synchronous .commit() to prevent concurrent callers from reading
+        // the same 'current' value before the write completes, which would produce duplicate
+        // sequence numbers and break HMAC replay prevention.
         val prefs = context.getSharedPreferences(SEQ_PREFS_NAME, Context.MODE_PRIVATE)
-        val current = prefs.getLong(itemId, 0L)
-        val next = current + 1L
-        prefs.edit().putLong(itemId, next).apply()
-        return next
+        synchronized(prefs) {
+            val current = prefs.getLong(itemId, 0L)
+            val next = current + 1L
+            prefs.edit().putLong(itemId, next).commit()
+            return next
+        }
     }
 
     /**
@@ -508,7 +544,7 @@ object SupabaseKeyManager {
 
     fun isTokenExpiring(context: Context): Boolean {
         val expiresAt = getPrefs(context).getLong(KEY_EXPIRES_AT, 0L)
-        if (expiresAt == 0L) return false
+        if (expiresAt <= 0L) return true
         return System.currentTimeMillis() >= (expiresAt - 120_000L)
     }
 
