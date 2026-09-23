@@ -331,6 +331,71 @@ class Batch1SecurityAuditTest {
         kotlinx.coroutines.runBlocking { noteDb.noteDao().deleteAllNotes() }
         ArchiveVaultSecurity.lockVault()
     }
+
+    // B1-F-020: getActiveVaultSubKey must return a defensive clone to prevent in-place zeroization of the master subkey
+    @Test
+    fun getActiveVaultSubKeyDefensiveCopyPreventsExternalMutation() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val pin = "112233"
+        ArchiveVaultSecurity.setPasscode(context, pin)
+
+        val subKey1 = ArchiveVaultSecurity.getActiveVaultSubKey()
+        assertNotNull("Subkey must be present after setPasscode", subKey1)
+        val snapshot = subKey1!!.clone()
+
+        // External caller zeroes their local copy for memory hygiene
+        java.util.Arrays.fill(subKey1, 0.toByte())
+
+        // Master subkey in ArchiveVaultSecurity must remain intact
+        val subKey2 = ArchiveVaultSecurity.getActiveVaultSubKey()
+        assertNotNull(subKey2)
+        assertArrayEquals("B1-F-020: getActiveVaultSubKey must return a defensive copy so zeroing caller copy does not corrupt the cached subkey",
+            snapshot, subKey2)
+
+        ArchiveVaultSecurity.lockVault()
+    }
+
+    // B1-F-021: getTrashedNotesSync must decrypt vault-encrypted notes so media cleanup & UI see plaintext metadata
+    @Test
+    fun getTrashedNotesSyncDecryptsVaultNotes() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val noteDb = com.focusbyrj.app.data.note.NoteDatabase.getInstance(context)
+        val repo = com.focusbyrj.app.data.note.NoteRepository(noteDb.noteDao())
+        kotlinx.coroutines.runBlocking { noteDb.noteDao().deleteAllNotes() }
+
+        val pin = "223344"
+        ArchiveVaultSecurity.setPasscode(context, pin)
+        val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
+        assertNotNull(subKey)
+
+        val secretNote = com.focusbyrj.app.data.note.NoteEntity(
+            title = "Secret Trashed Note",
+            content = "Highly confidential trashed content",
+            isArchived = true,
+            isTrashed = true,
+            imageUrisJson = "[\"file:///data/keep_images/secret.enc\"]"
+        )
+        val encryptedNote = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(secretNote, subKey)
+        kotlinx.coroutines.runBlocking {
+            noteDb.noteDao().insertNote(encryptedNote)
+        }
+
+        // Call getTrashedNotesSync()
+        val trashed = kotlinx.coroutines.runBlocking {
+            repo.getTrashedNotesSync()
+        }
+
+        assertEquals(1, trashed.size)
+        val retrieved = trashed[0]
+        assertEquals("B1-F-021: getTrashedNotesSync must decrypt note title", "Secret Trashed Note", retrieved.title)
+        assertEquals("B1-F-021: getTrashedNotesSync must decrypt note content", "Highly confidential trashed content", retrieved.content)
+        assertEquals(1, retrieved.getImageUris().size)
+        assertEquals("file:///data/keep_images/secret.enc", retrieved.getImageUris()[0])
+
+        // Clean up
+        kotlinx.coroutines.runBlocking { noteDb.noteDao().deleteAllNotes() }
+        ArchiveVaultSecurity.lockVault()
+    }
 }
 
 

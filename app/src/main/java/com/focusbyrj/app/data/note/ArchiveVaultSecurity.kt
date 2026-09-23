@@ -88,12 +88,15 @@ object ArchiveVaultSecurity {
 
     /**
      * Retrieves the active in-memory Vault Sub-Key if vault is unlocked, or null if locked.
+     * B1-F-020 FIX: Returns a defensive copy to prevent external callers zeroing the master subkey in-place.
      */
-    fun getActiveVaultSubKey(): ByteArray? = ephemeralVaultSubKey
+    @Synchronized
+    fun getActiveVaultSubKey(): ByteArray? = ephemeralVaultSubKey?.copyOf()
 
     /**
      * Locks the vault and completely wipes the in-memory sub-key bytes.
      */
+    @Synchronized
     fun lockVault() {
         ephemeralVaultSubKey?.let { Arrays.fill(it, 0.toByte()) }
         ephemeralVaultSubKey = null
@@ -399,14 +402,18 @@ object ArchiveVaultSecurity {
                         } catch (e: Exception) {
                             Pair(realArgon2idHash, ByteArray(0))
                         }
-                        prefs.edit()
+                        val committed = prefs.edit()
                             .putString(KEY_HASH, Base64.encodeToString(newEncHash, Base64.NO_WRAP))
                             .putString(KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
                             .putString(KEY_KDF_TYPE, "argon2id")
-                            .apply()
+                            .commit()
 
-                        computedHash?.let { Arrays.fill(it, 0.toByte()) }
-                        computedHash = realArgon2idHash
+                        if (committed) {
+                            computedHash?.let { Arrays.fill(it, 0.toByte()) }
+                            computedHash = realArgon2idHash
+                        } else {
+                            Arrays.fill(realArgon2idHash, 0.toByte())
+                        }
                     } else {
                         Arrays.fill(realArgon2idHash, 0.toByte())
                     }
@@ -445,14 +452,18 @@ object ArchiveVaultSecurity {
                     } catch (e: Exception) {
                         Pair(realArgon2idHash, ByteArray(0))
                     }
-                    prefs.edit()
+                    val committed = prefs.edit()
                         .putString(KEY_HASH, Base64.encodeToString(newEncHash, Base64.NO_WRAP))
                         .putString(KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
                         .putString(KEY_KDF_TYPE, "argon2id")
-                        .apply()
+                        .commit()
 
-                    computedHash?.let { Arrays.fill(it, 0.toByte()) }
-                    computedHash = realArgon2idHash
+                    if (committed) {
+                        computedHash?.let { Arrays.fill(it, 0.toByte()) }
+                        computedHash = realArgon2idHash
+                    } else {
+                        Arrays.fill(realArgon2idHash, 0.toByte())
+                    }
                 } else {
                     Arrays.fill(realArgon2idHash, 0.toByte())
                 }
@@ -817,13 +828,18 @@ object ArchiveVaultSecurity {
 
     fun encryptRecoveryPhrase(phraseWords: List<String>, vaultSubKey: ByteArray): Pair<ByteArray, ByteArray> {
         val phraseText = phraseWords.joinToString(" ")
+        val phraseBytes = phraseText.toByteArray(Charsets.UTF_8)
         val phraseKey = derivePhraseEncryptionKey(vaultSubKey)
         val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, javax.crypto.spec.SecretKeySpec(phraseKey, "AES"), GCMParameterSpec(GCM_TAG_LENGTH, iv))
-        val ciphertext = cipher.doFinal(phraseText.toByteArray(Charsets.UTF_8))
-        Arrays.fill(phraseKey, 0.toByte())
-        return Pair(ciphertext, iv)
+        return try {
+            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, javax.crypto.spec.SecretKeySpec(phraseKey, "AES"), GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            val ciphertext = cipher.doFinal(phraseBytes)
+            Pair(ciphertext, iv)
+        } finally {
+            Arrays.fill(phraseBytes, 0.toByte())
+            Arrays.fill(phraseKey, 0.toByte())
+        }
     }
 
     fun decryptRecoveryPhrase(ciphertext: ByteArray, iv: ByteArray, vaultSubKey: ByteArray): List<String>? {

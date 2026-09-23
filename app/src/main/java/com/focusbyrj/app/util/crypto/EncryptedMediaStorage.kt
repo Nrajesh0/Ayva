@@ -122,7 +122,11 @@ object EncryptedMediaStorage {
             if (file.exists()) {
                 file.delete()
             }
-            tempFile.renameTo(file)
+            val renamed = tempFile.renameTo(file)
+            if (!renamed) {
+                tempFile.copyTo(file, overwrite = true)
+                tempFile.delete()
+            }
         } catch (e: Throwable) {
             // Clean up the partially written temp file before rethrowing to avoid storage leaks.
             tempFile.delete()

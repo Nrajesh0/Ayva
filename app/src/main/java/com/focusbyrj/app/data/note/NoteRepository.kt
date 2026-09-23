@@ -205,7 +205,13 @@ class NoteRepository(
     }
 
     suspend fun getTrashedNotesSync(): List<NoteEntity> = try {
-        noteDao.getTrashedNotesSync()
+        noteDao.getTrashedNotesSync().map { note ->
+            if (VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                VaultPayloadEncryptor.decryptNotePayload(note)
+            } else {
+                note
+            }
+        }
     } catch (e: Exception) {
         Log.e(TAG, "Error in getTrashedNotesSync", e)
         emptyList()
