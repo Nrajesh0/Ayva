@@ -27,5 +27,50 @@ data class Task(
     val updatedAt: Long = System.currentTimeMillis(),
     val isTrashed: Boolean = false,
     val trashedAt: Long? = null,
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val subtasksJson: String = "[]"
 )
+
+val Task.subtasks: List<Subtask>
+    get() = Subtask.listFromJson(subtasksJson)
+
+data class Subtask(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String = "",
+    val isDone: Boolean = false
+) {
+    fun toJsonObject(): org.json.JSONObject = org.json.JSONObject().apply {
+        put("id", id)
+        put("title", title)
+        put("isDone", isDone)
+    }
+
+    companion object {
+        fun listToJson(items: List<Subtask>): String {
+            val arr = org.json.JSONArray()
+            items.forEach { arr.put(it.toJsonObject()) }
+            return arr.toString()
+        }
+
+        fun listFromJson(json: String): List<Subtask> {
+            if (json.isBlank()) return emptyList()
+            return try {
+                val arr = org.json.JSONArray(json)
+                val list = mutableListOf<Subtask>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    list.add(
+                        Subtask(
+                            id = obj.optString("id", java.util.UUID.randomUUID().toString()),
+                            title = obj.optString("title", ""),
+                            isDone = obj.optBoolean("isDone", false)
+                        )
+                    )
+                }
+                list
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+    }
+}

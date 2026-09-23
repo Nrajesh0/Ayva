@@ -107,6 +107,7 @@ object VaultSyncManager {
                 put("isPersistent", task.isPersistent)
                 put("isPriority", task.isPriority)
                 put("completedAt", task.completedAt ?: JSONObject.NULL)
+                put("subtasksJson", task.subtasksJson)
             }
             tasksArray.put(tObj)
         }
@@ -182,7 +183,8 @@ object VaultSyncManager {
                     recurrence = try { RecurrencePattern.valueOf(recName) } catch (_: Exception) { RecurrencePattern.NONE },
                     isPersistent = tObj.optBoolean("isPersistent", false),
                     isPriority = tObj.optBoolean("isPriority", false),
-                    completedAt = if (tObj.isNull("completedAt")) null else tObj.optLong("completedAt").takeIf { it > 0L }
+                    completedAt = if (tObj.isNull("completedAt")) null else tObj.optLong("completedAt").takeIf { it > 0L },
+                    subtasksJson = tObj.optString("subtasksJson", "[]")
                 )
                 taskDao.insertTask(task)
                 importedTasksCount++

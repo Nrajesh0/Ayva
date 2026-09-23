@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.focusbyrj.app.data.Subtask
+import com.focusbyrj.app.data.subtasks
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.data.TaskRepository
 import com.focusbyrj.app.data.TaskType
@@ -19,6 +21,13 @@ class TaskViewModel(
     private val repository: TaskRepository, 
     application: Application
 ) : AndroidViewModel(application) {
+
+    init {
+        viewModelScope.launch {
+            val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000L)
+            repository.deleteCompletedTasksBefore(thirtyDaysAgo)
+        }
+    }
 
     val allTasks: StateFlow<List<Task>> = repository.allTasks.stateIn(
         scope = viewModelScope,
@@ -94,6 +103,17 @@ class TaskViewModel(
     fun toggleTaskCompletion(task: Task) {
         TaskReminderHelper.toggleTaskById(getApplication(), task.id)
         com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
+    }
+
+    fun toggleSubtask(task: Task, subtaskId: String) {
+        val updated = task.subtasks.map {
+            if (it.id == subtaskId) it.copy(isDone = !it.isDone) else it
+        }
+        updateTask(task.copy(subtasksJson = Subtask.listToJson(updated)))
+    }
+
+    fun updateSubtasks(task: Task, subtasks: List<Subtask>) {
+        updateTask(task.copy(subtasksJson = Subtask.listToJson(subtasks)))
     }
 }
 

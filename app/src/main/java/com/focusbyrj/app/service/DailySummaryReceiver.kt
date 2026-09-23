@@ -160,6 +160,8 @@ class DailySummaryReceiver : BroadcastReceiver() {
                     }
                     ACTION_MIDNIGHT_PURGE -> {
                         com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(context)
+                        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000L)
+                        kotlin.runCatching { app.database.taskDao().deleteCompletedTasksBefore(thirtyDaysAgo) }
                         scheduleDailySummaries(context)
                     }
                 }

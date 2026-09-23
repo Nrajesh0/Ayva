@@ -385,7 +385,7 @@ object SupabaseSyncEngine {
                             taskDao.getAllTasksList().find { isMatchingItem(context, cloudItem.id, userId, "TASK", it.id) }
                         }
                         if (match != null) {
-                            val matchFingerprint = "${match.title}|${match.details}|${match.dueDate}|${match.isCompleted}|${match.type}|${match.recurrence}|${match.isPersistent}|${match.isPriority}|${match.isTrashed}|${match.trashedAt}"
+                            val matchFingerprint = "${match.title}|${match.details}|${match.dueDate}|${match.isCompleted}|${match.type}|${match.recurrence}|${match.isPersistent}|${match.isPriority}|${match.isTrashed}|${match.trashedAt}|${match.subtasksJson}"
                             val localUpdatedAt = getOrUpdateTaskTimestamp(context, match.id, matchFingerprint, match.completedAt)
                             if (localUpdatedAt > cloudItem.updatedAt) {
                                 Log.w(TAG, "Task ${match.id} was edited locally after remote deletion. Reviving item.")
@@ -566,7 +566,7 @@ object SupabaseSyncEngine {
                                 }
 
                                 val cloudUpdatedAt = cloudItem.updatedAt
-                                val matchFingerprint = match?.let { "${it.title}|${it.details}|${it.dueDate}|${it.isCompleted}|${it.type}|${it.recurrence}|${it.isPersistent}|${it.isPriority}|${it.isTrashed}|${it.trashedAt}" } ?: ""
+                                val matchFingerprint = match?.let { "${it.title}|${it.details}|${it.dueDate}|${it.isCompleted}|${it.type}|${it.recurrence}|${it.isPersistent}|${it.isPriority}|${it.isTrashed}|${it.trashedAt}|${it.subtasksJson}" } ?: ""
                                 val localUpdatedAt = if (match != null) getOrUpdateTaskTimestamp(context, match.id, matchFingerprint, match.completedAt) else 0L
 
                                 val isTaskConcurrentConflict = match != null && session.lastSyncedTime > 0L &&
@@ -591,6 +591,7 @@ object SupabaseSyncEngine {
                                     val recName = root.optString("recurrence", RecurrencePattern.NONE.name)
                                     val isTrashed = root.optBoolean("isTrashed", false)
                                     val trashedAt = if (root.has("trashedAt") && !root.isNull("trashedAt")) root.optLong("trashedAt").takeIf { it > 0L } else null
+                                    val subtasksJson = root.optString("subtasksJson", "[]")
 
                                     val task = Task(
                                         id = match?.id ?: 0L,
@@ -605,12 +606,13 @@ object SupabaseSyncEngine {
                                         completedAt = if (root.isNull("completedAt")) null else root.optLong("completedAt").takeIf { it > 0L },
                                         updatedAt = cloudUpdatedAt,
                                         isTrashed = isTrashed,
-                                        trashedAt = trashedAt
+                                        trashedAt = trashedAt,
+                                        subtasksJson = subtasksJson
                                     )
                                     val newTaskId = taskDao.insertTask(task)
                                     val finalTaskId = if (match != null) match.id else newTaskId
                                     bindSyncId(context, userId, "TASK", finalTaskId, cloudItem.id)
-                                    val newFingerprint = "${task.title}|${task.details}|${task.dueDate}|${task.isCompleted}|${task.type}|${task.recurrence}|${task.isPersistent}|${task.isPriority}|${task.isTrashed}|${task.trashedAt}"
+                                    val newFingerprint = "${task.title}|${task.details}|${task.dueDate}|${task.isCompleted}|${task.type}|${task.recurrence}|${task.isPersistent}|${task.isPriority}|${task.isTrashed}|${task.trashedAt}|${task.subtasksJson}"
                                     recordTaskTimestamp(context, finalTaskId, newFingerprint, cloudUpdatedAt)
                                     downloaded++
                                 } else {
@@ -779,7 +781,7 @@ object SupabaseSyncEngine {
                 val legacyUnscoped = UUID.nameUUIDFromBytes("TASK:${task.id}".toByteArray(Charsets.UTF_8)).toString()
                 val cloudMatch = cloudItemMap[syncId] ?: (if (legacySyncId.isNotBlank()) cloudItemMap[legacySyncId] else null) ?: cloudItemMap[legacyUnscoped]
 
-                val taskFingerprint = "${task.title}|${task.details}|${task.dueDate}|${task.isCompleted}|${task.type}|${task.recurrence}|${task.isPersistent}|${task.isPriority}|${task.isTrashed}|${task.trashedAt}"
+                val taskFingerprint = "${task.title}|${task.details}|${task.dueDate}|${task.isCompleted}|${task.type}|${task.recurrence}|${task.isPersistent}|${task.isPriority}|${task.isTrashed}|${task.trashedAt}|${task.subtasksJson}"
                 val localUpdatedAt = getOrUpdateTaskTimestamp(context, task.id, taskFingerprint, task.completedAt)
                 if (cloudMatch == null || localUpdatedAt > cloudMatch.updatedAt) {
                     // Embed 'type' INSIDE the encrypted JSON — Supabase column receives 'OPAQUE'
@@ -796,6 +798,7 @@ object SupabaseSyncEngine {
                         put("completedAt", task.completedAt ?: JSONObject.NULL)
                         put("isTrashed", task.isTrashed)
                         put("trashedAt", task.trashedAt ?: JSONObject.NULL)
+                        put("subtasksJson", task.subtasksJson)
                     }
 
                     val enc = VaultCryptoEngine.encryptEnvelope(payload.toString(), dataKey)

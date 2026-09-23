@@ -3,10 +3,14 @@ package com.focusbyrj.app.ui.screens
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.rotate
+import com.focusbyrj.app.data.Subtask
+import com.focusbyrj.app.data.subtasks
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
@@ -114,6 +118,34 @@ fun TodosScreen(
             )
     }
 
+    // Completed tasks (only shown for "Today" and "All")
+    val completedTasks = remember(tasks, selectedTab, pendingDeleteTask) {
+        val now = Calendar.getInstance()
+        val todayStart = now.apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000L)
+
+        when (selectedTab) {
+            0 -> tasks.filter { 
+                it.isCompleted && 
+                it.type == TaskType.TASK && 
+                it.id != pendingDeleteTask?.id &&
+                (it.completedAt != null && it.completedAt >= todayStart)
+            }.sortedByDescending { it.completedAt ?: it.updatedAt }
+            2 -> tasks.filter { 
+                it.isCompleted && 
+                it.type == TaskType.TASK && 
+                it.id != pendingDeleteTask?.id &&
+                (it.completedAt == null || it.completedAt >= thirtyDaysAgo)
+            }.sortedByDescending { it.completedAt ?: it.updatedAt }
+            else -> emptyList()
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
@@ -145,7 +177,8 @@ fun TodosScreen(
                 
                 Spacer(modifier = Modifier.height(10.dp))
                 
-                if (filteredTasks.isEmpty()) {
+                val hasAnyTasks = filteredTasks.isNotEmpty() || completedTasks.isNotEmpty()
+                if (!hasAnyTasks) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -197,13 +230,47 @@ fun TodosScreen(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp)
                         ) {
+                            if (filteredTasks.isEmpty() && completedTasks.isNotEmpty()) {
+                                item(key = "empty_pending_header") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 24.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .clip(RoundedCornerShape(16.dp))
+                                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.CheckCircle,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(26.dp),
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = "All tasks completed!",
+                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
                             itemsIndexed(
                                 filteredTasks, 
                                 key = { _, it -> it.id },
                                 contentType = { _, _ -> "TaskItem" }
                             ) { index, task ->
                                 val isFirst = index == 0
-                                val isLast = index == filteredTasks.lastIndex
+                                val isLast = index == filteredTasks.lastIndex && completedTasks.isEmpty()
                                 
                                 val cardShape = when {
                                     isFirst && isLast -> RoundedCornerShape(16.dp)
@@ -227,8 +294,34 @@ fun TodosScreen(
                                         pendingDeleteTask = it
                                         deleteCountdown = 4
                                     },
-                                    onEdit = { editingTask = it }
+                                    onEdit = { editingTask = it },
+                                    onToggleSubtask = { t, subtaskId ->
+                                        viewModel.toggleSubtask(t, subtaskId)
+                                    }
                                 )
+                            }
+
+                            if (completedTasks.isNotEmpty()) {
+                                item(key = "completed_accordion") {
+                                    CompletedAccordion(
+                                        tasks = completedTasks,
+                                        onToggle = { task ->
+                                            coroutineScope.launch {
+                                                delay(200)
+                                                viewModel.toggleTaskCompletion(task)
+                                            }
+                                        },
+                                        onDelete = { task ->
+                                            pendingDeleteTask?.let { deleted -> viewModel.deleteTask(deleted) }
+                                            pendingDeleteTask = task
+                                            deleteCountdown = 4
+                                        },
+                                        onEdit = { editingTask = it },
+                                        onToggleSubtask = { t, subtaskId ->
+                                            viewModel.toggleSubtask(t, subtaskId)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -390,11 +483,13 @@ fun TaskItem(
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(12.dp),
     onToggle: (Task) -> Unit, 
     onDelete: (Task) -> Unit, 
-    onEdit: (Task) -> Unit
+    onEdit: (Task) -> Unit,
+    onToggleSubtask: ((Task, String) -> Unit)? = null
 ) {
     val haptic = LocalHapticFeedback.current
     var isLocalCompleted by remember(task.isCompleted) { mutableStateOf(task.isCompleted) }
     val isCompleted = isLocalCompleted
+    var isSubtasksExpanded by remember { mutableStateOf(false) }
 
     val textColor by animateColorAsState(
         targetValue = if (isCompleted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurface,
@@ -566,6 +661,112 @@ fun TaskItem(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+
+                    // Mini-Checklist Subtasks Indicator & List
+                    val subtasks = task.subtasks
+                    if (subtasks.isNotEmpty()) {
+                        val totalSubtasks = subtasks.size
+                        val doneSubtasks = subtasks.count { it.isDone }
+                        val allDone = totalSubtasks > 0 && doneSubtasks == totalSubtasks
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { isSubtasksExpanded = !isSubtasksExpanded }
+                                .padding(vertical = 2.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (allDone) Color(0xFF2E7D32).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (allDone) Icons.Filled.CheckCircle else Icons.Outlined.Checklist,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(11.dp),
+                                        tint = if (allDone) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "$doneSubtasks/$totalSubtasks",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                                        color = if (allDone) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Icon(
+                                        imageVector = if (isSubtasksExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                        contentDescription = if (isSubtasksExpanded) "Collapse subtasks" else "Expand subtasks",
+                                        modifier = Modifier.size(13.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+
+                        AnimatedVisibility(
+                            visible = isSubtasksExpanded,
+                            enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
+                            exit = shrinkVertically(animationSpec = tween(150)) + fadeOut(animationSpec = tween(100))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp, bottom = 2.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                subtasks.forEach { subtask ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                onToggleSubtask?.invoke(task, subtask.id)
+                                            }
+                                            .padding(vertical = 3.dp, horizontal = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(if (subtask.isDone) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                                .border(
+                                                    width = 1.5.dp,
+                                                    color = if (subtask.isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (subtask.isDone) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Check,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                                    modifier = Modifier.size(10.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = subtask.title,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 13.sp,
+                                                textDecoration = if (subtask.isDone) TextDecoration.LineThrough else TextDecoration.None
+                                            ),
+                                            color = if (subtask.isDone) textColor.copy(alpha = 0.45f) else textColor,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     
                     if (task.dueDate != null || task.recurrence != RecurrencePattern.NONE || task.isPersistent) {
                         Spacer(modifier = Modifier.height(6.dp))
@@ -664,6 +865,117 @@ fun TaskItem(
     }
 }
 
+@Composable
+fun CompletedAccordion(
+    tasks: List<Task>,
+    onToggle: (Task) -> Unit,
+    onDelete: (Task) -> Unit,
+    onEdit: (Task) -> Unit,
+    onToggleSubtask: ((Task, String) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+    val rotationAngle by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = tween(250),
+        label = "accordionArrow"
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp)
+    ) {
+        // Subtle Divider line
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            thickness = 0.8.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+        )
+
+        // Accordion Toggle Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { isExpanded = !isExpanded }
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(rotationAngle),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+                Text(
+                    text = "Completed",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.3.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                ) {
+                    Text(
+                        text = tasks.size.toString(),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // Expanded items
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically(animationSpec = tween(250)) + fadeIn(animationSpec = tween(200)),
+            exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(150))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                tasks.forEachIndexed { index, task ->
+                    val isFirst = index == 0
+                    val isLast = index == tasks.lastIndex
+                    val cardShape = when {
+                        isFirst && isLast -> RoundedCornerShape(16.dp)
+                        isFirst -> RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
+                        isLast -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
+                        else -> RoundedCornerShape(4.dp)
+                    }
+
+                    TaskItem(
+                        task = task,
+                        shape = cardShape,
+                        onToggle = onToggle,
+                        onDelete = onDelete,
+                        onEdit = onEdit,
+                        onToggleSubtask = onToggleSubtask
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTaskDialog(
@@ -690,6 +1002,8 @@ fun AddTaskDialog(
     var isPriority by remember(initialTask) { mutableStateOf(initialTask?.isPriority ?: false) }
     var manualDueDate by remember(initialTask) { mutableStateOf<Long?>(initialTask?.dueDate) }
     var userManuallySetDate by remember(initialTask) { mutableStateOf(initialTask?.dueDate != null) }
+    var subtasks by remember(initialTask) { mutableStateOf(initialTask?.subtasks ?: emptyList()) }
+    var newStepText by remember { mutableStateOf("") }
     
     val parsedResult = remember(title, userManuallySetDate) {
         if (!userManuallySetDate && title.isNotBlank()) SmartDateParser.parse(title) else null
@@ -778,6 +1092,12 @@ fun AddTaskDialog(
                             }
 
                             val base = initialTask ?: Task(title = finalTitle)
+                            val effectiveSubtasks = if (newStepText.isNotBlank()) {
+                                subtasks + Subtask(title = newStepText.trim())
+                            } else {
+                                subtasks
+                            }
+                            val subtasksJson = Subtask.listToJson(effectiveSubtasks)
                             onSave(
                                 base.copy(
                                     title = finalTitle, 
@@ -786,7 +1106,8 @@ fun AddTaskDialog(
                                     type = type, 
                                     recurrence = effectiveRecurrence, 
                                     isPersistent = isPersistent,
-                                    isPriority = isPriority
+                                    isPriority = isPriority,
+                                    subtasksJson = subtasksJson
                                 )
                             )
                         }
@@ -844,6 +1165,139 @@ fun AddTaskDialog(
                 shape = RoundedCornerShape(12.dp),
                 maxLines = 2
             )
+            Spacer(modifier = Modifier.height(10.dp))
+            
+            // Subtasks / Steps Section
+            Text(
+                text = "Steps / Subtasks",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+
+            if (subtasks.isNotEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    subtasks.forEachIndexed { index, subtask ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (subtask.isDone) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                        .border(
+                                            width = 1.5.dp,
+                                            color = if (subtask.isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        )
+                                        .clickable {
+                                            subtasks = subtasks.mapIndexed { i, s ->
+                                                if (i == index) s.copy(isDone = !s.isDone) else s
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (subtask.isDone) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = subtask.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontSize = 14.sp,
+                                        textDecoration = if (subtask.isDone) TextDecoration.LineThrough else TextDecoration.None
+                                    ),
+                                    color = if (subtask.isDone) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    subtasks = subtasks.filterIndexed { i, _ -> i != index }
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Remove step",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            // Add Step Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                OutlinedTextField(
+                    value = newStepText,
+                    onValueChange = { newStepText = it },
+                    placeholder = { Text("Add a step...", style = MaterialTheme.typography.bodyMedium) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp),
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onDone = {
+                            if (newStepText.isNotBlank()) {
+                                subtasks = subtasks + Subtask(title = newStepText.trim())
+                                newStepText = ""
+                            }
+                        }
+                    )
+                )
+                IconButton(
+                    onClick = {
+                        if (newStepText.isNotBlank()) {
+                            subtasks = subtasks + Subtask(title = newStepText.trim())
+                            newStepText = ""
+                        }
+                    },
+                    enabled = newStepText.isNotBlank(),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (newStepText.isNotBlank()) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = "Add step",
+                        tint = if (newStepText.isNotBlank()) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(10.dp))
             
             Text(

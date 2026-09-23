@@ -118,7 +118,9 @@ class FocusApplication : Application(), ImageLoaderFactory {
                 FocusDatabase.MIGRATION_9_11,
                 FocusDatabase.MIGRATION_8_11,
                 FocusDatabase.MIGRATION_7_11,
-                FocusDatabase.MIGRATION_1_11
+                FocusDatabase.MIGRATION_1_11,
+                FocusDatabase.MIGRATION_11_12,
+                FocusDatabase.MIGRATION_1_12
             )
             .build()
         } catch (t: Throwable) {
