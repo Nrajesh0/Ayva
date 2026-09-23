@@ -1391,10 +1391,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePermanently(note: NoteEntity) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
-            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), note)
-            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
-            deleteNoteMediaFiles(note)
-            repository.deletePermanently(note)
+            // B1-F-026 FIX: Decrypt vault-encrypted note if possible so media cleanup and cloud deletion
+            // receive real attachment URIs instead of empty [] lists.
+            val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
+            } else {
+                note
+            }
+            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), targetNote)
+            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", targetNote.id)
+            deleteNoteMediaFiles(targetNote)
+            repository.deletePermanently(targetNote)
             triggerAutoSync()
         }
     }

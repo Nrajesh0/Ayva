@@ -396,6 +396,57 @@ class Batch1SecurityAuditTest {
         kotlinx.coroutines.runBlocking { noteDb.noteDao().deleteAllNotes() }
         ArchiveVaultSecurity.lockVault()
     }
+
+    // B1-F-025: malformed PIN must report actual remaining attempts based on failed attempts count, not hardcoded 5
+    @Test
+    fun malformedPinReflectsActualRemainingAttempts() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        ArchiveVaultSecurity.setPasscode(context, "123456")
+        ArchiveVaultSecurity.lockVault()
+
+        // 2 failed attempts
+        ArchiveVaultSecurity.verifyPasscode(context, "000000")
+        ArchiveVaultSecurity.verifyPasscode(context, "000000")
+
+        // Enter malformed PIN (4 digits)
+        val result = ArchiveVaultSecurity.verifyPasscode(context, "1234")
+        assertTrue("Result must be Incorrect", result is ArchiveVaultSecurity.VerifyResult.Incorrect)
+        assertEquals("B1-F-025: Malformed PIN must reflect remaining attempts (5 - 2 = 3), not reset to 5",
+            3, (result as ArchiveVaultSecurity.VerifyResult.Incorrect).remainingAttempts)
+
+        // Clean up
+        val prefs = context.getSharedPreferences("focus_notes_archive_vault_security", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putInt("failed_attempts_count", 0).commit()
+        ArchiveVaultSecurity.lockVault()
+    }
+
+    // B1-F-025: KeyStore decryption failure must return VerifyResult.Error without incrementing failed_attempts_count
+    @Test
+    fun keyStoreDecryptionFailureReturnsErrorWithoutLockoutEscalation() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        ArchiveVaultSecurity.setPasscode(context, "654321")
+        ArchiveVaultSecurity.lockVault()
+
+        val prefs = context.getSharedPreferences("focus_notes_archive_vault_security", android.content.Context.MODE_PRIVATE)
+        // Corrupt the stored hash IV to trigger GCM/KeyStore decryption failure
+        val badIv = android.util.Base64.encodeToString(ByteArray(12) { 0xFF.toByte() }, android.util.Base64.NO_WRAP)
+        prefs.edit().putString("enc_iv", badIv).commit()
+
+        val initialAttempts = prefs.getInt("failed_attempts_count", 0)
+
+        // Verify with the real PIN — should encounter KeyStore failure
+        val result = ArchiveVaultSecurity.verifyPasscode(context, "654321")
+        assertTrue("B1-F-025: Result must be Error on KeyStore failure, not Incorrect or LockedOut",
+            result is ArchiveVaultSecurity.VerifyResult.Error)
+
+        val finalAttempts = prefs.getInt("failed_attempts_count", 0)
+        assertEquals("B1-F-025: KeyStore failure must NOT increment failed_attempts_count",
+            initialAttempts, finalAttempts)
+
+        // Clean up
+        prefs.edit().clear().commit()
+        ArchiveVaultSecurity.lockVault()
+    }
 }
 
 

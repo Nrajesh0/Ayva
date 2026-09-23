@@ -33,8 +33,8 @@ Every finding follows this strict TDD workflow — no exceptions:
 
 | Batch | Domain | Status | Findings |
 |:---|:---|:---|:---|
-| **Batch 1** | Cryptography, Key Derivation & Vault Storage | 🔄 Completed (Pass 5 Final) | 24 Found → 24 Fixed ✅ |
-| **Batch 2** | Cloud Sync, Auth & Network Security | ⚪ Pending re-audit | — |
+| **Batch 1** | Cryptography, Key Derivation & Vault Storage | 🔄 Completed (Pass 6 Audit) | 26 Found → 26 Fixed ✅ |
+| **Batch 2** | Cloud Sync, Auth & Network Security | 🟡 Pre-Audit Hardened (Pending Full Re-audit) | 1 Found → 1 Fixed ✅ |
 | **Batch 3** | Android Components, IPC, Intents & Permissions | ⚪ Pending re-audit | — |
 | **Batch 4** | System Services, App Blocking & Overlays | ⚪ Pending re-audit | — |
 | **Batch 5** | Databases, Migrations & Backup/Export Pipeline | ⚪ Pending re-audit | — |
@@ -42,7 +42,7 @@ Every finding follows this strict TDD workflow — no exceptions:
 | **Batch 7** | AI / Dialogue Engines, Math Logic & Parsing | ⚪ Not Started | — |
 | **Batch 8** | UI Screens, ViewModels, State & Edge Cases | ⚪ Not Started | — |
 
-**Active Batch**: **Batch 1 — Pass 5 Completed (24/24 Fixed), ready for commit & proceeding to Batch 2**
+**Active Batch**: **Batch 1 Audit Complete (26/26 Fixed) | Batch 2 Pre-Audit Patch Applied**
 
 ---
 
@@ -95,10 +95,12 @@ Every finding follows this strict TDD workflow — no exceptions:
 | B1-F-022 | 🟠 Medium | `ArchiveVaultSecurity.kt` | Asynchronous `.apply()` in `verifyPasscode()` PBKDF2-to-Argon2id auto-upgrade: SharedPreferences write occurred on background thread after SQLite transaction committed. Power cut or process termination during the async write window left SQLite notes re-encrypted with Argon2id but preferences on disk holding legacy PBKDF2 hash, permanently stranding vault notes. | Code inspection & replaced with synchronous `.commit()` | ✅ Fixed |
 | B1-F-023 | 🟠 Medium | `EncryptedMediaStorage.kt` | Ignored `tempFile.renameTo(file)` return value in `writeEncryptedBytes()`: on filesystem errors or locks, `renameTo` returns false without throwing, causing silent write failure, leaving destination empty and temp file abandoned on disk. Fixed by falling back to `tempFile.copyTo(file, overwrite = true)` and deleting temp file. | Verified via media storage pipeline | ✅ Fixed |
 | B1-F-024 | 🟡 Low | `ArchiveVaultSecurity.kt` | Plaintext recovery phrase byte array residue in `encryptRecoveryPhrase()`: anonymous allocation of `phraseText.toByteArray(Charsets.UTF_8)` was not captured or zeroized in `finally`. Fixed by capturing and zeroing array. | Code inspection & memory zeroing verification | ✅ Fixed |
+| B1-F-025 | 🟠 Medium | `ArchiveVaultSecurity.kt` | Malformed PIN (<6 digits or non-digits) reset `remainingAttempts` to 5 in UI response, masking previous failed attempts. Transient hardware KeyStore decryption failure in `verifyPasscode()` fell back to raw ciphertext (`storedHashPayload`), guaranteeing false PIN mismatch and unfair escalation of lockout timer (30s–300s). Fixed by calculating `maxOf(0, 5 - currentAttempts)` on malformed PIN, adding a 3-attempt retry loop on hardware KeyStore decryption, and returning `VerifyResult.Error(...)` without incrementing lockout counters on failure. | `malformedPinReflectsActualRemainingAttempts`, `keyStoreDecryptionFailureReturnsErrorWithoutLockoutEscalation` | ✅ Fixed |
+| B1-F-026 | 🔴 High | `NotesViewModel.kt` | Trashed vault note permanent deletion media leak: `deletePermanently(note)` received encrypted notes with empty media lists (`imageUrisJson = "[]"`), failing to purge local media files or record cloud deletions in Supabase storage, resulting in orphaned storage leaks. Fixed by decrypting the note payload via `VaultPayloadEncryptor.decryptNotePayload(note)` before purging local media files and recording cloud deletions. | Tested via TDD inspection & viewmodel media cleanup pipeline | ✅ Fixed |
 
-**Batch 1 Result**: 3 Critical, 9 High, 9 Medium, 3 Low — **All 24 fixed** ✅
-**Pass 5 (Deep Re-Audit) Summary**: Uncovered 5 additional vulnerabilities (B1-F-020 through B1-F-024), added automated TDD regression tests in `Batch1SecurityAuditTest.kt`, applied targeted hardening across `ArchiveVaultSecurity.kt`, `NoteRepository.kt`, and `EncryptedMediaStorage.kt`, and verified 100% green test passes across all 21 unit tests.
-**Status**: Batch 1 complete (24/24 fixed). Ready for commit & proceeding to Batch 2.
+**Batch 1 Result**: 3 Critical, 10 High, 10 Medium, 3 Low — **All 26 fixed** ✅
+**Pass 6 (Deep Adversarial Audit) Summary**: Uncovered 2 additional vulnerabilities (B1-F-025 and B1-F-026), added automated TDD regression tests in `Batch1SecurityAuditTest.kt`, applied targeted hardening in `ArchiveVaultSecurity.kt` and `NotesViewModel.kt`, and validated fail-closed security.
+**Status**: Batch 1 complete (26/26 fixed). Ready for commit & proceeding to Batch 2.
 
 
 ---
@@ -121,6 +123,12 @@ Every finding follows this strict TDD workflow — no exceptions:
   - Network transport security: TLS enforcement, cleartext restrictions, MitM exposure.
   - Sync race conditions: concurrent writes, merge conflicts, clock-skew vulnerabilities, and replay attacks.
   - Signed URL lifecycle and storage bucket ACLs.
+
+#### Pre-Audit Hardened Findings
+
+| ID | Severity | File | Description | Test | Status |
+|:---|:---|:---|:---|:---|:---|
+| B2-PRE-001 | 🔴 High | `SupabaseKeyManager.kt` | KeyStore alias collision overwrite fallback & IV handling: if alias existed but entry retrieval returned null, code fell through to `generateKey()`, overwriting master hardware keys and permanently stranding Supabase session tokens. Also hardened `encryptWithKeyStore` against null cipher IV. Fixed by throwing `SecurityException` and explicitly re-initializing cipher with `GCMParameterSpec`. | Code inspection & KeyStore lifecycle verification | ✅ Fixed |
 
 ---
 

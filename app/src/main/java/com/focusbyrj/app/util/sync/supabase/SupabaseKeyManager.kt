@@ -135,6 +135,7 @@ object SupabaseKeyManager {
         if (keyStore.containsAlias(KEYSTORE_ALIAS)) {
             val entry = keyStore.getEntry(KEYSTORE_ALIAS, null) as? KeyStore.SecretKeyEntry
             if (entry != null) return entry.secretKey
+            throw SecurityException("Supabase KeyStore master key exists but could not be loaded as SecretKeyEntry. Refusing to overwrite key to prevent permanent data loss.")
         }
 
         val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
@@ -156,7 +157,11 @@ object SupabaseKeyManager {
         val secretKey = getOrCreateKeyStoreSecretKey()
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-        val iv = cipher.iv
+        val iv = cipher.iv ?: run {
+            val generatedIv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
+            generatedIv
+        }
         val ciphertext = cipher.doFinal(rawBytes)
         return Pair(ciphertext, iv)
     }

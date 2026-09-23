@@ -322,7 +322,9 @@ object ArchiveVaultSecurity {
 
         // 2. Validate input format
         if (inputPin.length != 6 || !inputPin.all { it.isDigit() }) {
-            return VerifyResult.Incorrect(remainingAttempts = 5)
+            // B1-F-025 FIX: Accurately report remaining attempts based on actual failed attempts, not hardcoded 5
+            val currentAttempts = prefs.getInt(KEY_FAILED_ATTEMPTS, 0)
+            return VerifyResult.Incorrect(remainingAttempts = maxOf(0, 5 - currentAttempts))
         }
 
         // 3. Load credentials
@@ -341,12 +343,25 @@ object ArchiveVaultSecurity {
 
         // Decrypt expected hash if KeyStore IV exists
         val expectedHash = if (iv.isNotEmpty()) {
-            try {
-                decryptWithMasterKey(storedHashPayload, iv)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to decrypt hash with master key, falling back to payload", e)
-                storedHashPayload
+            var decrypted: ByteArray? = null
+            var lastEx: Exception? = null
+            for (attempt in 1..3) {
+                try {
+                    decrypted = decryptWithMasterKey(storedHashPayload, iv)
+                    if (decrypted != null) break
+                } catch (e: Exception) {
+                    lastEx = e
+                    Log.w(TAG, "KeyStore decryption attempt $attempt failed, retrying...", e)
+                    try { Thread.sleep(50L * attempt) } catch (_: InterruptedException) {}
+                }
             }
+            if (decrypted == null) {
+                // B1-F-025 FIX: Refuse to fall back to raw ciphertext on KeyStore failure.
+                // Comparing against ciphertext guarantees false PIN failure and unfair user lockout.
+                Log.e(TAG, "KeyStore hardware security failure: unable to decrypt vault hash.", lastEx)
+                return VerifyResult.Error("Hardware security error: unable to securely retrieve vault credentials. Please try again.")
+            }
+            decrypted
         } else {
             storedHashPayload
         }
