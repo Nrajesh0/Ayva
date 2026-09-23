@@ -30,6 +30,8 @@ import com.focusbyrj.app.data.drill.DrillDatabase
 import com.focusbyrj.app.data.drill.DrillSessionEntity
 import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.data.note.NoteEntity
+import com.focusbyrj.app.data.note.ArchiveVaultSecurity
+import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
 import com.focusbyrj.app.ui.screens.notes.NotesViewModel
 import com.focusbyrj.app.widget.NoteWidgetProvider
 import com.focusbyrj.app.util.AptitudeManager
@@ -122,6 +124,22 @@ object BackupRestoreManager {
             val habits = focusDb.habitDao().getAllHabitsSync()
             val habitLogs = focusDb.habitDao().getAllLogsSync()
             val notes = noteDb.noteDao().getAllNotesList()
+            val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
+            val hasLockedVaultNotes = notes.any { VaultPayloadEncryptor.isVaultEncrypted(it) } && subKey == null
+            if (hasLockedVaultNotes) {
+                throw IllegalStateException("Cannot create backup: Secret Archive Vault is locked. Please unlock your secret vault first.")
+            }
+            val processedNotes = notes.map { rawNote ->
+                if (rawNote.isArchived || VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
+                    if (subKey != null) {
+                        VaultPayloadEncryptor.decryptNotePayload(rawNote, subKey)
+                    } else {
+                        rawNote
+                    }
+                } else {
+                    rawNote
+                }
+            }
             val drillSessions = drillDb.drillSessionDao().getAllSessionsSync()
             val learnedIdioms = vocabDb.vocabDao().getAllLearnedIdioms()
             val learnedOws = vocabDb.vocabDao().getAllLearnedOws()
@@ -130,7 +148,7 @@ object BackupRestoreManager {
                 version = BACKUP_VERSION,
                 createdAt = System.currentTimeMillis(),
                 appVersion = "1.0.0",
-                noteCount = notes.size,
+                noteCount = processedNotes.size,
                 taskCount = tasks.size,
                 habitCount = habits.size,
                 restrictionCount = restrictions.size,
@@ -146,7 +164,7 @@ object BackupRestoreManager {
 
                 // Manifest
                 val metaObj = JSONObject().apply {
-                    put("notes", notes.size)
+                    put("notes", processedNotes.size)
                     put("tasks", tasks.size)
                     put("habits", habits.size)
                     put("restrictions", restrictions.size)
@@ -157,7 +175,7 @@ object BackupRestoreManager {
 
                 // Notes
                 val notesArray = JSONArray()
-                notes.forEach { note ->
+                processedNotes.forEach { note ->
                     notesArray.put(JSONObject().apply {
                         put("id", note.id)
                         put("title", note.title)
@@ -447,27 +465,30 @@ object BackupRestoreManager {
             // 4. Build NoteEntities from backup
             val notesArray = rootJson.optJSONArray("notes") ?: JSONArray()
             val noteEntities = mutableListOf<NoteEntity>()
+            val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
             for (i in 0 until notesArray.length()) {
                 val obj = notesArray.getJSONObject(i)
-                noteEntities.add(
-                    NoteEntity(
-                        id = if (cleanRestore) obj.optLong("id", 0L) else 0L,
-                        title = obj.optString("title", ""),
-                        content = obj.optString("content", ""),
-                        isChecklist = obj.optBoolean("isChecklist", false),
-                        checklistJson = obj.optString("checklistJson", "[]"),
-                        labelsJson = obj.optString("labelsJson", "[]"),
-                        imageUrisJson = obj.optString("imageUrisJson", "[]"),
-                        audioUrisJson = obj.optString("audioUrisJson", "[]"),
-                        colorKey = obj.optString("colorKey", "default"),
-                        isPinned = obj.optBoolean("isPinned", false),
-                        isArchived = obj.optBoolean("isArchived", false),
-                        isTrashed = obj.optBoolean("isTrashed", false),
-                        createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                        updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                        trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null
-                    )
+                var note = NoteEntity(
+                    id = if (cleanRestore) obj.optLong("id", 0L) else 0L,
+                    title = obj.optString("title", ""),
+                    content = obj.optString("content", ""),
+                    isChecklist = obj.optBoolean("isChecklist", false),
+                    checklistJson = obj.optString("checklistJson", "[]"),
+                    labelsJson = obj.optString("labelsJson", "[]"),
+                    imageUrisJson = obj.optString("imageUrisJson", "[]"),
+                    audioUrisJson = obj.optString("audioUrisJson", "[]"),
+                    colorKey = obj.optString("colorKey", "default"),
+                    isPinned = obj.optBoolean("isPinned", false),
+                    isArchived = obj.optBoolean("isArchived", false),
+                    isTrashed = obj.optBoolean("isTrashed", false),
+                    createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                    updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+                    trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null
                 )
+                if (note.isArchived && subKey != null && !VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                    note = VaultPayloadEncryptor.encryptNotePayload(note, subKey)
+                }
+                noteEntities.add(note)
             }
 
             NotesViewModel.latestNotesCache.clear()

@@ -77,6 +77,8 @@ object EncryptedMediaStorage {
             keyGenerator.init(spec)
             keyGenerator.generateKey()
         } catch (e: Exception) {
+            // B1-F-029 FIX: Rethrow SecurityException so alias collisions fail closed instead of falling back to software seed
+            if (e is SecurityException) throw e
             Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey for media storage.", e)
             val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
                 .digest("focus_media_storage_software_seed_v1".toByteArray(Charsets.UTF_8))
@@ -89,6 +91,8 @@ object EncryptedMediaStorage {
      * Nonce/IV is generated in hardware (TEE/StrongBox) via Android KeyStore.
      */
     fun writeEncryptedBytes(file: File, plaintextBytes: ByteArray) {
+        // B1-F-031 FIX: Ensure parent directory exists before attempting to write temp file
+        file.parentFile?.mkdirs()
         val tempFile = File(file.parentFile, "${file.name}.tmp")
         val secretKey = getOrCreateKey()
 
@@ -184,7 +188,11 @@ object EncryptedMediaStorage {
                     val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
                     cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
 
-                    cipher.doFinal(ciphertext)
+                    try {
+                        cipher.doFinal(ciphertext)
+                    } finally {
+                        java.util.Arrays.fill(ciphertext, 0.toByte())
+                    }
                 } else {
                     // Legacy plaintext fallback
                     val fullBytes = ByteArray(fileLen.toInt())
@@ -224,6 +232,8 @@ object EncryptedMediaStorage {
             generatedIv
         }
 
+        // B1-F-031 FIX: Ensure parent directory exists before creating output stream
+        file.parentFile?.mkdirs()
         val fos = FileOutputStream(file)
         fos.write(MAGIC_HEADER.toByteArray(Charsets.UTF_8))
         fos.write(iv)

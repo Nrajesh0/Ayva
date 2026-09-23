@@ -105,6 +105,7 @@ object DatabaseKeyProvider {
                 throw SecurityException("Failed to commit encrypted passphrase to secure SharedPreferences")
             }
         } catch (e: Exception) {
+            wipeByteArray(newPassphrase)
             Log.e(TAG, "Failed to encrypt database passphrase via KeyStore", e)
             throw SecurityException("Failed to securely initialize KeyStore master key for database encryption", e)
         }
@@ -160,6 +161,7 @@ object DatabaseKeyProvider {
             keyGenerator.init(keyGenSpec)
             keyGenerator.generateKey()
         } catch (e: Exception) {
+            if (e is SecurityException) throw e
             Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey.", e)
             val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
                 .digest("focus_notes_sqlcipher_software_seed_v1".toByteArray(Charsets.UTF_8))

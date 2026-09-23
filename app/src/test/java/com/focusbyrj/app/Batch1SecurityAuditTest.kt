@@ -4,6 +4,12 @@ import com.focusbyrj.app.util.backup.CryptoBackupEngine
 import com.focusbyrj.app.util.sync.VaultCryptoEngine
 import com.focusbyrj.app.util.crypto.Argon2idKdf
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
+import com.focusbyrj.app.data.note.NoteDatabase
+import com.focusbyrj.app.data.note.NoteEntity
+import com.focusbyrj.app.data.note.NoteRepository
+import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
+import com.focusbyrj.app.util.crypto.EncryptedMediaStorage
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -446,6 +452,216 @@ class Batch1SecurityAuditTest {
         // Clean up
         prefs.edit().clear().commit()
         ArchiveVaultSecurity.lockVault()
+    }
+
+    // B1-F-027: PBKDF2 auto-upgrade must re-wrap the recovery envelope so 12-word mnemonic recovery succeeds
+    @Test
+    fun autoUpgradeFromPbkdf2ReWrapsRecoveryEnvelopeSoMnemonicRecoverySucceeds() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val mnemonic = VaultCryptoEngine.generate12WordMnemonic()
+        ArchiveVaultSecurity.setPasscode(context, "112233", mnemonic, true)
+        val noteDb = NoteDatabase.getInstance(context)
+
+        // Seed a test archived note
+        val originalNote = NoteEntity(id = 101, title = "Secret Upgrade Note", content = "Critical Payload", isArchived = true)
+        val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()!!
+        val encryptedNote = VaultPayloadEncryptor.encryptNotePayload(originalNote, subKey)
+        kotlinx.coroutines.runBlocking { noteDb.noteDao().insertNote(encryptedNote) }
+        ArchiveVaultSecurity.lockVault()
+
+        // 1. Manually simulate a legacy PBKDF2 vault in prefs
+        val prefs = context.getSharedPreferences("focus_notes_archive_vault_security", android.content.Context.MODE_PRIVATE)
+        val salt = android.util.Base64.decode(prefs.getString("enc_salt", "")!!, android.util.Base64.NO_WRAP)
+        val keySpec = javax.crypto.spec.PBEKeySpec("112233".toCharArray(), salt, 100_000, 256)
+        val pbkdf2Hash = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(keySpec).encoded
+
+        // Re-encrypt the note with pbkdf2Hash
+        val noteWithPbkdf2 = VaultPayloadEncryptor.encryptNotePayload(originalNote, pbkdf2Hash)
+        kotlinx.coroutines.runBlocking { noteDb.noteDao().updateNote(noteWithPbkdf2) }
+
+        // Create legacy recovery envelope wrapping pbkdf2Hash
+        val legacyEnvelope = VaultCryptoEngine.createRecoveryEnvelope(pbkdf2Hash, mnemonic)
+        val legacyEncryptedPhrase = ArchiveVaultSecurity.encryptRecoveryPhrase(mnemonic, pbkdf2Hash)
+
+        prefs.edit()
+            .putString("kdf_type", "pbkdf2")
+            .putString("enc_hash", android.util.Base64.encodeToString(pbkdf2Hash, android.util.Base64.NO_WRAP))
+            .putString("enc_iv", "")
+            .putString("rec_ciphertext", android.util.Base64.encodeToString(legacyEnvelope.first, android.util.Base64.NO_WRAP))
+            .putString("rec_iv", android.util.Base64.encodeToString(legacyEnvelope.second, android.util.Base64.NO_WRAP))
+            .putString("rec_salt", android.util.Base64.encodeToString(legacyEnvelope.third, android.util.Base64.NO_WRAP))
+            .putString("rec_phrase_ciphertext", android.util.Base64.encodeToString(legacyEncryptedPhrase.first, android.util.Base64.NO_WRAP))
+            .putString("rec_phrase_iv", android.util.Base64.encodeToString(legacyEncryptedPhrase.second, android.util.Base64.NO_WRAP))
+            .commit()
+
+        // 2. Perform auto-upgrade via verifyPasscode
+        val verifyResult = ArchiveVaultSecurity.verifyPasscode(context, "112233")
+        assertTrue("Auto-upgrade unlock must succeed", verifyResult is ArchiveVaultSecurity.VerifyResult.Success)
+
+        // Lock vault so we can test mnemonic recovery
+        ArchiveVaultSecurity.lockVault()
+
+        // 3. Test mnemonic recovery with new PIN
+        val recoverSuccess = ArchiveVaultSecurity.recoverVaultWithMnemonic(context, mnemonic, "998877")
+        assertTrue("B1-F-027: Mnemonic recovery must succeed after PBKDF2 to Argon2id auto-upgrade", recoverSuccess)
+
+        // Verify the note is readable with the new PIN
+        val newSubKey = ArchiveVaultSecurity.getActiveVaultSubKey()!!
+        val currentNote = kotlinx.coroutines.runBlocking { noteDb.noteDao().getNoteByIdSync(101)!! }
+        val decryptedResult = VaultPayloadEncryptor.tryDecryptNotePayload(currentNote, newSubKey)
+        assertTrue("Restored note must decrypt cleanly under new PIN", decryptedResult is VaultPayloadEncryptor.DecryptionResult.Success)
+        assertEquals("Original note title must match", "Secret Upgrade Note", (decryptedResult as VaultPayloadEncryptor.DecryptionResult.Success).note.title)
+
+        // Clean up
+        kotlinx.coroutines.runBlocking { noteDb.noteDao().deleteAllNotes() }
+        ArchiveVaultSecurity.disablePasscode(context)
+    }
+
+    // B1-F-030: renameLabel and deleteLabel must update vault-encrypted notes when vault is unlocked
+    @Test
+    fun labelRenameAndDeleteUpdatesVaultEncryptedNotesWhenUnlocked() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        ArchiveVaultSecurity.setPasscode(context, "223344")
+        val noteDb = NoteDatabase.getInstance(context)
+        val repository = NoteRepository(noteDb.noteDao(), context)
+
+        val note = NoteEntity(
+            id = 202,
+            title = "Vault Note With Labels",
+            content = "Classified Content",
+            labelsJson = """["Work","Sensitive"]""",
+            isArchived = true
+        )
+        val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()!!
+        val encNote = VaultPayloadEncryptor.encryptNotePayload(note, subKey)
+        kotlinx.coroutines.runBlocking { noteDb.noteDao().insertNote(encNote) }
+
+        // Rename label "Work" -> "Career" while vault is unlocked
+        kotlinx.coroutines.runBlocking { repository.renameLabel("Work", "Career") }
+
+        val renamedEncNote = kotlinx.coroutines.runBlocking { noteDb.noteDao().getNoteByIdSync(202)!! }
+        val decryptedRenamed = VaultPayloadEncryptor.decryptNotePayload(renamedEncNote, subKey)
+        assertTrue("B1-F-030: Renamed label must contain 'Career'", decryptedRenamed.getLabels().contains("Career"))
+        assertFalse("B1-F-030: Renamed label must NOT contain 'Work'", decryptedRenamed.getLabels().contains("Work"))
+
+        // Delete label "Sensitive" while vault is unlocked
+        kotlinx.coroutines.runBlocking { repository.deleteLabel("Sensitive") }
+
+        val deletedEncNote = kotlinx.coroutines.runBlocking { noteDb.noteDao().getNoteByIdSync(202)!! }
+        val decryptedDeleted = VaultPayloadEncryptor.decryptNotePayload(deletedEncNote, subKey)
+        assertFalse("B1-F-030: Deleted label must NOT be present", decryptedDeleted.getLabels().contains("Sensitive"))
+        assertTrue("B1-F-030: Remaining label 'Career' must still be present", decryptedDeleted.getLabels().contains("Career"))
+
+        // Clean up
+        kotlinx.coroutines.runBlocking { noteDb.noteDao().deleteAllNotes() }
+        ArchiveVaultSecurity.disablePasscode(context)
+    }
+
+    // B1-F-031: writeEncryptedBytes must create parent directory if missing
+    @Test
+    fun encryptedMediaStorageCreatesMissingParentDirectory() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val nonExistentDir = java.io.File(context.filesDir, "test_nested_missing_dir_" + java.util.UUID.randomUUID().toString())
+        val targetFile = java.io.File(nonExistentDir, "media_test.enc")
+
+        assertFalse("Parent directory must not exist prior to write", nonExistentDir.exists())
+        val plaintext = "Hello Encrypted Media Storage".toByteArray(Charsets.UTF_8)
+        EncryptedMediaStorage.writeEncryptedBytes(targetFile, plaintext)
+
+        assertTrue("Parent directory must be created automatically", nonExistentDir.exists())
+        assertTrue("Encrypted file must exist", targetFile.exists())
+
+        val readBack = EncryptedMediaStorage.readDecryptedBytes(targetFile)
+        assertNotNull("Decrypted bytes must not be null", readBack)
+        assertArrayEquals("Decrypted content must match original plaintext", plaintext, readBack)
+
+        // Clean up
+        targetFile.delete()
+        nonExistentDir.delete()
+    }
+
+    // B1-F-028: createEncryptedBackup fails when locked vault notes exist
+    @Test
+    fun createEncryptedBackupFailsWhenVaultIsLockedWithEncryptedNotes() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        ArchiveVaultSecurity.setPasscode(context, "123456")
+        val noteDb = NoteDatabase.getInstance(context)
+
+        val note = NoteEntity(
+            id = 301,
+            title = "Secret Backup Note",
+            content = "Vault payload data",
+            isArchived = true
+        )
+        val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()!!
+        val encNote = VaultPayloadEncryptor.encryptNotePayload(note, subKey)
+        kotlinx.coroutines.runBlocking { noteDb.noteDao().insertNote(encNote) }
+
+        // Lock vault so subkey is null
+        ArchiveVaultSecurity.lockVault()
+
+        val backupFile = java.io.File(context.cacheDir, "test_locked_vault_backup.focusbackup")
+        val uri = android.net.Uri.fromFile(backupFile)
+
+        val result = kotlinx.coroutines.runBlocking {
+            com.focusbyrj.app.util.backup.BackupRestoreManager.createEncryptedBackup(context, uri, "backupPass123!")
+        }
+
+        assertTrue("B1-F-028: Backup must fail when locked vault notes exist", result.isFailure)
+        assertTrue("B1-F-028: Error message must explain vault is locked",
+            result.exceptionOrNull()?.message?.contains("Secret Archive Vault is locked") == true)
+
+        // Clean up
+        kotlinx.coroutines.runBlocking { noteDb.noteDao().deleteAllNotes() }
+        ArchiveVaultSecurity.disablePasscode(context)
+        backupFile.delete()
+    }
+
+    // B1-F-029: DatabaseKeyProvider propagates SecurityException when corrupted
+    @Test
+    fun databaseKeyProviderPropagatesSecurityException() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = context.getSharedPreferences("focus_notes_vault_security_prefs", android.content.Context.MODE_PRIVATE)
+        // Corrupt prefs by putting enc_db_passphrase without enc_db_passphrase_iv
+        prefs.edit()
+            .putString("enc_db_passphrase", "corrupted_base64_data")
+            .remove("enc_db_passphrase_iv")
+            .commit()
+
+        com.focusbyrj.app.data.note.DatabaseKeyProvider.clearCachedPassphrase()
+        try {
+            com.focusbyrj.app.data.note.DatabaseKeyProvider.getOrCreatePassphrase(context)
+            fail("B1-F-029: Expected SecurityException on corrupted passphrase entry")
+        } catch (e: SecurityException) {
+            assertTrue("SecurityException must be preserved and thrown", e.message?.contains("missing IV") == true)
+        } finally {
+            prefs.edit().clear().commit()
+            com.focusbyrj.app.data.note.DatabaseKeyProvider.clearCachedPassphrase()
+        }
+    }
+
+    // B1-F-032: EncryptedMediaFetcher decodes image safely from encrypted file
+    @Test
+    fun encryptedMediaFetcherDecodesEncryptedImage() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val mediaDir = java.io.File(context.filesDir, "keep_images").apply { mkdirs() }
+        val imageFile = java.io.File(mediaDir, "test_photo.jpg")
+
+        // Minimal JPEG header bytes
+        val jpegBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00)
+        EncryptedMediaStorage.writeEncryptedBytes(imageFile, jpegBytes)
+
+        val options = coil.request.Options(context)
+        val fetcher = com.focusbyrj.app.util.crypto.EncryptedMediaFetcher(imageFile, options)
+        val result = kotlinx.coroutines.runBlocking { fetcher.fetch() }
+
+        assertNotNull("B1-F-032: Fetcher must return a valid result for encrypted image", result)
+        assertTrue("B1-F-032: Result must be SourceResult", result is coil.fetch.SourceResult)
+        val sourceResult = result as coil.fetch.SourceResult
+        assertEquals("image/jpeg", sourceResult.mimeType)
+
+        // Clean up
+        imageFile.delete()
     }
 }
 

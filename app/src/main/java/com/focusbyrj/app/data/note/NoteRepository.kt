@@ -231,15 +231,28 @@ class NoteRepository(
 
     suspend fun renameLabel(oldLabel: String, newLabel: String) {
         try {
+            val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
             val allNotes = noteDao.getAllNotesList()
-            allNotes.forEach { note ->
+            allNotes.forEach { rawNote ->
+                val isEncrypted = VaultPayloadEncryptor.isVaultEncrypted(rawNote)
+                val note = if (isEncrypted && subKey != null) {
+                    VaultPayloadEncryptor.decryptNotePayload(rawNote, subKey)
+                } else {
+                    rawNote
+                }
                 val labels = note.getLabels().toMutableList()
                 val index = labels.indexOfFirst { it.equals(oldLabel, ignoreCase = true) }
                 if (index != -1) {
                     labels[index] = newLabel.trim()
                     val array = org.json.JSONArray()
                     labels.distinct().forEach { array.put(it) }
-                    noteDao.updateNote(note.copy(labelsJson = array.toString(), updatedAt = System.currentTimeMillis()))
+                    val updatedPlain = note.copy(labelsJson = array.toString(), updatedAt = System.currentTimeMillis())
+                    val finalNote = if (isEncrypted && subKey != null) {
+                        VaultPayloadEncryptor.encryptNotePayload(updatedPlain, subKey)
+                    } else {
+                        updatedPlain
+                    }
+                    noteDao.updateNote(finalNote)
                 }
             }
         } catch (e: Exception) {
@@ -249,14 +262,27 @@ class NoteRepository(
 
     suspend fun deleteLabel(label: String) {
         try {
+            val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
             val allNotes = noteDao.getAllNotesList()
-            allNotes.forEach { note ->
+            allNotes.forEach { rawNote ->
+                val isEncrypted = VaultPayloadEncryptor.isVaultEncrypted(rawNote)
+                val note = if (isEncrypted && subKey != null) {
+                    VaultPayloadEncryptor.decryptNotePayload(rawNote, subKey)
+                } else {
+                    rawNote
+                }
                 val labels = note.getLabels().toMutableList()
                 val removed = labels.removeAll { it.equals(label, ignoreCase = true) }
                 if (removed) {
                     val array = org.json.JSONArray()
                     labels.distinct().forEach { array.put(it) }
-                    noteDao.updateNote(note.copy(labelsJson = array.toString(), updatedAt = System.currentTimeMillis()))
+                    val updatedPlain = note.copy(labelsJson = array.toString(), updatedAt = System.currentTimeMillis())
+                    val finalNote = if (isEncrypted && subKey != null) {
+                        VaultPayloadEncryptor.encryptNotePayload(updatedPlain, subKey)
+                    } else {
+                        updatedPlain
+                    }
+                    noteDao.updateNote(finalNote)
                 }
             }
         } catch (e: Exception) {

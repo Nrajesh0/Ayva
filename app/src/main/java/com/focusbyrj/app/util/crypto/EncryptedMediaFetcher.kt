@@ -39,15 +39,19 @@ class EncryptedMediaFetcher(
 
     override suspend fun fetch(): FetchResult? {
         val decryptedBytes = EncryptedMediaStorage.readDecryptedBytes(data) ?: return null
-        val buffer = Buffer().write(decryptedBytes)
-        val imageSource = ImageSource(buffer, options.context)
-        val mimeType = detectMimeType(decryptedBytes, data.name)
+        return try {
+            val mimeType = detectMimeType(decryptedBytes, data.name)
+            val buffer = Buffer().write(decryptedBytes)
+            val imageSource = ImageSource(buffer, options.context)
 
-        return SourceResult(
-            source = imageSource,
-            mimeType = mimeType,
-            dataSource = DataSource.DISK
-        )
+            SourceResult(
+                source = imageSource,
+                mimeType = mimeType,
+                dataSource = DataSource.DISK
+            )
+        } finally {
+            java.util.Arrays.fill(decryptedBytes, 0.toByte())
+        }
     }
 
     private fun detectMimeType(bytes: ByteArray, filename: String): String {

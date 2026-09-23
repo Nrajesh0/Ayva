@@ -412,16 +412,46 @@ object ArchiveVaultSecurity {
                     }
 
                     if (autoUpgradeSuccess) {
+                        // B1-F-027 FIX: Re-wrap recovery envelope under realArgon2idHash so mnemonic recovery remains valid
+                        val existingWords = getStoredRecoveryPhraseInternal(prefs, pbkdf2Hash)
+                        val recoveryEnvelope = if (existingWords != null && existingWords.size == 12) {
+                            try {
+                                com.focusbyrj.app.util.sync.VaultCryptoEngine.createRecoveryEnvelope(realArgon2idHash, existingWords)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to re-wrap recovery envelope with realArgon2idHash during auto-upgrade", e)
+                                null
+                            }
+                        } else null
+
+                        val encryptedPhrase = if (existingWords != null && existingWords.size == 12) {
+                            try {
+                                encryptRecoveryPhrase(existingWords, realArgon2idHash)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to re-encrypt recovery phrase during auto-upgrade", e)
+                                null
+                            }
+                        } else null
+
                         val (newEncHash, newIv) = try {
                             encryptWithMasterKey(realArgon2idHash)
                         } catch (e: Exception) {
                             Pair(realArgon2idHash, ByteArray(0))
                         }
-                        val committed = prefs.edit()
+                        val editor = prefs.edit()
                             .putString(KEY_HASH, Base64.encodeToString(newEncHash, Base64.NO_WRAP))
                             .putString(KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
                             .putString(KEY_KDF_TYPE, "argon2id")
-                            .commit()
+
+                        if (recoveryEnvelope != null && encryptedPhrase != null) {
+                            editor.putBoolean(KEY_RECOVERY_ENABLED, true)
+                                .putString(KEY_RECOVERY_CIPHERTEXT, Base64.encodeToString(recoveryEnvelope.first, Base64.NO_WRAP))
+                                .putString(KEY_RECOVERY_IV, Base64.encodeToString(recoveryEnvelope.second, Base64.NO_WRAP))
+                                .putString(KEY_RECOVERY_SALT, Base64.encodeToString(recoveryEnvelope.third, Base64.NO_WRAP))
+                                .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encryptedPhrase.first, Base64.NO_WRAP))
+                                .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
+                        }
+
+                        val committed = editor.commit()
 
                         if (committed) {
                             computedHash?.let { Arrays.fill(it, 0.toByte()) }
@@ -462,16 +492,46 @@ object ArchiveVaultSecurity {
                 }
 
                 if (autoUpgradeSuccess) {
+                    // B1-F-027 FIX: Re-wrap recovery envelope under realArgon2idHash so mnemonic recovery remains valid
+                    val existingWords = computedHash?.let { getStoredRecoveryPhraseInternal(prefs, it) }
+                    val recoveryEnvelope = if (existingWords != null && existingWords.size == 12) {
+                        try {
+                            com.focusbyrj.app.util.sync.VaultCryptoEngine.createRecoveryEnvelope(realArgon2idHash, existingWords)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to re-wrap recovery envelope with realArgon2idHash during auto-upgrade", e)
+                            null
+                        }
+                    } else null
+
+                    val encryptedPhrase = if (existingWords != null && existingWords.size == 12) {
+                        try {
+                            encryptRecoveryPhrase(existingWords, realArgon2idHash)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to re-encrypt recovery phrase during auto-upgrade", e)
+                            null
+                        }
+                    } else null
+
                     val (newEncHash, newIv) = try {
                         encryptWithMasterKey(realArgon2idHash)
                     } catch (e: Exception) {
                         Pair(realArgon2idHash, ByteArray(0))
                     }
-                    val committed = prefs.edit()
+                    val editor = prefs.edit()
                         .putString(KEY_HASH, Base64.encodeToString(newEncHash, Base64.NO_WRAP))
                         .putString(KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
                         .putString(KEY_KDF_TYPE, "argon2id")
-                        .commit()
+
+                    if (recoveryEnvelope != null && encryptedPhrase != null) {
+                        editor.putBoolean(KEY_RECOVERY_ENABLED, true)
+                            .putString(KEY_RECOVERY_CIPHERTEXT, Base64.encodeToString(recoveryEnvelope.first, Base64.NO_WRAP))
+                            .putString(KEY_RECOVERY_IV, Base64.encodeToString(recoveryEnvelope.second, Base64.NO_WRAP))
+                            .putString(KEY_RECOVERY_SALT, Base64.encodeToString(recoveryEnvelope.third, Base64.NO_WRAP))
+                            .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encryptedPhrase.first, Base64.NO_WRAP))
+                            .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
+                    }
+
+                    val committed = editor.commit()
 
                     if (committed) {
                         computedHash?.let { Arrays.fill(it, 0.toByte()) }
@@ -976,6 +1036,8 @@ object ArchiveVaultSecurity {
             keyGenerator.init(keyGenSpec)
             keyGenerator.generateKey()
         } catch (e: Exception) {
+            // B1-F-029 FIX: Rethrow SecurityException so alias collisions fail closed instead of falling back to software seed
+            if (e is SecurityException) throw e
             Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey for archive vault.", e)
             val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
                 .digest("focus_vault_master_software_seed_v1".toByteArray(Charsets.UTF_8))

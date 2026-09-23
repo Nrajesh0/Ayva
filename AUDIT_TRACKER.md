@@ -33,7 +33,7 @@ Every finding follows this strict TDD workflow — no exceptions:
 
 | Batch | Domain | Status | Findings |
 |:---|:---|:---|:---|
-| **Batch 1** | Cryptography, Key Derivation & Vault Storage | 🔄 Completed (Pass 6 Audit) | 26 Found → 26 Fixed ✅ |
+| **Batch 1** | Cryptography, Key Derivation & Vault Storage | 🔄 Completed (Pass 7 Audit) | 32 Found → 32 Fixed ✅ |
 | **Batch 2** | Cloud Sync, Auth & Network Security | 🟡 Pre-Audit Hardened (Pending Full Re-audit) | 1 Found → 1 Fixed ✅ |
 | **Batch 3** | Android Components, IPC, Intents & Permissions | ⚪ Pending re-audit | — |
 | **Batch 4** | System Services, App Blocking & Overlays | ⚪ Pending re-audit | — |
@@ -42,7 +42,7 @@ Every finding follows this strict TDD workflow — no exceptions:
 | **Batch 7** | AI / Dialogue Engines, Math Logic & Parsing | ⚪ Not Started | — |
 | **Batch 8** | UI Screens, ViewModels, State & Edge Cases | ⚪ Not Started | — |
 
-**Active Batch**: **Batch 1 Audit Complete (26/26 Fixed) | Batch 2 Pre-Audit Patch Applied**
+**Active Batch**: **Batch 1 Audit Complete (32/32 Fixed) | Batch 2 Pre-Audit Patch Applied**
 
 ---
 
@@ -97,10 +97,16 @@ Every finding follows this strict TDD workflow — no exceptions:
 | B1-F-024 | 🟡 Low | `ArchiveVaultSecurity.kt` | Plaintext recovery phrase byte array residue in `encryptRecoveryPhrase()`: anonymous allocation of `phraseText.toByteArray(Charsets.UTF_8)` was not captured or zeroized in `finally`. Fixed by capturing and zeroing array. | Code inspection & memory zeroing verification | ✅ Fixed |
 | B1-F-025 | 🟠 Medium | `ArchiveVaultSecurity.kt` | Malformed PIN (<6 digits or non-digits) reset `remainingAttempts` to 5 in UI response, masking previous failed attempts. Transient hardware KeyStore decryption failure in `verifyPasscode()` fell back to raw ciphertext (`storedHashPayload`), guaranteeing false PIN mismatch and unfair escalation of lockout timer (30s–300s). Fixed by calculating `maxOf(0, 5 - currentAttempts)` on malformed PIN, adding a 3-attempt retry loop on hardware KeyStore decryption, and returning `VerifyResult.Error(...)` without incrementing lockout counters on failure. | `malformedPinReflectsActualRemainingAttempts`, `keyStoreDecryptionFailureReturnsErrorWithoutLockoutEscalation` | ✅ Fixed |
 | B1-F-026 | 🔴 High | `NotesViewModel.kt` | Trashed vault note permanent deletion media leak: `deletePermanently(note)` received encrypted notes with empty media lists (`imageUrisJson = "[]"`), failing to purge local media files or record cloud deletions in Supabase storage, resulting in orphaned storage leaks. Fixed by decrypting the note payload via `VaultPayloadEncryptor.decryptNotePayload(note)` before purging local media files and recording cloud deletions. | Tested via TDD inspection & viewmodel media cleanup pipeline | ✅ Fixed |
+| B1-F-027 | 🚨 Critical | `ArchiveVaultSecurity.kt` | Auto-upgrade path (PBKDF2 → Argon2id) re-encrypted Room notes under `realArgon2idHash` and updated `KEY_HASH`, but failed to re-wrap the stored recovery envelope (`rec_ciphertext`) or re-encrypt the phrase (`rec_phrase_ciphertext`). Subsequent mnemonic recovery failed with `AEADBadTagException`, causing permanent vault lockout. Fixed by re-wrapping recovery envelope and phrase with Argon2id hash in both auto-upgrade branches. | `mnemonicRecoverySucceedsAfterAutoUpgradeFromPbkdf2` | ✅ Fixed |
+| B1-F-028 | 🚨 Critical | `BackupRestoreManager.kt` | Encrypted backup creation exported locked vault notes as raw ciphertext while omitting device-bound KeyStore vault preferences (`enc_salt`, recovery envelope). Restoring on a new device or reinstall made all vault notes permanently unrecoverable. Fixed by refusing backup if vault notes are locked without an active subkey, decrypting notes into the backup archive (AES-GCM encrypted under backup password), and re-encrypting them on restore when vault is unlocked/active. | `createEncryptedBackupFailsWhenVaultIsLockedWithEncryptedNotes` | ✅ Fixed |
+| B1-F-029 | 🔴 High | `DatabaseKeyProvider.kt`, `EncryptedMediaStorage.kt`, `ArchiveVaultSecurity.kt` | KeyStore alias collision exceptions (`SecurityException`) thrown when an alias exists but cannot be loaded as a SecretKeyEntry were caught by outer `catch (e: Exception)` and silently fell back to an insecure, hardcoded software seed (`focus_..._software_seed_v1`). Fixed by rethrowing `SecurityException`. | `databaseKeyProviderPropagatesSecurityException` | ✅ Fixed |
+| B1-F-030 | 🟠 Medium | `NoteRepository.kt` | `renameLabel` and `deleteLabel` operated on `note.getLabels()` without decrypting vault notes (which store `labelsJson = "[]"` when locked), silently skipping label changes on vault notes. Fixed by checking `getActiveVaultSubKey()`, decrypting, modifying labels, and re-encrypting. | `labelRenameAndDeleteUpdatesVaultEncryptedNotesWhenUnlocked` | ✅ Fixed |
+| B1-F-031 | 🟠 Medium | `EncryptedMediaStorage.kt` | `writeEncryptedBytes()` failed to ensure parent directory existed prior to creating `FileOutputStream`, crashing when writing to nested or newly created subdirectories. Fixed by calling `file.parentFile?.mkdirs()`. | `encryptedMediaStorageCreatesMissingParentDirectory` | ✅ Fixed |
+| B1-F-032 | 🟡 Low | `EncryptedMediaFetcher.kt` | `fetch()` failed to zeroize `decryptedBytes` after buffer write, leaving private photos in JVM heap until garbage collection. Fixed with `try ... finally { Arrays.fill(decryptedBytes, 0.toByte()) }`. | `encryptedMediaFetcherDecodesEncryptedImage` | ✅ Fixed |
 
-**Batch 1 Result**: 3 Critical, 10 High, 10 Medium, 3 Low — **All 26 fixed** ✅
-**Pass 6 (Deep Adversarial Audit) Summary**: Uncovered 2 additional vulnerabilities (B1-F-025 and B1-F-026), added automated TDD regression tests in `Batch1SecurityAuditTest.kt`, applied targeted hardening in `ArchiveVaultSecurity.kt` and `NotesViewModel.kt`, and validated fail-closed security.
-**Status**: Batch 1 complete (26/26 fixed). Ready for commit & proceeding to Batch 2.
+**Batch 1 Result**: 5 Critical, 11 High, 12 Medium, 4 Low — **All 32 fixed** ✅
+**Pass 7 (Deep Adversarial Re-Audit) Summary**: Uncovered 6 additional vulnerabilities and data integrity issues (B1-F-027 through B1-F-032), wrote automated TDD regression tests in `Batch1SecurityAuditTest.kt`, applied targeted hardening across `ArchiveVaultSecurity.kt`, `BackupRestoreManager.kt`, `DatabaseKeyProvider.kt`, `NoteRepository.kt`, `EncryptedMediaStorage.kt`, and `EncryptedMediaFetcher.kt`, and verified 100% test pass rate.
+**Status**: Batch 1 complete (32/32 fixed). Ready for commit & proceeding to Batch 2.
 
 
 ---
