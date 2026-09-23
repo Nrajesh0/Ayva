@@ -185,7 +185,12 @@ object ArchiveVaultSecurity {
                         for (note in archivedNotes) {
                             if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
                                 if (isChangingPasscode) {
-                                    val decrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note, oldSubKey)
+                                    // B1-F-008 FIX: Use tryDecryptNotePayload and throw if decryption fails,
+                                    // aborting the transaction so notes are not permanently orphaned under old key.
+                                    val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, oldSubKey)) {
+                                        is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
+                                        else -> throw IllegalStateException("Cannot change passcode: archived note ${note.id} failed decryption ($res). Aborting to prevent permanent data loss.")
+                                    }
                                     val reEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(decrypted, derivedHash)
                                     noteDb.noteDao().updateNote(reEncrypted)
                                 }
@@ -202,8 +207,11 @@ object ArchiveVaultSecurity {
                 return false
             }
 
-            // Cache active subkey in memory upon initial setup or update
-            ephemeralVaultSubKey = derivedHash.copyOf()
+            // Cache active subkey in memory ONLY after credentials are safely committed to disk.
+            // B1-F-003 FIX: previously set before editor.commit(), creating a crash window where
+            // notes could be re-encrypted with the new key while prefs still held the old credentials,
+            // causing permanent vault lockout on process death between re-encryption and commit.
+            // The ephemeralVaultSubKey is now set inside the committed=true branch (see below).
 
             // Encrypt derived hash with KeyStore master key
             val (encryptedHash, iv) = try {
@@ -214,7 +222,7 @@ object ArchiveVaultSecurity {
             }
 
             // Check if there is an existing recovery phrase when changing passcode
-            val existingWords = if (isChangingPasscode && oldSubKey != null) {
+            val existingWords = if (isChangingPasscode) {
                 getStoredRecoveryPhraseInternal(prefs, oldSubKey)
             } else null
 
@@ -269,6 +277,11 @@ object ArchiveVaultSecurity {
             }
 
             val committed = editor.commit()
+            // B1-F-003 FIX: Set ephemeralVaultSubKey only after prefs are safely on disk.
+            // derivedHash is still valid here (not yet zeroed — that happens in the finally block).
+            if (committed) {
+                ephemeralVaultSubKey = derivedHash.copyOf()
+            }
             return committed
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set vault passcode", e)
@@ -364,7 +377,11 @@ object ArchiveVaultSecurity {
                                 val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
                                 for (note in archivedNotes) {
                                     if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                                        val decrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note, pbkdf2Hash)
+                                        // B1-F-008 FIX: Use tryDecryptNotePayload to ensure auto-upgrade aborts on failure
+                                        val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, pbkdf2Hash)) {
+                                            is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
+                                            else -> throw IllegalStateException("Note ${note.id} failed decryption during auto-upgrade ($res)")
+                                        }
                                         val reEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(decrypted, realArgon2idHash)
                                         noteDb.noteDao().updateNote(reEncrypted)
                                     }
@@ -406,7 +423,11 @@ object ArchiveVaultSecurity {
                             val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
                             for (note in archivedNotes) {
                                 if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                                    val decrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note, computedHash)
+                                    // B1-F-008 FIX: Use tryDecryptNotePayload to ensure auto-upgrade aborts on failure
+                                    val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, computedHash)) {
+                                        is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
+                                        else -> throw IllegalStateException("Note ${note.id} failed decryption during auto-upgrade ($res)")
+                                    }
                                     val reEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(decrypted, realArgon2idHash)
                                     noteDb.noteDao().updateNote(reEncrypted)
                                 }
@@ -442,6 +463,27 @@ object ArchiveVaultSecurity {
                 ephemeralVaultSubKey = computedHash?.copyOf()
                 inMemoryLockoutElapsed = 0L
 
+                // B1-F-018 FIX: Auto-encrypt any plaintext notes found in the vault upon successful unlock
+                try {
+                    val subKey = ephemeralVaultSubKey
+                    if (subKey != null) {
+                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                            val noteDb = NoteDatabase.getInstance(appContext)
+                            noteDb.withTransaction {
+                                val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
+                                for (note in archivedNotes) {
+                                    if (!com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                                        val encrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(note, subKey)
+                                        noteDb.noteDao().updateNote(encrypted)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to auto-encrypt plaintext archived notes on vault unlock", e)
+                }
+
                 prefs.edit()
                     .putInt(KEY_FAILED_ATTEMPTS, 0)
                     .putLong(KEY_LOCKOUT_UNTIL, 0L)
@@ -466,7 +508,8 @@ object ArchiveVaultSecurity {
                     VerifyResult.LockedOut(lockoutDurationSec)
                 } else {
                     editor.commit()
-                    VerifyResult.Incorrect(remainingAttempts = 5 - currentAttempts)
+                    // B1-F-004 FIX: clamp to 0 to prevent negative "remaining attempts" display
+                    VerifyResult.Incorrect(remainingAttempts = maxOf(0, 5 - currentAttempts))
                 }
             }
         } catch (e: Exception) {
@@ -627,7 +670,11 @@ object ArchiveVaultSecurity {
                     val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
                     for (note in archivedNotes) {
                         if (VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                            val decrypted = VaultPayloadEncryptor.decryptNotePayload(note, recoveredSubKey)
+                            // B1-F-008 FIX: Abort recovery if any archived note cannot be decrypted
+                            val decrypted = when (val res = VaultPayloadEncryptor.tryDecryptNotePayload(note, recoveredSubKey)) {
+                                is VaultPayloadEncryptor.DecryptionResult.Success -> res.note
+                                else -> throw IllegalStateException("Cannot recover vault: archived note ${note.id} failed decryption ($res). Aborting to prevent data loss.")
+                            }
                             val reEncrypted = VaultPayloadEncryptor.encryptNotePayload(decrypted, newDerivedHash)
                             noteDb.noteDao().updateNote(reEncrypted)
                         } else {
@@ -826,6 +873,11 @@ object ArchiveVaultSecurity {
      */
     @Synchronized
     fun skipPasscodeSetup(context: Context): Boolean {
+        // B1-F-015 FIX: Refuse to skip if vault is already enabled; must call disablePasscode() to decrypt notes
+        if (getVaultStatus(context) == VaultStatus.ENABLED) {
+            Log.w(TAG, "Cannot skip passcode setup: vault is already ENABLED. Use disablePasscode() to safely restore notes.")
+            return false
+        }
         lockVault()
         inMemoryLockoutElapsed = 0L
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -875,6 +927,8 @@ object ArchiveVaultSecurity {
                 if (entry != null) {
                     return entry.secretKey
                 }
+                // B1-F-013 FIX: Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
+                throw SecurityException("Archive vault master key exists in AndroidKeyStore but could not be loaded as SecretKeyEntry. Refusing to overwrite key to prevent permanent data loss.")
             }
 
             val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
@@ -903,7 +957,12 @@ object ArchiveVaultSecurity {
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         val iv = try {
             cipher.init(Cipher.ENCRYPT_MODE, masterKey)
-            cipher.iv ?: ByteArray(12).also { SecureRandom().nextBytes(it) }
+            // B1-F-010 FIX: Re-init cipher if cipher.iv is null so ciphertext matches returned IV
+            cipher.iv ?: run {
+                val generatedIv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+                cipher.init(Cipher.ENCRYPT_MODE, masterKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
+                generatedIv
+            }
         } catch (_: Exception) {
             val generatedIv = ByteArray(12).also { SecureRandom().nextBytes(it) }
             cipher.init(Cipher.ENCRYPT_MODE, masterKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))

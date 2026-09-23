@@ -53,7 +53,9 @@ object HkdfUtil {
      * @return PRK — 32 bytes of pseudorandom key material.
      */
     fun extract(salt: ByteArray?, ikm: ByteArray): ByteArray {
-        val effectiveSalt = salt ?: ByteArray(HASH_LEN) // zero-filled per RFC 5869 §2.2
+        // B1-F-016 FIX: RFC 5869 §2.2 specifies if salt is not provided (null or empty),
+        // it must be set to a string of HashLen zeros.
+        val effectiveSalt = if (salt == null || salt.isEmpty()) ByteArray(HASH_LEN) else salt
         return hmacSha256(effectiveSalt, ikm)
     }
 
@@ -76,18 +78,26 @@ object HkdfUtil {
         val okm = ByteArray(n * HASH_LEN)
         var t = ByteArray(0) // T(0) = empty string
 
-        for (i in 1..n) {
-            // T(i) = HMAC-SHA256(PRK, T(i-1) || info || i)
-            val hmacInput = ByteArray(t.size + infoBytes.size + 1)
-            System.arraycopy(t, 0, hmacInput, 0, t.size)
-            System.arraycopy(infoBytes, 0, hmacInput, t.size, infoBytes.size)
-            hmacInput[t.size + infoBytes.size] = i.toByte()
+        try {
+            for (i in 1..n) {
+                // T(i) = HMAC-SHA256(PRK, T(i-1) || info || i)
+                val hmacInput = ByteArray(t.size + infoBytes.size + 1)
+                System.arraycopy(t, 0, hmacInput, 0, t.size)
+                System.arraycopy(infoBytes, 0, hmacInput, t.size, infoBytes.size)
+                hmacInput[t.size + infoBytes.size] = i.toByte()
 
-            t = hmacSha256(prk, hmacInput)
-            System.arraycopy(t, 0, okm, (i - 1) * HASH_LEN, t.size)
+                val nextT = hmacSha256(prk, hmacInput)
+                Arrays.fill(hmacInput, 0.toByte())
+                Arrays.fill(t, 0.toByte())
+                t = nextT
+                System.arraycopy(t, 0, okm, (i - 1) * HASH_LEN, t.size)
+            }
+
+            return okm.copyOf(length)
+        } finally {
+            Arrays.fill(t, 0.toByte())
+            Arrays.fill(okm, 0.toByte())
         }
-
-        return okm.copyOf(length)
     }
 
     /**

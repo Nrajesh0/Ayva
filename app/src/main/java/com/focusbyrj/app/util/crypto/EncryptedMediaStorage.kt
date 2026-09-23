@@ -59,6 +59,8 @@ object EncryptedMediaStorage {
                 if (entry != null) {
                     return entry.secretKey
                 }
+                // B1-F-013 FIX: Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
+                throw SecurityException("Media storage master key exists in AndroidKeyStore but could not be loaded as SecretKeyEntry. Refusing to overwrite key to prevent permanent data loss.")
             }
 
             val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
@@ -93,26 +95,39 @@ object EncryptedMediaStorage {
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         val iv = try {
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            cipher.iv ?: ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
+            // B1-F-010 FIX: Re-init cipher if cipher.iv is null so ciphertext matches returned IV
+            cipher.iv ?: run {
+                val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
+                cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
+                generatedIv
+            }
         } catch (_: Exception) {
             val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
             cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
             generatedIv
         }
 
-        val encryptedBytes = cipher.doFinal(plaintextBytes)
+        // B1-F-006 FIX: Wrap all writes in try/catch so tempFile is always cleaned up on failure.
+        // Previously, a disk-full or OOM during write would leave an orphaned .tmp file on disk.
+        try {
+            val encryptedBytes = cipher.doFinal(plaintextBytes)
 
-        FileOutputStream(tempFile).use { fos ->
-            fos.write(MAGIC_HEADER.toByteArray(Charsets.UTF_8))
-            fos.write(iv)
-            fos.write(encryptedBytes)
-            fos.flush()
-        }
+            FileOutputStream(tempFile).use { fos ->
+                fos.write(MAGIC_HEADER.toByteArray(Charsets.UTF_8))
+                fos.write(iv)
+                fos.write(encryptedBytes)
+                fos.flush()
+            }
 
-        if (file.exists()) {
-            file.delete()
+            if (file.exists()) {
+                file.delete()
+            }
+            tempFile.renameTo(file)
+        } catch (e: Throwable) {
+            // Clean up the partially written temp file before rethrowing to avoid storage leaks.
+            tempFile.delete()
+            throw e
         }
-        tempFile.renameTo(file)
     }
 
     /**
@@ -124,9 +139,7 @@ object EncryptedMediaStorage {
         return try {
             val magicBytes = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
             val fileLen = file.length()
-            if (fileLen <= magicBytes.size + GCM_IV_LENGTH) {
-                return if (fileLen > 0) file.readBytes() else null
-            }
+            val minEncryptedLen = magicBytes.size + GCM_IV_LENGTH + 16 // Header + 12B IV + 16B GCM Tag
 
             FileInputStream(file).use { fis ->
                 val headerBuf = ByteArray(magicBytes.size)
@@ -138,6 +151,11 @@ object EncryptedMediaStorage {
                 }
 
                 if (bytesRead == magicBytes.size && headerBuf.contentEquals(magicBytes)) {
+                    // File claims to be encrypted via MAGIC_HEADER.
+                    // B1-F-009 FIX: If file is shorter than minimum encrypted length, it is corrupted/truncated.
+                    // Must return null, never fall back to plaintext.
+                    if (fileLen < minEncryptedLen) return null
+
                     val iv = ByteArray(GCM_IV_LENGTH)
                     var ivRead = 0
                     while (ivRead < GCM_IV_LENGTH) {
@@ -155,6 +173,7 @@ object EncryptedMediaStorage {
                         if (r == -1) break
                         totalCipherRead += r
                     }
+                    if (totalCipherRead != cipherLen) return null
 
                     val secretKey = getOrCreateKey()
                     val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
@@ -172,7 +191,7 @@ object EncryptedMediaStorage {
                         if (r == -1) break
                         offset += r
                     }
-                    fullBytes
+                    if (offset != fullBytes.size) fullBytes.copyOf(offset) else fullBytes
                 }
             }
         } catch (e: Exception) {
@@ -189,7 +208,12 @@ object EncryptedMediaStorage {
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         val iv = try {
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            cipher.iv ?: ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
+            // B1-F-010 FIX: Re-init cipher if cipher.iv is null so ciphertext matches returned IV
+            cipher.iv ?: run {
+                val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
+                cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
+                generatedIv
+            }
         } catch (_: Exception) {
             val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
             cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))

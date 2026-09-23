@@ -95,6 +95,9 @@ object Argon2idKdf {
         salt: ByteArray,
         params: Parameters = Parameters.LOGIN
     ): ByteArray {
+        // B1-F-017 FIX: Argon2 requires minimum 8-byte salt (ARGON2_MIN_SALT = 8).
+        require(salt.size >= 8) { "Argon2id salt must be at least 8 bytes, got ${salt.size}" }
+
         val runner = argon2Kt
         if (runner == null) {
             return deriveKeyJvmFallback(password, salt, params.outputLengthBytes)
@@ -139,6 +142,9 @@ object Argon2idKdf {
         salt: ByteArray,
         params: Parameters = Parameters.LOGIN
     ): ByteArray {
+        // B1-F-017 FIX: Argon2 requires minimum 8-byte salt (ARGON2_MIN_SALT = 8).
+        require(salt.size >= 8) { "Argon2id salt must be at least 8 bytes, got ${salt.size}" }
+
         val runner = argon2Kt
         if (runner == null) {
             val decoded = StandardCharsets.UTF_8.decode(java.nio.ByteBuffer.wrap(passwordBytes))

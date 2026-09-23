@@ -586,8 +586,10 @@ object VaultCryptoEngine {
 
         return try {
             // Resolve indices
+            // B1-F-014 FIX: Normalize words (trim and lowercase) to handle mobile keyboard auto-capitalization and trailing spaces
             val indices = words.map { word ->
-                BIP39_WORDLIST.indexOf(word).also { if (it < 0) return false }
+                val normalized = word.trim().lowercase()
+                BIP39_WORDLIST.indexOf(normalized).also { if (it < 0) return false }
             }
 
             // Reconstruct 132 bits
@@ -642,15 +644,19 @@ object VaultCryptoEngine {
 
         val normalizedMnemonic = words.joinToString(" ") { it.trim().lowercase() }
         val chars = normalizedMnemonic.toCharArray()
+        var spec: PBEKeySpec? = null
         try {
             val keyFactory = try {
                 SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
             } catch (_: Exception) {
                 SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
             }
-            val spec = PBEKeySpec(chars, salt, 2048, 256)
+            spec = PBEKeySpec(chars, salt, 2048, 256)
             return keyFactory.generateSecret(spec).encoded
         } finally {
+            // B1-F-005 FIX: PBEKeySpec holds an internal char[] copy of the mnemonic.
+            // clearPassword() zeroes that internal copy so it doesn't linger in heap memory.
+            spec?.clearPassword()
             Arrays.fill(chars, '0')
         }
     }

@@ -59,7 +59,8 @@ object CryptoBackupEngine {
     private val MAGIC_HEADER = byteArrayOf('F'.code.toByte(), 'B'.code.toByte(), 'C'.code.toByte(), 'K'.code.toByte())
 
     private const val FORMAT_VERSION_V1: Byte = 0x01  // PBKDF2-100K (legacy, read-only)
-    private const val FORMAT_VERSION_V2: Byte = 0x02  // Argon2id (current)
+    private const val FORMAT_VERSION_V2: Byte = 0x02  // Argon2id LOGIN/32MB (legacy, read-only — B1-F-002 fix)
+    private const val FORMAT_VERSION_V3: Byte = 0x03  // Argon2id BACKUP/64MB (current)
 
     private const val SALT_LENGTH = 16
     private const val IV_LENGTH = 12
@@ -83,30 +84,37 @@ object CryptoBackupEngine {
 
     /**
      * Opens a streaming CipherOutputStream for encrypting data on-the-fly.
-     * Writes the v2 format header (Magic + Version 0x02 + Salt + IV) directly to [outputStream].
-     * 
+     * Writes the v3 format header (Magic + Version 0x03 + Salt + IV) directly to [outputStream].
+     *
+     * Uses Argon2id BACKUP parameters (m=64MB, t=3, p=1) — the hardest KDF tier, appropriate
+     * for offline backup files that could be exfiltrated and brute-forced.
+     *
+     * FIX B1-F-001: passwordChars is cloned internally; the caller's array is never mutated.
+     * FIX B1-F-002: Now writes V3 header with Parameters.BACKUP (64MB) instead of V2/LOGIN (32MB).
+     *
      * Streaming ensures large archives (including photos, sketches, and audio memos)
      * are encrypted with zero heap memory buffering, completely preventing OutOfMemoryError crashes.
      */
     fun openEncryptingStream(outputStream: OutputStream, passwordChars: CharArray): OutputStream {
         val salt = ByteArray(SALT_LENGTH).also { SecureRandom().nextBytes(it) }
         val iv = ByteArray(IV_LENGTH).also { SecureRandom().nextBytes(it) }
-
+        // B1-F-001: Clone so the caller's original array is never mutated by our finally block.
+        val internalChars = passwordChars.clone()
         var derivedKeyBytes: ByteArray? = null
         try {
             derivedKeyBytes = Argon2idKdf.deriveKey(
-                password = passwordChars,
+                password = internalChars,
                 salt = salt,
-                params = Argon2idKdf.Parameters.LOGIN  // m=32MB, t=3, p=1
+                params = Argon2idKdf.Parameters.BACKUP  // B1-F-002: 64MB BACKUP params for new backups
             )
 
             val secretKey = SecretKeySpec(derivedKeyBytes, "AES")
             val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
             cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
 
-            // Write v2 header
+            // Write v3 header (B1-F-002: upgraded from v2)
             outputStream.write(MAGIC_HEADER)
-            outputStream.write(byteArrayOf(FORMAT_VERSION_V2))
+            outputStream.write(byteArrayOf(FORMAT_VERSION_V3))
             outputStream.write(salt)
             outputStream.write(iv)
             outputStream.flush()
@@ -114,20 +122,26 @@ object CryptoBackupEngine {
             return javax.crypto.CipherOutputStream(outputStream, cipher)
         } finally {
             derivedKeyBytes?.let { Arrays.fill(it, 0.toByte()) }
-            Arrays.fill(passwordChars, '\u0000')
+            Arrays.fill(internalChars, '\u0000')  // B1-F-001: zero only the internal clone
         }
     }
 
     /**
      * Opens a streaming CipherInputStream for decrypting an encrypted backup archive on-the-fly.
-     * Verifies format headers and supports both:
-     *   v2 (0x02): Argon2id key derivation (new, current)
-     *   v1 (0x01): PBKDF2-100K key derivation (legacy, backward-compat restore)
-     * 
+     * Supports all three format versions:
+     *   v3 (0x03): Argon2id BACKUP/64MB params (current — written by new backups)
+     *   v2 (0x02): Argon2id LOGIN/32MB params (legacy, read-only backward compat)
+     *   v1 (0x01): PBKDF2-100K (oldest legacy, read-only backward compat)
+     *
+     * FIX B1-F-001: passwordChars is cloned internally; the caller's array is never mutated.
+     * FIX B1-F-002: V3 path uses Parameters.BACKUP (64MB); V2 path kept with Parameters.LOGIN (32MB).
+     *
      * Throws [IllegalArgumentException] for invalid/corrupted headers.
      * Throws [SecurityException] for authentication failures.
      */
     fun openDecryptingStream(inputStream: InputStream, passwordChars: CharArray): InputStream {
+        // B1-F-001: Clone so the caller's original array is never mutated by our finally block.
+        val internalChars = passwordChars.clone()
         var derivedKeyBytes: ByteArray? = null
         try {
             val header = ByteArray(4)
@@ -139,11 +153,12 @@ object CryptoBackupEngine {
             if (versionByte == -1) {
                 throw IllegalArgumentException("Corrupted backup header: unexpected end of stream.")
             }
+            val isV3 = versionByte == FORMAT_VERSION_V3.toInt()
             val isV2 = versionByte == FORMAT_VERSION_V2.toInt()
             val isV1 = versionByte == FORMAT_VERSION_V1.toInt()
 
-            if (!isV1 && !isV2) {
-                throw IllegalArgumentException("Unsupported backup format version: $versionByte. Expected 1 (legacy) or 2 (current).")
+            if (!isV1 && !isV2 && !isV3) {
+                throw IllegalArgumentException("Unsupported backup format version: $versionByte. Expected 1, 2, or 3.")
             }
 
             val salt = ByteArray(SALT_LENGTH)
@@ -156,21 +171,32 @@ object CryptoBackupEngine {
                 throw IllegalArgumentException("Corrupted backup header: incomplete IV.")
             }
 
-            derivedKeyBytes = if (isV2) {
-                // v2: Argon2id key derivation (Pattern 1)
-                Argon2idKdf.deriveKey(
-                    password = passwordChars,
-                    salt = salt,
-                    params = Argon2idKdf.Parameters.LOGIN
-                )
-            } else {
-                // v1: Legacy PBKDF2 (backward compat for old backups)
-                val keySpec = javax.crypto.spec.PBEKeySpec(passwordChars, salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
-                try {
-                    val keyFactory = javax.crypto.SecretKeyFactory.getInstance(PBKDF2_ALGORITHM)
-                    keyFactory.generateSecret(keySpec).encoded
-                } finally {
-                    keySpec.clearPassword()
+            derivedKeyBytes = when {
+                isV3 -> {
+                    // v3: Argon2id BACKUP params (64MB — B1-F-002: current format)
+                    Argon2idKdf.deriveKey(
+                        password = internalChars,
+                        salt = salt,
+                        params = Argon2idKdf.Parameters.BACKUP
+                    )
+                }
+                isV2 -> {
+                    // v2: Argon2id LOGIN params (32MB — B1-F-002: legacy backward compat)
+                    Argon2idKdf.deriveKey(
+                        password = internalChars,
+                        salt = salt,
+                        params = Argon2idKdf.Parameters.LOGIN
+                    )
+                }
+                else -> {
+                    // v1: Legacy PBKDF2 (backward compat for oldest backups)
+                    val keySpec = javax.crypto.spec.PBEKeySpec(internalChars, salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
+                    try {
+                        val keyFactory = javax.crypto.SecretKeyFactory.getInstance(PBKDF2_ALGORITHM)
+                        keyFactory.generateSecret(keySpec).encoded
+                    } finally {
+                        keySpec.clearPassword()
+                    }
                 }
             }
 
@@ -184,13 +210,13 @@ object CryptoBackupEngine {
             throw SecurityException("Incorrect password or corrupted backup file.", e)
         } finally {
             derivedKeyBytes?.let { Arrays.fill(it, 0.toByte()) }
-            Arrays.fill(passwordChars, '\u0000')
+            Arrays.fill(internalChars, '\u0000')  // B1-F-001: zero only the internal clone
         }
     }
 
     /**
      * Encrypts plaintext bytes using Argon2id + AES-256-GCM and writes to [outputStream].
-     * Writes a v2 format header. Uses streaming cipher internally.
+     * Writes a v3 format header (64MB BACKUP Argon2id). Uses streaming cipher internally.
      */
     fun encrypt(plaintext: ByteArray, passwordChars: CharArray, outputStream: OutputStream) {
         val passwordCopy = passwordChars.clone()
@@ -200,8 +226,8 @@ object CryptoBackupEngine {
                 cipherOut.flush()
             }
         } finally {
+            // B1-F-012 FIX: Zero only internal clone; caller manages their own CharArray lifecycle
             Arrays.fill(passwordCopy, '\u0000')
-            Arrays.fill(passwordChars, '\u0000')
         }
     }
 
@@ -223,8 +249,8 @@ object CryptoBackupEngine {
             if (e is SecurityException) throw e
             throw SecurityException("Incorrect password or corrupted backup file.", e)
         } finally {
+            // B1-F-012 FIX: Zero only internal clone; caller manages their own CharArray lifecycle
             Arrays.fill(passwordCopy, '\u0000')
-            Arrays.fill(passwordChars, '\u0000')
         }
     }
 }

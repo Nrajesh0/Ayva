@@ -50,6 +50,9 @@ class DataIntegrityPhase3Test {
             .clear()
             .commit()
         ArchiveVaultSecurity.lockVault()
+        runBlocking {
+            noteDb.noteDao().deleteAllNotes()
+        }
     }
 
     @After
@@ -59,6 +62,9 @@ class DataIntegrityPhase3Test {
             .edit()
             .clear()
             .commit()
+        runBlocking {
+            noteDb.noteDao().deleteAllNotes()
+        }
     }
 
     @Test

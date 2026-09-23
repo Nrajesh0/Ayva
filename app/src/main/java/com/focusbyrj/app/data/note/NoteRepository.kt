@@ -154,8 +154,13 @@ class NoteRepository(
                     val encrypted = VaultPayloadEncryptor.encryptNotePayload(existing.copy(isArchived = true))
                     noteDao.updateNote(encrypted)
                 } else if (!isArchived && VaultPayloadEncryptor.isVaultEncrypted(existing)) {
-                    val decrypted = VaultPayloadEncryptor.decryptNotePayload(existing).copy(isArchived = false)
-                    noteDao.updateNote(decrypted)
+                    // B1-F-019 FIX: Only unarchive if decryption succeeds. Never leak ciphertext to active notes.
+                    val res = VaultPayloadEncryptor.tryDecryptNotePayload(existing)
+                    if (res is VaultPayloadEncryptor.DecryptionResult.Success) {
+                        noteDao.updateNote(res.note.copy(isArchived = false))
+                    } else {
+                        Log.w(TAG, "Cannot unarchive note $id: vault is locked or decryption failed ($res)")
+                    }
                 } else {
                     noteDao.updateArchiveStatus(id, isArchived)
                 }

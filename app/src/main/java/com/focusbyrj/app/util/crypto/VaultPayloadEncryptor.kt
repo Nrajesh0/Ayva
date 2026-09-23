@@ -185,6 +185,9 @@ object VaultPayloadEncryptor {
                     "${Base64.encodeToString(iv, Base64.NO_WRAP)}:" +
                     Base64.encodeToString(ciphertext, Base64.NO_WRAP)
 
+            // B1-F-007 FIX: Zero ciphertext bytes from heap after Base64 encoding is complete.
+            Arrays.fill(ciphertext, 0.toByte())
+
             note.copy(
                 title = "🔒 Encrypted Note",
                 content = envelope,
