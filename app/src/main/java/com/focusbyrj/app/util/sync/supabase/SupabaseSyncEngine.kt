@@ -129,6 +129,11 @@ object SupabaseSyncEngine {
      * Generates or retrieves a stable non-deterministic UUIDv4 sync ID mapped to the local item.
      * Prevents metadata leakage and preserves multi-device pairing.
      */
+    fun getExistingSyncId(context: Context, userId: String, type: String, localId: Long): String? {
+        val prefs = context.getSharedPreferences(SYNC_MAP_PREFS, Context.MODE_PRIVATE)
+        return prefs.getString("$userId:$type:$localId", null)
+    }
+
     fun getOrCreateSyncId(context: Context, userId: String, type: String, localId: Long): String {
         val prefs = context.getSharedPreferences(SYNC_MAP_PREFS, Context.MODE_PRIVATE)
         val key = "$userId:$type:$localId"
@@ -147,13 +152,15 @@ object SupabaseSyncEngine {
         val mappedLocalId = getLocalIdForSyncId(context, userId, type, cloudId)
         if (mappedLocalId != null && mappedLocalId == localId) return true
 
-        val syncId = getOrCreateSyncId(context, userId, type, localId)
-        if (cloudId == syncId) return true
+        // Predicate check must be strictly read-only — do NOT generate new random UUIDs during search!
+        val existingSyncId = getExistingSyncId(context, userId, type, localId)
+        if (existingSyncId != null && cloudId == existingSyncId) return true
 
-        // Backward compatibility fallback for legacy deterministic IDs
+        // Backward compatibility fallback for legacy deterministic scoped IDs
         val legacyScoped = if (userId.isNotBlank()) UUID.nameUUIDFromBytes("$userId:$type:$localId".toByteArray(Charsets.UTF_8)).toString() else ""
         if (legacyScoped.isNotBlank() && cloudId == legacyScoped) return true
-        return cloudId == UUID.nameUUIDFromBytes("$type:$localId".toByteArray(Charsets.UTF_8)).toString()
+
+        return false
     }
 
     /**
@@ -200,7 +207,9 @@ object SupabaseSyncEngine {
      */
     fun recordLocalDeletion(context: Context, type: String, localId: Long) {
         val session = SupabaseKeyManager.getSessionState(context)
-        val userId = session.userId ?: ""
+        val userId = session.userId?.takeIf { it.isNotBlank() }
+            ?: context.getSharedPreferences("focus_supabase_zk_prefs", Context.MODE_PRIVATE).getString("user_id", null)?.takeIf { it.isNotBlank() }
+            ?: ""
         if (userId.isBlank() || localId <= 0L) return
 
         val syncId = getOrCreateSyncId(context, userId, type, localId)
@@ -353,13 +362,13 @@ object SupabaseSyncEngine {
                                 Log.w(TAG, "Note ${match.id} was edited locally after remote deletion. Reviving item.")
                                 unbindSyncId(context, userId, "NOTE", match.id, cloudItem.id)
                             } else {
+                                val cleanNote = if (match.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(match)) {
+                                    com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(match)
+                                } else {
+                                    match
+                                }
                                 // If note was edited offline since last sync, preserve content as restored copy
                                 if (session.lastSyncedTime > 0L && match.updatedAt > session.lastSyncedTime) {
-                                    val cleanNote = if (match.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(match)) {
-                                        com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(match)
-                                    } else {
-                                        match
-                                    }
                                     var restoredCopy = cleanNote.copy(
                                         id = 0L,
                                         title = if (cleanNote.title.startsWith("[Restored]")) cleanNote.title else "[Restored] ${cleanNote.title.ifBlank { "Untitled" }}",
@@ -371,7 +380,7 @@ object SupabaseSyncEngine {
                                     noteDao.insertNote(restoredCopy)
                                     Log.w(TAG, "Preserved offline edit for remotely deleted note ${match.id} as restored copy.")
                                 }
-                                com.focusbyrj.app.data.note.NoteMediaManager.deleteNoteMediaFiles(match)
+                                com.focusbyrj.app.data.note.NoteMediaManager.deleteNoteMediaFiles(cleanNote)
                                 noteDao.deleteNote(match)
                                 unbindSyncId(context, userId, "NOTE", match.id, cloudItem.id)
                                 downloaded++
@@ -422,7 +431,12 @@ object SupabaseSyncEngine {
                                 val match = if (localId != null) {
                                     noteDao.getNoteByIdSync(localId)
                                 } else {
-                                    noteDao.getAllNotesList().find { isMatchingItem(context, cloudItem.id, userId, "NOTE", it.id) }
+                                    val cloudCreatedAt = root.optLong("createdAt", 0L)
+                                    val cloudTitle = root.optString("title", "")
+                                    noteDao.getAllNotesList().find { localNote ->
+                                        isMatchingItem(context, cloudItem.id, userId, "NOTE", localNote.id) ||
+                                        (cloudCreatedAt > 0L && localNote.createdAt == cloudCreatedAt && localNote.title == cloudTitle)
+                                    }
                                 }
 
                                 val isCloudNoteArchived = root.optBoolean("isArchived", false)
@@ -533,6 +547,9 @@ object SupabaseSyncEngine {
                                         }
                                     }
 
+                                    val isTrashed = root.optBoolean("isTrashed", false)
+                                    val trashedAt = if (root.has("trashedAt") && !root.isNull("trashedAt")) root.optLong("trashedAt").takeIf { it > 0L } else null
+
                                     var note = NoteEntity(
                                         id = match?.id ?: 0L,
                                         title = root.optString("title", ""),
@@ -543,7 +560,8 @@ object SupabaseSyncEngine {
                                         fontKey = root.optString("fontKey", "default"),
                                         isPinned = root.optBoolean("isPinned", false),
                                         isArchived = root.optBoolean("isArchived", false),
-                                        isTrashed = root.optBoolean("isTrashed", false),
+                                        isTrashed = isTrashed,
+                                        trashedAt = trashedAt,
                                         labelsJson = root.optString("labelsJson", "[]"),
                                         imageUrisJson = JSONArray(localImagePaths).toString(),
                                         audioUrisJson = JSONArray(localAudioPaths).toString(),
@@ -566,7 +584,12 @@ object SupabaseSyncEngine {
                                 val match = if (localId != null) {
                                     taskDao.getTaskById(localId)
                                 } else {
-                                    taskDao.getAllTasksList().find { isMatchingItem(context, cloudItem.id, userId, "TASK", it.id) }
+                                    val cloudDueDate = if (root.isNull("dueDate")) null else root.optLong("dueDate").takeIf { it > 0L }
+                                    val cloudTitle = root.optString("title", "")
+                                    taskDao.getAllTasksList().find { localTask ->
+                                        isMatchingItem(context, cloudItem.id, userId, "TASK", localTask.id) ||
+                                        (cloudTitle.isNotBlank() && localTask.title == cloudTitle && localTask.dueDate == cloudDueDate)
+                                    }
                                 }
 
                                 val cloudUpdatedAt = cloudItem.updatedAt
@@ -782,6 +805,7 @@ object SupabaseSyncEngine {
                         put("isPinned", note.isPinned)
                         put("isArchived", note.isArchived)
                         put("isTrashed", note.isTrashed)
+                        put("trashedAt", note.trashedAt ?: JSONObject.NULL)
                         put("labelsJson", note.labelsJson)
                         put("imageUrisJson", JSONArray(cloudImagePaths).toString())
                         put("audioUrisJson", JSONArray(cloudAudioPaths).toString())
@@ -1071,7 +1095,7 @@ object SupabaseSyncEngine {
         while (true) {
             var conn: HttpsURLConnection? = null
             try {
-                val url = URL("$endpoint?select=*&limit=$pageSize&offset=$offset")
+                val url = URL("$endpoint?select=*&limit=$pageSize&offset=$offset&order=id.asc")
                 conn = (url.openConnection() as HttpsURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 15000

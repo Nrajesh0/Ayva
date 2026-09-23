@@ -221,4 +221,86 @@ class SyncAndConflictResolutionTest {
         )
         assertEquals("63f1000c-f1bf-443f-a653-9da56fd83982", mappedUuid)
     }
+
+    @Test
+    fun testClearSessionPreservesUserNamespacedSyncMapAndManifest() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val userId = "user-persist-123"
+        val localId = 77L
+        val cloudId = "cloud-uuid-77"
+        val localImgPath = "/data/user/0/com.focusbyrj.app/files/keep_images/media77.enc"
+
+        // 1. Bind sync ID and media manifest
+        SupabaseSyncEngine.bindSyncId(context, userId, "NOTE", localId, cloudId)
+        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.bindCloudUuid(context, userId, localImgPath, "uuid-media-77")
+
+        // 2. Set mock session and sequence number
+        val sessionPrefs = context.getSharedPreferences("focus_supabase_zk_prefs", Context.MODE_PRIVATE)
+        sessionPrefs.edit().putString("access_token", "jwt_token").putString("user_id", userId).commit()
+        com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager.updateSequenceNumberIfHigher(context, cloudId, 5L)
+
+        // 3. Invoke clearSession (e.g. user taps Log Out)
+        com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager.clearSession(context)
+
+        // 4. Session tokens and sequence numbers must be cleared
+        val sessionAfter = com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager.getSessionState(context)
+        assertFalse("Session must not be signed in after clearSession", sessionAfter.isSignedIn)
+        assertEquals(0L, com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager.getSequenceNumber(context, cloudId))
+
+        // 5. User-namespaced sync mappings and manifest MUST be preserved to prevent duplicate notes/tasks upon re-login
+        val localIdAfter = SupabaseSyncEngine.getLocalIdForSyncId(context, userId, "NOTE", cloudId)
+        assertEquals("Local ID mapping must persist across sign-outs for the same user", localId, localIdAfter)
+
+        val cloudUuidAfter = com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.getCloudUuid(context, userId, localImgPath)
+        assertEquals("Media manifest mapping must persist across sign-outs for the same user", "uuid-media-77", cloudUuidAfter)
+    }
+
+    @Test
+    fun testIsMatchingItemHasNoSideEffects() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val userId = "user-side-effect-test"
+        val unmappedLocalId = 8888L
+
+        // Prior to call, localId has no sync ID
+        val syncIdBefore = SupabaseSyncEngine.getExistingSyncId(context, userId, "NOTE", unmappedLocalId)
+        org.junit.Assert.assertNull("Unmapped note must have null existing sync ID", syncIdBefore)
+
+        // Query isMatchingItem via reflection since it is private
+        val isMatchingMethod = SupabaseSyncEngine::class.java.getDeclaredMethod(
+            "isMatchingItem",
+            Context::class.java,
+            String::class.java,
+            String::class.java,
+            String::class.java,
+            Long::class.javaPrimitiveType
+        ).apply { isAccessible = true }
+
+        val result = isMatchingMethod.invoke(
+            SupabaseSyncEngine,
+            context,
+            "arbitrary-cloud-uuid-999",
+            userId,
+            "NOTE",
+            unmappedLocalId
+        ) as Boolean
+
+        assertFalse("Arbitrary cloud UUID should not match unmapped local note", result)
+
+        // After call, localId MUST STILL have no sync ID — isMatchingItem must not generate random UUID side-effects!
+        val syncIdAfter = SupabaseSyncEngine.getExistingSyncId(context, userId, "NOTE", unmappedLocalId)
+        org.junit.Assert.assertNull("isMatchingItem must NOT generate or write a sync ID as a side-effect", syncIdAfter)
+    }
+
+    @Test
+    fun testNoteTrashedAtPreservedInNoteEntity() {
+        val now = System.currentTimeMillis()
+        val note = NoteEntity(
+            id = 123L,
+            title = "Trashed Note",
+            isTrashed = true,
+            trashedAt = now
+        )
+        assertTrue(note.isTrashed)
+        assertEquals(now, note.trashedAt)
+    }
 }

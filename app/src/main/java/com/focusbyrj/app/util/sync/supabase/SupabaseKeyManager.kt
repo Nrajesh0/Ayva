@@ -532,12 +532,12 @@ object SupabaseKeyManager {
      * Prevents cross-account data leaks, ghost tombstones, and sequence collisions.
      */
     fun clearSession(context: Context) {
-        getPrefs(context).edit().clear().apply()
-        context.getSharedPreferences(SEQ_PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
-        context.getSharedPreferences("focus_supabase_deletions", Context.MODE_PRIVATE).edit().clear().apply()
-        context.getSharedPreferences("focus_supabase_media_deletions", Context.MODE_PRIVATE).edit().clear().apply()
-        context.getSharedPreferences("focus_media_cloud_manifest", Context.MODE_PRIVATE).edit().clear().apply()
-        context.getSharedPreferences("focus_task_sync_timestamps", Context.MODE_PRIVATE).edit().clear().apply()
-        context.getSharedPreferences("focus_supabase_sync_id_mapping", Context.MODE_PRIVATE).edit().clear().apply()
+        getPrefs(context).edit().clear().commit()
+        context.getSharedPreferences(SEQ_PREFS_NAME, Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("focus_supabase_deletions", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("focus_supabase_media_deletions", Context.MODE_PRIVATE).edit().clear().commit()
+        // Note: "focus_media_cloud_manifest", "focus_task_sync_timestamps", and "focus_supabase_sync_id_mapping"
+        // are strictly partitioned by "$userId:" and must NOT be wiped on logout.
+        // Preserving them prevents note and task duplication upon re-login while strictly maintaining tenant isolation.
     }
 }
