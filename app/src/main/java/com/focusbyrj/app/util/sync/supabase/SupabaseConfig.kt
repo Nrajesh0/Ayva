@@ -32,26 +32,44 @@ object SupabaseConfig {
     const val STORAGE_OBJECT_URL: String = "$BASE_URL/storage/v1/object"
 
     /**
-     * Recommended idempotent SQL to run in Supabase SQL Editor.
-     * Ensures tables exist, have proper permissions for authenticated users, enforce RLS,
-     * creates the vault_media storage bucket for encrypted attachments, and enables realtime.
+     * Recommended idempotent SQL to run in Supabase SQL Editor after deploying the Pattern 1 update.
+     *
+     * Schema changes from previous version:
+     *   ADDED: wrapped_key    — CEK wrapped with user DEK (AES-GCM)
+     *   ADDED: signature      — HMAC-SHA256(hmacKey, id:seq:isDeleted:ciphertext) anti-tamper tag
+     *   ADDED: client_seq_num — monotonically increasing per-item client counter (replay prevention)
+     *   CHANGED: type column is now nullable; new items write 'OPAQUE' (type metadata inside ciphertext)
+     *   CHANGED: salt column is now nullable; new items write keyIv here
+     *
+     * Backward compatible: old items (type='NOTE'/'TASK') remain readable via legacy decryption path.
      */
     const val RECOMMENDED_SQL: String = """
 -- ==============================================================================
--- 1. Create the unified vault_items table for Encrypted Notes & Tasks
+-- 1. Create or update the unified vault_items table for Encrypted Notes & Tasks
+--    Pattern 1: wrapped_key / signature / client_seq_num columns added.
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.vault_items (
     id TEXT NOT NULL,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
-    type TEXT NOT NULL,
+    type TEXT,
     ciphertext TEXT NOT NULL,
-    salt TEXT NOT NULL,
+    salt TEXT,
     iv TEXT NOT NULL,
+    wrapped_key TEXT,
+    signature TEXT NOT NULL DEFAULT '',
+    client_seq_num BIGINT NOT NULL DEFAULT 0,
     is_deleted BOOLEAN DEFAULT FALSE NOT NULL,
     updated_at BIGINT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     PRIMARY KEY (user_id, id)
 );
+
+-- Safe migrations for databases created before this schema version
+ALTER TABLE public.vault_items ADD COLUMN IF NOT EXISTS wrapped_key TEXT;
+ALTER TABLE public.vault_items ADD COLUMN IF NOT EXISTS signature TEXT NOT NULL DEFAULT '';
+ALTER TABLE public.vault_items ADD COLUMN IF NOT EXISTS client_seq_num BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE public.vault_items ALTER COLUMN type DROP NOT NULL;
+ALTER TABLE public.vault_items ALTER COLUMN salt DROP NOT NULL;
 
 -- ==============================================================================
 -- 2. Grant Table Permissions & Enable Row Level Security (RLS)
@@ -68,6 +86,7 @@ CREATE POLICY "vault_all_access" ON public.vault_items
     WITH CHECK (auth.uid() = user_id);
 
 CREATE INDEX IF NOT EXISTS idx_vault_items_user_updated ON public.vault_items(user_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_vault_items_user_seq ON public.vault_items(user_id, client_seq_num);
 
 -- Compatibility alias for sync_items table if created in earlier migrations
 DO $$

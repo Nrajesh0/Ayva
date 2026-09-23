@@ -22,7 +22,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [AppRestriction::class, FocusSchedule::class, Task::class, Habit::class, HabitLog::class], version = 9, exportSchema = false)
+@Database(entities = [AppRestriction::class, FocusSchedule::class, Task::class, Habit::class, HabitLog::class], version = 11, exportSchema = false)
 abstract class FocusDatabase : RoomDatabase() {
     abstract fun appRestrictionDao(): AppRestrictionDao
     abstract fun scheduleDao(): ScheduleDao
@@ -208,6 +208,77 @@ abstract class FocusDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 MIGRATION_1_8.migrate(db)
                 MIGRATION_8_9.migrate(db)
+            }
+        }
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE `tasks` ADD COLUMN `updatedAt` INTEGER NOT NULL DEFAULT 0")
+                } catch (_: Exception) {}
+            }
+        }
+
+        val MIGRATION_8_10 = object : Migration(8, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_8_9.migrate(db)
+                MIGRATION_9_10.migrate(db)
+            }
+        }
+
+        val MIGRATION_7_10 = object : Migration(7, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_7_9.migrate(db)
+                MIGRATION_9_10.migrate(db)
+            }
+        }
+
+        val MIGRATION_1_10 = object : Migration(1, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_1_9.migrate(db)
+                MIGRATION_9_10.migrate(db)
+            }
+        }
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE `tasks` ADD COLUMN `isTrashed` INTEGER NOT NULL DEFAULT 0")
+                } catch (_: Exception) {}
+                try {
+                    db.execSQL("ALTER TABLE `tasks` ADD COLUMN `trashedAt` INTEGER DEFAULT NULL")
+                } catch (_: Exception) {}
+                try {
+                    db.execSQL("ALTER TABLE `tasks` ADD COLUMN `deletedAt` INTEGER DEFAULT NULL")
+                } catch (_: Exception) {}
+            }
+        }
+
+        val MIGRATION_9_11 = object : Migration(9, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_9_10.migrate(db)
+                MIGRATION_10_11.migrate(db)
+            }
+        }
+
+        val MIGRATION_8_11 = object : Migration(8, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_8_10.migrate(db)
+                MIGRATION_10_11.migrate(db)
+            }
+        }
+
+        val MIGRATION_7_11 = object : Migration(7, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_7_10.migrate(db)
+                MIGRATION_10_11.migrate(db)
+            }
+        }
+
+        val MIGRATION_1_11 = object : Migration(1, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_1_10.migrate(db)
+                MIGRATION_10_11.migrate(db)
             }
         }
     }

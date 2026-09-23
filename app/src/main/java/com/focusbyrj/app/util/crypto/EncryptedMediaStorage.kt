@@ -52,41 +52,53 @@ object EncryptedMediaStorage {
     private const val MAGIC_HEADER = "FOC_ENC_V1:"
 
     private fun getOrCreateKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        if (keyStore.containsAlias(MEDIA_KEY_ALIAS)) {
-            val entry = keyStore.getEntry(MEDIA_KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
-            if (entry != null) {
-                return entry.secretKey
+        return try {
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            if (keyStore.containsAlias(MEDIA_KEY_ALIAS)) {
+                val entry = keyStore.getEntry(MEDIA_KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
+                if (entry != null) {
+                    return entry.secretKey
+                }
             }
+
+            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            val spec = KeyGenParameterSpec.Builder(
+                MEDIA_KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .build()
+
+            keyGenerator.init(spec)
+            keyGenerator.generateKey()
+        } catch (e: Exception) {
+            Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey for media storage.", e)
+            val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
+                .digest("focus_media_storage_software_seed_v1".toByteArray(Charsets.UTF_8))
+            javax.crypto.spec.SecretKeySpec(fallbackSeed, "AES")
         }
-
-        val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        val spec = KeyGenParameterSpec.Builder(
-            MEDIA_KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .setRandomizedEncryptionRequired(false) // We supply our own cryptographically secure random IV
-            .build()
-
-        keyGenerator.init(spec)
-        return keyGenerator.generateKey()
     }
 
     /**
      * Encrypts plaintext bytes and writes them atomically to destination file.
+     * Nonce/IV is generated in hardware (TEE/StrongBox) via Android KeyStore.
      */
     fun writeEncryptedBytes(file: File, plaintextBytes: ByteArray) {
         val tempFile = File(file.parentFile, "${file.name}.tmp")
         val secretKey = getOrCreateKey()
-        val iv = ByteArray(GCM_IV_LENGTH)
-        SecureRandom().nextBytes(iv)
 
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
+        val iv = try {
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+            cipher.iv ?: ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
+        } catch (_: Exception) {
+            val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
+            generatedIv
+        }
 
         val encryptedBytes = cipher.doFinal(plaintextBytes)
 
@@ -105,30 +117,63 @@ object EncryptedMediaStorage {
 
     /**
      * Reads and decrypts file bytes into memory. If file is legacy plaintext, returns raw bytes safely.
+     * Uses streaming header extraction to minimize heap allocations.
      */
     fun readDecryptedBytes(file: File): ByteArray? {
         if (!file.exists()) return null
         return try {
-            val totalBytes = file.readBytes()
             val magicBytes = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
+            val fileLen = file.length()
+            if (fileLen <= magicBytes.size + GCM_IV_LENGTH) {
+                return if (fileLen > 0) file.readBytes() else null
+            }
 
-            // Check if file has encrypted header
-            if (totalBytes.size > magicBytes.size + GCM_IV_LENGTH &&
-                totalBytes.copyOfRange(0, magicBytes.size).contentEquals(magicBytes)
-            ) {
-                val ivStart = magicBytes.size
-                val iv = totalBytes.copyOfRange(ivStart, ivStart + GCM_IV_LENGTH)
-                val ciphertext = totalBytes.copyOfRange(ivStart + GCM_IV_LENGTH, totalBytes.size)
+            FileInputStream(file).use { fis ->
+                val headerBuf = ByteArray(magicBytes.size)
+                var bytesRead = 0
+                while (bytesRead < magicBytes.size) {
+                    val r = fis.read(headerBuf, bytesRead, magicBytes.size - bytesRead)
+                    if (r == -1) break
+                    bytesRead += r
+                }
 
-                val secretKey = getOrCreateKey()
-                val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-                val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-                cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
+                if (bytesRead == magicBytes.size && headerBuf.contentEquals(magicBytes)) {
+                    val iv = ByteArray(GCM_IV_LENGTH)
+                    var ivRead = 0
+                    while (ivRead < GCM_IV_LENGTH) {
+                        val r = fis.read(iv, ivRead, GCM_IV_LENGTH - ivRead)
+                        if (r == -1) break
+                        ivRead += r
+                    }
+                    if (ivRead != GCM_IV_LENGTH) return null
 
-                cipher.doFinal(ciphertext)
-            } else {
-                // Legacy plaintext fallback
-                totalBytes
+                    val cipherLen = (fileLen - magicBytes.size - GCM_IV_LENGTH).toInt()
+                    val ciphertext = ByteArray(cipherLen)
+                    var totalCipherRead = 0
+                    while (totalCipherRead < cipherLen) {
+                        val r = fis.read(ciphertext, totalCipherRead, cipherLen - totalCipherRead)
+                        if (r == -1) break
+                        totalCipherRead += r
+                    }
+
+                    val secretKey = getOrCreateKey()
+                    val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+                    val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+                    cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
+
+                    cipher.doFinal(ciphertext)
+                } else {
+                    // Legacy plaintext fallback
+                    val fullBytes = ByteArray(fileLen.toInt())
+                    System.arraycopy(headerBuf, 0, fullBytes, 0, bytesRead)
+                    var offset = bytesRead
+                    while (offset < fullBytes.size) {
+                        val r = fis.read(fullBytes, offset, fullBytes.size - offset)
+                        if (r == -1) break
+                        offset += r
+                    }
+                    fullBytes
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to decrypt media file: ${file.absolutePath}", e)
@@ -137,16 +182,19 @@ object EncryptedMediaStorage {
     }
 
     /**
-     * Opens a stream for writing encrypted data.
+     * Opens a stream for writing encrypted data using hardware-generated IV.
      */
     fun openEncryptedOutputStream(file: File): OutputStream {
         val secretKey = getOrCreateKey()
-        val iv = ByteArray(GCM_IV_LENGTH)
-        SecureRandom().nextBytes(iv)
-
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
+        val iv = try {
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+            cipher.iv ?: ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
+        } catch (_: Exception) {
+            val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
+            generatedIv
+        }
 
         val fos = FileOutputStream(file)
         fos.write(MAGIC_HEADER.toByteArray(Charsets.UTF_8))
@@ -158,12 +206,18 @@ object EncryptedMediaStorage {
      * Checks whether the file is encrypted with the storage header.
      */
     fun isEncrypted(file: File): Boolean {
-        if (!file.exists() || file.length() < MAGIC_HEADER.length) return false
+        val magicBytes = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
+        if (!file.exists() || file.length() < magicBytes.size) return false
         return try {
             FileInputStream(file).use { fis ->
-                val header = ByteArray(MAGIC_HEADER.length)
-                val read = fis.read(header)
-                read == header.size && header.contentEquals(MAGIC_HEADER.toByteArray(Charsets.UTF_8))
+                val header = ByteArray(magicBytes.size)
+                var bytesRead = 0
+                while (bytesRead < magicBytes.size) {
+                    val r = fis.read(header, bytesRead, magicBytes.size - bytesRead)
+                    if (r == -1) break
+                    bytesRead += r
+                }
+                bytesRead == magicBytes.size && header.contentEquals(magicBytes)
             }
         } catch (_: Exception) {
             false

@@ -84,6 +84,7 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
@@ -98,6 +99,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.AddBox
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.CheckBox
@@ -218,6 +220,7 @@ fun KeepNoteEditor(
     onToggleLabel: (String) -> Unit,
     onCreateAndAddLabel: (String) -> Unit,
     onArchive: () -> Unit,
+    onUnarchive: () -> Unit = {},
     onDelete: () -> Unit,
     onUndo: () -> Unit = {},
     onRedo: () -> Unit = {},
@@ -602,14 +605,14 @@ fun KeepNoteEditor(
                             )
                         }
 
-                        // Archive
+                        // Archive / Unarchive
                         IconButton(
-                            onClick = onArchive,
+                            onClick = if (state.isArchived) onUnarchive else onArchive,
                             modifier = Modifier.testTag("editor_archive_button")
                         ) {
                             Icon(
-                                imageVector = if (state.isArchived) Icons.Filled.Archive else Icons.Outlined.Archive,
-                                contentDescription = "Archive",
+                                imageVector = if (state.isArchived) Icons.Filled.Unarchive else Icons.Outlined.Archive,
+                                contentDescription = if (state.isArchived) "Unarchive" else "Archive",
                                 tint = textColor
                             )
                         }
@@ -1795,6 +1798,15 @@ fun KeepNoteEditor(
                         onClick = {
                             showMoreMenu = false
                             showDocumentStatsSheet = true
+                        }
+                    )
+
+                    KeepAddOptionRow(
+                        icon = if (state.isArchived) Icons.Outlined.Unarchive else Icons.Outlined.Archive,
+                        title = if (state.isArchived) "Unarchive" else "Archive",
+                        onClick = {
+                            showMoreMenu = false
+                            if (state.isArchived) onUnarchive() else onArchive()
                         }
                     )
 

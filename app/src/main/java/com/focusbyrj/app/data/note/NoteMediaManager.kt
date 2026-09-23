@@ -87,11 +87,30 @@ object NoteMediaManager {
      */
     suspend fun cleanOrphanedMedia(context: Context, noteDao: NoteDao) {
         try {
+            // Guard: If Secret Vault is enabled and currently locked, we cannot decrypt note
+            // envelopes to read their media attachments. Abort cleanup completely to prevent
+            // falsely destroying photos and voice recordings that belong to secret notes.
+            val vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
+            val activeSubKey = ArchiveVaultSecurity.getActiveVaultSubKey()
+            if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED && activeSubKey == null) {
+                Log.w(TAG, "Secret Vault is locked. Aborting orphaned media cleanup to protect encrypted vault attachments.")
+                return
+            }
+
             val allNotes = noteDao.getAllNotesList()
             val validImagePaths = HashSet<String>()
             val validAudioPaths = HashSet<String>()
 
-            allNotes.forEach { note ->
+            allNotes.forEach { rawNote ->
+                val note = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
+                    if (activeSubKey != null) {
+                        com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(rawNote, activeSubKey)
+                    } else {
+                        rawNote
+                    }
+                } else {
+                    rawNote
+                }
                 note.getImageUris().forEach { validImagePaths.add(it) }
                 note.getAudioUris().forEach { validAudioPaths.add(it) }
             }
@@ -105,7 +124,7 @@ object NoteMediaManager {
                         val ageMs = System.currentTimeMillis() - file.lastModified()
                         if (ageMs > 300_000L) {
                             Log.i(TAG, "Removing orphaned image: ${file.name}")
-                            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, file.name)
+                            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, file.absolutePath)
                             secureDeleteMediaFile(file)
                         }
                     }
@@ -120,7 +139,7 @@ object NoteMediaManager {
                         val ageMs = System.currentTimeMillis() - file.lastModified()
                         if (ageMs > 300_000L) {
                             Log.i(TAG, "Removing orphaned audio: ${file.name}")
-                            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, file.name)
+                            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, file.absolutePath)
                             secureDeleteMediaFile(file)
                         }
                     }

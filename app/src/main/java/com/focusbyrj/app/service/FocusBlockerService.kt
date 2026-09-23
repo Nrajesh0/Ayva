@@ -45,16 +45,23 @@ object FocusExitTracker {
     var lastExitedPackage: String? = null
     @Volatile
     var exitTimestamp: Long = 0L
+    @Volatile
+    private var onExitListener: (() -> Unit)? = null
+
+    fun setOnExitListener(listener: (() -> Unit)?) {
+        onExitListener = listener
+    }
 
     fun notifyExited(packageName: String?) {
         lastExitedPackage = packageName
         exitTimestamp = System.currentTimeMillis()
+        onExitListener?.invoke()
     }
 
     fun isExitSuppressed(packageName: String?): Boolean {
         if (packageName.isNullOrBlank()) return false
         if (packageName != lastExitedPackage) return false
-        return (System.currentTimeMillis() - exitTimestamp) < 25000L
+        return (System.currentTimeMillis() - exitTimestamp) < 1500L
     }
 
     fun onNewForegroundAppDetected(packageName: String) {
@@ -132,6 +139,10 @@ class FocusBlockerService : Service() {
 
         scope.launch {
             (application as? com.focusbyrj.app.FocusApplication)?.repository?.cleanUninstalledPackages(packageManager)
+        }
+
+        FocusExitTracker.setOnExitListener {
+            currentForegroundPackage = null
         }
 
         startForegroundServiceNotification()
@@ -487,6 +498,7 @@ class FocusBlockerService : Service() {
                 if (latestPackage == FocusExitTracker.lastExitedPackage) {
                     // Ignore ghost resume events that happen exactly when the overlay is removed
                     if (latestTime <= FocusExitTracker.exitTimestamp + 2000L) {
+                        currentForegroundPackage = null
                         return null
                     } else {
                         FocusExitTracker.onNewForegroundAppDetected(latestPackage)
@@ -498,12 +510,12 @@ class FocusBlockerService : Service() {
                 return latestPackage
             }
 
-            if (FocusExitTracker.isExitSuppressed(currentForegroundPackage)) {
+            if (FocusExitTracker.isExitSuppressed(currentForegroundPackage) || currentForegroundPackage == FocusExitTracker.lastExitedPackage) {
                 // User just exited to home, clear the cached package so we don't get stuck
                 currentForegroundPackage = null
                 return null
             }
-            currentForegroundPackage
+            return currentForegroundPackage
         }.getOrNull()
     }
 
@@ -554,7 +566,9 @@ class FocusBlockerService : Service() {
         var blockQuote = ""
         var blockMode = "HARD"
 
-        val restriction = cachedRestrictions[packageName] ?: db.appRestrictionDao().getRestriction(packageName)
+        val restriction = cachedRestrictions[packageName] ?: if (cachedRestrictions.isEmpty()) {
+            db.appRestrictionDao().getRestriction(packageName)
+        } else null
         if (restriction != null && restriction.isRestricted) {
             when (restriction.restrictionMode) {
                 "TIME_LIMIT" -> {
@@ -640,9 +654,9 @@ class FocusBlockerService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        val prefs = applicationContext.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("isSessionActive", false).apply()
-        com.focusbyrj.app.util.DndHelper.setDndMode(applicationContext, false)
+        // Keep focus service running as sticky foreground service.
+        // Do NOT wipe isSessionActive here; focus sessions and locks must persist
+        // until their timer naturally expires or user explicitly finishes them.
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -654,6 +668,7 @@ class FocusBlockerService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        FocusExitTracker.setOnExitListener(null)
         lastTrackedPackage = null
         lastUsageQueryTime = 0L
         UsageBreakTracker.reset()

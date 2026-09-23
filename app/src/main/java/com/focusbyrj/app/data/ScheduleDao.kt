@@ -34,6 +34,9 @@ interface ScheduleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSchedule(schedule: FocusSchedule)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSchedules(schedules: List<FocusSchedule>)
+
     @Delete
     suspend fun deleteSchedule(schedule: FocusSchedule)
 

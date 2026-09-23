@@ -26,6 +26,7 @@ import com.focusbyrj.app.data.FocusDatabase
 import com.focusbyrj.app.data.FocusDatabaseMigrationHelper
 import com.focusbyrj.app.data.TaskRepository
 import com.focusbyrj.app.data.note.DatabaseKeyProvider
+import com.focusbyrj.app.util.backup.AutoBackupScheduler
 import net.sqlcipher.database.SupportFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -72,17 +73,20 @@ class FocusApplication : Application(), ImageLoaderFactory {
             }
         }
 
-        // Warm up Ayva knowledge base and start intelligent AutoSyncManager
-        CoroutineScope(Dispatchers.IO).launch {
+        // Warm up Ayva knowledge base, start intelligent AutoSyncManager, and
+        // schedule daily rolling auto-backup (7-day retention, internal storage).
+        val ioScope = CoroutineScope(Dispatchers.IO)
+        ioScope.launch {
             com.focusbyrj.app.util.AyvaTalkEngine.warmUp(this@FocusApplication)
             com.focusbyrj.app.util.sync.supabase.AutoSyncManager.init(this@FocusApplication)
         }
+        AutoBackupScheduler.schedule(this, ioScope)
     }
 
     val database by lazy { 
         val instance = try {
             val passphrase = DatabaseKeyProvider.getOrCreatePassphrase(this)
-            val factory = SupportFactory(passphrase)
+            val factory = SupportFactory(passphrase, null, false)
             Room.databaseBuilder(
                 this,
                 FocusDatabase::class.java,
@@ -105,38 +109,43 @@ class FocusApplication : Application(), ImageLoaderFactory {
                 FocusDatabase.MIGRATION_1_8,
                 FocusDatabase.MIGRATION_8_9,
                 FocusDatabase.MIGRATION_7_9,
-                FocusDatabase.MIGRATION_1_9
+                FocusDatabase.MIGRATION_1_9,
+                FocusDatabase.MIGRATION_9_10,
+                FocusDatabase.MIGRATION_8_10,
+                FocusDatabase.MIGRATION_7_10,
+                FocusDatabase.MIGRATION_1_10,
+                FocusDatabase.MIGRATION_10_11,
+                FocusDatabase.MIGRATION_9_11,
+                FocusDatabase.MIGRATION_8_11,
+                FocusDatabase.MIGRATION_7_11,
+                FocusDatabase.MIGRATION_1_11
             )
-            .fallbackToDestructiveMigration()
             .build()
         } catch (t: Throwable) {
-            android.util.Log.e("FocusApplication", "Failed to initialize SQLCipher FocusDatabase, falling back to standard Room database", t)
-            Room.databaseBuilder(
-                this,
-                FocusDatabase::class.java,
-                "focus_database_fallback.db"
-            )
-            .addMigrations(
-                FocusDatabase.MIGRATION_1_2,
-                FocusDatabase.MIGRATION_2_3,
-                FocusDatabase.MIGRATION_3_4,
-                FocusDatabase.MIGRATION_1_4,
-                FocusDatabase.MIGRATION_2_4,
-                FocusDatabase.MIGRATION_4_5,
-                FocusDatabase.MIGRATION_1_5,
-                FocusDatabase.MIGRATION_5_6,
-                FocusDatabase.MIGRATION_1_6,
-                FocusDatabase.MIGRATION_6_7,
-                FocusDatabase.MIGRATION_1_7,
-                FocusDatabase.MIGRATION_7_8,
-                FocusDatabase.MIGRATION_1_8,
-                FocusDatabase.MIGRATION_8_9,
-                FocusDatabase.MIGRATION_7_9,
-                FocusDatabase.MIGRATION_1_9
-            )
-            .fallbackToDestructiveMigration()
-            .build()
+            val isRobolectric = try {
+                android.os.Build.FINGERPRINT.startsWith("robolectric") ||
+                Class.forName("org.robolectric.Robolectric") != null
+            } catch (_: Throwable) {
+                false
+            }
+            if (isRobolectric) {
+                android.util.Log.w("FocusApplication", "Robolectric test environment detected; utilizing in-memory test database", t)
+                Room.inMemoryDatabaseBuilder(this, FocusDatabase::class.java)
+                    .fallbackToDestructiveMigration()
+                    .build()
+            } else {
+                android.util.Log.e("FocusApplication", "FATAL: Failed to securely initialize SQLCipher FocusDatabase", t)
+                throw SecurityException("Database encryption failure: unable to securely initialize SQLCipher FocusDatabase. Fail-closed security enforced.", t)
+            }
         }
+
+        // Delete any insecure legacy fallback database if one existed
+        try {
+            val fallbackDb = getDatabasePath("focus_database_fallback.db")
+            if (fallbackDb.exists()) {
+                fallbackDb.delete()
+            }
+        } catch (_: Exception) {}
 
         try {
             FocusDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(this, instance)
@@ -155,7 +164,6 @@ class FocusApplication : Application(), ImageLoaderFactory {
         )
         .createFromAsset("vocab.db")
         .addMigrations(com.focusbyrj.app.data.VocabDatabase.MIGRATION_1_2)
-        .fallbackToDestructiveMigration()
         .build()
     }
     

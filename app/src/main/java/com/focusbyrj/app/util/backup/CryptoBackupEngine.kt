@@ -17,110 +17,214 @@
 
 package com.focusbyrj.app.util.backup
 
+import com.focusbyrj.app.util.crypto.Argon2idKdf
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.SecureRandom
+import java.util.Arrays
 import javax.crypto.Cipher
-import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Military-grade AES-256-GCM encryption engine with PBKDF2-HMAC-SHA256 key derivation.
+ * AES-256-GCM encryption engine for backup files.
  *
- * File Structure:
- * [Magic Header: 4 bytes] ("FBCK")
- * [Format Version: 1 byte] (0x01)
- * [PBKDF2 Salt: 16 bytes]
- * [GCM IV / Nonce: 12 bytes]
- * [AES-256-GCM Ciphertext + 128-bit Authentication Tag]
+ * PATTERN 1 UPDATE: Replaced PBKDF2-100K KDF with Argon2id (m=32MB, t=3, p=1).
+ *
+ * Format v2 (new backups):
+ *   [Magic: 4 bytes]  "FBCK"
+ *   [Version: 1 byte] 0x02
+ *   [Argon2id Salt: 16 bytes]
+ *   [GCM IV / Nonce: 12 bytes]
+ *   [AES-256-GCM Ciphertext + 128-bit Authentication Tag]
+ *
+ * Format v1 (legacy, read-only backward compat):
+ *   [Magic: 4 bytes]  "FBCK"
+ *   [Version: 1 byte] 0x01
+ *   [PBKDF2 Salt: 16 bytes]
+ *   [GCM IV / Nonce: 12 bytes]
+ *   [AES-256-GCM Ciphertext + 128-bit Authentication Tag]
+ *
+ * REMOVED:
+ *   - PBKDF2-100K key derivation in encrypt()
+ *   - FORMAT_VERSION 0x01 used for new backups
+ *
+ * ADDED:
+ *   - Argon2id (real native library via argon2kt:1.4.0) for new backup encryption
+ *   - Format version 0x02 written for all new backups
+ *   - Format version 0x01 backward-compatible decryption path (for restoring old backups)
  */
 object CryptoBackupEngine {
 
     private val MAGIC_HEADER = byteArrayOf('F'.code.toByte(), 'B'.code.toByte(), 'C'.code.toByte(), 'K'.code.toByte())
-    private const val FORMAT_VERSION: Byte = 0x01
+
+    private const val FORMAT_VERSION_V1: Byte = 0x01  // PBKDF2-100K (legacy, read-only)
+    private const val FORMAT_VERSION_V2: Byte = 0x02  // Argon2id (current)
+
     private const val SALT_LENGTH = 16
     private const val IV_LENGTH = 12
     private const val KEY_LENGTH_BITS = 256
-    private const val PBKDF2_ITERATIONS = 100_000
     private const val GCM_TAG_LENGTH_BITS = 128
-    private const val PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256"
     private const val CIPHER_TRANSFORMATION = "AES/GCM/NoPadding"
 
-    /**
-     * Encrypts plaintext bytes using PBKDF2 + AES-256-GCM and writes directly to [outputStream].
-     */
-    fun encrypt(plaintext: ByteArray, passwordChars: CharArray, outputStream: OutputStream) {
-        val secureRandom = SecureRandom()
-        val salt = ByteArray(SALT_LENGTH).also { secureRandom.nextBytes(it) }
-        val iv = ByteArray(IV_LENGTH).also { secureRandom.nextBytes(it) }
+    // Legacy PBKDF2 constants (kept for v1 backward-compat decryption only)
+    private const val PBKDF2_ITERATIONS = 100_000
+    private const val PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256"
 
-        val keySpec = PBEKeySpec(passwordChars, salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
-        val keyFactory = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM)
-        val derivedKeyBytes = keyFactory.generateSecret(keySpec).encoded
-        val secretKey = SecretKeySpec(derivedKeyBytes, "AES")
-
-        val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
-
-        // Write Header
-        outputStream.write(MAGIC_HEADER)
-        outputStream.write(byteArrayOf(FORMAT_VERSION))
-        outputStream.write(salt)
-        outputStream.write(iv)
-
-        // Write Encrypted Payload + Tag
-        val ciphertext = cipher.doFinal(plaintext)
-        outputStream.write(ciphertext)
-        outputStream.flush()
+    private fun readFully(inputStream: InputStream, buffer: ByteArray): Boolean {
+        var offset = 0
+        while (offset < buffer.size) {
+            val bytesRead = inputStream.read(buffer, offset, buffer.size - offset)
+            if (bytesRead == -1) return false
+            offset += bytesRead
+        }
+        return true
     }
 
     /**
-     * Reads and decrypts an encrypted backup stream using [passwordChars].
-     * Throws an [IllegalArgumentException] or [SecurityException] on invalid password/tampered data.
+     * Opens a streaming CipherOutputStream for encrypting data on-the-fly.
+     * Writes the v2 format header (Magic + Version 0x02 + Salt + IV) directly to [outputStream].
+     * 
+     * Streaming ensures large archives (including photos, sketches, and audio memos)
+     * are encrypted with zero heap memory buffering, completely preventing OutOfMemoryError crashes.
+     */
+    fun openEncryptingStream(outputStream: OutputStream, passwordChars: CharArray): OutputStream {
+        val salt = ByteArray(SALT_LENGTH).also { SecureRandom().nextBytes(it) }
+        val iv = ByteArray(IV_LENGTH).also { SecureRandom().nextBytes(it) }
+
+        var derivedKeyBytes: ByteArray? = null
+        try {
+            derivedKeyBytes = Argon2idKdf.deriveKey(
+                password = passwordChars,
+                salt = salt,
+                params = Argon2idKdf.Parameters.LOGIN  // m=32MB, t=3, p=1
+            )
+
+            val secretKey = SecretKeySpec(derivedKeyBytes, "AES")
+            val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+
+            // Write v2 header
+            outputStream.write(MAGIC_HEADER)
+            outputStream.write(byteArrayOf(FORMAT_VERSION_V2))
+            outputStream.write(salt)
+            outputStream.write(iv)
+            outputStream.flush()
+
+            return javax.crypto.CipherOutputStream(outputStream, cipher)
+        } finally {
+            derivedKeyBytes?.let { Arrays.fill(it, 0.toByte()) }
+            Arrays.fill(passwordChars, '\u0000')
+        }
+    }
+
+    /**
+     * Opens a streaming CipherInputStream for decrypting an encrypted backup archive on-the-fly.
+     * Verifies format headers and supports both:
+     *   v2 (0x02): Argon2id key derivation (new, current)
+     *   v1 (0x01): PBKDF2-100K key derivation (legacy, backward-compat restore)
+     * 
+     * Throws [IllegalArgumentException] for invalid/corrupted headers.
+     * Throws [SecurityException] for authentication failures.
+     */
+    fun openDecryptingStream(inputStream: InputStream, passwordChars: CharArray): InputStream {
+        var derivedKeyBytes: ByteArray? = null
+        try {
+            val header = ByteArray(4)
+            if (!readFully(inputStream, header) || !header.contentEquals(MAGIC_HEADER)) {
+                throw IllegalArgumentException("Not a valid Focus Backup archive file.")
+            }
+
+            val versionByte = inputStream.read()
+            if (versionByte == -1) {
+                throw IllegalArgumentException("Corrupted backup header: unexpected end of stream.")
+            }
+            val isV2 = versionByte == FORMAT_VERSION_V2.toInt()
+            val isV1 = versionByte == FORMAT_VERSION_V1.toInt()
+
+            if (!isV1 && !isV2) {
+                throw IllegalArgumentException("Unsupported backup format version: $versionByte. Expected 1 (legacy) or 2 (current).")
+            }
+
+            val salt = ByteArray(SALT_LENGTH)
+            if (!readFully(inputStream, salt)) {
+                throw IllegalArgumentException("Corrupted backup header: incomplete salt.")
+            }
+
+            val iv = ByteArray(IV_LENGTH)
+            if (!readFully(inputStream, iv)) {
+                throw IllegalArgumentException("Corrupted backup header: incomplete IV.")
+            }
+
+            derivedKeyBytes = if (isV2) {
+                // v2: Argon2id key derivation (Pattern 1)
+                Argon2idKdf.deriveKey(
+                    password = passwordChars,
+                    salt = salt,
+                    params = Argon2idKdf.Parameters.LOGIN
+                )
+            } else {
+                // v1: Legacy PBKDF2 (backward compat for old backups)
+                val keySpec = javax.crypto.spec.PBEKeySpec(passwordChars, salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
+                try {
+                    val keyFactory = javax.crypto.SecretKeyFactory.getInstance(PBKDF2_ALGORITHM)
+                    keyFactory.generateSecret(keySpec).encoded
+                } finally {
+                    keySpec.clearPassword()
+                }
+            }
+
+            val secretKey = SecretKeySpec(derivedKeyBytes, "AES")
+            val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+
+            return javax.crypto.CipherInputStream(inputStream, cipher)
+        } catch (e: Exception) {
+            if (e is IllegalArgumentException || e is SecurityException) throw e
+            throw SecurityException("Incorrect password or corrupted backup file.", e)
+        } finally {
+            derivedKeyBytes?.let { Arrays.fill(it, 0.toByte()) }
+            Arrays.fill(passwordChars, '\u0000')
+        }
+    }
+
+    /**
+     * Encrypts plaintext bytes using Argon2id + AES-256-GCM and writes to [outputStream].
+     * Writes a v2 format header. Uses streaming cipher internally.
+     */
+    fun encrypt(plaintext: ByteArray, passwordChars: CharArray, outputStream: OutputStream) {
+        val passwordCopy = passwordChars.clone()
+        try {
+            openEncryptingStream(outputStream, passwordCopy).use { cipherOut ->
+                cipherOut.write(plaintext)
+                cipherOut.flush()
+            }
+        } finally {
+            Arrays.fill(passwordCopy, '\u0000')
+            Arrays.fill(passwordChars, '\u0000')
+        }
+    }
+
+    /**
+     * Reads and decrypts an encrypted backup stream into memory.
+     * Preserved for backward compatibility with callers expecting in-memory ByteArrays.
+     *
+     * Throws [IllegalArgumentException] for invalid/corrupted files.
+     * Throws [SecurityException] for incorrect password or tampered ciphertext.
      */
     fun decrypt(inputStream: InputStream, passwordChars: CharArray): ByteArray {
-        val header = ByteArray(4)
-        val readHeader = inputStream.read(header)
-        if (readHeader != 4 || !header.contentEquals(MAGIC_HEADER)) {
-            throw IllegalArgumentException("Not a valid Focus Backup archive file.")
-        }
-
-        val version = inputStream.read()
-        if (version != FORMAT_VERSION.toInt()) {
-            throw IllegalArgumentException("Unsupported backup format version: $version")
-        }
-
-        val salt = ByteArray(SALT_LENGTH)
-        if (inputStream.read(salt) != SALT_LENGTH) {
-            throw IllegalArgumentException("Corrupted backup header: incomplete salt.")
-        }
-
-        val iv = ByteArray(IV_LENGTH)
-        if (inputStream.read(iv) != IV_LENGTH) {
-            throw IllegalArgumentException("Corrupted backup header: incomplete IV.")
-        }
-
-        val ciphertext = inputStream.readBytes()
-        if (ciphertext.isEmpty()) {
-            throw IllegalArgumentException("Corrupted backup payload: empty content.")
-        }
-
-        val keySpec = PBEKeySpec(passwordChars, salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
-        val keyFactory = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM)
-        val derivedKeyBytes = keyFactory.generateSecret(keySpec).encoded
-        val secretKey = SecretKeySpec(derivedKeyBytes, "AES")
-
-        val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-        val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
-        cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
-
-        return try {
-            cipher.doFinal(ciphertext)
+        val passwordCopy = passwordChars.clone()
+        try {
+            return openDecryptingStream(inputStream, passwordCopy).use { cipherIn ->
+                cipherIn.readBytes()
+            }
         } catch (e: Exception) {
+            if (e is IllegalArgumentException) throw e
+            if (e is SecurityException) throw e
             throw SecurityException("Incorrect password or corrupted backup file.", e)
+        } finally {
+            Arrays.fill(passwordCopy, '\u0000')
+            Arrays.fill(passwordChars, '\u0000')
         }
     }
 }

@@ -205,6 +205,14 @@ fun QuickAddNoteItemDialog(
                 } else {
                     val note = targetNote ?: NotesViewModel.latestNotesCache[targetNoteId] ?: noteDao.getNoteByIdSync(targetNoteId)
                     if (note != null) {
+                        if (note.isArchived) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Secret Vault notes cannot be modified from quick add.", Toast.LENGTH_SHORT).show()
+                                isSubmitting = false
+                            }
+                            return@launch
+                        }
+
                         val updatedNote = if (note.isChecklist) {
                             val items = note.getChecklistItems().toMutableList()
                             items.add(ChecklistItem(id = UUID.randomUUID().toString(), text = trimmed, isChecked = false))
@@ -220,6 +228,7 @@ fun QuickAddNoteItemDialog(
                         NotesViewModel.latestNotesCache[updatedNote.id] = updatedNote
                     }
                 }
+                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 withContext(Dispatchers.Main) {
                     onItemAdded()
                 }

@@ -282,7 +282,7 @@
             android:launchMode="singleInstance"
             android:taskAffinity=""
             android:excludeFromRecents="true"
-            android:exported="true" />
+            android:exported="false" />
 
         <!-- Floating Quick Add Dialog Activity for Notes & Checklists -->
         <activity
@@ -291,7 +291,7 @@
             android:launchMode="singleInstance"
             android:taskAffinity=""
             android:excludeFromRecents="true"
-            android:exported="true" />
+            android:exported="false" />
 
         <!-- Floating Home Screen Direct Note Editor Dialog Activity -->
         <activity
@@ -356,15 +356,16 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.focusbyrj.app.widget.ACTION_PREV_NOTE" />
-                <action android:name="com.focusbyrj.app.widget.ACTION_NEXT_NOTE" />
-                <action android:name="com.focusbyrj.app.widget.ACTION_CYCLE_FILTER" />
-                <action android:name="com.focusbyrj.app.widget.ACTION_TOGGLE_ITEM" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/note_widget_info" />
         </receiver>
+
+        <!-- Unexported action receiver for Note Widget interactive buttons & list items -->
+        <receiver
+            android:name=".widget.NoteWidgetActionReceiver"
+            android:exported="false" />
 
         <service
             android:name=".widget.NoteWidgetService"
@@ -390,20 +391,28 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.focusbyrj.app.widget.ACTION_SET_TAB" />
-                <action android:name="com.focusbyrj.app.widget.ACTION_TOGGLE_TASK" />
-                <action android:name="com.focusbyrj.app.widget.ACTION_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/todo_widget_info" />
         </receiver>
 
+        <!-- Unexported action receiver for Todo Widget interactive buttons & list items -->
+        <receiver
+            android:name=".widget.TodoWidgetActionReceiver"
+            android:exported="false" />
+
         <service
             android:name=".widget.TodoWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS"
             android:exported="false" />
-        <activity android:name=".ui.screens.BubbleChatActivity" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:launchMode="singleInstance" android:taskAffinity=":bubble" android:excludeFromRecents="true" />
+        <activity
+            android:name=".ui.screens.BubbleChatActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:launchMode="singleInstance"
+            android:taskAffinity=":bubble"
+            android:excludeFromRecents="true"
+            android:exported="false" />
         <service android:name=".service.BubbleService" android:exported="false" android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

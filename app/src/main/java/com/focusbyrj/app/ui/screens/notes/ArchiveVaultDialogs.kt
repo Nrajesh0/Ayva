@@ -51,18 +51,28 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockClock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Share
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import com.focusbyrj.app.util.sync.VaultCryptoEngine
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -357,7 +367,8 @@ fun ArchiveVaultUnlockDialog(
     onDismiss: () -> Unit,
     onVerify: (String) -> ArchiveVaultSecurity.VerifyResult,
     onSuccess: () -> Unit,
-    initialLockoutSeconds: Long = 0L
+    initialLockoutSeconds: Long = 0L,
+    onEmergencyRecoveryClick: (() -> Unit)? = null
 ) {
     val haptic = LocalHapticFeedback.current
     var pin by remember { mutableStateOf("") }
@@ -421,19 +432,16 @@ fun ArchiveVaultUnlockDialog(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = if (lockoutSeconds > 0L) {
-                    "Defense lockout active"
+                    "Too many incorrect attempts"
                 } else {
                     "Enter 6-digit passcode to unlock"
                 },
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Normal
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                color = if (lockoutSeconds > 0L) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -445,7 +453,7 @@ fun ArchiveVaultUnlockDialog(
                 shakeTrigger = shakeTrigger
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Lockout Banner or Error Info
             if (lockoutSeconds > 0L) {
@@ -548,6 +556,27 @@ fun ArchiveVaultUnlockDialog(
                 },
                 leftActionLabel = if (pin.isNotEmpty()) "Clear" else null
             )
+
+            if (onEmergencyRecoveryClick != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(
+                    onClick = onEmergencyRecoveryClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Key,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Forgot PIN? Use Emergency Phrase",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
     }
 }
@@ -560,7 +589,7 @@ fun ArchiveVaultUnlockDialog(
 fun ArchiveVaultFirstTimeDialog(
     onDismiss: () -> Unit,
     onSkip: () -> Unit,
-    onPasscodeSet: (String) -> Unit
+    onPasscodeSet: (String, List<String>?, Boolean) -> Unit
 ) {
     var step by remember { mutableStateOf(FirstTimeStep.INTRO) }
     var firstPin by remember { mutableStateOf("") }
@@ -620,7 +649,7 @@ fun ArchiveVaultFirstTimeDialog(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "Protect your archived notes with a secure 6-digit passcode, or skip for now to keep it open.",
+                        text = "Protect your archived notes with a secure 6-digit passcode and a 12-word emergency recovery phrase.",
                         style = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 13.sp,
                             lineHeight = 19.sp
@@ -699,7 +728,7 @@ fun ArchiveVaultFirstTimeDialog(
                         }
 
                         Text(
-                            text = "Step 1 of 2",
+                            text = "Step 1 of 3",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -786,7 +815,7 @@ fun ArchiveVaultFirstTimeDialog(
                         }
 
                         Text(
-                            text = "Step 2 of 2",
+                            text = "Step 2 of 3",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -851,7 +880,651 @@ fun ArchiveVaultFirstTimeDialog(
                                 if (updated.length == 6) {
                                     if (updated == firstPin) {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onPasscodeSet(updated)
+                                        step = FirstTimeStep.SHOW_MNEMONIC
+                                    } else {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        isError = true
+                                        shakeTrigger += 1
+                                        errorMessage = "Passcodes do not match"
+                                        confirmPin = ""
+                                    }
+                                }
+                            }
+                        },
+                        onBackspaceClick = {
+                            if (confirmPin.isNotEmpty()) {
+                                confirmPin = confirmPin.dropLast(1)
+                                errorMessage = null
+                                isError = false
+                            }
+                        }
+                    )
+                }
+            }
+
+            FirstTimeStep.SHOW_MNEMONIC -> {
+                val mnemonicWords = remember { VaultCryptoEngine.generate12WordMnemonic() }
+                var hasConfirmedBackup by remember { mutableStateOf(false) }
+                var isCopied by remember { mutableStateOf(false) }
+                val clipboardManager = LocalClipboardManager.current
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                step = FirstTimeStep.CONFIRM_PIN
+                                confirmPin = ""
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Step 3 of 3",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+
+                        Spacer(modifier = Modifier.size(32.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Emergency Recovery Phrase",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp,
+                            letterSpacing = (-0.3).sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Write down or copy these 12 words in order. If you ever forget your PIN, this phrase is the ONLY way to recover your vault without data loss.",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.5.sp,
+                            lineHeight = 17.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 12-Word Grid (4 rows x 3 cols)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            for (row in 0 until 4) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    for (col in 0 until 3) {
+                                        val idx = row * 3 + col
+                                        val word = mnemonicWords.getOrElse(idx) { "" }
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(vertical = 6.dp, horizontal = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "${idx + 1}.",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = word,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(mnemonicWords.joinToString(" ")))
+                            isCopied = true
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isCopied) Icons.Outlined.Check else Icons.Outlined.Key,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (isCopied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isCopied) "Phrase Copied to Clipboard ✓" else "Copy Recovery Phrase",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { hasConfirmedBackup = !hasConfirmedBackup }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = hasConfirmedBackup,
+                            onCheckedChange = { hasConfirmedBackup = it },
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "I have safely backed up this 12-word recovery phrase",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onPasscodeSet(firstPin, mnemonicWords, true)
+                        },
+                        enabled = hasConfirmedBackup,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Shield,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Complete Vault Setup",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    TextButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onPasscodeSet(firstPin, mnemonicWords, false)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Back Up Later in Vault Options",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Backward compatibility overloads for ArchiveVaultFirstTimeDialog.
+ */
+@Composable
+fun ArchiveVaultFirstTimeDialog(
+    onDismiss: () -> Unit,
+    onSkip: () -> Unit,
+    onPasscodeSet: (String, List<String>?) -> Unit
+) {
+    ArchiveVaultFirstTimeDialog(
+        onDismiss = onDismiss,
+        onSkip = onSkip,
+        onPasscodeSet = { pin, words, _ -> onPasscodeSet(pin, words) }
+    )
+}
+
+@Composable
+fun ArchiveVaultFirstTimeDialog(
+    onDismiss: () -> Unit,
+    onSkip: () -> Unit,
+    onPasscodeSet: (String) -> Unit
+) {
+    ArchiveVaultFirstTimeDialog(
+        onDismiss = onDismiss,
+        onSkip = onSkip,
+        onPasscodeSet = { pin, _, _ -> onPasscodeSet(pin) }
+    )
+}
+
+private enum class FirstTimeStep {
+    INTRO,
+    ENTER_PIN,
+    CONFIRM_PIN,
+    SHOW_MNEMONIC
+}
+
+private enum class RecoveryStep {
+    ENTER_PHRASE,
+    ENTER_NEW_PIN,
+    CONFIRM_NEW_PIN
+}
+
+/**
+ * 2026 Modern M3 Bottom Sheet: Emergency Vault Recovery using 12-Word BIP-39 phrase.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ArchiveVaultMnemonicRecoveryDialog(
+    onDismiss: () -> Unit,
+    onRecover: (List<String>, String) -> Boolean,
+    onSuccess: () -> Unit
+) {
+    var step by remember { mutableStateOf(RecoveryStep.ENTER_PHRASE) }
+    var phraseInput by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isError by remember { mutableStateOf(false) }
+    var shakeTrigger by remember { mutableStateOf(0) }
+    val haptic = LocalHapticFeedback.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val parsedWords = remember(phraseInput) {
+        phraseInput.trim().lowercase().split("\\s+".toRegex()).filter { it.isNotEmpty() }
+    }
+    val isWordCountValid = parsedWords.size == 12
+    val isChecksumValid = remember(parsedWords) {
+        if (isWordCountValid) VaultCryptoEngine.validateMnemonic(parsedWords) else false
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        when (step) {
+            RecoveryStep.ENTER_PHRASE -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Key,
+                            contentDescription = "Emergency Recovery",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Emergency Vault Recovery",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 19.sp,
+                            letterSpacing = (-0.3).sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Enter your 12-word recovery phrase to safely reset your vault PIN and restore full access to your archived notes.",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = phraseInput,
+                        onValueChange = {
+                            phraseInput = it
+                            errorMessage = null
+                            isError = false
+                        },
+                        placeholder = {
+                            Text(
+                                "word1 word2 word3 ... word12",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 4,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Live word validation status
+                    val statusText = when {
+                        phraseInput.isBlank() -> "Type or paste your 12 words separated by spaces"
+                        !isWordCountValid -> "${parsedWords.size} of 12 words entered"
+                        !isChecksumValid -> "⚠️ Checksum error or invalid BIP-39 word"
+                        else -> "✓ Valid 12-Word BIP-39 Phrase"
+                    }
+                    val statusColor = when {
+                        phraseInput.isBlank() -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        !isWordCountValid -> MaterialTheme.colorScheme.secondary
+                        !isChecksumValid -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                        color = statusColor
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            step = RecoveryStep.ENTER_NEW_PIN
+                        },
+                        enabled = isChecksumValid,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                    ) {
+                        Text(
+                            text = "Next: Set New PIN",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            RecoveryStep.ENTER_NEW_PIN -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                step = RecoveryStep.ENTER_PHRASE
+                                newPin = ""
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Step 2 of 3",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+
+                        Spacer(modifier = Modifier.size(32.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Set New Passcode",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp,
+                            letterSpacing = (-0.3).sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    Text(
+                        text = "Enter a new 6-digit passcode for your vault",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    ArchiveVaultPinDots(
+                        pinLength = newPin.length,
+                        isError = false
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    ArchiveVaultNumericKeypad(
+                        onDigitClick = { digit ->
+                            if (newPin.length < 6) {
+                                val updated = newPin + digit
+                                newPin = updated
+                                if (updated.length == 6) {
+                                    step = RecoveryStep.CONFIRM_NEW_PIN
+                                }
+                            }
+                        },
+                        onBackspaceClick = {
+                            if (newPin.isNotEmpty()) {
+                                newPin = newPin.dropLast(1)
+                            }
+                        }
+                    )
+                }
+            }
+
+            RecoveryStep.CONFIRM_NEW_PIN -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .navigationBarsPadding()
+                        .padding(bottom = 24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                step = RecoveryStep.ENTER_NEW_PIN
+                                confirmPin = ""
+                                errorMessage = null
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "Step 3 of 3",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+
+                        Spacer(modifier = Modifier.size(32.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Confirm New Passcode",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp,
+                            letterSpacing = (-0.3).sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    Text(
+                        text = "Re-enter the 6 digits to confirm",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    ArchiveVaultPinDots(
+                        pinLength = confirmPin.length,
+                        isError = isError,
+                        shakeTrigger = shakeTrigger
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (!errorMessage.isNullOrEmpty()) {
+                        Text(
+                            text = errorMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    ArchiveVaultNumericKeypad(
+                        onDigitClick = { digit ->
+                            if (confirmPin.length < 6) {
+                                val updated = confirmPin + digit
+                                confirmPin = updated
+                                errorMessage = null
+                                isError = false
+
+                                if (updated.length == 6) {
+                                    if (updated == newPin) {
+                                        val recovered = onRecover(parsedWords, updated)
+                                        if (recovered) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            onSuccess()
+                                        } else {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            isError = true
+                                            shakeTrigger += 1
+                                            errorMessage = "Recovery failed: phrase does not match stored vault"
+                                            confirmPin = ""
+                                        }
                                     } else {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         isError = true
@@ -876,12 +1549,6 @@ fun ArchiveVaultFirstTimeDialog(
     }
 }
 
-private enum class FirstTimeStep {
-    INTRO,
-    ENTER_PIN,
-    CONFIRM_PIN
-}
-
 /**
  * 2026 Modern M3 Bottom Sheet: Vault Options (Lock, Change PIN, Disable).
  */
@@ -893,7 +1560,10 @@ fun ArchiveVaultSettingsDialog(
     onLockVault: () -> Unit,
     onChangePasscode: () -> Unit,
     onDisablePasscode: () -> Unit,
-    onSetPasscode: () -> Unit
+    onSetPasscode: () -> Unit,
+    onEmergencyRecoveryClick: (() -> Unit)? = null,
+    isRecoveryPhraseBackedUp: Boolean = true,
+    onExportRecoveryPhrase: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -1010,12 +1680,32 @@ fun ArchiveVaultSettingsDialog(
                     onClick = onChangePasscode
                 )
 
+                if (onExportRecoveryPhrase != null) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+
+                    // Option 3: Export Recovery Phrase
+                    CalmVaultActionRow(
+                        icon = Icons.Outlined.Key,
+                        title = "Export Recovery Phrase",
+                        subtitle = if (isRecoveryPhraseBackedUp) {
+                            "View and export your 12-word recovery phrase"
+                        } else {
+                            "Action needed: View & back up your 12 words"
+                        },
+                        iconTint = if (isRecoveryPhraseBackedUp) MaterialTheme.colorScheme.primary else Color(0xFFE5A93C),
+                        onClick = onExportRecoveryPhrase
+                    )
+                }
+
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
                     modifier = Modifier.padding(vertical = 2.dp)
                 )
 
-                // Option 3: Turn Off Passcode
+                // Option 4: Turn Off Passcode
                 CalmVaultActionRow(
                     icon = Icons.Outlined.LockOpen,
                     title = "Turn Off Passcode",
@@ -1023,6 +1713,22 @@ fun ArchiveVaultSettingsDialog(
                     iconTint = MaterialTheme.colorScheme.error,
                     onClick = onDisablePasscode
                 )
+
+                if (onEmergencyRecoveryClick != null) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+
+                    // Option 5: Emergency Phrase Recovery
+                    CalmVaultActionRow(
+                        icon = Icons.Outlined.Key,
+                        title = "Emergency Phrase Recovery",
+                        subtitle = "Recover vault using your 12-word phrase",
+                        iconTint = MaterialTheme.colorScheme.secondary,
+                        onClick = onEmergencyRecoveryClick
+                    )
+                }
             } else {
                 // Option 1: Set Passcode
                 CalmVaultActionRow(
@@ -1032,6 +1738,318 @@ fun ArchiveVaultSettingsDialog(
                     iconTint = MaterialTheme.colorScheme.primary,
                     onClick = onSetPasscode
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 2026 Modern M3 Bottom Sheet: View and Export 12-Word Recovery Phrase.
+ * Allows authenticated users who unlocked their archive vault to view, copy, share,
+ * and mark their emergency recovery phrase as backed up.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ArchiveVaultExportPhraseDialog(
+    phraseWords: List<String>,
+    isBackedUp: Boolean,
+    onDismiss: () -> Unit,
+    onMarkBackedUp: () -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var isCopied by remember { mutableStateOf(false) }
+    var hasConfirmedBackup by remember { mutableStateOf(isBackedUp) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(50.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isBackedUp) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        else Color(0xFFE5A93C).copy(alpha = 0.15f)
+                    )
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Key,
+                    contentDescription = null,
+                    tint = if (isBackedUp) MaterialTheme.colorScheme.primary else Color(0xFFE5A93C),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Vault Recovery Phrase",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 19.sp,
+                    letterSpacing = (-0.3).sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "These 12 words are the ONLY key to recovering your archived notes if you forget your PIN.",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.5.sp,
+                    lineHeight = 17.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Status Badge
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (isBackedUp) MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+                else Color(0xFFE5A93C).copy(alpha = 0.12f),
+                border = BorderStroke(
+                    1.dp,
+                    if (isBackedUp) MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                    else Color(0xFFE5A93C).copy(alpha = 0.35f)
+                )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isBackedUp) Icons.Outlined.Check else Icons.Outlined.LockClock,
+                        contentDescription = null,
+                        tint = if (isBackedUp) MaterialTheme.colorScheme.primary else Color(0xFFE5A93C),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isBackedUp) "Recovery Phrase Backed Up ✓" else "Action Needed: Phrase Not Backed Up",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (isBackedUp) MaterialTheme.colorScheme.primary else Color(0xFFE5A93C)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 12-Word Grid (4 rows x 3 cols)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    for (row in 0 until 4) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            for (col in 0 until 3) {
+                                val idx = row * 3 + col
+                                val word = phraseWords.getOrElse(idx) { "" }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.20f)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${idx + 1}.",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = word,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Action Buttons: Copy & Share
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(phraseWords.joinToString(" ")))
+                        isCopied = true
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isCopied) Icons.Outlined.Check else Icons.Outlined.Key,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = if (isCopied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isCopied) "Copied ✓" else "Copy Phrase",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "Secret Vault Recovery Phrase")
+                            putExtra(
+                                Intent.EXTRA_TEXT,
+                                "Focus Secret Vault Recovery Phrase:\n\n${phraseWords.joinToString(" ")}\n\n⚠️ Store this phrase safely offline. Never share it with anyone."
+                            )
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "Export Recovery Phrase"))
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Share / Export",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Security Warning Callout
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "🔒 Never share these 12 words with anyone. Anyone with this phrase can decrypt your archived notes.",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(10.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (!isBackedUp) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { hasConfirmedBackup = !hasConfirmedBackup }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = hasConfirmedBackup,
+                        onCheckedChange = { hasConfirmedBackup = it },
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "I have safely written down or stored this phrase",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Button(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onMarkBackedUp()
+                    },
+                    enabled = hasConfirmedBackup,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text(
+                        text = "Mark as Backed Up",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                }
+            } else {
+                Button(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text(
+                        text = "Done",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                }
             }
         }
     }

@@ -23,5 +23,9 @@ data class Task(
     val recurrence: RecurrencePattern = RecurrencePattern.NONE,
     val isPersistent: Boolean = false,
     val isPriority: Boolean = false,
-    val completedAt: Long? = null
+    val completedAt: Long? = null,
+    val updatedAt: Long = System.currentTimeMillis(),
+    val isTrashed: Boolean = false,
+    val trashedAt: Long? = null,
+    val deletedAt: Long? = null
 )

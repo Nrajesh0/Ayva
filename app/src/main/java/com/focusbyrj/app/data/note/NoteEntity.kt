@@ -40,7 +40,20 @@ data class NoteEntity(
     val imageUrisJson: String = "[]",
     val audioUrisJson: String = "[]",
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    /**
+     * Timestamp (epoch ms) when this note was moved to the trash.
+     * Used for 30-day auto-purge and pre-destructive-operation snapshots.
+     * Null if the note has never been trashed.
+     */
+    val trashedAt: Long? = null,
+    /**
+     * Soft-deletion audit log timestamp. Set when the note is permanently
+     * deleted (hard deleted from DB) — recorded in the deletion log before
+     * the row is actually removed, giving a recovery window.
+     * Null for active / trashed notes.
+     */
+    val deletedAt: Long? = null
 ) {
     fun getImageUris(): List<String> {
         if (imageUrisJson.isBlank()) return emptyList()

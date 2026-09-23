@@ -71,7 +71,9 @@ fun DeviceSyncScreen(
 
     var sessionState by remember { mutableStateOf(SupabaseKeyManager.getSessionState(context)) }
     var isAutoSyncEnabled by remember { mutableStateOf(AutoSyncManager.isAutoSyncEnabled(context)) }
-    var isSyncingNow by remember { mutableStateOf(false) }
+    var isSyncOnWifiOnly by remember { mutableStateOf(AutoSyncManager.isSyncOnWifiOnly(context)) }
+    val currentSyncState by AutoSyncManager.syncState.collectAsState()
+    val isSyncingNow = currentSyncState is AutoSyncManager.SyncState.Syncing || SupabaseSyncEngine.isSyncInProgress
     var showSignOutConfirm by remember { mutableStateOf(false) }
     var latestDiagnostic by remember { mutableStateOf<SyncDiagnosticLog?>(null) }
     var showSqlSetupModal by remember { mutableStateOf(false) }
@@ -79,47 +81,46 @@ fun DeviceSyncScreen(
     fun refreshState() {
         sessionState = SupabaseKeyManager.getSessionState(context)
         isAutoSyncEnabled = AutoSyncManager.isAutoSyncEnabled(context)
+        isSyncOnWifiOnly = AutoSyncManager.isSyncOnWifiOnly(context)
     }
 
     LaunchedEffect(Unit) {
         refreshState()
     }
 
-    fun executeManualSync() {
-        if (isSyncingNow) return
-        isSyncingNow = true
-        scope.launch {
-            try {
-                val result = SupabaseSyncEngine.performSync(context, noteDao, taskDao)
-                val now = System.currentTimeMillis()
-                result.onSuccess { res ->
-                    latestDiagnostic = SyncDiagnosticLog(
-                        timestamp = now,
-                        isSuccess = true,
-                        summary = res.message
-                    )
-                    Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
-                }.onFailure { err ->
-                    val errMsg = err.message ?: "Sync error"
-                    latestDiagnostic = SyncDiagnosticLog(
-                        timestamp = now,
-                        isSuccess = false,
-                        summary = errMsg,
-                        detailedError = err.stackTraceToString().take(500)
-                    )
-                    Toast.makeText(context, errMsg, Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                latestDiagnostic = SyncDiagnosticLog(
-                    timestamp = System.currentTimeMillis(),
-                    isSuccess = false,
-                    summary = e.message ?: "Sync exception",
-                    detailedError = e.stackTraceToString().take(500)
-                )
-            } finally {
-                isSyncingNow = false
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME || event == androidx.lifecycle.Lifecycle.Event.ON_START) {
                 refreshState()
             }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    fun executeManualSync() {
+        if (isSyncingNow) return
+        AutoSyncManager.triggerImmediateSync(context) { result ->
+            val now = System.currentTimeMillis()
+            result.onSuccess { res ->
+                latestDiagnostic = SyncDiagnosticLog(
+                    timestamp = now,
+                    isSuccess = true,
+                    summary = res.message
+                )
+                Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
+            }.onFailure { err ->
+                val errMsg = err.message ?: "Sync error"
+                latestDiagnostic = SyncDiagnosticLog(
+                    timestamp = now,
+                    isSuccess = false,
+                    summary = errMsg,
+                    detailedError = err.stackTraceToString().take(500)
+                )
+                Toast.makeText(context, errMsg, Toast.LENGTH_SHORT).show()
+            }
+            refreshState()
         }
     }
 
@@ -136,12 +137,16 @@ fun DeviceSyncScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        showSignOutConfirm = false
                         scope.launch {
-                            SupabaseAuthManager.signOut(context)
-                            showSignOutConfirm = false
-                            latestDiagnostic = null
-                            refreshState()
-                            Toast.makeText(context, "Signed out", Toast.LENGTH_SHORT).show()
+                            try {
+                                SupabaseAuthManager.signOut(context)
+                                latestDiagnostic = null
+                                refreshState()
+                                Toast.makeText(context, "Signed out", Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error signing out: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -330,6 +335,35 @@ fun DeviceSyncScreen(
                                         }
                                     }
                                 )
+                            }
+
+                            if (isAutoSyncEnabled) {
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Sync on Wi-Fi only",
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Avoid using mobile data for automatic background sync",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    Switch(
+                                        checked = isSyncOnWifiOnly,
+                                        onCheckedChange = { enabled ->
+                                            isSyncOnWifiOnly = enabled
+                                            AutoSyncManager.setSyncOnWifiOnly(context, enabled)
+                                        }
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(14.dp))

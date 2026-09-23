@@ -27,3 +27,4 @@ debug.keystore
 *.base64
 .env*
 .build-outputs/
+.agents/

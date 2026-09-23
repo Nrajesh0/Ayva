@@ -101,6 +101,7 @@ class QuickAddTaskActivity : ComponentActivity() {
                             val id = app.database.taskDao().insertTask(task)
                             TaskReminderHelper.scheduleReminder(applicationContext, task.copy(id = id))
                             TodoWidgetProvider.updateAllWidgets(applicationContext)
+                            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(applicationContext)
                         }
                         finish()
                     }

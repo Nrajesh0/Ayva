@@ -39,6 +39,7 @@ import com.focusbyrj.app.util.FocusEconomyManager
 import com.focusbyrj.app.util.FocusStatsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.room.withTransaction
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.*
@@ -170,6 +171,7 @@ object BackupRestoreManager {
                         put("isPinned", note.isPinned)
                         put("isArchived", note.isArchived)
                         put("isTrashed", note.isTrashed)
+                        if (note.trashedAt != null) put("trashedAt", note.trashedAt)
                         put("createdAt", note.createdAt)
                         put("updatedAt", note.updatedAt)
                     })
@@ -226,6 +228,10 @@ object BackupRestoreManager {
                         put("recurrence", t.recurrence.name)
                         put("isPersistent", t.isPersistent)
                         put("isPriority", t.isPriority)
+                        put("updatedAt", t.updatedAt)
+                        put("isTrashed", t.isTrashed)
+                        put("trashedAt", t.trashedAt ?: JSONObject.NULL)
+                        put("deletedAt", t.deletedAt ?: JSONObject.NULL)
                     })
                 }
                 put("tasks", taskArray)
@@ -330,36 +336,38 @@ object BackupRestoreManager {
                 put("preferences", prefsObj)
             }
 
-            // 3. Create unencrypted in-memory ZIP
-            val byteOut = ByteArrayOutputStream()
-            ZipOutputStream(BufferedOutputStream(byteOut)).use { zipOut ->
-                // Write data.json
-                zipOut.putNextEntry(ZipEntry("data.json"))
-                zipOut.write(rootJson.toString().toByteArray(Charsets.UTF_8))
-                zipOut.closeEntry()
+            // 3. Stream unencrypted entries directly into encrypted output stream
+            app.contentResolver.openOutputStream(destinationUri)?.use { outStream ->
+                CryptoBackupEngine.openEncryptingStream(outStream, password.toCharArray()).use { encryptingStream ->
+                    ZipOutputStream(BufferedOutputStream(encryptingStream)).use { zipOut ->
+                        // Write data.json
+                        zipOut.putNextEntry(ZipEntry("data.json"))
+                        zipOut.write(rootJson.toString().toByteArray(Charsets.UTF_8))
+                        zipOut.closeEntry()
 
-                // Package media files
-                MEDIA_FOLDERS.forEach { folderName ->
-                    val mediaDir = File(app.filesDir, folderName)
-                    if (mediaDir.exists() && mediaDir.isDirectory) {
-                        mediaDir.listFiles()?.forEach { file ->
-                            if (file.isFile && file.length() > 0) {
-                                zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
-                                FileInputStream(file).use { input ->
-                                    input.copyTo(zipOut)
+                        // Package media files directly with buffered stream
+                        val buffer = ByteArray(32 * 1024)
+                        MEDIA_FOLDERS.forEach { folderName ->
+                            val mediaDir = File(app.filesDir, folderName)
+                            if (mediaDir.exists() && mediaDir.isDirectory) {
+                                mediaDir.listFiles()?.forEach { file ->
+                                    if (file.isFile && file.length() > 0) {
+                                        zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
+                                        FileInputStream(file).use { input ->
+                                            var read = input.read(buffer)
+                                            while (read != -1) {
+                                                zipOut.write(buffer, 0, read)
+                                                read = input.read(buffer)
+                                            }
+                                        }
+                                        zipOut.closeEntry()
+                                    }
                                 }
-                                zipOut.closeEntry()
                             }
                         }
+                        zipOut.flush()
                     }
                 }
-            }
-
-            val zipBytes = byteOut.toByteArray()
-
-            // 4. Encrypt ZIP with AES-256-GCM + PBKDF2 directly to Uri
-            app.contentResolver.openOutputStream(destinationUri)?.use { outStream ->
-                CryptoBackupEngine.encrypt(zipBytes, password.toCharArray(), outStream)
             } ?: throw IOException("Could not open destination file stream.")
 
             Log.i(TAG, "Encrypted backup created successfully: ${metadata.noteCount} notes, ${metadata.taskCount} tasks.")
@@ -381,32 +389,49 @@ object BackupRestoreManager {
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
         try {
             val app = context.applicationContext as FocusApplication
+            val focusDb = app.database
+            val noteDb = NoteDatabase.getInstance(app)
+            val drillDb = DrillDatabase.getDatabase(app)
+            val vocabDb = app.vocabDatabase
             val inStream = app.contentResolver.openInputStream(sourceUri)
                 ?: throw IOException("Could not open backup source stream.")
 
-            // 1. Decrypt ZIP stream
-            val decryptedZipBytes = inStream.use { stream ->
-                CryptoBackupEngine.decrypt(stream, password.toCharArray())
-            }
+            // 0. Fail-Safe: capture a pre-restore safety snapshot of the live notes before applying backup
+            DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "pre_encrypted_restore")
 
             var jsonDataStr: String? = null
-            val mediaFilesToRestore = mutableListOf<Pair<String, ByteArray>>()
 
-            // 2. Unpack ZIP
-            ZipInputStream(ByteArrayInputStream(decryptedZipBytes)).use { zipIn ->
-                var entry = zipIn.nextEntry
-                while (entry != null) {
-                    if (!entry.isDirectory) {
-                        if (entry.name == "data.json") {
-                            jsonDataStr = zipIn.bufferedReader(Charsets.UTF_8).readText()
-                        } else if (entry.name.startsWith("media/")) {
-                            val relativePath = entry.name.removePrefix("media/")
-                            val content = zipIn.readBytes()
-                            mediaFilesToRestore.add(Pair(relativePath, content))
+            // 1 & 2. Decrypt & Unpack ZIP directly on-the-fly without heap buffering
+            inStream.use { rawInStream ->
+                CryptoBackupEngine.openDecryptingStream(rawInStream, password.toCharArray()).use { decryptedStream ->
+                    ZipInputStream(BufferedInputStream(decryptedStream)).use { zipIn ->
+                        val buffer = ByteArray(32 * 1024)
+                        var entry = zipIn.nextEntry
+                        while (entry != null) {
+                            if (!entry.isDirectory) {
+                                if (entry.name == "data.json") {
+                                    jsonDataStr = zipIn.bufferedReader(Charsets.UTF_8).readText()
+                                } else if (entry.name.startsWith("media/")) {
+                                    val relativePath = entry.name.removePrefix("media/")
+                                    val targetFile = File(app.filesDir, relativePath)
+                                    // Zip Slip vulnerability protection: verify canonical path stays strictly inside filesDir
+                                    if (!targetFile.canonicalFile.toPath().startsWith(app.filesDir.canonicalFile.toPath())) {
+                                        throw SecurityException("Zip Slip directory traversal detected in backup media entry: $relativePath")
+                                    }
+                                    targetFile.parentFile?.mkdirs()
+                                    FileOutputStream(targetFile).use { fos ->
+                                        var read = zipIn.read(buffer)
+                                        while (read != -1) {
+                                            fos.write(buffer, 0, read)
+                                            read = zipIn.read(buffer)
+                                        }
+                                    }
+                                }
+                            }
+                            zipIn.closeEntry()
+                            entry = zipIn.nextEntry
                         }
                     }
-                    zipIn.closeEntry()
-                    entry = zipIn.nextEntry
                 }
             }
 
@@ -415,36 +440,11 @@ object BackupRestoreManager {
             }
 
             val rootJson = JSONObject(jsonDataStr!!)
-            val version = rootJson.optInt("version", 1)
+            val version = rootJson.optInt("version", BACKUP_VERSION)
             val createdAt = rootJson.optLong("createdAt", System.currentTimeMillis())
             val appVersion = rootJson.optString("appVersion", "1.0.0")
 
-            val focusDb = app.database
-            val noteDb = NoteDatabase.getInstance(app)
-            val drillDb = DrillDatabase.getDatabase(app)
-            val vocabDb = app.vocabDatabase
-
-            // If cleanRestore is requested, wipe existing database contents first
-            if (cleanRestore) {
-                try { noteDb.noteDao().deleteAllNotes() } catch (_: Exception) {}
-                try { focusDb.appRestrictionDao().deleteAllRestrictions() } catch (_: Exception) {}
-                try { focusDb.scheduleDao().deleteAllSchedules() } catch (_: Exception) {}
-                try { focusDb.taskDao().deleteAllTasks() } catch (_: Exception) {}
-                try { focusDb.habitDao().deleteAllHabits() } catch (_: Exception) {}
-                try { focusDb.habitDao().deleteAllLogs() } catch (_: Exception) {}
-                try { drillDb.drillSessionDao().deleteAllSessions() } catch (_: Exception) {}
-            }
-
-            // 3. Restore Media Files
-            mediaFilesToRestore.forEach { (relPath, bytes) ->
-                val targetFile = File(app.filesDir, relPath)
-                targetFile.parentFile?.mkdirs()
-                FileOutputStream(targetFile).use { fos ->
-                    fos.write(bytes)
-                }
-            }
-
-            // 4. Restore Notes
+            // 4. Build NoteEntities from backup
             val notesArray = rootJson.optJSONArray("notes") ?: JSONArray()
             val noteEntities = mutableListOf<NoteEntity>()
             for (i in 0 until notesArray.length()) {
@@ -464,141 +464,178 @@ object BackupRestoreManager {
                         isArchived = obj.optBoolean("isArchived", false),
                         isTrashed = obj.optBoolean("isTrashed", false),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                        updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
+                        updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+                        trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null
                     )
                 )
             }
 
             NotesViewModel.latestNotesCache.clear()
 
-            noteEntities.forEach { note ->
-                noteDb.noteDao().insertNote(note)
+            // Safe transactional swap:
+            // Insert all restored notes FIRST, then prune rows not in the backup — all in one transaction.
+            // If anything throws, Room rolls back and existing data is completely untouched.
+            if (cleanRestore) {
+                noteDb.withTransaction {
+                    noteEntities.forEach { note -> noteDb.noteDao().insertNote(note) }
+                    val restoredIds = noteEntities.map { it.id }.filter { it > 0L }
+                    if (restoredIds.isNotEmpty()) {
+                        noteDb.noteDao().deleteNotesNotIn(restoredIds)
+                    } else {
+                        // Backup had no notes with stable IDs (merge mode) — clear all and re-insert
+                        noteDb.noteDao().deleteAllNotes()
+                        noteEntities.forEach { note -> noteDb.noteDao().insertNote(note) }
+                    }
+                }
+            } else {
+                noteEntities.forEach { note -> noteDb.noteDao().insertNote(note) }
             }
+
             try {
                 NoteWidgetProvider.updateAllWidgets(app)
             } catch (_: Exception) {}
 
-            // 5. Restore Restrictions
+            // 5. Restore Restrictions, Schedules, Tasks, and Habits atomically
             val restrArray = rootJson.optJSONArray("restrictions") ?: JSONArray()
-            for (i in 0 until restrArray.length()) {
-                val obj = restrArray.getJSONObject(i)
-                val restriction = AppRestriction(
-                    packageName = obj.getString("packageName"),
-                    appName = obj.optString("appName", ""),
-                    isRestricted = obj.optBoolean("isRestricted", true),
-                    mode = obj.optString("mode", "HARD"),
-                    restrictionMode = obj.optString("restrictionMode", "SIMPLE"),
-                    timeLimitMinutes = obj.optInt("timeLimitMinutes", 0),
-                    clickLimitCount = obj.optInt("clickLimitCount", 0),
-                    customQuote = obj.optString("customQuote", "Is this urgent, or are you chasing cheap dopamine?")
-                )
-                focusDb.appRestrictionDao().insertRestriction(restriction)
-            }
-
-            // 6. Restore Schedules
             val schedArray = rootJson.optJSONArray("schedules") ?: JSONArray()
-            for (i in 0 until schedArray.length()) {
-                val obj = schedArray.getJSONObject(i)
-                val schedule = FocusSchedule(
-                    id = if (cleanRestore) obj.optInt("id", 0) else 0,
-                    name = obj.optString("name", "Focus Schedule"),
-                    startHour = obj.optInt("startHour", 9),
-                    startMinute = obj.optInt("startMinute", 0),
-                    endHour = obj.optInt("endHour", 17),
-                    endMinute = obj.optInt("endMinute", 0),
-                    daysOfWeek = obj.optString("daysOfWeek", "1,2,3,4,5"),
-                    mode = obj.optString("mode", "HARD"),
-                    restrictionMode = obj.optString("restrictionMode", "SIMPLE"),
-                    timeLimitMinutes = obj.optInt("timeLimitMinutes", 0),
-                    clickLimitCount = obj.optInt("clickLimitCount", 0),
-                    appsToBlock = obj.optString("appsToBlock", "")
-                )
-                focusDb.scheduleDao().insertSchedule(schedule)
-            }
-
-            // 7. Restore Tasks
             val taskArray = rootJson.optJSONArray("tasks") ?: JSONArray()
-            for (i in 0 until taskArray.length()) {
-                val obj = taskArray.getJSONObject(i)
-                val task = Task(
-                    id = if (cleanRestore) obj.optLong("id", 0L) else 0L,
-                    title = obj.getString("title"),
-                    details = obj.optString("details", ""),
-                    dueDate = if (obj.isNull("dueDate")) null else obj.optLong("dueDate"),
-                    isCompleted = obj.optBoolean("isCompleted", false),
-                    completedAt = if (obj.isNull("completedAt")) null else obj.optLong("completedAt"),
-                    type = try { TaskType.valueOf(obj.optString("type", "TASK")) } catch (_: Exception) { TaskType.TASK },
-                    recurrence = try { RecurrencePattern.valueOf(obj.optString("recurrence", "NONE")) } catch (_: Exception) { RecurrencePattern.NONE },
-                    isPersistent = obj.optBoolean("isPersistent", false),
-                    isPriority = obj.optBoolean("isPriority", false)
-                )
-                focusDb.taskDao().insertTask(task)
-            }
-
-            // 8. Restore Habits
             val habitArray = rootJson.optJSONArray("habits") ?: JSONArray()
-            val idMapping = mutableMapOf<Long, Long>()
-            for (i in 0 until habitArray.length()) {
-                val obj = habitArray.getJSONObject(i)
-                val origId = obj.optLong("id", 0L)
-                val habit = Habit(
-                    id = if (cleanRestore) origId else 0L,
-                    title = obj.getString("title"),
-                    description = obj.optString("description", ""),
-                    iconEmoji = obj.optString("iconEmoji", "✨"),
-                    colorHex = obj.optString("colorHex", "#3B82F6"),
-                    type = try { HabitType.valueOf(obj.optString("type", "ONCE_DAILY")) } catch (_: Exception) { HabitType.ONCE_DAILY },
-                    targetPerDay = obj.optInt("targetPerDay", 1),
-                    intervalHours = obj.optInt("intervalHours", 2),
-                    intervalMinutes = obj.optInt("intervalMinutes", 0),
-                    windowStartHour = obj.optInt("windowStartHour", 8),
-                    windowStartMinute = obj.optInt("windowStartMinute", 0),
-                    windowEndHour = obj.optInt("windowEndHour", 20),
-                    windowEndMinute = obj.optInt("windowEndMinute", 0),
-                    fixedReminderHour = obj.optInt("fixedReminderHour", 9),
-                    fixedReminderMinute = obj.optInt("fixedReminderMinute", 0),
-                    isReminderEnabled = obj.optBoolean("isReminderEnabled", true),
-                    reminderSound = obj.optString("reminderSound", "ZEN"),
-                    createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                    isArchived = obj.optBoolean("isArchived", false)
-                )
-                val newId = focusDb.habitDao().insertHabit(habit)
-                idMapping[origId] = newId
-            }
 
-            val logArray = rootJson.optJSONArray("habitLogs") ?: JSONArray()
-            for (i in 0 until logArray.length()) {
-                val obj = logArray.getJSONObject(i)
-                val origHabitId = obj.optLong("habitId", 0L)
-                val targetHabitId = idMapping[origHabitId] ?: origHabitId
-                val log = HabitLog(
-                    id = if (cleanRestore) obj.optLong("id", 0L) else 0L,
-                    habitId = targetHabitId,
-                    date = obj.getString("date"),
-                    completedCount = obj.optInt("completedCount", 1),
-                    targetCount = obj.optInt("targetCount", 1),
-                    lastCompletedTimestamp = if (obj.isNull("lastCompletedTimestamp")) null else obj.optLong("lastCompletedTimestamp")
-                )
-                focusDb.habitDao().insertOrUpdateLog(log)
+            focusDb.withTransaction {
+                if (cleanRestore) {
+                    focusDb.appRestrictionDao().deleteAllRestrictions()
+                    focusDb.scheduleDao().deleteAllSchedules()
+                    focusDb.taskDao().deleteAllTasks()
+                    focusDb.habitDao().deleteAllLogs()
+                    focusDb.habitDao().deleteAllHabits()
+                }
+
+                for (i in 0 until restrArray.length()) {
+                    val obj = restrArray.getJSONObject(i)
+                    val restriction = AppRestriction(
+                        packageName = obj.getString("packageName"),
+                        appName = obj.optString("appName", ""),
+                        isRestricted = obj.optBoolean("isRestricted", true),
+                        mode = obj.optString("mode", "HARD"),
+                        restrictionMode = obj.optString("restrictionMode", "SIMPLE"),
+                        timeLimitMinutes = obj.optInt("timeLimitMinutes", 0),
+                        clickLimitCount = obj.optInt("clickLimitCount", 0),
+                        customQuote = obj.optString("customQuote", "Is this urgent, or are you chasing cheap dopamine?")
+                    )
+                    focusDb.appRestrictionDao().insertRestriction(restriction)
+                }
+
+                // 6. Restore Schedules
+                for (i in 0 until schedArray.length()) {
+                    val obj = schedArray.getJSONObject(i)
+                    val schedule = FocusSchedule(
+                        id = if (cleanRestore) obj.optInt("id", 0) else 0,
+                        name = obj.optString("name", "Focus Schedule"),
+                        startHour = obj.optInt("startHour", 9),
+                        startMinute = obj.optInt("startMinute", 0),
+                        endHour = obj.optInt("endHour", 17),
+                        endMinute = obj.optInt("endMinute", 0),
+                        daysOfWeek = obj.optString("daysOfWeek", "1,2,3,4,5"),
+                        mode = obj.optString("mode", "HARD"),
+                        restrictionMode = obj.optString("restrictionMode", "SIMPLE"),
+                        timeLimitMinutes = obj.optInt("timeLimitMinutes", 0),
+                        clickLimitCount = obj.optInt("clickLimitCount", 0),
+                        appsToBlock = obj.optString("appsToBlock", "")
+                    )
+                    focusDb.scheduleDao().insertSchedule(schedule)
+                }
+
+                // 7. Restore Tasks
+                for (i in 0 until taskArray.length()) {
+                    val obj = taskArray.getJSONObject(i)
+                    val task = Task(
+                        id = if (cleanRestore) obj.optLong("id", 0L) else 0L,
+                        title = obj.getString("title"),
+                        details = obj.optString("details", ""),
+                        dueDate = if (obj.isNull("dueDate")) null else obj.optLong("dueDate"),
+                        isCompleted = obj.optBoolean("isCompleted", false),
+                        completedAt = if (obj.isNull("completedAt")) null else obj.optLong("completedAt"),
+                        type = try { TaskType.valueOf(obj.optString("type", "TASK")) } catch (_: Exception) { TaskType.TASK },
+                        recurrence = try { RecurrencePattern.valueOf(obj.optString("recurrence", "NONE")) } catch (_: Exception) { RecurrencePattern.NONE },
+                        isPersistent = obj.optBoolean("isPersistent", false),
+                        isPriority = obj.optBoolean("isPriority", false),
+                        updatedAt = if (obj.has("updatedAt") && !obj.isNull("updatedAt")) obj.optLong("updatedAt") else System.currentTimeMillis(),
+                        isTrashed = obj.optBoolean("isTrashed", false),
+                        trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
+                        deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null
+                    )
+                    focusDb.taskDao().insertTask(task)
+                }
+
+                // 8. Restore Habits
+                val idMapping = mutableMapOf<Long, Long>()
+                for (i in 0 until habitArray.length()) {
+                    val obj = habitArray.getJSONObject(i)
+                    val origId = obj.optLong("id", 0L)
+                    val habit = Habit(
+                        id = if (cleanRestore) origId else 0L,
+                        title = obj.getString("title"),
+                        description = obj.optString("description", ""),
+                        iconEmoji = obj.optString("iconEmoji", "✨"),
+                        colorHex = obj.optString("colorHex", "#3B82F6"),
+                        type = try { HabitType.valueOf(obj.optString("type", "ONCE_DAILY")) } catch (_: Exception) { HabitType.ONCE_DAILY },
+                        targetPerDay = obj.optInt("targetPerDay", 1),
+                        intervalHours = obj.optInt("intervalHours", 2),
+                        intervalMinutes = obj.optInt("intervalMinutes", 0),
+                        windowStartHour = obj.optInt("windowStartHour", 8),
+                        windowStartMinute = obj.optInt("windowStartMinute", 0),
+                        windowEndHour = obj.optInt("windowEndHour", 20),
+                        windowEndMinute = obj.optInt("windowEndMinute", 0),
+                        fixedReminderHour = obj.optInt("fixedReminderHour", 9),
+                        fixedReminderMinute = obj.optInt("fixedReminderMinute", 0),
+                        isReminderEnabled = obj.optBoolean("isReminderEnabled", true),
+                        reminderSound = obj.optString("reminderSound", "ZEN"),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                        isArchived = obj.optBoolean("isArchived", false)
+                    )
+                    val newId = focusDb.habitDao().insertHabit(habit)
+                    idMapping[origId] = newId
+                }
+
+                val logArray = rootJson.optJSONArray("habitLogs") ?: JSONArray()
+                for (i in 0 until logArray.length()) {
+                    val obj = logArray.getJSONObject(i)
+                    val origHabitId = obj.optLong("habitId", 0L)
+                    val targetHabitId = idMapping[origHabitId] ?: origHabitId
+                    val log = HabitLog(
+                        id = if (cleanRestore) obj.optLong("id", 0L) else 0L,
+                        habitId = targetHabitId,
+                        date = obj.getString("date"),
+                        completedCount = obj.optInt("completedCount", 1),
+                        targetCount = obj.optInt("targetCount", 1),
+                        lastCompletedTimestamp = if (obj.isNull("lastCompletedTimestamp")) null else obj.optLong("lastCompletedTimestamp")
+                    )
+                    focusDb.habitDao().insertOrUpdateLog(log)
+                }
             }
 
             // 9. Restore Drill Sessions
             val drillArray = rootJson.optJSONArray("drillSessions") ?: JSONArray()
-            for (i in 0 until drillArray.length()) {
-                val obj = drillArray.getJSONObject(i)
-                val entity = DrillSessionEntity(
-                    sessionId = obj.getString("sessionId"),
-                    title = obj.optString("title", "Drill Session"),
-                    totalQuestions = obj.optInt("totalQuestions", 0),
-                    correctCount = obj.optInt("correctCount", 0),
-                    timeSpentSeconds = obj.optLong("timeSpentSeconds", 0L),
-                    xpEarned = obj.optInt("xpEarned", 0),
-                    isBlitz = obj.optBoolean("isBlitz", false),
-                    isClaimed = obj.optBoolean("isClaimed", true),
-                    timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                    summaryJson = obj.optString("summaryJson", "{}")
-                )
-                drillDb.drillSessionDao().insertSession(entity)
+            drillDb.withTransaction {
+                if (cleanRestore) {
+                    drillDb.drillSessionDao().deleteAllSessions()
+                }
+                for (i in 0 until drillArray.length()) {
+                    val obj = drillArray.getJSONObject(i)
+                    val entity = DrillSessionEntity(
+                        sessionId = obj.getString("sessionId"),
+                        title = obj.optString("title", "Drill Session"),
+                        totalQuestions = obj.optInt("totalQuestions", 0),
+                        correctCount = obj.optInt("correctCount", 0),
+                        timeSpentSeconds = obj.optLong("timeSpentSeconds", 0L),
+                        xpEarned = obj.optInt("xpEarned", 0),
+                        isBlitz = obj.optBoolean("isBlitz", false),
+                        isClaimed = obj.optBoolean("isClaimed", true),
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                        summaryJson = obj.optString("summaryJson", "{}")
+                    )
+                    drillDb.drillSessionDao().insertSession(entity)
+                }
             }
 
             // 10. Restore Vocab

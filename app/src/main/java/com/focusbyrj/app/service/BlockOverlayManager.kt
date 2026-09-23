@@ -443,8 +443,8 @@ object BlockOverlayManager {
             countdownRunnable?.let { handler.removeCallbacks(it) }
             countdownRunnable = null
             val viewToRemove = overlayView
-            if (viewToRemove != null && viewToRemove.isAttachedToWindow) {
-                windowManager?.removeView(viewToRemove)
+            if (viewToRemove != null && (viewToRemove.isAttachedToWindow || viewToRemove.windowToken != null)) {
+                windowManager?.removeViewImmediate(viewToRemove)
             }
         } catch (e: Exception) {
             // Ignore

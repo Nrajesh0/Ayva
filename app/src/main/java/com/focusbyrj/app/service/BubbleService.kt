@@ -146,7 +146,13 @@ class BubbleService : Service() {
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.action) {
+            val action = intent?.action ?: return
+            if (action != Intent.ACTION_USER_PRESENT && action != Intent.ACTION_SCREEN_ON) {
+                if (intent.getPackage() != null && intent.getPackage() != packageName) {
+                    return
+                }
+            }
+            when (action) {
                 "com.focusbyrj.app.CHAT_CLOSED" -> {
                     isChatOpen = false
                     addBubbleToWindowManager()
@@ -224,7 +230,11 @@ class BubbleService : Service() {
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        val action = intent?.action
+        if (action != null && intent.getPackage() != null && intent.getPackage() != packageName) {
+            return START_STICKY
+        }
+        when (action) {
             ACTION_SNOOZE_BUBBLE -> snoozeBubble()
             ACTION_RESUME_BUBBLE -> resumeBubble()
             ACTION_HIDE_FOR_PERMISSION -> hideForPermission()
@@ -264,7 +274,7 @@ class BubbleService : Service() {
             addAction(Intent.ACTION_SCREEN_ON)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+            registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(receiver, filter)
         }
@@ -1205,7 +1215,7 @@ class BubbleService : Service() {
 
         val notification = builder.build()
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(2001, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
                 startForeground(2001, notification)

@@ -92,13 +92,12 @@ class HabitReceiver : BroadcastReceiver() {
         val appContext = context.applicationContext
 
         CoroutineScope(Dispatchers.IO).launch {
+            val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val wakeLock = powerManager?.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "FocusByRJ:HabitReminderWakeLock"
+            )
             try {
-                // Temporary wake lock for guaranteed delivery
-                val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                val wakeLock = powerManager?.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK,
-                    "FocusByRJ:HabitReminderWakeLock"
-                )
                 try {
                     wakeLock?.acquire(3000L)
                 } catch (_: Exception) {}
@@ -303,6 +302,11 @@ class HabitReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
+                try {
+                    if (wakeLock != null && wakeLock.isHeld) {
+                        wakeLock.release()
+                    }
+                } catch (_: Exception) {}
                 pendingResult.finish()
             }
         }

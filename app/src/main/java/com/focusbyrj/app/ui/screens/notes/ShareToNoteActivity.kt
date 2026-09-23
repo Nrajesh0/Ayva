@@ -112,7 +112,12 @@ class ShareToNoteActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val parsed = KeepNoteShareParser.parseIntent(intent)
+        val parsed = try {
+            KeepNoteShareParser.parseIntent(intent)
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            ParsedSharedNote(title = "", content = "", isChecklist = false, checklistItems = emptyList(), imageUris = emptyList())
+        }
 
         setContent {
             FocusByRjTheme {
@@ -597,8 +602,9 @@ private suspend fun saveImportedNote(
     val savedId = db.noteDao().insertNote(noteEntity)
     NotesViewModel.latestNotesCache[savedId] = noteEntity.copy(id = savedId)
 
-    // Notify widgets
+    // Notify widgets and sync
     NoteWidgetProvider.updateAllWidgets(context)
+    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
 
     return savedId
 }

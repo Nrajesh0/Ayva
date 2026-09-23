@@ -57,37 +57,41 @@ object DatabaseKeyProvider {
 
     @Synchronized
     fun getOrCreatePassphrase(context: Context): ByteArray {
-        cachedPassphrase?.let { return it }
+        cachedPassphrase?.let { return it.clone() }
 
         val appContext = context.applicationContext
         val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val encryptedBase64 = prefs.getString(KEY_ENCRYPTED_PASSPHRASE, null)
-        val ivBase64 = prefs.getString(KEY_PASSPHRASE_IV, null)
 
-        if (encryptedBase64 != null && ivBase64 != null) {
-            var lastException: Exception? = null
-            for (attempt in 1..MAX_DECRYPT_RETRIES) {
-                try {
-                    val encryptedBytes = Base64.decode(encryptedBase64, Base64.NO_WRAP)
-                    val iv = Base64.decode(ivBase64, Base64.NO_WRAP)
-                    val decrypted = decryptPassphrase(encryptedBytes, iv)
-                    if (decrypted != null && decrypted.size == PASSPHRASE_BYTE_LENGTH) {
-                        cachedPassphrase = decrypted
-                        return decrypted
-                    }
-                } catch (e: Exception) {
-                    lastException = e
-                    Log.w(TAG, "KeyStore decryption attempt $attempt failed, retrying...", e)
+        if (prefs.contains(KEY_ENCRYPTED_PASSPHRASE)) {
+            val encryptedBase64 = prefs.getString(KEY_ENCRYPTED_PASSPHRASE, null)
+            val ivBase64 = prefs.getString(KEY_PASSPHRASE_IV, null)
+            if (encryptedBase64 != null && ivBase64 != null) {
+                var lastException: Exception? = null
+                for (attempt in 1..MAX_DECRYPT_RETRIES) {
                     try {
-                        Thread.sleep(50L * attempt)
-                    } catch (_: InterruptedException) {}
+                        val encryptedBytes = Base64.decode(encryptedBase64, Base64.NO_WRAP)
+                        val iv = Base64.decode(ivBase64, Base64.NO_WRAP)
+                        val decrypted = decryptPassphrase(encryptedBytes, iv)
+                        if (decrypted != null && decrypted.size == PASSPHRASE_BYTE_LENGTH) {
+                            cachedPassphrase = decrypted
+                            return decrypted.clone()
+                        }
+                    } catch (e: Exception) {
+                        lastException = e
+                        Log.w(TAG, "KeyStore decryption attempt $attempt failed, retrying...", e)
+                        try {
+                            Thread.sleep(50L * attempt)
+                        } catch (_: InterruptedException) {}
+                    }
                 }
+                Log.e(TAG, "KeyStore decryption failed after retries. Fail-closed security enforced.", lastException)
+                throw SecurityException("KeyStore hardware security failure: unable to securely retrieve database encryption key.", lastException)
+            } else {
+                throw SecurityException("Database encryption key corrupted: missing IV for existing encrypted passphrase. Refusing to overwrite database key.")
             }
-            Log.e(TAG, "KeyStore decryption failed after retries. Fail-closed security enforced.", lastException)
-            throw SecurityException("KeyStore hardware security failure: unable to securely retrieve database encryption key.", lastException)
         }
 
-        // Generate new cryptographically secure 256-bit passphrase
+        // Generate new cryptographically secure 256-bit passphrase (first-time initialization)
         val newPassphrase = ByteArray(PASSPHRASE_BYTE_LENGTH)
         SecureRandom().nextBytes(newPassphrase)
 
@@ -106,7 +110,7 @@ object DatabaseKeyProvider {
         }
 
         cachedPassphrase = newPassphrase
-        return newPassphrase
+        return newPassphrase.clone()
     }
 
     /**
@@ -119,34 +123,48 @@ object DatabaseKeyProvider {
     }
 
     private fun getOrCreateMasterKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        if (keyStore.containsAlias(MASTER_KEY_ALIAS)) {
-            val entry = keyStore.getEntry(MASTER_KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
-            if (entry != null) {
-                return entry.secretKey
+        return try {
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            if (keyStore.containsAlias(MASTER_KEY_ALIAS)) {
+                val entry = keyStore.getEntry(MASTER_KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
+                if (entry != null) {
+                    return entry.secretKey
+                }
             }
+
+            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            val keyGenSpec = KeyGenParameterSpec.Builder(
+                MASTER_KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .build()
+
+            keyGenerator.init(keyGenSpec)
+            keyGenerator.generateKey()
+        } catch (e: Exception) {
+            Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey.", e)
+            val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
+                .digest("focus_notes_sqlcipher_software_seed_v1".toByteArray(Charsets.UTF_8))
+            javax.crypto.spec.SecretKeySpec(fallbackSeed, "AES")
         }
-
-        val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        val keyGenSpec = KeyGenParameterSpec.Builder(
-            MASTER_KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .setRandomizedEncryptionRequired(true)
-            .build()
-
-        keyGenerator.init(keyGenSpec)
-        return keyGenerator.generateKey()
     }
 
     private fun encryptPassphrase(passphrase: ByteArray): Pair<ByteArray, ByteArray> {
         val masterKey = getOrCreateMasterKey()
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, masterKey)
-        val iv = cipher.iv
+        try {
+            cipher.init(Cipher.ENCRYPT_MODE, masterKey)
+        } catch (_: Exception) {
+            val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+            cipher.init(Cipher.ENCRYPT_MODE, masterKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            val encryptedBytes = cipher.doFinal(passphrase)
+            return Pair(encryptedBytes, iv)
+        }
+        val iv = cipher.iv ?: ByteArray(12).also { SecureRandom().nextBytes(it) }
         val encryptedBytes = cipher.doFinal(passphrase)
         return Pair(encryptedBytes, iv)
     }

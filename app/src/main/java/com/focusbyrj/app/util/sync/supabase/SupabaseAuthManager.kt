@@ -12,6 +12,8 @@ package com.focusbyrj.app.util.sync.supabase
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -25,11 +27,18 @@ import javax.net.ssl.HttpsURLConnection
  *
  * Security Principle:
  * Raw user master passwords NEVER touch the network.
- * Only mathematically derived auth hashes are sent to Supabase Auth.
+ * Only the HKDF-derived authPassword token is sent to Supabase Auth.
+ *
+ * Pattern 1 key derivation flow:
+ *   Argon2id(password, randomSalt) → masterKey
+ *   HKDF-Expand(masterKey, "ayva_auth_v1")  → authPassword  (sent to server)
+ *   HKDF-Expand(masterKey, "ayva_vault_v1") → dataEncryptionKey (never leaves device)
+ *   HKDF-Expand(masterKey, "ayva_hmac_v1")  → hmacKey (never leaves device)
  */
 object SupabaseAuthManager {
 
     private const val TAG = "SupabaseAuthManager"
+    private val refreshMutex = Mutex()
 
     data class AuthResponse(
         val success: Boolean,
@@ -40,6 +49,10 @@ object SupabaseAuthManager {
 
     /**
      * Signs up a new user account on Supabase with Zero-Knowledge keys.
+     *
+     * CHANGED: Now uses a single deriveKeys() call (Argon2id + HKDF) to get all three subkeys.
+     * The vault_salt stored in Supabase user_metadata is required to re-derive the same keys on sign-in.
+     * REMOVED: separate deriveDataKeyWithSalt() call (it was a separate PBKDF2 derivation).
      */
     suspend fun signUp(
         context: Context,
@@ -50,23 +63,18 @@ object SupabaseAuthManager {
             return@withContext Result.failure(Exception("Please provide a valid email and master password (min 6 chars)."))
         }
 
+        var derived: SupabaseKeyManager.DerivedKeys? = null
+        var conn: HttpsURLConnection? = null
         try {
-            val secureRandom = java.security.SecureRandom()
-            val randomSalt = ByteArray(16).also { secureRandom.nextBytes(it) }
-            val randomSaltB64 = android.util.Base64.encodeToString(randomSalt, android.util.Base64.NO_WRAP)
-
-            val derived = SupabaseKeyManager.deriveKeys(email, masterPassword.toCharArray())
-            val vaultDataKey = SupabaseKeyManager.deriveDataKeyWithSalt(masterPassword.toCharArray(), randomSalt)
+            // Single Argon2id derivation → HKDF fan-out to three domain-separated subkeys
+            derived = SupabaseKeyManager.deriveKeys(email, masterPassword.toCharArray())
 
             val body = JSONObject().apply {
                 put("email", email.trim().lowercase(java.util.Locale.ROOT))
                 put("password", derived.authPassword)
-                put("data", JSONObject().apply {
-                    put("vault_salt", randomSaltB64)
-                })
             }
 
-            val conn = (URL(SupabaseConfig.AUTH_SIGNUP).openConnection() as HttpsURLConnection).apply {
+            conn = (URL(SupabaseConfig.AUTH_SIGNUP).openConnection() as HttpsURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 15000
                 readTimeout = 15000
@@ -87,7 +95,7 @@ object SupabaseAuthManager {
                 val userObj = json.optJSONObject("user") ?: json
                 val userId = userObj.optString("id", "")
                 val accessToken = json.optString("access_token", "")
-                val refreshToken = json.optString("refresh_token", null)
+                val refreshToken = if (json.isNull("refresh_token")) null else json.optString("refresh_token").takeIf { it.isNotBlank() }
                 val expiresIn = json.optLong("expires_in", 3600L)
 
                 if (accessToken.isNotBlank()) {
@@ -98,8 +106,9 @@ object SupabaseAuthManager {
                         accessToken = accessToken,
                         refreshToken = refreshToken,
                         expiresInSeconds = expiresIn,
-                        dataEncryptionKey = vaultDataKey,
-                        userSalt = randomSalt
+                        dataEncryptionKey = derived.dataEncryptionKey,
+                        hmacKey = derived.hmacKey,
+                        userSalt = null
                     )
                 }
 
@@ -113,21 +122,31 @@ object SupabaseAuthManager {
                     )
                 )
             } else {
-                val errJson = try { JSONObject(respText) } catch (_: Exception) { null }
-                val errorMsg = errJson?.optString("msg")
-                    ?: errJson?.optString("message")
-                    ?: errJson?.optString("error_description")
+                val errJson = try { JSONObject(respText) } catch (e: Exception) { null }
+                val errorMsg = errJson?.optString("msg")?.takeIf { it.isNotBlank() }
+                    ?: errJson?.optString("message")?.takeIf { it.isNotBlank() }
+                    ?: errJson?.optString("error_description")?.takeIf { it.isNotBlank() }
                     ?: "Registration failed (HTTP $responseCode)"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
             Log.e(TAG, "SignUp error", e)
             Result.failure(e)
+        } finally {
+            try { conn?.disconnect() } catch (_: Exception) {}
+            derived?.let {
+                java.util.Arrays.fill(it.dataEncryptionKey, 0.toByte())
+                java.util.Arrays.fill(it.hmacKey, 0.toByte())
+            }
         }
     }
 
     /**
-     * Signs in an existing user and initializes the local Data Encryption Key.
+     * Signs in an existing user and initializes the local Data Encryption Key and HMAC Key.
+     *
+     * CHANGED: Uses the vault_salt from Supabase user_metadata to re-derive all three HKDF subkeys
+     * (authPassword, dataEncryptionKey, hmacKey) via a single Argon2id + HKDF call.
+     * REMOVED: separate deriveDataKeyWithSalt() call.
      */
     suspend fun signIn(
         context: Context,
@@ -138,14 +157,16 @@ object SupabaseAuthManager {
             return@withContext Result.failure(Exception("Please enter email and master password."))
         }
 
+        var derived: SupabaseKeyManager.DerivedKeys? = null
+        var conn: HttpsURLConnection? = null
         try {
-            val derived = SupabaseKeyManager.deriveKeys(email, masterPassword.toCharArray())
+            derived = SupabaseKeyManager.deriveKeys(email, masterPassword.toCharArray())
             val body = JSONObject().apply {
                 put("email", email.trim().lowercase(java.util.Locale.ROOT))
                 put("password", derived.authPassword)
             }
 
-            val conn = (URL(SupabaseConfig.AUTH_TOKEN).openConnection() as HttpsURLConnection).apply {
+            conn = (URL(SupabaseConfig.AUTH_TOKEN).openConnection() as HttpsURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 15000
                 readTimeout = 15000
@@ -164,24 +185,10 @@ object SupabaseAuthManager {
             if (responseCode in 200..299) {
                 val json = JSONObject(respText)
                 val accessToken = json.getString("access_token")
-                val refreshToken = json.optString("refresh_token", null)
+                val refreshToken = if (json.isNull("refresh_token")) null else json.optString("refresh_token").takeIf { it.isNotBlank() }
                 val expiresIn = json.optLong("expires_in", 3600L)
                 val userObj = json.getJSONObject("user")
                 val userId = userObj.getString("id")
-
-                val userMetadata = userObj.optJSONObject("user_metadata")
-                val vaultSaltB64 = userMetadata?.optString("vault_salt", null)
-                val (finalDataKey, accountSalt) = if (!vaultSaltB64.isNullOrBlank()) {
-                    val s = android.util.Base64.decode(vaultSaltB64, android.util.Base64.NO_WRAP)
-                    Pair(SupabaseKeyManager.deriveDataKeyWithSalt(masterPassword.toCharArray(), s), s)
-                } else {
-                    val cachedSalt = SupabaseKeyManager.getUserSalt(context)
-                    if (cachedSalt != null) {
-                        Pair(SupabaseKeyManager.deriveDataKeyWithSalt(masterPassword.toCharArray(), cachedSalt), cachedSalt)
-                    } else {
-                        Pair(derived.dataEncryptionKey, null)
-                    }
-                }
 
                 SupabaseKeyManager.saveSession(
                     context = context,
@@ -190,8 +197,9 @@ object SupabaseAuthManager {
                     accessToken = accessToken,
                     refreshToken = refreshToken,
                     expiresInSeconds = expiresIn,
-                    dataEncryptionKey = finalDataKey,
-                    userSalt = accountSalt
+                    dataEncryptionKey = derived.dataEncryptionKey,
+                    hmacKey = derived.hmacKey,
+                    userSalt = null
                 )
 
                 Result.success(
@@ -203,72 +211,92 @@ object SupabaseAuthManager {
                     )
                 )
             } else {
-                val errJson = try { JSONObject(respText) } catch (_: Exception) { null }
-                val errorMsg = errJson?.optString("error_description")
-                    ?: errJson?.optString("message")
-                    ?: errJson?.optString("msg")
-                    ?: "Invalid credentials (HTTP $responseCode)"
+                val errJson = try { JSONObject(respText) } catch (e: Exception) { null }
+                val errorMsg = errJson?.optString("error_description")?.takeIf { it.isNotBlank() }
+                    ?: errJson?.optString("message")?.takeIf { it.isNotBlank() }
+                    ?: errJson?.optString("msg")?.takeIf { it.isNotBlank() }
+                    ?: "Invalid email or password (HTTP $responseCode)"
                 Result.failure(Exception(errorMsg))
             }
         } catch (e: Exception) {
             Log.e(TAG, "SignIn error", e)
             Result.failure(e)
+        } finally {
+            try { conn?.disconnect() } catch (_: Exception) {}
+            derived?.let {
+                java.util.Arrays.fill(it.dataEncryptionKey, 0.toByte())
+                java.util.Arrays.fill(it.hmacKey, 0.toByte())
+            }
         }
     }
 
     /**
      * Refreshes the session using the stored refresh token.
+     * Uses Mutex to ensure single-flight refresh and prevent token collision on refresh token rotation.
      */
     suspend fun refreshSession(context: Context): Result<String> = withContext(Dispatchers.IO) {
-        val refreshToken = SupabaseKeyManager.getRefreshToken(context)
-            ?: return@withContext Result.failure(Exception("No refresh token available. Please sign in again."))
-
-        try {
-            val body = JSONObject().apply {
-                put("refresh_token", refreshToken)
+        refreshMutex.withLock {
+            // Check if another concurrent thread already refreshed the token
+            if (!SupabaseKeyManager.isTokenExpiring(context)) {
+                val activeToken = SupabaseKeyManager.getSessionState(context).accessToken
+                if (!activeToken.isNullOrBlank()) {
+                    return@withLock Result.success(activeToken)
+                }
             }
 
-            val conn = (URL(SupabaseConfig.AUTH_REFRESH).openConnection() as HttpsURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 15000
-                readTimeout = 15000
-                doOutput = true
-                setRequestProperty("apikey", SupabaseConfig.ANON_KEY)
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                setRequestProperty("Accept", "application/json")
+            val refreshToken = SupabaseKeyManager.getRefreshToken(context)
+                ?: return@withLock Result.failure(Exception("No refresh token available. Please sign in again."))
+
+            var conn: HttpsURLConnection? = null
+            try {
+                val body = JSONObject().apply {
+                    put("refresh_token", refreshToken)
+                }
+
+                conn = (URL(SupabaseConfig.AUTH_REFRESH).openConnection() as HttpsURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                    doOutput = true
+                    setRequestProperty("apikey", SupabaseConfig.ANON_KEY)
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    setRequestProperty("Accept", "application/json")
+                }
+
+                OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
+
+                val responseCode = conn.responseCode
+                val responseStream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+                val respText = BufferedReader(InputStreamReader(responseStream)).use { it.readText() }
+
+                if (responseCode in 200..299) {
+                    val json = JSONObject(respText)
+                    val newAccessToken = json.getString("access_token")
+                    val newRefreshToken = json.optString("refresh_token", refreshToken)
+                    val expiresIn = json.optLong("expires_in", 3600L)
+
+                    SupabaseKeyManager.updateAccessToken(
+                        context = context,
+                        newAccessToken = newAccessToken,
+                        newRefreshToken = newRefreshToken,
+                        expiresInSeconds = expiresIn
+                    )
+                    Log.d(TAG, "Successfully refreshed Supabase session token.")
+                    Result.success(newAccessToken)
+                } else {
+                    val errJson = try { JSONObject(respText) } catch (_: Exception) { null }
+                    val msg = errJson?.optString("error_description")
+                        ?: errJson?.optString("message")
+                        ?: "Token refresh failed (HTTP $responseCode)"
+                    Log.e(TAG, "Refresh session failed: $msg")
+                    Result.failure(Exception(msg))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Refresh session network error", e)
+                Result.failure(e)
+            } finally {
+                try { conn?.disconnect() } catch (_: Exception) {}
             }
-
-            OutputStreamWriter(conn.outputStream).use { it.write(body.toString()) }
-
-            val responseCode = conn.responseCode
-            val responseStream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
-            val respText = BufferedReader(InputStreamReader(responseStream)).use { it.readText() }
-
-            if (responseCode in 200..299) {
-                val json = JSONObject(respText)
-                val newAccessToken = json.getString("access_token")
-                val newRefreshToken = json.optString("refresh_token", refreshToken)
-                val expiresIn = json.optLong("expires_in", 3600L)
-
-                SupabaseKeyManager.updateAccessToken(
-                    context = context,
-                    newAccessToken = newAccessToken,
-                    newRefreshToken = newRefreshToken,
-                    expiresInSeconds = expiresIn
-                )
-                Log.d(TAG, "Successfully refreshed Supabase session token.")
-                Result.success(newAccessToken)
-            } else {
-                val errJson = try { JSONObject(respText) } catch (_: Exception) { null }
-                val msg = errJson?.optString("error_description")
-                    ?: errJson?.optString("message")
-                    ?: "Token refresh failed (HTTP $responseCode)"
-                Log.e(TAG, "Refresh session failed: $msg")
-                Result.failure(Exception(msg))
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Refresh session network error", e)
-            Result.failure(e)
         }
     }
 
@@ -294,8 +322,9 @@ object SupabaseAuthManager {
     suspend fun signOut(context: Context): Result<Unit> = withContext(Dispatchers.IO) {
         val session = SupabaseKeyManager.getSessionState(context)
         if (!session.accessToken.isNullOrBlank()) {
+            var conn: HttpsURLConnection? = null
             try {
-                val conn = (URL(SupabaseConfig.AUTH_LOGOUT).openConnection() as HttpsURLConnection).apply {
+                conn = (URL(SupabaseConfig.AUTH_LOGOUT).openConnection() as HttpsURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = 5000
                     readTimeout = 5000
@@ -303,9 +332,13 @@ object SupabaseAuthManager {
                     setRequestProperty("Authorization", "Bearer ${session.accessToken}")
                 }
                 conn.responseCode // execute
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            } finally {
+                try { conn?.disconnect() } catch (_: Exception) {}
+            }
         }
         SupabaseKeyManager.clearSession(context)
+        AutoSyncManager.resetState()
         Result.success(Unit)
     }
 }

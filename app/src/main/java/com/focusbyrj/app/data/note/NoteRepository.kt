@@ -18,12 +18,16 @@
 package com.focusbyrj.app.data.note
 
 import android.util.Log
+import com.focusbyrj.app.util.backup.DataSafetyManager
 import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
-class NoteRepository(private val noteDao: NoteDao) {
+class NoteRepository(
+    private val noteDao: NoteDao,
+    private val context: android.content.Context? = null
+) {
 
     private val TAG = "NoteRepository"
 
@@ -47,10 +51,20 @@ class NoteRepository(private val noteDao: NoteDao) {
             emit(emptyList())
         }
 
-    fun getTrashedNotes(): Flow<List<NoteEntity>> = noteDao.getTrashedNotes().catch { e ->
-        Log.e(TAG, "Error collecting trashed notes", e)
-        emit(emptyList())
-    }
+    fun getTrashedNotes(): Flow<List<NoteEntity>> = noteDao.getTrashedNotes()
+        .map { notes ->
+            notes.map { note ->
+                if (VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                    VaultPayloadEncryptor.decryptNotePayload(note)
+                } else {
+                    note
+                }
+            }
+        }
+        .catch { e ->
+            Log.e(TAG, "Error collecting trashed notes", e)
+            emit(emptyList())
+        }
 
     fun searchNotes(query: String): Flow<List<NoteEntity>> = noteDao.searchNotes(query).catch { e ->
         Log.e(TAG, "Error searching notes", e)
@@ -192,8 +206,12 @@ class NoteRepository(private val noteDao: NoteDao) {
         emptyList()
     }
 
-    suspend fun emptyTrash() {
+    suspend fun emptyTrash(context: android.content.Context? = null) {
         try {
+            val ctx = context ?: this.context
+            if (ctx != null) {
+                DataSafetyManager.writePreOpSnapshot(ctx, noteDao, "emptyTrash")
+            }
             noteDao.emptyTrash()
         } catch (e: Exception) {
             Log.e(TAG, "Error in emptyTrash", e)

@@ -33,6 +33,9 @@ object NoteImageHelper {
     const val COMPRESSION_QUALITY: Int = 80
 
     fun processAndSaveImage(context: Context, contentUri: Uri): String? {
+        var rawBitmap: Bitmap? = null
+        var orientedBitmap: Bitmap? = null
+        var finalBitmap: Bitmap? = null
         return try {
             val imagesDir = File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
             val outputFile = File(imagesDir, "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg")
@@ -46,7 +49,7 @@ object NoteImageHelper {
                         ExifInterface.ORIENTATION_NORMAL
                     )
                 } ?: ExifInterface.ORIENTATION_NORMAL
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 ExifInterface.ORIENTATION_NORMAL
             }
 
@@ -76,49 +79,53 @@ object NoteImageHelper {
                 inSampleSize = sampleSize
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
-            val rawBitmap = context.contentResolver.openInputStream(contentUri)?.use { input ->
+            rawBitmap = context.contentResolver.openInputStream(contentUri)?.use { input ->
                 BitmapFactory.decodeStream(input, null, decodeOptions)
             } ?: return null
 
             // 4. Adjust orientation if required
-            val orientedBitmap = when (orientation) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> rotateBitmap(rawBitmap, 90f)
-                ExifInterface.ORIENTATION_ROTATE_180 -> rotateBitmap(rawBitmap, 180f)
-                ExifInterface.ORIENTATION_ROTATE_270 -> rotateBitmap(rawBitmap, 270f)
-                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> flipBitmap(rawBitmap, horizontal = true)
-                ExifInterface.ORIENTATION_FLIP_VERTICAL -> flipBitmap(rawBitmap, horizontal = false)
-                else -> rawBitmap
+            val nonNullRaw = rawBitmap!!
+            orientedBitmap = when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> rotateBitmap(nonNullRaw, 90f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> rotateBitmap(nonNullRaw, 180f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> rotateBitmap(nonNullRaw, 270f)
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> flipBitmap(nonNullRaw, horizontal = true)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> flipBitmap(nonNullRaw, horizontal = false)
+                else -> nonNullRaw
             }
 
             // Clamp max dimension to 1920 if sampleSize left it slightly larger
-            val finalBitmap = if (orientedBitmap.width > maxDim || orientedBitmap.height > maxDim) {
-                val ratio = minOf(maxDim.toFloat() / orientedBitmap.width, maxDim.toFloat() / orientedBitmap.height)
-                val targetW = (orientedBitmap.width * ratio).toInt().coerceAtLeast(1)
-                val targetH = (orientedBitmap.height * ratio).toInt().coerceAtLeast(1)
-                Bitmap.createScaledBitmap(orientedBitmap, targetW, targetH, true)
+            val nonNullOriented = orientedBitmap!!
+            finalBitmap = if (nonNullOriented.width > maxDim || nonNullOriented.height > maxDim) {
+                val ratio = minOf(maxDim.toFloat() / nonNullOriented.width, maxDim.toFloat() / nonNullOriented.height)
+                val targetW = (nonNullOriented.width * ratio).toInt().coerceAtLeast(1)
+                val targetH = (nonNullOriented.height * ratio).toInt().coerceAtLeast(1)
+                Bitmap.createScaledBitmap(nonNullOriented, targetW, targetH, true)
             } else {
-                orientedBitmap
+                nonNullOriented
             }
 
             // 5. Save as balanced high-quality compressed JPEG (80%) encrypted with AES-256-GCM
             val byteStream = java.io.ByteArrayOutputStream()
-            finalBitmap.compress(Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream)
+            finalBitmap!!.compress(Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream)
             val imageBytes = byteStream.toByteArray()
 
             com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(outputFile, imageBytes)
 
-            if (rawBitmap != orientedBitmap && rawBitmap != finalBitmap) {
-                rawBitmap.recycle()
-            }
-            if (orientedBitmap != finalBitmap) {
-                orientedBitmap.recycle()
-            }
-            finalBitmap.recycle()
-
             outputFile.absolutePath
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (t: Throwable) {
+            t.printStackTrace()
             null
+        } finally {
+            if (rawBitmap != null && rawBitmap != orientedBitmap && rawBitmap != finalBitmap) {
+                rawBitmap?.recycle()
+            }
+            if (orientedBitmap != null && orientedBitmap != rawBitmap && orientedBitmap != finalBitmap) {
+                orientedBitmap?.recycle()
+            }
+            if (finalBitmap != null) {
+                finalBitmap?.recycle()
+            }
         }
     }
 
@@ -127,6 +134,7 @@ object NoteImageHelper {
      * using the same 1920px max dimension, 80% compression standard, and AES-256-GCM disk encryption.
      */
     fun processAndSaveBitmap(context: Context, bitmap: Bitmap, prefix: String = "img"): String? {
+        var scaledBitmap: Bitmap? = null
         return try {
             val imagesDir = File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
             val outputFile = File(imagesDir, "${prefix}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg")
@@ -136,7 +144,8 @@ object NoteImageHelper {
                 val ratio = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height)
                 val targetW = (bitmap.width * ratio).toInt().coerceAtLeast(1)
                 val targetH = (bitmap.height * ratio).toInt().coerceAtLeast(1)
-                Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+                scaledBitmap = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+                scaledBitmap
             } else {
                 bitmap
             }
@@ -147,14 +156,14 @@ object NoteImageHelper {
 
             com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(outputFile, imageBytes)
 
-            if (finalBitmap != bitmap) {
-                finalBitmap.recycle()
-            }
-
             outputFile.absolutePath
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (t: Throwable) {
+            t.printStackTrace()
             null
+        } finally {
+            if (scaledBitmap != null && scaledBitmap != bitmap) {
+                scaledBitmap.recycle()
+            }
         }
     }
 

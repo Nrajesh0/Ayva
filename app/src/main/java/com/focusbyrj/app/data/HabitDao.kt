@@ -35,6 +35,9 @@ interface HabitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHabit(habit: Habit): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertHabits(habits: List<Habit>)
+
     @Update
     suspend fun updateHabit(habit: Habit)
 

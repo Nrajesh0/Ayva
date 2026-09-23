@@ -46,7 +46,9 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.focusbyrj.app.data.TaskDao
 import com.focusbyrj.app.data.note.NoteDao
+import com.focusbyrj.app.util.sync.supabase.AutoSyncManager
 import com.focusbyrj.app.util.sync.supabase.SupabaseAuthManager
+import com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager
 import com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine
 import kotlinx.coroutines.launch
 
@@ -103,8 +105,14 @@ fun SupabaseAuthScreen(
                 result.onSuccess { res ->
                     isLoading = false
                     Toast.makeText(context, res.message ?: "Account created successfully", Toast.LENGTH_SHORT).show()
-                    SupabaseSyncEngine.performSync(context, noteDao, taskDao)
-                    navController.popBackStack()
+                    if (SupabaseKeyManager.getSessionState(context).isSignedIn) {
+                        AutoSyncManager.triggerImmediateSync(context.applicationContext)
+                        navController.popBackStack()
+                    } else {
+                        authMode = FullPageAuthMode.SIGN_IN
+                        password = ""
+                        confirmPassword = ""
+                    }
                 }.onFailure { err ->
                     isLoading = false
                     errorMessage = err.message ?: "Sign up failed. Please try again."
@@ -114,7 +122,7 @@ fun SupabaseAuthScreen(
                 result.onSuccess {
                     isLoading = false
                     Toast.makeText(context, "Signed in successfully", Toast.LENGTH_SHORT).show()
-                    SupabaseSyncEngine.performSync(context, noteDao, taskDao)
+                    AutoSyncManager.triggerImmediateSync(context.applicationContext)
                     navController.popBackStack()
                 }.onFailure { err ->
                     isLoading = false
@@ -289,9 +297,9 @@ fun SupabaseAuthScreen(
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = errorText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    text = errorText.ifBlank { "Invalid email or password. Please check your credentials." },
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                    color = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.weight(1f)
                                 )
                                 IconButton(

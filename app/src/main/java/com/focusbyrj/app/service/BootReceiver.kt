@@ -36,19 +36,33 @@ class BootReceiver : BroadcastReceiver() {
             com.focusbyrj.app.service.BubbleService.startIfEnabled(context)
             DailySummaryReceiver.scheduleDailySummaries(context)
             AptitudeReminderReceiver.scheduleRandomDrillReminders(context)
-            com.focusbyrj.app.util.HabitAlarmScheduler.rescheduleAllHabits(context)
-            
-            // Reschedule all task reminders on boot or update
-            val app = context.applicationContext as FocusApplication
-            val repository = app.taskRepository
+            val app = context.applicationContext as? FocusApplication
+            if (app == null) {
+                pendingResult.finish()
+                return
+            }
+
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val tasks = repository.allTasks.firstOrNull() ?: emptyList()
-                    tasks.filter { !it.isCompleted && it.dueDate != null }.forEach { task ->
-                        TaskReminderHelper.scheduleReminder(context, task)
+                    // 1. Reschedule all habit reminders
+                    try {
+                        val habits = app.habitRepository.getAllActiveHabits().firstOrNull() ?: emptyList()
+                        habits.filter { it.isReminderEnabled && !it.isArchived }.forEach { habit ->
+                            com.focusbyrj.app.util.HabitAlarmScheduler.scheduleHabitReminder(context, habit)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
+
+                    // 2. Reschedule all task reminders on boot or update
+                    try {
+                        val tasks = app.taskRepository.allTasks.firstOrNull() ?: emptyList()
+                        tasks.filter { !it.isCompleted && it.dueDate != null }.forEach { task ->
+                            TaskReminderHelper.scheduleReminder(context, task)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 } finally {
                     pendingResult.finish()
                 }

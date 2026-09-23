@@ -38,84 +38,108 @@ object KeepNoteShareParser {
     private val UNCHECKED_REGEX = Regex("""^(\s*[-*•]?\s*(☐|\[\s*\]|\(\s*\))\s*)(.*)$""")
     private val BULLET_REGEX = Regex("""^(\s*[-*•]\s+)(.*)$""")
 
-    fun parseIntent(intent: Intent): ParsedSharedNote {
-        val rawSubject = (
-            intent.getStringExtra(Intent.EXTRA_SUBJECT)
-                ?: intent.getStringExtra(Intent.EXTRA_TITLE)
-                ?: intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString()
-                ?: intent.getCharSequenceExtra(Intent.EXTRA_TITLE)?.toString()
-        )?.trim()
-
-        var rawText: String? = null
-
-        // 1. Check EXTRA_TEXT (String or CharSequence)
-        val extraText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT) ?: intent.getStringExtra(Intent.EXTRA_TEXT)
-        if (extraText != null && extraText.isNotBlank()) {
-            rawText = extraText.toString().trim()
+    fun parseIntent(intent: Intent?): ParsedSharedNote {
+        if (intent == null) {
+            return ParsedSharedNote(title = "", content = "", isChecklist = false, checklistItems = emptyList(), imageUris = emptyList())
         }
+        return try {
+            val rawSubject = kotlin.runCatching {
+                (
+                    intent.getStringExtra(Intent.EXTRA_SUBJECT)
+                        ?: intent.getStringExtra(Intent.EXTRA_TITLE)
+                        ?: intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString()
+                        ?: intent.getCharSequenceExtra(Intent.EXTRA_TITLE)?.toString()
+                )?.trim()
+            }.getOrNull()
 
-        // 2. Check EXTRA_HTML_TEXT
-        if (rawText.isNullOrBlank()) {
-            val htmlText = intent.getStringExtra(Intent.EXTRA_HTML_TEXT)
-            if (!htmlText.isNullOrBlank()) {
-                rawText = android.text.Html.fromHtml(htmlText, android.text.Html.FROM_HTML_MODE_LEGACY).toString().trim()
+            var rawText: String? = null
+
+            // 1. Check EXTRA_TEXT (String or CharSequence)
+            kotlin.runCatching {
+                val extraText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT) ?: intent.getStringExtra(Intent.EXTRA_TEXT)
+                if (extraText != null && extraText.isNotBlank()) {
+                    rawText = extraText.toString().trim()
+                }
             }
-        }
 
-        // 3. Check ClipData item text or HTML
-        if (rawText.isNullOrBlank()) {
-            intent.clipData?.let { clipData ->
-                for (i in 0 until clipData.itemCount) {
-                    val item = clipData.getItemAt(i)
-                    val itemText = item.text?.toString() ?: item.htmlText?.let {
-                        android.text.Html.fromHtml(it, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
-                    }
-                    if (!itemText.isNullOrBlank()) {
-                        rawText = itemText.trim()
-                        break
+            // 2. Check EXTRA_HTML_TEXT
+            if (rawText.isNullOrBlank()) {
+                kotlin.runCatching {
+                    val htmlText = intent.getStringExtra(Intent.EXTRA_HTML_TEXT)
+                    if (!htmlText.isNullOrBlank()) {
+                        rawText = android.text.Html.fromHtml(htmlText, android.text.Html.FROM_HTML_MODE_LEGACY).toString().trim()
                     }
                 }
             }
-        }
 
-        // 4. Check data string if it's not a content/file URI
-        if (rawText.isNullOrBlank() && intent.data != null) {
-            val scheme = intent.data?.scheme
-            if (scheme != "content" && scheme != "file") {
-                rawText = intent.dataString
+            // 3. Check ClipData item text or HTML
+            if (rawText.isNullOrBlank()) {
+                kotlin.runCatching {
+                    intent.clipData?.let { clipData ->
+                        for (i in 0 until clipData.itemCount) {
+                            val item = clipData.getItemAt(i)
+                            val itemText = item.text?.toString() ?: item.htmlText?.let {
+                                android.text.Html.fromHtml(it, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
+                            }
+                            if (!itemText.isNullOrBlank()) {
+                                rawText = itemText.trim()
+                                break
+                            }
+                        }
+                    }
+                }
             }
+
+            // 4. Check data string if it's not a content/file URI
+            if (rawText.isNullOrBlank() && intent.data != null) {
+                kotlin.runCatching {
+                    val scheme = intent.data?.scheme
+                    if (scheme != "content" && scheme != "file") {
+                        rawText = intent.dataString
+                    }
+                }
+            }
+
+            val imageUris = extractImageUris(intent)
+
+            parseContent(rawSubject, rawText, imageUris)
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            ParsedSharedNote(title = "", content = "", isChecklist = false, checklistItems = emptyList(), imageUris = emptyList())
         }
-
-        val imageUris = extractImageUris(intent)
-
-        return parseContent(rawSubject, rawText, imageUris)
     }
 
     fun extractImageUris(intent: Intent): List<Uri> {
         val uris = mutableListOf<Uri>()
 
         // 1. Single stream
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)?.let { uris.add(it) }
-        } else {
-            @Suppress("DEPRECATION")
-            (intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)?.let { uris.add(it) }
+        kotlin.runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)?.let { uris.add(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                (intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)?.let { uris.add(it) }
+            }
         }
 
         // 2. Multiple streams
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)?.let { uris.addAll(it) }
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let { uris.addAll(it) }
+        kotlin.runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)?.let { uris.addAll(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let { uris.addAll(it) }
+            }
         }
 
         // 3. ClipData
-        intent.clipData?.let { clipData ->
-            for (i in 0 until clipData.itemCount) {
-                clipData.getItemAt(i).uri?.let { uri ->
-                    if (!uris.contains(uri)) {
-                        uris.add(uri)
+        kotlin.runCatching {
+            intent.clipData?.let { clipData ->
+                for (i in 0 until clipData.itemCount) {
+                    clipData.getItemAt(i).uri?.let { uri ->
+                        if (!uris.contains(uri)) {
+                            uris.add(uri)
+                        }
                     }
                 }
             }

@@ -342,6 +342,7 @@ fun QuickEditNoteOverlay(
                     loadedNote = inserted
                     NotesViewModel.latestNotesCache[newId] = inserted
                 }
+                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(appContext)
             }
             if (appWidgetId != null && appWidgetId != android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID) {
                 val finalId = loadedNote?.id

@@ -72,6 +72,7 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Menu
@@ -96,6 +97,8 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -120,16 +123,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -144,6 +152,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -194,6 +203,8 @@ fun NotesScreen(
     val economyProfile by FocusEconomyManager.profileFlow.collectAsState()
     val vaultStatus by viewModel.vaultStatus.collectAsState()
     val isVaultUnlocked by viewModel.isVaultUnlocked.collectAsState()
+    val vaultKeyMismatchNoteId by viewModel.vaultKeyMismatchNoteId.collectAsState()
+    val isRecoveryPhraseBackedUp by viewModel.isRecoveryPhraseBackedUp.collectAsState()
 
     var showSelectionColorPicker by remember { mutableStateOf(false) }
     var showSelectionLabelsDialog by remember { mutableStateOf(false) }
@@ -203,6 +214,10 @@ fun NotesScreen(
     var showVaultSettingsDialog by remember { mutableStateOf(false) }
     var showVaultChangePinDialog by remember { mutableStateOf(false) }
     var showVaultDisableConfirmDialog by remember { mutableStateOf(false) }
+    var showVaultMnemonicRecoveryDialog by remember { mutableStateOf(false) }
+    var showVaultExportPhraseDialog by remember { mutableStateOf(false) }
+    var exportedPhraseWords by remember { mutableStateOf<List<String>?>(null) }
+    var pendingUnlockNoteId by remember { mutableStateOf<Long?>(null) }
 
     val selectedNotes = remember(allNotes, selectedNoteIds) { allNotes.filter { it.id in selectedNoteIds } }
     val allSelectedPinned = remember(selectedNotes) { selectedNotes.isNotEmpty() && selectedNotes.all { it.isPinned } }
@@ -288,8 +303,11 @@ fun NotesScreen(
 
     val cardBounds = remember { mutableStateMapOf<Long, Rect>() }
     var draggedNoteId by remember { mutableStateOf<Long?>(null) }
-    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    var floatingCardTopLeft by remember { mutableStateOf(Offset.Zero) }
+    var floatingCardSize by remember { mutableStateOf(IntSize.Zero) }
+    var gridRootBounds by remember { mutableStateOf(Rect.Zero) }
     var fingerRootPosition by remember { mutableStateOf(Offset.Zero) }
+    var lastSwapTimestamp by remember { mutableLongStateOf(0L) }
 
     var localPinnedNotes by remember(pinnedNotes) { mutableStateOf(pinnedNotes) }
     var localOtherNotes by remember(otherNotes) { mutableStateOf(otherNotes) }
@@ -306,60 +324,40 @@ fun NotesScreen(
 
     val handleDragStart: (Long, Offset) -> Unit = { noteId, downPos ->
         draggedNoteId = noteId
-        val bounds = cardBounds[noteId]
-        val origin = bounds?.topLeft ?: Offset.Zero
-        fingerRootPosition = origin + downPos
-        dragOffset = Offset.Zero
+        val bounds = cardBounds[noteId] ?: Rect.Zero
+        floatingCardTopLeft = bounds.topLeft
+        floatingCardSize = IntSize(bounds.width.toInt(), bounds.height.toInt())
+        fingerRootPosition = bounds.topLeft + downPos
+        lastSwapTimestamp = System.currentTimeMillis()
     }
 
     val handleDrag: (NoteEntity, Offset) -> Unit = { note, delta ->
         fingerRootPosition += delta
-        dragOffset += delta
+        floatingCardTopLeft += delta
 
         val isPinned = note.isPinned
         val targetList = if (isPinned) localPinnedNotes else localOtherNotes
         val fromIndex = targetList.indexOfFirst { it.id == note.id }
-        if (fromIndex != -1) {
-            val toIndex = targetList.indices.minByOrNull { idx ->
-                val other = targetList[idx]
-                if (other.id == note.id) {
-                    Float.MAX_VALUE
-                } else {
-                    val b = cardBounds[other.id]
-                    if (b != null) {
-                        val dist = (b.center - fingerRootPosition).getDistance()
-                        if (b.contains(fingerRootPosition)) {
-                            dist * 0.5f // Strongly prioritize bounding box overlap
-                        } else if (dist < 400f) {
-                            dist
-                        } else {
-                            Float.MAX_VALUE
-                        }
-                    } else Float.MAX_VALUE
+        val now = System.currentTimeMillis()
+        if (fromIndex != -1 && now - lastSwapTimestamp > 180) {
+            val target = targetList.filter { it.id != note.id }.firstOrNull { other ->
+                val b = cardBounds[other.id]
+                b != null && b.contains(fingerRootPosition)
+            }
+            if (target != null) {
+                val toIndex = targetList.indexOfFirst { it.id == target.id }
+                if (toIndex != -1 && toIndex != fromIndex) {
+                    val updated = targetList.toMutableList()
+                    val item = updated.removeAt(fromIndex)
+                    updated.add(toIndex, item)
+                    if (isPinned) {
+                        localPinnedNotes = updated
+                    } else {
+                        localOtherNotes = updated
+                    }
+                    lastSwapTimestamp = now
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 }
-            } ?: -1
-
-            if (toIndex != -1 && toIndex != fromIndex) {
-                val targetBounds = cardBounds[targetList[toIndex].id]
-                val currentBounds = cardBounds[note.id]
-                val updated = targetList.toMutableList()
-                val item = updated.removeAt(fromIndex)
-                updated.add(toIndex, item)
-                
-                // Adjust dragOffset smoothly so the dragging card doesn't jump when slots swap
-                if (targetBounds != null && currentBounds != null) {
-                    val posDelta = targetBounds.topLeft - currentBounds.topLeft
-                    dragOffset -= posDelta
-                    cardBounds[note.id] = targetBounds
-                    cardBounds[targetList[toIndex].id] = currentBounds
-                }
-                
-                if (isPinned) {
-                    localPinnedNotes = updated
-                } else {
-                    localOtherNotes = updated
-                }
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             }
         }
     }
@@ -368,8 +366,8 @@ fun NotesScreen(
         val isPinned = note.isPinned
         val listToSave = if (isPinned) localPinnedNotes else localOtherNotes
         draggedNoteId = null
-        dragOffset = Offset.Zero
         viewModel.reorderNotes(listToSave)
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
     val searchBarBg = MaterialTheme.colorScheme.surfaceVariant
@@ -867,6 +865,25 @@ fun NotesScreen(
                                             onDismissRequest = { showSelectionMoreMenu = false }
                                         ) {
                                             DropdownMenuItem(
+                                                text = { Text(if (currentFolder == NoteFolder.ARCHIVE) "Unarchive" else "Archive") },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = if (currentFolder == NoteFolder.ARCHIVE) Icons.Filled.Unarchive else Icons.Outlined.Archive,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                },
+                                                onClick = {
+                                                    showSelectionMoreMenu = false
+                                                    if (currentFolder == NoteFolder.ARCHIVE) {
+                                                        viewModel.unarchiveSelectedNotes()
+                                                    } else {
+                                                        viewModel.archiveSelectedNotes()
+                                                    }
+                                                }
+                                            )
+
+                                            DropdownMenuItem(
                                                 text = { Text("Delete") },
                                                 leadingIcon = {
                                                     Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -1173,6 +1190,66 @@ fun NotesScreen(
                 }
 
                 // =========================================================
+                // ARCHIVE VAULT UNSAVED RECOVERY PHRASE BANNER
+                // =========================================================
+                if (currentFolder == NoteFolder.ARCHIVE && vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED && isVaultUnlocked && !isRecoveryPhraseBackedUp) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFE5A93C).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFFE5A93C).copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Key,
+                                contentDescription = null,
+                                tint = Color(0xFFE5A93C),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Recovery Phrase Not Backed Up",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Back up your 12 words to avoid losing access if PIN is forgotten.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 15.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    val words = viewModel.getOrConfigureRecoveryPhrase()
+                                    if (words != null) {
+                                        exportedPhraseWords = words
+                                        showVaultExportPhraseDialog = true
+                                    } else {
+                                        Toast.makeText(context, "Please unlock vault first", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFE5A93C),
+                                    contentColor = Color.Black
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Text("Back Up", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                            }
+                        }
+                    }
+                }
+
+                // =========================================================
                 // HORIZONTAL FILTER CHIPS (IF LABELS OR COLOR FILTERS EXIST)
                 // =========================================================
                 if (allLabels.isNotEmpty() || selectedColorFilter != null) {
@@ -1303,32 +1380,96 @@ fun NotesScreen(
                         }
                     }
                 } else {
-                    LazyVerticalStaggeredGrid(
-                        state = gridState,
-                        columns = StaggeredGridCells.Fixed(if (isGridView) 2 else 1),
-                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 88.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalItemSpacing = 10.dp,
+                    Box(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
+                            .onGloballyPositioned { coords ->
+                                gridRootBounds = coords.boundsInRoot()
+                            }
                     ) {
-                        // PINNED SECTION (Only in Notes folder)
-                        if (currentFolder == NoteFolder.NOTES && effectivePinnedNotes.isNotEmpty()) {
-                            item(span = StaggeredGridItemSpan.FullLine) {
-                                Text(
-                                    text = "PINNED",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.1.sp,
-                                        fontSize = 11.sp
-                                    ),
-                                    color = contentTextColor.copy(alpha = 0.55f),
-                                    modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp)
-                                )
+                        LazyVerticalStaggeredGrid(
+                            state = gridState,
+                            columns = StaggeredGridCells.Fixed(if (isGridView) 2 else 1),
+                            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 88.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalItemSpacing = 10.dp,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            // PINNED SECTION (Only in Notes folder)
+                            if (currentFolder == NoteFolder.NOTES && effectivePinnedNotes.isNotEmpty()) {
+                                item(span = StaggeredGridItemSpan.FullLine) {
+                                    Text(
+                                        text = "PINNED",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.1.sp,
+                                            fontSize = 11.sp
+                                        ),
+                                        color = contentTextColor.copy(alpha = 0.55f),
+                                        modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp)
+                                    )
+                                }
+
+                                items(effectivePinnedNotes, key = { it.id }) { note ->
+                                    val isSelected = selectedNoteIds.contains(note.id)
+                                    val isDragging = draggedNoteId == note.id
+                                    KeepNoteCard(
+                                        note = note,
+                                        isSelected = isSelected,
+                                        isSelectionMode = isSelectionMode,
+                                        isDragging = isDragging,
+                                        dragOffset = Offset.Zero,
+                                        onStartDrag = { pos -> handleDragStart(note.id, pos) },
+                                        onDrag = { delta -> handleDrag(note, delta) },
+                                        onEndDrag = { handleDragEnd(note) },
+                                        onToggleSelect = { viewModel.toggleNoteSelection(note.id) },
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                viewModel.toggleNoteSelection(note.id)
+                                            } else if (currentFolder != NoteFolder.TRASH) {
+                                                viewModel.openExistingNote(note)
+                                            }
+                                        },
+                                        onLongClick = null,
+                                        onTogglePin = { viewModel.togglePin(note) },
+                                        activePlayingAudioPath = playbackState.currentPath,
+                                        isAudioPlaying = playbackState.isPlaying,
+                                        onToggleAudioPlay = { uri -> viewModel.toggleAudioPlayback(uri) },
+                                        modifier = Modifier
+                                            .animateItem()
+                                            .then(if (isDragging) Modifier.alpha(0.08f) else Modifier)
+                                            .onGloballyPositioned { coords ->
+                                                if (draggedNoteId != note.id) {
+                                                    cardBounds[note.id] = coords.boundsInRoot()
+                                                }
+                                            }
+                                    )
+                                }
+
+                                if (effectiveOtherNotes.isNotEmpty()) {
+                                    item(span = StaggeredGridItemSpan.FullLine) {
+                                        Text(
+                                            text = "OTHERS",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 1.1.sp,
+                                                fontSize = 11.sp
+                                            ),
+                                            color = contentTextColor.copy(alpha = 0.55f),
+                                            modifier = Modifier.padding(start = 6.dp, top = 14.dp, bottom = 4.dp)
+                                        )
+                                    }
+                                }
                             }
 
-                            items(effectivePinnedNotes, key = { it.id }) { note ->
+                            // UNPINNED / REGULAR / ARCHIVED / TRASHED NOTES
+                            val displayList = if (currentFolder == NoteFolder.NOTES) {
+                                effectiveOtherNotes
+                            } else {
+                                allNotes
+                            }
+                            items(displayList, key = { it.id }) { note ->
                                 val isSelected = selectedNoteIds.contains(note.id)
                                 val isDragging = draggedNoteId == note.id
                                 KeepNoteCard(
@@ -1336,7 +1477,7 @@ fun NotesScreen(
                                     isSelected = isSelected,
                                     isSelectionMode = isSelectionMode,
                                     isDragging = isDragging,
-                                    dragOffset = if (isDragging) dragOffset else Offset.Zero,
+                                    dragOffset = Offset.Zero,
                                     onStartDrag = { pos -> handleDragStart(note.id, pos) },
                                     onDrag = { delta -> handleDrag(note, delta) },
                                     onEndDrag = { handleDragEnd(note) },
@@ -1349,12 +1490,16 @@ fun NotesScreen(
                                         }
                                     },
                                     onLongClick = null,
-                                    onTogglePin = { viewModel.togglePin(note) },
+                                    onTogglePin = if (currentFolder == NoteFolder.NOTES) { { viewModel.togglePin(note) } } else null,
+                                    onRestore = if (currentFolder == NoteFolder.TRASH) { { viewModel.restoreNote(note) } } else null,
+                                    onDeletePermanently = if (currentFolder == NoteFolder.TRASH) { { viewModel.deletePermanently(note) } } else null,
+                                    onUnarchive = if (currentFolder == NoteFolder.ARCHIVE) { { viewModel.unarchiveNote(note) } } else null,
                                     activePlayingAudioPath = playbackState.currentPath,
                                     isAudioPlaying = playbackState.isPlaying,
                                     onToggleAudioPlay = { uri -> viewModel.toggleAudioPlayback(uri) },
                                     modifier = Modifier
                                         .animateItem()
+                                        .then(if (isDragging) Modifier.alpha(0.08f) else Modifier)
                                         .onGloballyPositioned { coords ->
                                             if (draggedNoteId != note.id) {
                                                 cardBounds[note.id] = coords.boundsInRoot()
@@ -1362,65 +1507,38 @@ fun NotesScreen(
                                         }
                                 )
                             }
-
-                            if (effectiveOtherNotes.isNotEmpty()) {
-                                item(span = StaggeredGridItemSpan.FullLine) {
-                                    Text(
-                                        text = "OTHERS",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            letterSpacing = 1.1.sp,
-                                            fontSize = 11.sp
-                                        ),
-                                        color = contentTextColor.copy(alpha = 0.55f),
-                                        modifier = Modifier.padding(start = 6.dp, top = 14.dp, bottom = 4.dp)
-                                    )
-                                }
-                            }
                         }
 
-                        // UNPINNED / REGULAR / ARCHIVED / TRASHED NOTES
-                        val displayList = if (currentFolder == NoteFolder.NOTES) {
-                            effectiveOtherNotes
-                        } else {
-                            allNotes
+                        // FLOATING DRAGGED CARD OVERLAY (Google Keep Grade)
+                        val draggedNote = draggedNoteId?.let { id ->
+                            allNotes.firstOrNull { it.id == id }
                         }
-                        items(displayList, key = { it.id }) { note ->
-                            val isSelected = selectedNoteIds.contains(note.id)
-                            val isDragging = draggedNoteId == note.id
-                            KeepNoteCard(
-                                note = note,
-                                isSelected = isSelected,
-                                isSelectionMode = isSelectionMode,
-                                isDragging = isDragging,
-                                dragOffset = if (isDragging) dragOffset else Offset.Zero,
-                                onStartDrag = { pos -> handleDragStart(note.id, pos) },
-                                onDrag = { delta -> handleDrag(note, delta) },
-                                onEndDrag = { handleDragEnd(note) },
-                                onToggleSelect = { viewModel.toggleNoteSelection(note.id) },
-                                onClick = {
-                                    if (isSelectionMode) {
-                                        viewModel.toggleNoteSelection(note.id)
-                                    } else if (currentFolder != NoteFolder.TRASH) {
-                                        viewModel.openExistingNote(note)
-                                    }
-                                },
-                                onLongClick = null,
-                                onTogglePin = if (currentFolder == NoteFolder.NOTES) { { viewModel.togglePin(note) } } else null,
-                                onRestore = if (currentFolder == NoteFolder.TRASH) { { viewModel.restoreNote(note) } } else null,
-                                onDeletePermanently = if (currentFolder == NoteFolder.TRASH) { { viewModel.deletePermanently(note) } } else null,
-                                onUnarchive = if (currentFolder == NoteFolder.ARCHIVE) { { viewModel.unarchiveNote(note) } } else null,
-                                activePlayingAudioPath = playbackState.currentPath,
-                                isAudioPlaying = playbackState.isPlaying,
-                                onToggleAudioPlay = { uri -> viewModel.toggleAudioPlayback(uri) },
+                        if (draggedNoteId != null && draggedNote != null && floatingCardSize.width > 0) {
+                            val density = LocalDensity.current
+                            val cardWidthDp = with(density) { floatingCardSize.width.toDp() }
+                            val relativeTopLeft = floatingCardTopLeft - gridRootBounds.topLeft
+                            Box(
                                 modifier = Modifier
-                                    .animateItem()
-                                    .onGloballyPositioned { coords ->
-                                        if (draggedNoteId != note.id) {
-                                            cardBounds[note.id] = coords.boundsInRoot()
+                                    .fillMaxSize()
+                                    .zIndex(1000f)
+                            ) {
+                                KeepNoteCard(
+                                    note = draggedNote,
+                                    isSelected = true,
+                                    isSelectionMode = isSelectionMode,
+                                    isDragging = false,
+                                    onClick = {},
+                                    modifier = Modifier
+                                        .width(cardWidthDp)
+                                        .graphicsLayer {
+                                            translationX = relativeTopLeft.x
+                                            translationY = relativeTopLeft.y
+                                            scaleX = 1.05f
+                                            scaleY = 1.05f
+                                            shadowElevation = 24.dp.toPx()
                                         }
-                                    }
-                            )
+                                )
+                            }
                         }
                     }
                 }
@@ -1502,6 +1620,7 @@ fun NotesScreen(
                             viewModel.addLabelToEditor(label)
                         },
                         onArchive = { viewModel.archiveCurrentNote() },
+                        onUnarchive = { viewModel.unarchiveCurrentNote() },
                         onDelete = { viewModel.deleteCurrentNote() },
                         onUndo = { viewModel.undo() },
                         onRedo = { viewModel.redo() },
@@ -1644,17 +1763,72 @@ fun NotesScreen(
             }
 
             // =========================================================
+            // VAULT KEY MISMATCH DIALOG
+            // =========================================================
+            if (vaultKeyMismatchNoteId != null) {
+                AlertDialog(
+                    onDismissRequest = { viewModel.clearVaultKeyMismatch() },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Lock,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    title = { Text("Vault Key Changed") },
+                    text = {
+                        Text(
+                            "This note was encrypted with a different version of your vault key and cannot be opened with the current key.\n\n" +
+                            "Please re-enter your vault PIN to re-derive the correct key and unlock this note."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val targetId = vaultKeyMismatchNoteId
+                                viewModel.clearVaultKeyMismatch()
+                                pendingUnlockNoteId = targetId
+                                showVaultUnlockDialog = true
+                            }
+                        ) {
+                            Text("Re-unlock Vault")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { 
+                            pendingUnlockNoteId = null
+                            viewModel.clearVaultKeyMismatch() 
+                        }) {
+                            Text("Dismiss")
+                        }
+                    }
+                )
+            }
+
+            // =========================================================
             // SECRET ARCHIVE VAULT DIALOGS
             // =========================================================
             if (showVaultUnlockDialog) {
                 ArchiveVaultUnlockDialog(
-                    onDismiss = { showVaultUnlockDialog = false },
+                    onDismiss = { 
+                        showVaultUnlockDialog = false
+                        pendingUnlockNoteId = null
+                    },
                     onVerify = { pin -> viewModel.verifyVaultPasscode(pin) },
                     onSuccess = {
                         showVaultUnlockDialog = false
                         Toast.makeText(context, "Archive Vault unlocked 🔓", Toast.LENGTH_SHORT).show()
+                        val targetId = pendingUnlockNoteId
+                        if (targetId != null) {
+                            pendingUnlockNoteId = null
+                            viewModel.openNoteById(targetId)
+                        }
                     },
-                    initialLockoutSeconds = viewModel.getRemainingLockoutSeconds()
+                    initialLockoutSeconds = viewModel.getRemainingLockoutSeconds(),
+                    onEmergencyRecoveryClick = {
+                        showVaultUnlockDialog = false
+                        showVaultMnemonicRecoveryDialog = true
+                    }
                 )
             }
 
@@ -1666,10 +1840,14 @@ fun NotesScreen(
                         viewModel.skipVaultPasscode()
                         Toast.makeText(context, "Passcode skipped. You can enable it anytime in Vault Options.", Toast.LENGTH_SHORT).show()
                     },
-                    onPasscodeSet = { pin ->
+                    onPasscodeSet = { pin, mnemonicWords, isBackedUp ->
                         showVaultFirstTimeDialog = false
-                        viewModel.setVaultPasscode(pin)
-                        Toast.makeText(context, "Secret Vault passcode set! 🔒", Toast.LENGTH_SHORT).show()
+                        viewModel.setVaultPasscode(pin, mnemonicWords, isBackedUp)
+                        if (isBackedUp) {
+                            Toast.makeText(context, "Secret Vault secured with Recovery Phrase! 🔒", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Passcode set. Back up your phrase anytime in Vault Options! ⚠️", Toast.LENGTH_LONG).show()
+                        }
                     }
                 )
             }
@@ -1694,6 +1872,51 @@ fun NotesScreen(
                     onSetPasscode = {
                         showVaultSettingsDialog = false
                         showVaultFirstTimeDialog = true
+                    },
+                    onEmergencyRecoveryClick = {
+                        showVaultSettingsDialog = false
+                        showVaultMnemonicRecoveryDialog = true
+                    },
+                    isRecoveryPhraseBackedUp = isRecoveryPhraseBackedUp,
+                    onExportRecoveryPhrase = {
+                        showVaultSettingsDialog = false
+                        val words = viewModel.getOrConfigureRecoveryPhrase()
+                        if (words != null) {
+                            exportedPhraseWords = words
+                            showVaultExportPhraseDialog = true
+                        } else {
+                            Toast.makeText(context, "Please unlock vault first", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+            }
+
+            if (showVaultExportPhraseDialog && exportedPhraseWords != null) {
+                ArchiveVaultExportPhraseDialog(
+                    phraseWords = exportedPhraseWords!!,
+                    isBackedUp = isRecoveryPhraseBackedUp,
+                    onDismiss = {
+                        showVaultExportPhraseDialog = false
+                        exportedPhraseWords = null
+                    },
+                    onMarkBackedUp = {
+                        viewModel.markRecoveryPhraseBackedUp()
+                        showVaultExportPhraseDialog = false
+                        exportedPhraseWords = null
+                        Toast.makeText(context, "Recovery phrase safely backed up! ✓", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+
+            if (showVaultMnemonicRecoveryDialog) {
+                ArchiveVaultMnemonicRecoveryDialog(
+                    onDismiss = { showVaultMnemonicRecoveryDialog = false },
+                    onRecover = { words, newPin ->
+                        viewModel.recoverVaultWithMnemonic(words, newPin)
+                    },
+                    onSuccess = {
+                        showVaultMnemonicRecoveryDialog = false
+                        Toast.makeText(context, "Vault successfully recovered and unlocked! 🔓", Toast.LENGTH_LONG).show()
                     }
                 )
             }

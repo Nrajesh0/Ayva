@@ -106,6 +106,7 @@ dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.dynamicanimation)
   implementation(libs.androidx.lifecycle.runtime.ktx)
+  implementation(libs.androidx.work.runtime.ktx)
   implementation("androidx.fragment:fragment-ktx:1.6.2")
   implementation("androidx.appcompat:appcompat:1.6.1")
 
@@ -133,6 +134,7 @@ dependencies {
   implementation(libs.androidx.room.ktx)
   ksp(libs.androidx.room.compiler)
   implementation(libs.sqlcipher.android)
+  implementation(libs.argon2kt)
 
   // QR Generation for PC Sync
   implementation(libs.zxing.core)

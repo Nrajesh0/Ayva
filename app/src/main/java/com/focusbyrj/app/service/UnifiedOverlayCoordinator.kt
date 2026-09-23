@@ -62,6 +62,7 @@ object UnifiedOverlayCoordinator {
     private val queue = ArrayDeque<OverlayQueueItem>()
     private var currentActiveItem: OverlayQueueItem? = null
     private val handler = Handler(Looper.getMainLooper())
+    private var activeWatchdogRunnable: Runnable? = null
 
     val isAnyOverlayShowing: Boolean
         get() = currentActiveItem != null || HabitFloatingOverlayManager.isShowing || TaskReminderOverlayManager.isShowing
@@ -161,15 +162,20 @@ object UnifiedOverlayCoordinator {
         }
 
         // Anti-deadlock watchdog: if overlay was rejected, failed, or dismissed immediately without callback
-        handler.postDelayed({
+        activeWatchdogRunnable?.let { handler.removeCallbacks(it) }
+        val watchdog = Runnable {
             if (currentActiveItem == item && !HabitFloatingOverlayManager.isShowing && !TaskReminderOverlayManager.isShowing) {
                 Log.w(TAG, "Watchdog detected overlay not showing after presentation; advancing queue.")
                 onOverlayDismissed(context)
             }
-        }, 1500L)
+        }
+        activeWatchdogRunnable = watchdog
+        handler.postDelayed(watchdog, 1500L)
     }
 
     fun onOverlayDismissed(context: Context) {
+        activeWatchdogRunnable?.let { handler.removeCallbacks(it) }
+        activeWatchdogRunnable = null
         handler.postDelayed({
             currentActiveItem = null
             if (queue.isNotEmpty()) {
@@ -182,6 +188,8 @@ object UnifiedOverlayCoordinator {
 
     fun clearQueue() {
         handler.post {
+            activeWatchdogRunnable?.let { handler.removeCallbacks(it) }
+            activeWatchdogRunnable = null
             queue.clear()
             currentActiveItem = null
         }

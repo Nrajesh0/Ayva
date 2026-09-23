@@ -1776,6 +1776,15 @@ object AyvaTalkEngine {
                                 val matchedStandardCat = matchedStandardCatWord?.let { standardCatMapping[it] }
                                 
                                 if (isUnblock) {
+                                    val focusPrefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
+                                    val isSessionActive = focusPrefs.getBoolean("isSessionActive", false)
+                                    if (isSessionActive) {
+                                        return TalkResponse(
+                                            formattedText = "🛡️ **Focus Session Active**\n_Apps cannot be unblocked while a focus session is in progress. Stay in the zone!_",
+                                            topicId = "session_active"
+                                        )
+                                    }
+
                                     if ((cleanQuery.contains("all") || target.isEmpty()) && !cleanQuery.contains("filter")) {
                                         dao.deleteAllRestrictions()
                                         return TalkResponse("🔓 **Lock Protocol Lifted**\n_All applications have been unlocked._")

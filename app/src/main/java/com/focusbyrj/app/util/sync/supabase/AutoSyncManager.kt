@@ -61,16 +61,20 @@ object AutoSyncManager {
     fun init(application: FocusApplication) {
         if (!isInitialized.compareAndSet(false, true)) return
 
+        // Register periodic background sync with Android WorkManager
+        if (isAutoSyncEnabled(application)) {
+            AutoSyncWorker.enqueuePeriodic(application)
+        }
+
         scope.launch {
             try {
                 // 1. Observe Note table changes
                 val noteTracker = NoteDatabase.getInstance(application).invalidationTracker
                 noteTracker.addObserver(object : InvalidationTracker.Observer("keep_notes") {
                     override fun onInvalidated(tables: Set<String>) {
-                        val now = System.currentTimeMillis()
-                        if (!SupabaseSyncEngine.isSyncInProgress && (now - lastSyncCompletedTime) > 4000L) {
+                        if (!SupabaseSyncEngine.isSyncInProgress) {
                             Log.d(TAG, "Local notes database invalidated. Scheduling debounced auto-sync...")
-                            triggerDebouncedSync(application, delayMs = 3000L)
+                            scheduleAdaptiveDebouncedSync(application)
                         }
                     }
                 })
@@ -79,10 +83,9 @@ object AutoSyncManager {
                 val taskTracker = application.database.invalidationTracker
                 taskTracker.addObserver(object : InvalidationTracker.Observer("tasks") {
                     override fun onInvalidated(tables: Set<String>) {
-                        val now = System.currentTimeMillis()
-                        if (!SupabaseSyncEngine.isSyncInProgress && (now - lastSyncCompletedTime) > 4000L) {
+                        if (!SupabaseSyncEngine.isSyncInProgress) {
                             Log.d(TAG, "Local tasks database invalidated. Scheduling debounced auto-sync...")
-                            triggerDebouncedSync(application, delayMs = 3000L)
+                            scheduleAdaptiveDebouncedSync(application)
                         }
                     }
                 })
@@ -111,7 +114,7 @@ object AutoSyncManager {
             // 4. Initial check
             checkAndSyncIfStale(application, staleThresholdMs = 60_000L)
 
-            // 5. Periodic background check every 15 minutes while process lives
+            // 5. Periodic background check while process lives
             while (isActive) {
                 delay(15 * 60 * 1000L)
                 try {
@@ -133,32 +136,88 @@ object AutoSyncManager {
             .edit()
             .putBoolean(KEY_AUTO_SYNC_ENABLED, enabled)
             .apply()
+
+        if (enabled) {
+            AutoSyncWorker.enqueuePeriodic(context)
+        } else {
+            AutoSyncWorker.cancel(context)
+        }
+    }
+
+    fun isSyncOnWifiOnly(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_SYNC_ON_WIFI_ONLY, false)
+    }
+
+    fun setSyncOnWifiOnly(context: Context, wifiOnly: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_SYNC_ON_WIFI_ONLY, wifiOnly)
+            .apply()
+
+        if (isAutoSyncEnabled(context)) {
+            AutoSyncWorker.enqueuePeriodic(context)
+        }
+    }
+
+    private fun isWifiConnected(context: Context): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val network = cm.activeNetwork ?: return false
+        val capabilities = cm.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
     }
 
     /**
-     * Debounced sync trigger called whenever a note/todo is created, modified, or deleted.
-     * Prevents rapid duplicate network payloads during typing.
+     * Schedules a debounced sync taking into account the time elapsed since the last completed sync.
+     * Ensures edits performed immediately after a sync cycle are gracefully delayed rather than dropped.
      */
+    fun scheduleAdaptiveDebouncedSync(context: Context) {
+        val now = System.currentTimeMillis()
+        val timeSinceLast = now - lastSyncCompletedTime
+        val delayMs = if (timeSinceLast < 4000L) {
+            (4000L - timeSinceLast) + 2500L
+        } else {
+            3000L
+        }
+        triggerDebouncedSync(context, delayMs = delayMs)
+    }
+
     fun triggerDebouncedSync(context: Context, delayMs: Long = 2500L) {
         if (!isAutoSyncEnabled(context)) return
 
         val session = SupabaseKeyManager.getSessionState(context)
         if (!session.isSignedIn || SupabaseKeyManager.isOfflineMode(context)) return
 
+        // Enqueue WorkManager one-off job as persistent safety net if process dies
+        AutoSyncWorker.enqueueOneOff(context)
+
         debouncedJob?.cancel()
         debouncedJob = scope.launch {
             delay(delayMs)
-            performAutoSync(context.applicationContext)
+            performAutoSync(context.applicationContext, isManual = false)
         }
+    }
+
+    /**
+     * Resets the sync coordinator state to Idle (e.g. on sign out).
+     */
+    fun resetState() {
+        debouncedJob?.cancel()
+        _syncState.value = SyncState.Idle
     }
 
     /**
      * Executes immediate sync (e.g. on Pull-to-refresh or "Sync Now" tap).
      */
     fun triggerImmediateSync(context: Context, onComplete: ((Result<SupabaseSyncEngine.SyncResult>) -> Unit)? = null) {
-        debouncedJob?.cancel()
         scope.launch {
-            val result = performAutoSync(context.applicationContext)
+            if (!SupabaseSyncEngine.isSyncInProgress) {
+                debouncedJob?.cancel()
+            } else {
+                debouncedJob?.join()
+            }
+            val result = performAutoSync(context.applicationContext, isManual = true)
             withContext(Dispatchers.Main) {
                 onComplete?.invoke(result)
             }
@@ -180,29 +239,45 @@ object AutoSyncManager {
         }
     }
 
-    private suspend fun performAutoSync(appContext: Context): Result<SupabaseSyncEngine.SyncResult> {
+    private suspend fun performAutoSync(appContext: Context, isManual: Boolean = false): Result<SupabaseSyncEngine.SyncResult> {
         val session = SupabaseKeyManager.getSessionState(appContext)
         if (!session.isSignedIn || SupabaseKeyManager.isOfflineMode(appContext)) {
             _syncState.value = SyncState.Idle
             return Result.failure(Exception("Cloud Vault is not connected or in offline mode."))
         }
 
+        if (!isManual && isSyncOnWifiOnly(appContext) && !isWifiConnected(appContext)) {
+            Log.d(TAG, "Skipping automated sync: Wi-Fi only sync is enabled and Wi-Fi is not active.")
+            _syncState.value = SyncState.Idle
+            return Result.failure(Exception("Sync skipped: Wi-Fi connection required."))
+        }
+
         _syncState.value = SyncState.Syncing
         return try {
             val noteDao = NoteDatabase.getInstance(appContext).noteDao()
-            val taskDao = (appContext as FocusApplication).database.taskDao()
+            val focusApp = appContext.applicationContext as? FocusApplication
+            val taskDao = focusApp?.database?.taskDao()
+            if (taskDao == null) {
+                Log.e(TAG, "Cannot perform auto-sync: FocusApplication database unavailable")
+                _syncState.value = SyncState.Error("Application database unavailable")
+                return Result.failure(IllegalStateException("FocusApplication database unavailable"))
+            }
 
             val syncResult = SupabaseSyncEngine.performSync(appContext, noteDao, taskDao)
             lastSyncCompletedTime = System.currentTimeMillis()
             syncResult.onSuccess { res ->
                 _syncState.value = SyncState.Success(res.message, System.currentTimeMillis())
                 Log.d(TAG, "Auto-sync successful: ${res.message}")
+                try {
+                    androidx.work.WorkManager.getInstance(appContext).cancelUniqueWork(AutoSyncWorker.ONE_OFF_WORK_NAME)
+                } catch (_: Exception) {}
             }.onFailure { err ->
                 _syncState.value = SyncState.Error(err.localizedMessage ?: "Sync encountered an error.")
                 Log.w(TAG, "Auto-sync failed: ${err.message}")
             }
             syncResult
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e(TAG, "Unexpected error in auto-sync", e)
             _syncState.value = SyncState.Error(e.localizedMessage ?: "Sync crashed.")
             Result.failure(e)

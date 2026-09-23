@@ -92,8 +92,9 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 val tabTexts = intArrayOf(R.id.widget_tab_today, R.id.widget_tab_upcoming, R.id.widget_tab_all)
 
                 for (i in 0..2) {
-                    val tabIntent = Intent(context, TodoWidgetProvider::class.java).apply {
+                    val tabIntent = Intent(context, TodoWidgetActionReceiver::class.java).apply {
                         action = ACTION_SET_TAB
+                        setPackage(context.packageName)
                         putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                         putExtra(EXTRA_TAB_INDEX, i)
                         data = Uri.parse("widget://$appWidgetId/tab/$i")
@@ -151,8 +152,9 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 views.setOnClickPendingIntent(R.id.widget_header_title_layout, openAppPendingIntent)
 
                 // Refresh Button Intent
-                val refreshIntent = Intent(context, TodoWidgetProvider::class.java).apply {
+                val refreshIntent = Intent(context, TodoWidgetActionReceiver::class.java).apply {
                     action = ACTION_REFRESH
+                    setPackage(context.packageName)
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 }
                 val refreshPendingIntent = PendingIntent.getBroadcast(
@@ -186,8 +188,9 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 views.setEmptyView(R.id.widget_list_view, R.id.widget_empty_view)
 
                 // Template PendingIntent for List Item interactions
-                val listClickIntent = Intent(context, TodoWidgetProvider::class.java).apply {
+                val listClickIntent = Intent(context, TodoWidgetActionReceiver::class.java).apply {
                     action = ACTION_TOGGLE_TASK
+                    setPackage(context.packageName)
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 }
                 val listClickPendingIntent = PendingIntent.getBroadcast(
@@ -259,53 +262,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        val appWidgetManager = AppWidgetManager.getInstance(context)
-
-        when (intent.action) {
-            ACTION_SET_TAB -> {
-                val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-                val tabIndex = intent.getIntExtra(EXTRA_TAB_INDEX, 0)
-                if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                    setSelectedTab(context, appWidgetId, tabIndex)
-                    updateWidget(context, appWidgetManager, appWidgetId)
-                    kotlin.runCatching {
-                        appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list_view)
-                    }
-                }
-            }
-
-            ACTION_REFRESH -> {
-                val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-                if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                    updateWidget(context, appWidgetManager, appWidgetId)
-                    kotlin.runCatching {
-                        appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list_view)
-                    }
-                } else {
-                    updateAllWidgets(context)
-                }
-            }
-
-            ACTION_TOGGLE_TASK -> {
-                val taskId = intent.getLongExtra(EXTRA_TASK_ID, -1L)
-                val actionType = intent.getStringExtra("action_type") ?: "toggle"
-
-                if (actionType == "open_app") {
-                    val mainIntent = Intent(context, MainActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        putExtra("navigate_to", "todos")
-                    }
-                    context.startActivity(mainIntent)
-                    return
-                }
-
-                if (taskId != -1L) {
-                    val pendingResult = goAsync()
-                    TaskReminderHelper.toggleTaskById(context, taskId) {
-                        pendingResult.finish()
-                    }
-                }
-            }
-        }
+        // Note: All custom interactive actions (ACTION_SET_TAB, ACTION_REFRESH, ACTION_TOGGLE_TASK)
+        // are securely routed to the unexported TodoWidgetActionReceiver to prevent unauthorized IPC invocations.
     }
 }

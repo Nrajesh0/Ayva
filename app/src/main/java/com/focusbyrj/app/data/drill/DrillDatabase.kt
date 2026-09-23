@@ -59,7 +59,6 @@ abstract class DrillDatabase : RoomDatabase() {
                     DrillDatabase::class.java,
                     "drill_sessions.db"
                 )
-                .fallbackToDestructiveMigration()
                 .build()
                 .also { INSTANCE = it }
             }

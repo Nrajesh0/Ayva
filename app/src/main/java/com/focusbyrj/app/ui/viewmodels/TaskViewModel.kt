@@ -26,6 +26,12 @@ class TaskViewModel(
         initialValue = emptyList()
     )
 
+    val trashedTasks: StateFlow<List<Task>> = repository.trashedTasks.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
     fun addTask(task: Task) {
         viewModelScope.launch {
             val id = repository.insertTask(task)
@@ -44,11 +50,42 @@ class TaskViewModel(
         }
     }
 
+    /**
+     * Directly and permanently deletes the task (standard production To-Do model).
+     * Queues cloud tombstone for Supabase, cancels reminders, and updates widgets.
+     */
     fun deleteTask(task: Task) {
         viewModelScope.launch {
             com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "TASK", task.id)
-            repository.deleteTask(task)
+            repository.deletePermanently(task)
             TaskReminderHelper.cancelReminder(getApplication(), task)
+            TodoWidgetProvider.updateAllWidgets(getApplication())
+            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
+        }
+    }
+
+    fun restoreTask(task: Task) {
+        viewModelScope.launch {
+            repository.restoreFromTrash(task.id)
+            if (!task.isCompleted && task.dueDate != null && task.dueDate > System.currentTimeMillis()) {
+                TaskReminderHelper.scheduleReminder(getApplication(), task.copy(isTrashed = false))
+            }
+            TodoWidgetProvider.updateAllWidgets(getApplication())
+            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
+        }
+    }
+
+    fun deletePermanently(task: Task) {
+        deleteTask(task)
+    }
+
+    fun emptyTrash() {
+        viewModelScope.launch {
+            val currentTrashed = trashedTasks.value
+            currentTrashed.forEach { t ->
+                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "TASK", t.id)
+            }
+            repository.emptyTrash()
             TodoWidgetProvider.updateAllWidgets(getApplication())
             com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,13 +38,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import com.focusbyrj.app.data.note.NoteDatabase
+import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.service.FocusDeviceAdminReceiver
+import com.focusbyrj.app.ui.screens.notes.ArchiveVaultFirstTimeDialog
+import com.focusbyrj.app.ui.screens.notes.ArchiveVaultMnemonicRecoveryDialog
+import com.focusbyrj.app.ui.screens.notes.ArchiveVaultUnlockDialog
+import com.focusbyrj.app.ui.screens.notes.ArchiveVaultExportPhraseDialog
 import com.focusbyrj.app.ui.screens.security.ExportBackupPasswordDialog
 import com.focusbyrj.app.ui.screens.security.RestoreBackupPasswordDialog
 import com.focusbyrj.app.ui.theme.*
 import com.focusbyrj.app.util.PermissionUtils
 import com.focusbyrj.app.util.backup.BackupRestoreManager
+import com.focusbyrj.app.util.backup.DataSafetyManager
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun SecurityScreen(navController: NavController) {
@@ -60,9 +74,20 @@ fun SecurityScreen(navController: NavController) {
     var hasNotifications by remember { mutableStateOf(PermissionUtils.hasNotificationPermission(context)) }
     var showBatteryInfoDialog by remember { mutableStateOf(false) }
     
+    // Vault & Recovery State
+    var vaultStatus by remember { mutableStateOf(ArchiveVaultSecurity.getVaultStatus(context)) }
+    var isVaultRecoveryConfigured by remember { mutableStateOf(ArchiveVaultSecurity.isRecoveryConfigured(context)) }
+    var isVaultPhraseBackedUp by remember { mutableStateOf(ArchiveVaultSecurity.isRecoveryPhraseBackedUp(context)) }
+    var showVaultFirstTimeDialog by remember { mutableStateOf(false) }
+    var showVaultMnemonicRecoveryDialog by remember { mutableStateOf(false) }
+    var showVaultExportPhraseDialog by remember { mutableStateOf(false) }
+    var showVaultUnlockForExportDialog by remember { mutableStateOf(false) }
+    var exportedPhraseWords by remember { mutableStateOf<List<String>?>(null) }
+    
     // Backup & Restore State
     var showExportPasswordDialog by remember { mutableStateOf(false) }
     var showRestorePasswordDialog by remember { mutableStateOf(false) }
+    var showSnapshotsSheet by remember { mutableStateOf(false) }
     var isExporting by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
     var pendingExportPassword by remember { mutableStateOf<String?>(null) }
@@ -117,6 +142,8 @@ fun SecurityScreen(navController: NavController) {
                 hasOverlay = PermissionUtils.hasOverlayPermission(context)
                 isBatteryUnrestricted = PermissionUtils.isIgnoringBatteryOptimizations(context)
                 hasNotifications = PermissionUtils.hasNotificationPermission(context)
+                vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
+                isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -289,6 +316,97 @@ fun SecurityScreen(navController: NavController) {
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
             ) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    // Secret Vault Protection
+                    SecurityActionRow(
+                        icon = Icons.Filled.Lock,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        title = "Secret Vault Passcode",
+                        subtitle = if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                            if (isVaultRecoveryConfigured) "Argon2id + BIP-39 recovery active." else "PIN active (no emergency phrase)."
+                        } else {
+                            "Protect archived notes with 6-digit PIN & recovery phrase."
+                        },
+                        action = {
+                            if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                                GrantedBadge(if (isVaultRecoveryConfigured) "Protected ✓" else "Enabled")
+                            } else {
+                                GrantButton(text = "Setup") {
+                                    showVaultFirstTimeDialog = true
+                                }
+                            }
+                        }
+                    )
+
+                    if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        // View / Export Recovery Phrase
+                        SecurityActionRow(
+                            icon = Icons.Filled.Key,
+                            iconTint = if (isVaultPhraseBackedUp) MaterialTheme.colorScheme.primary else Color(0xFFE5A93C),
+                            title = "Export Recovery Phrase",
+                            subtitle = if (isVaultPhraseBackedUp) {
+                                "View or export your 12-word vault emergency recovery phrase."
+                            } else {
+                                "Action needed: View & back up your 12-word recovery phrase."
+                            },
+                            action = {
+                                Button(
+                                    onClick = {
+                                        val words = ArchiveVaultSecurity.getStoredRecoveryPhrase(context)
+                                        if (words != null) {
+                                            exportedPhraseWords = words
+                                            showVaultExportPhraseDialog = true
+                                        } else {
+                                            // Vault is locked, prompt for PIN first
+                                            showVaultUnlockForExportDialog = true
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isVaultPhraseBackedUp) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFE5A93C),
+                                        contentColor = if (isVaultPhraseBackedUp) MaterialTheme.colorScheme.onSurface else Color.Black
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Text(if (isVaultPhraseBackedUp) "View" else "Back Up", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        )
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // Emergency Mnemonic Recovery
+                    SecurityActionRow(
+                        icon = Icons.Filled.Security,
+                        iconTint = if (isVaultRecoveryConfigured) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        title = "Emergency Phrase Recovery",
+                        subtitle = if (isVaultRecoveryConfigured) {
+                            "Reset PIN and recover your secret vault with your 12-word phrase."
+                        } else {
+                            "Configure a vault passcode to enable 12-word emergency recovery."
+                        },
+                        action = {
+                            Button(
+                                onClick = { showVaultMnemonicRecoveryDialog = true },
+                                enabled = isVaultRecoveryConfigured || vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Text("Recover", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
                     SecurityActionRow(
                         icon = Icons.Filled.CloudUpload,
                         iconTint = MaterialTheme.colorScheme.primary,
@@ -333,6 +451,30 @@ fun SecurityScreen(navController: NavController) {
                                 modifier = Modifier.height(36.dp)
                             ) {
                                 Text("Restore", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    SecurityActionRow(
+                        icon = Icons.Filled.Security,
+                        iconTint = MaterialTheme.colorScheme.secondary,
+                        title = "Safety Snapshots (Auto-Recovery)",
+                        subtitle = "View and restore daily rolling backups and pre-operation recovery points.",
+                        action = {
+                            Button(
+                                onClick = {
+                                    showSnapshotsSheet = true
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Text("Snapshots", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     )
@@ -392,6 +534,12 @@ fun SecurityScreen(navController: NavController) {
             }
         )
     }
+
+    if (showSnapshotsSheet) {
+        SafetySnapshotsBottomSheet(
+            onDismiss = { showSnapshotsSheet = false }
+        )
+    }
     
     if (showBatteryInfoDialog) {
         AlertDialog(
@@ -441,6 +589,79 @@ fun SecurityScreen(navController: NavController) {
             },
             containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(24.dp)
+        )
+    }
+
+    if (showVaultFirstTimeDialog) {
+        ArchiveVaultFirstTimeDialog(
+            onDismiss = { showVaultFirstTimeDialog = false },
+            onSkip = {
+                showVaultFirstTimeDialog = false
+                ArchiveVaultSecurity.skipPasscodeSetup(context)
+                vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
+                isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
+            },
+            onPasscodeSet = { pin, mnemonicWords ->
+                showVaultFirstTimeDialog = false
+                ArchiveVaultSecurity.setPasscode(context, pin, mnemonicWords)
+                vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
+                isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
+                isVaultPhraseBackedUp = ArchiveVaultSecurity.isRecoveryPhraseBackedUp(context)
+                Toast.makeText(context, "Secret Vault configured with Emergency Phrase! 🔒", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showVaultUnlockForExportDialog) {
+        ArchiveVaultUnlockDialog(
+            onDismiss = { showVaultUnlockForExportDialog = false },
+            onVerify = { pin -> ArchiveVaultSecurity.verifyPasscode(context, pin) },
+            onSuccess = {
+                showVaultUnlockForExportDialog = false
+                val words = ArchiveVaultSecurity.getOrConfigureRecoveryPhrase(context)
+                if (words != null) {
+                    exportedPhraseWords = words
+                    showVaultExportPhraseDialog = true
+                }
+            },
+            initialLockoutSeconds = ArchiveVaultSecurity.getRemainingLockoutSeconds(context)
+        )
+    }
+
+    if (showVaultExportPhraseDialog && exportedPhraseWords != null) {
+        ArchiveVaultExportPhraseDialog(
+            phraseWords = exportedPhraseWords!!,
+            isBackedUp = isVaultPhraseBackedUp,
+            onDismiss = {
+                showVaultExportPhraseDialog = false
+                exportedPhraseWords = null
+            },
+            onMarkBackedUp = {
+                ArchiveVaultSecurity.markRecoveryPhraseBackedUp(context)
+                isVaultPhraseBackedUp = true
+                showVaultExportPhraseDialog = false
+                exportedPhraseWords = null
+                Toast.makeText(context, "Recovery phrase safely backed up! ✓", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showVaultMnemonicRecoveryDialog) {
+        ArchiveVaultMnemonicRecoveryDialog(
+            onDismiss = { showVaultMnemonicRecoveryDialog = false },
+            onRecover = { words, newPin ->
+                val ok = ArchiveVaultSecurity.recoverVaultWithMnemonic(context, words, newPin)
+                if (ok) {
+                    vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
+                    isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
+                    isVaultPhraseBackedUp = ArchiveVaultSecurity.isRecoveryPhraseBackedUp(context)
+                }
+                ok
+            },
+            onSuccess = {
+                showVaultMnemonicRecoveryDialog = false
+                Toast.makeText(context, "Vault successfully recovered and new PIN set! 🔓", Toast.LENGTH_LONG).show()
+            }
         )
     }
 }
@@ -567,4 +788,256 @@ private fun SecuritySwitchRow(
             )
         }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SafetySnapshotsBottomSheet(
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var snapshots by remember { mutableStateOf(DataSafetyManager.listAvailableSnapshots(context)) }
+    var selectedSnapshotForRestore by remember { mutableStateOf<DataSafetyManager.SnapshotInfo?>(null) }
+    var isRestoring by remember { mutableStateOf(false) }
+    var isCreatingSnapshot by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy · HH:mm:ss", Locale.getDefault()) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Safety Snapshots",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Auto-backups & pre-deletion recovery points",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                FilledTonalButton(
+                    onClick = {
+                        isCreatingSnapshot = true
+                        coroutineScope.launch {
+                            val db = NoteDatabase.getInstance(context)
+                            val ok = DataSafetyManager.writeDailyBackup(context, db.noteDao())
+                            isCreatingSnapshot = false
+                            if (ok) {
+                                snapshots = DataSafetyManager.listAvailableSnapshots(context)
+                                Toast.makeText(context, "Safety snapshot created", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Failed to create snapshot", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    enabled = !isCreatingSnapshot,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Text(if (isCreatingSnapshot) "Creating..." else "Snapshot Now", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (snapshots.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Filled.Security,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "No safety snapshots yet",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Snapshots are created automatically every 24 hours\nand before destructive actions like emptying trash.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false)
+                ) {
+                    items(snapshots, key = { it.absolutePath }) { snap ->
+                        val noteCount = remember(snap.absolutePath) {
+                            DataSafetyManager.readSnapshotNoteCount(snap.absolutePath)
+                        }
+                        val formattedDate = remember(snap.createdAtMs) {
+                            dateFormat.format(Date(snap.createdAtMs))
+                        }
+                        val sizeKb = (snap.sizeBytes / 1024L).coerceAtLeast(1L)
+
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        val (badgeBg, badgeFg) = when {
+                                            snap.tag.startsWith("Daily") ->
+                                                MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+                                            snap.tag.contains("Emergency") ->
+                                                MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+                                            else ->
+                                                MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = badgeBg
+                                        ) {
+                                            Text(
+                                                text = snap.tag,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                                color = badgeFg,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+
+                                        Text(
+                                            text = formattedDate,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = "${if (noteCount >= 0) "$noteCount notes" else "Snapshot"} · ${sizeKb} KB",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+
+                                Button(
+                                    onClick = { selectedSnapshotForRestore = snap },
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(34.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Text("Restore", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    selectedSnapshotForRestore?.let { snap ->
+        AlertDialog(
+            onDismissRequest = { if (!isRestoring) selectedSnapshotForRestore = null },
+            icon = {
+                Icon(
+                    Icons.Filled.Security,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text("Restore Snapshot?") },
+            text = {
+                Text(
+                    "This will restore all notes from '${snap.fileName}'. " +
+                    "A safety snapshot of your current database will be saved first before restoring."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isRestoring = true
+                        coroutineScope.launch {
+                            val db = NoteDatabase.getInstance(context)
+                            val result = DataSafetyManager.restoreSnapshot(context, snap.absolutePath, db.noteDao())
+                            isRestoring = false
+                            selectedSnapshotForRestore = null
+                            if (result.isSuccess) {
+                                Toast.makeText(
+                                    context,
+                                    "Successfully restored ${result.getOrNull()} notes!",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                snapshots = DataSafetyManager.listAvailableSnapshots(context)
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Restore failed: ${result.exceptionOrNull()?.message}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    },
+                    enabled = !isRestoring
+                ) {
+                    Text(if (isRestoring) "Restoring..." else "Confirm Restore")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { selectedSnapshotForRestore = null },
+                    enabled = !isRestoring
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }

@@ -46,6 +46,9 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import android.util.Log
+import com.focusbyrj.app.util.backup.DataSafetyManager
+import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -76,8 +79,25 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _vaultStatus = MutableStateFlow(ArchiveVaultSecurity.getVaultStatus(application))
     val vaultStatus: StateFlow<ArchiveVaultSecurity.VaultStatus> = _vaultStatus.asStateFlow()
 
+    /**
+     * Set to a non-null note ID when [VaultPayloadEncryptor.tryDecryptNotePayload] returns
+     * [VaultPayloadEncryptor.DecryptionResult.KeyMismatch] for that note.
+     * The UI should show a "Re-enter vault PIN" prompt when this is non-null.
+     * Reset to null after the user re-unlocks the vault or dismisses the prompt.
+     */
+    private val _vaultKeyMismatchNoteId = MutableStateFlow<Long?>(null)
+    val vaultKeyMismatchNoteId: StateFlow<Long?> = _vaultKeyMismatchNoteId.asStateFlow()
+
+    private val _isRecoveryPhraseBackedUp = MutableStateFlow(false)
+    val isRecoveryPhraseBackedUp: StateFlow<Boolean> = _isRecoveryPhraseBackedUp.asStateFlow()
+
+    fun clearVaultKeyMismatch() {
+        _vaultKeyMismatchNoteId.value = null
+    }
+
     fun refreshVaultStatus() {
         _vaultStatus.value = ArchiveVaultSecurity.getVaultStatus(getApplication())
+        _isRecoveryPhraseBackedUp.value = ArchiveVaultSecurity.isRecoveryPhraseBackedUp(getApplication())
     }
 
     fun verifyVaultPasscode(pin: String): ArchiveVaultSecurity.VerifyResult {
@@ -90,14 +110,47 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         return result
     }
 
-    fun setVaultPasscode(pin: String): Boolean {
-        val success = ArchiveVaultSecurity.setPasscode(getApplication(), pin)
+    fun setVaultPasscode(
+        pin: String,
+        mnemonicWords: List<String>? = null,
+        isPhraseBackedUp: Boolean = true
+    ): Boolean {
+        val success = ArchiveVaultSecurity.setPasscode(getApplication(), pin, mnemonicWords, isPhraseBackedUp)
         if (success) {
             _isVaultUnlocked.value = true
             _currentFolder.value = NoteFolder.ARCHIVE
             refreshVaultStatus()
         }
         return success
+    }
+
+    fun getOrConfigureRecoveryPhrase(): List<String>? {
+        val words = ArchiveVaultSecurity.getOrConfigureRecoveryPhrase(getApplication())
+        refreshVaultStatus()
+        return words
+    }
+
+    fun markRecoveryPhraseBackedUp() {
+        ArchiveVaultSecurity.markRecoveryPhraseBackedUp(getApplication())
+        refreshVaultStatus()
+    }
+
+    fun isVaultRecoveryConfigured(): Boolean {
+        return ArchiveVaultSecurity.isRecoveryConfigured(getApplication())
+    }
+
+    fun recoverVaultWithMnemonic(words: List<String>, newPin: String): Boolean {
+        val success = ArchiveVaultSecurity.recoverVaultWithMnemonic(getApplication(), words, newPin)
+        if (success) {
+            _isVaultUnlocked.value = true
+            _currentFolder.value = NoteFolder.ARCHIVE
+            refreshVaultStatus()
+        }
+        return success
+    }
+
+    fun verifyMnemonicOnly(words: List<String>): Boolean {
+        return ArchiveVaultSecurity.verifyMnemonicOnly(getApplication(), words)
     }
 
     fun skipVaultPasscode() {
@@ -132,7 +185,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         val db = NoteDatabase.getInstance(application)
-        repository = NoteRepository(db.noteDao())
+        repository = NoteRepository(db.noteDao(), application)
 
         viewModelScope.launch(Dispatchers.IO) {
             repository.getActiveNotes().collect {
@@ -170,6 +223,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleNoteSelection(noteId: Long) {
         val current = _selectedNoteIds.value
         _selectedNoteIds.value = if (current.contains(noteId)) current - noteId else current + noteId
+    }
+
+    fun selectNote(noteId: Long) {
+        _selectedNoteIds.value = _selectedNoteIds.value + noteId
     }
 
     fun selectAllNotes(notes: List<NoteEntity>) {
@@ -218,6 +275,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         ids.forEach { latestNotesCache.remove(it) }
         viewModelScope.launch(Dispatchers.IO) {
             ids.forEach { id -> repository.setArchived(id, true) }
+            triggerAutoSync()
         }
         clearSelection()
     }
@@ -228,6 +286,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         ids.forEach { latestNotesCache.remove(it) }
         viewModelScope.launch(Dispatchers.IO) {
             ids.forEach { id -> repository.setArchived(id, false) }
+            triggerAutoSync()
         }
         clearSelection()
     }
@@ -674,48 +733,83 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val cached = latestNotesCache[note.id]
         val resolvedNote = if (cached != null && cached.updatedAt >= note.updatedAt) cached else note
 
+        // Safely check and decrypt vault-encrypted note payloads
+        val decryptedNote = if (VaultPayloadEncryptor.isVaultEncrypted(resolvedNote)) {
+            when (val dec = VaultPayloadEncryptor.tryDecryptNotePayload(resolvedNote)) {
+                is VaultPayloadEncryptor.DecryptionResult.Success -> dec.note
+                is VaultPayloadEncryptor.DecryptionResult.KeyMismatch -> {
+                    _vaultKeyMismatchNoteId.value = resolvedNote.id
+                    return
+                }
+                is VaultPayloadEncryptor.DecryptionResult.VaultLocked -> {
+                    return
+                }
+                is VaultPayloadEncryptor.DecryptionResult.Corrupted -> {
+                    Log.e("NotesViewModel", "Corrupted vault envelope for note ${resolvedNote.id}: ${dec.reason}")
+                    resolvedNote
+                }
+                is VaultPayloadEncryptor.DecryptionResult.NotEncrypted -> resolvedNote
+            }
+        } else {
+            resolvedNote
+        }
+
         val state = EditingNoteState(
-            originalId = resolvedNote.id,
-            title = resolvedNote.title,
-            content = resolvedNote.content,
-            isChecklist = resolvedNote.isChecklist,
-            checklistItems = resolvedNote.getChecklistItems(),
-            colorKey = resolvedNote.colorKey,
-            fontKey = resolvedNote.fontKey,
-            isPinned = resolvedNote.isPinned,
-            isArchived = resolvedNote.isArchived,
-            isTrashed = resolvedNote.isTrashed,
-            labels = resolvedNote.getLabels(),
-            imageUris = resolvedNote.getImageUris(),
-            audioUris = resolvedNote.getAudioUris(),
-            createdAt = resolvedNote.createdAt,
-            updatedAt = resolvedNote.updatedAt
+            originalId = decryptedNote.id,
+            title = decryptedNote.title,
+            content = decryptedNote.content,
+            isChecklist = decryptedNote.isChecklist,
+            checklistItems = decryptedNote.getChecklistItems(),
+            colorKey = decryptedNote.colorKey,
+            fontKey = decryptedNote.fontKey,
+            isPinned = decryptedNote.isPinned,
+            isArchived = decryptedNote.isArchived,
+            isTrashed = decryptedNote.isTrashed,
+            labels = decryptedNote.getLabels(),
+            imageUris = decryptedNote.getImageUris(),
+            audioUris = decryptedNote.getAudioUris(),
+            createdAt = decryptedNote.createdAt,
+            updatedAt = decryptedNote.updatedAt
         )
         _editingState.value = state
         initialSnapshot = state
 
-        if (resolvedNote.id != 0L) {
+        if (decryptedNote.id != 0L) {
             viewModelScope.launch(Dispatchers.IO) {
-                val fresh = repository.getNoteByIdSync(resolvedNote.id)
-                if (fresh != null && fresh.updatedAt > resolvedNote.updatedAt) {
-                    latestNotesCache[fresh.id] = fresh
+                val fresh = repository.getNoteByIdSync(decryptedNote.id)
+                if (fresh != null && fresh.updatedAt > decryptedNote.updatedAt) {
+                    val freshDecrypted = if (VaultPayloadEncryptor.isVaultEncrypted(fresh)) {
+                        when (val dec = VaultPayloadEncryptor.tryDecryptNotePayload(fresh)) {
+                            is VaultPayloadEncryptor.DecryptionResult.Success -> dec.note
+                            is VaultPayloadEncryptor.DecryptionResult.KeyMismatch -> {
+                                withContext(Dispatchers.Main) {
+                                    _vaultKeyMismatchNoteId.value = fresh.id
+                                }
+                                return@launch
+                            }
+                            else -> fresh
+                        }
+                    } else {
+                        fresh
+                    }
+                    latestNotesCache[freshDecrypted.id] = freshDecrypted
                     withContext(Dispatchers.Main) {
                         val curr = _editingState.value
-                        if (curr != null && curr.originalId == fresh.id) {
+                        if (curr != null && curr.originalId == freshDecrypted.id) {
                             val freshState = curr.copy(
-                                title = fresh.title,
-                                content = fresh.content,
-                                isChecklist = fresh.isChecklist,
-                                checklistItems = fresh.getChecklistItems(),
-                                colorKey = fresh.colorKey,
-                                fontKey = fresh.fontKey,
-                                isPinned = fresh.isPinned,
-                                isArchived = fresh.isArchived,
-                                isTrashed = fresh.isTrashed,
-                                labels = fresh.getLabels(),
-                                imageUris = fresh.getImageUris(),
-                                audioUris = fresh.getAudioUris(),
-                                updatedAt = fresh.updatedAt
+                                title = freshDecrypted.title,
+                                content = freshDecrypted.content,
+                                isChecklist = freshDecrypted.isChecklist,
+                                checklistItems = freshDecrypted.getChecklistItems(),
+                                colorKey = freshDecrypted.colorKey,
+                                fontKey = freshDecrypted.fontKey,
+                                isPinned = freshDecrypted.isPinned,
+                                isArchived = freshDecrypted.isArchived,
+                                isTrashed = freshDecrypted.isTrashed,
+                                labels = freshDecrypted.getLabels(),
+                                imageUris = freshDecrypted.getImageUris(),
+                                audioUris = freshDecrypted.getAudioUris(),
+                                updatedAt = freshDecrypted.updatedAt
                             )
                             _editingState.value = freshState
                             initialSnapshot = freshState
@@ -1309,6 +1403,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         latestNotesCache.clear()
         viewModelScope.launch(Dispatchers.IO) {
             val trashedNotes = repository.getTrashedNotesSync()
+            // Write pre-op snapshot BEFORE any deletion — if something goes wrong, this
+            // captures the last known good state immediately before empty-trash ran.
+            val noteDao = NoteDatabase.getInstance(getApplication()).noteDao()
+            DataSafetyManager.writePreOpSnapshot(getApplication(), noteDao, "emptyTrash")
             trashedNotes.forEach { note ->
                 com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), note)
                 com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
@@ -1353,6 +1451,32 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun unarchiveCurrentNote() {
+        audioMemoManager.stopPlayback()
+        audioMemoManager.cancelRecording()
+        autoSaveJob?.cancel()
+        val current = _editingState.value ?: return
+        _editingState.value = null
+        if (current.originalId != 0L) {
+            latestNotesCache.remove(current.originalId)
+            viewModelScope.launch(Dispatchers.IO) {
+                persistMutex.withLock {
+                    repository.setArchived(current.originalId, false)
+                }
+                triggerAutoSync()
+            }
+        }
+    }
+
+    fun toggleArchiveCurrentNote() {
+        val current = _editingState.value ?: return
+        if (current.isArchived) {
+            unarchiveCurrentNote()
+        } else {
+            archiveCurrentNote()
+        }
+    }
+
     fun openNewNoteWithDrawing(bitmap: android.graphics.Bitmap) {
         openNewNote(asChecklist = false)
         addDrawingToEditor(bitmap)
@@ -1386,12 +1510,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 val entity = buildEntityFromState(current, isModified = modified)
                 if (entity.isEmptyNote()) {
                     if (entity.id != 0L) {
+                        // Accidental clear protection: An existing note was cleared of content.
+                        // Do NOT permanently purge the note or destroy its media attachments.
+                        // Instead, capture a safety snapshot and soft-delete it to Trash with 30-day retention.
+                        val noteDao = NoteDatabase.getInstance(getApplication()).noteDao()
+                        DataSafetyManager.writePreOpSnapshot(getApplication(), noteDao, "empty_note_soft_delete")
                         latestNotesCache.remove(entity.id)
-                        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), entity)
-                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", entity.id)
-                        deleteNoteMediaFiles(entity)
-                        repository.deletePermanently(entity)
+                        repository.moveToTrash(entity.id)
+                        Log.i("NotesViewModel", "Existing note ${entity.id} was cleared to empty — moved to Trash safely (soft-delete).")
                     }
+                    // For new empty drafts (entity.id == 0L), discard quietly
                 } else {
                     val savedId = repository.saveNote(entity)
                     val finalEntity = if (entity.id == 0L) entity.copy(id = savedId) else entity

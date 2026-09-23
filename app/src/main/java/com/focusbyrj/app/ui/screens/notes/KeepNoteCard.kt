@@ -39,8 +39,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
+import androidx.compose.material.icons.outlined.CheckCircleOutline
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -121,9 +123,9 @@ fun KeepNoteCard(
     val baseBorderColor = theme.resolveBorderColor(isDark)
     val isBeingDragged = isDragging
     val cardBorder = if (isSelected) {
-        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary)
     } else if (isBeingDragged) {
-        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+        BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
     } else {
         BorderStroke(1.dp, baseBorderColor)
     }
@@ -182,14 +184,12 @@ fun KeepNoteCard(
                         }
                     } else if (isLongPress) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        if (currentIsSelectionMode) {
-                            if (!currentIsSelected) {
-                                currentOnToggleSelect()
-                            }
-                        }
+                        currentOnToggleSelect()
                         currentOnLongClick?.invoke()
-                        currentOnStartDrag?.invoke(down.position)
                         val pointerId = down.id
+                        var isDraggingStarted = false
+                        var accumulatedDelta = Offset.Zero
+                        val touchSlop = viewConfiguration.touchSlop
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == pointerId } ?: break
@@ -198,12 +198,23 @@ fun KeepNoteCard(
                                 break
                             }
                             val dragAmount = change.positionChange()
-                            if (dragAmount != Offset.Zero) {
-                                change.consume()
-                                currentOnDrag?.invoke(dragAmount)
+                            if (!isDraggingStarted) {
+                                accumulatedDelta += dragAmount
+                                if (accumulatedDelta.getDistance() > touchSlop) {
+                                    isDraggingStarted = true
+                                    change.consume()
+                                    currentOnStartDrag?.invoke(down.position)
+                                }
+                            } else {
+                                if (dragAmount != Offset.Zero) {
+                                    change.consume()
+                                    currentOnDrag?.invoke(dragAmount)
+                                }
                             }
                         }
-                        currentOnEndDrag?.invoke()
+                        if (isDraggingStarted) {
+                            currentOnEndDrag?.invoke()
+                        }
                     }
                 }
             }
@@ -250,12 +261,29 @@ fun KeepNoteCard(
                     .fillMaxWidth()
                     .padding(14.dp)
             ) {
-            // Top Row: Title + Pin Button
+            // Top Row: Selection Checkmark (if in selection mode or selected) + Title + Pin Button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                if (currentIsSelectionMode || currentIsSelected) {
+                    IconButton(
+                        onClick = currentOnToggleSelect,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .padding(end = 4.dp)
+                            .testTag("note_select_badge_${note.id}")
+                    ) {
+                        Icon(
+                            imageVector = if (currentIsSelected) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircleOutline,
+                            contentDescription = if (currentIsSelected) "Deselect note" else "Select note",
+                            tint = if (currentIsSelected) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.6f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
                 if (note.title.isNotBlank()) {
                     Text(
                         text = note.title,

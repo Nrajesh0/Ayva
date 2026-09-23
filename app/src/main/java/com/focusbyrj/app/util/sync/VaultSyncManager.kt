@@ -47,9 +47,23 @@ object VaultSyncManager {
 
     /**
      * Serializes all notes and tasks into a unified JSON string.
+     * Fails if any secret vault notes exist while the secret vault is locked, preventing unrecoverable backups.
      */
     suspend fun createVaultJson(noteDao: NoteDao, taskDao: TaskDao): String = withContext(Dispatchers.IO) {
-        val notes = noteDao.getAllNotesList()
+        val rawNotes = noteDao.getAllNotesList()
+        val hasLockedVaultNotes = rawNotes.any { com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it) } &&
+                com.focusbyrj.app.data.note.ArchiveVaultSecurity.getActiveVaultSubKey() == null
+        if (hasLockedVaultNotes) {
+            throw IllegalStateException("Cannot export vault: Secret Archive Vault is locked. Please unlock your secret vault first.")
+        }
+
+        val notes = rawNotes.map { rawNote ->
+            if (rawNote.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
+                com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(rawNote)
+            } else {
+                rawNote
+            }
+        }
         val tasks = taskDao.getAllTasksList()
 
         val root = JSONObject()
@@ -71,6 +85,8 @@ object VaultSyncManager {
                 put("isArchived", note.isArchived)
                 put("isTrashed", note.isTrashed)
                 put("labelsJson", note.labelsJson)
+                put("imageUrisJson", note.imageUrisJson)
+                put("audioUrisJson", note.audioUrisJson)
                 put("createdAt", note.createdAt)
                 put("updatedAt", note.updatedAt)
             }
@@ -106,7 +122,8 @@ object VaultSyncManager {
         jsonString: String,
         noteDao: NoteDao,
         taskDao: TaskDao,
-        mergeMode: Boolean = true
+        mergeMode: Boolean = true,
+        context: Context? = null
     ): Result<Pair<Int, Int>> = withContext(Dispatchers.IO) {
         try {
             val root = JSONObject(jsonString)
@@ -116,11 +133,17 @@ object VaultSyncManager {
             var importedNotesCount = 0
             var importedTasksCount = 0
 
+            // If replace mode (mergeMode == false), wipe existing local records first
+            if (!mergeMode) {
+                noteDao.deleteAllNotes()
+                taskDao.deleteAllTasks()
+            }
+
             // Restore Notes
             for (i in 0 until notesArray.length()) {
                 val nObj = notesArray.getJSONObject(i)
-                val note = NoteEntity(
-                    id = if (mergeMode) 0 else nObj.optLong("id", 0),
+                var note = NoteEntity(
+                    id = if (mergeMode) 0L else nObj.optLong("id", 0L),
                     title = nObj.optString("title", ""),
                     content = nObj.optString("content", ""),
                     isChecklist = nObj.optBoolean("isChecklist", false),
@@ -131,11 +154,14 @@ object VaultSyncManager {
                     isArchived = nObj.optBoolean("isArchived", false),
                     isTrashed = nObj.optBoolean("isTrashed", false),
                     labelsJson = nObj.optString("labelsJson", "[]"),
-                    imageUrisJson = "[]",
-                    audioUrisJson = "[]",
+                    imageUrisJson = nObj.optString("imageUrisJson", "[]"),
+                    audioUrisJson = nObj.optString("audioUrisJson", "[]"),
                     createdAt = nObj.optLong("createdAt", System.currentTimeMillis()),
                     updatedAt = nObj.optLong("updatedAt", System.currentTimeMillis())
                 )
+                if (note.isArchived) {
+                    note = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(note)
+                }
                 noteDao.insertNote(note)
                 importedNotesCount++
             }
@@ -147,19 +173,23 @@ object VaultSyncManager {
                 val recName = tObj.optString("recurrence", RecurrencePattern.NONE.name)
 
                 val task = Task(
-                    id = if (mergeMode) 0 else tObj.optLong("id", 0),
+                    id = if (mergeMode) 0L else tObj.optLong("id", 0L),
                     title = tObj.optString("title", "Untitled Task"),
                     details = tObj.optString("details", ""),
-                    dueDate = if (tObj.isNull("dueDate")) null else tObj.optLong("dueDate"),
+                    dueDate = if (tObj.isNull("dueDate")) null else tObj.optLong("dueDate").takeIf { it > 0L },
                     isCompleted = tObj.optBoolean("isCompleted", false),
                     type = try { TaskType.valueOf(typeName) } catch (_: Exception) { TaskType.TASK },
                     recurrence = try { RecurrencePattern.valueOf(recName) } catch (_: Exception) { RecurrencePattern.NONE },
                     isPersistent = tObj.optBoolean("isPersistent", false),
                     isPriority = tObj.optBoolean("isPriority", false),
-                    completedAt = if (tObj.isNull("completedAt")) null else tObj.optLong("completedAt")
+                    completedAt = if (tObj.isNull("completedAt")) null else tObj.optLong("completedAt").takeIf { it > 0L }
                 )
                 taskDao.insertTask(task)
                 importedTasksCount++
+            }
+
+            if (context != null) {
+                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context.applicationContext)
             }
 
             Result.success(Pair(importedNotesCount, importedTasksCount))
