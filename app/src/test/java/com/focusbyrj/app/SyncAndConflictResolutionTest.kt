@@ -163,4 +163,62 @@ class SyncAndConflictResolutionTest {
         com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(context)
         assertEquals(1, com.focusbyrj.app.util.CompletedTaskHistoryManager.getTodayCompletedCount(context))
     }
+
+    @Test
+    fun testMediaAttachmentPathSanitizationAndSelfHealing() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val userId = "test-user-uuid-999"
+
+        // 1. Verify recordPendingMediaDeletion sanitizes local paths ending in .enc
+        val corruptedLocalPath = "/data/user/0/com.focusbyrj.app/files/keep_images/63f1000c-f1bf-443f-a653-9da56fd83982.enc"
+        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(
+            context = context,
+            pathOrFileName = corruptedLocalPath,
+            explicitUserId = userId
+        )
+
+        val pending = com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.getPendingMediaDeletions(context)
+        val expectedCloudPath = "$userId/63f1000c-f1bf-443f-a653-9da56fd83982.enc"
+        assertTrue(
+            "Pending deletion should contain sanitized cloud path '$expectedCloudPath', but had: $pending",
+            pending.contains(expectedCloudPath)
+        )
+        assertFalse(
+            "Pending deletion MUST NOT leak internal phone path",
+            pending.contains(corruptedLocalPath)
+        )
+
+        // 2. Verify downloadMedia local cache hit reuses existing encrypted file and populates manifest
+        val keepImagesDir = File(context.filesDir, "keep_images").apply { mkdirs() }
+        val localMediaFile = File(keepImagesDir, "63f1000c-f1bf-443f-a653-9da56fd83982.enc").apply {
+            writeBytes("mock encrypted content".toByteArray())
+        }
+        assertTrue(localMediaFile.exists())
+
+        // Simulate session state for KeyManager
+        val sessionPrefs = context.getSharedPreferences("focus_supabase_zk_prefs", Context.MODE_PRIVATE)
+        sessionPrefs.edit()
+            .putString("user_id", userId)
+            .putString("access_token", "mock_token")
+            .commit()
+
+        // Call downloadMedia with the corrupted cloudPath pointing to internal path
+        val resolvedPath = com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.downloadMedia(
+            context = context,
+            cloudPath = corruptedLocalPath,
+            subDirName = "keep_images",
+            accessToken = "mock_token",
+            dataKey = ByteArray(32) { 0x01 }
+        )
+
+        assertEquals(localMediaFile.absolutePath, resolvedPath)
+
+        // Verify manifest now contains mapped cloud UUID
+        val mappedUuid = com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.getCloudUuid(
+            context,
+            userId,
+            localMediaFile.absolutePath
+        )
+        assertEquals("63f1000c-f1bf-443f-a653-9da56fd83982", mappedUuid)
+    }
 }

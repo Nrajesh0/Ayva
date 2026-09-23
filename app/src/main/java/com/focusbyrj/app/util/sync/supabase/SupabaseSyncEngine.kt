@@ -482,10 +482,12 @@ object SupabaseSyncEngine {
 
                                     val localImagePaths = mutableListOf<String>()
                                     for (item in cloudImageUris) {
-                                        if (item.contains("/")) {
+                                        val clean = item.trim()
+                                        if (clean.isBlank()) continue
+                                        if (clean.endsWith(".enc") || clean.contains("/")) {
                                             val downloadedMedia = SupabaseStorageEngine.downloadMedia(
                                                 context = context,
-                                                cloudPath = item,
+                                                cloudPath = clean,
                                                 subDirName = "keep_images",
                                                 accessToken = pullToken,
                                                 dataKey = dataKey
@@ -494,10 +496,10 @@ object SupabaseSyncEngine {
                                                 localImagePaths.add(downloadedMedia)
                                             } else {
                                                 // Retain cloud path so attachment is not permanently lost on temporary network drop
-                                                localImagePaths.add(item)
+                                                localImagePaths.add(clean)
                                             }
                                         } else {
-                                            localImagePaths.add(item)
+                                            localImagePaths.add(clean)
                                         }
                                     }
 
@@ -510,10 +512,12 @@ object SupabaseSyncEngine {
 
                                     val localAudioPaths = mutableListOf<String>()
                                     for (item in cloudAudioUris) {
-                                        if (item.contains("/")) {
+                                        val clean = item.trim()
+                                        if (clean.isBlank()) continue
+                                        if (clean.endsWith(".enc") || clean.contains("/")) {
                                             val downloadedMedia = SupabaseStorageEngine.downloadMedia(
                                                 context = context,
-                                                cloudPath = item,
+                                                cloudPath = clean,
                                                 subDirName = "keep_audio",
                                                 accessToken = pullToken,
                                                 dataKey = dataKey
@@ -522,10 +526,10 @@ object SupabaseSyncEngine {
                                                 localAudioPaths.add(downloadedMedia)
                                             } else {
                                                 // Retain cloud path so audio memo is not permanently lost on temporary network drop
-                                                localAudioPaths.add(item)
+                                                localAudioPaths.add(clean)
                                             }
                                         } else {
-                                            localAudioPaths.add(item)
+                                            localAudioPaths.add(clean)
                                         }
                                     }
 
@@ -651,32 +655,56 @@ object SupabaseSyncEngine {
                     // Upload any local image attachments to Supabase Storage
                     val cloudImagePaths = mutableListOf<String>()
                     note.getImageUris().forEach { path ->
-                        if (path.contains("/") && path.endsWith(".enc")) {
-                            // Already an anonymized cloud reference, preserve directly
-                            cloudImagePaths.add(path)
+                        val clean = path.trim()
+                        if (clean.isBlank()) return@forEach
+
+                        val isLocalPath = clean.startsWith("/") ||
+                                          clean.startsWith("file:") ||
+                                          clean.startsWith("content:") ||
+                                          clean.contains("keep_images") ||
+                                          clean.contains("keep_audio") ||
+                                          clean.contains("com.focusbyrj.app") ||
+                                          clean.contains("/data/")
+
+                        if (!isLocalPath && clean.contains("/") && clean.endsWith(".enc")) {
+                            // Already an anonymized cloud reference (e.g. "$userId/<uuid>.enc"), preserve directly
+                            cloudImagePaths.add(clean)
                         } else {
-                            val file = java.io.File(path)
+                            val file = java.io.File(clean.removePrefix("file://"))
                             if (file.exists() && file.length() > 0L) {
-                                val uploadedPath = SupabaseStorageEngine.uploadMedia(
-                                    context = context,
-                                    localPath = path,
-                                    userId = userId,
-                                    accessToken = currentToken,
-                                    dataKey = dataKey
-                                )
-                                if (uploadedPath != null) {
-                                    cloudImagePaths.add(uploadedPath)
+                                val existingUuid = SupabaseStorageEngine.getCloudUuid(context, userId, clean)
+                                    ?: SupabaseStorageEngine.getCloudUuid(context, userId, file.absolutePath)
+                                    ?: if (file.name.endsWith(".enc")) file.name.removeSuffix(".enc") else null
+
+                                if (existingUuid != null) {
+                                    SupabaseStorageEngine.bindCloudUuid(context, userId, file.absolutePath, existingUuid)
+                                    cloudImagePaths.add("$userId/$existingUuid.enc")
                                 } else {
-                                    val existingUuid = SupabaseStorageEngine.getCloudUuid(context, userId, path)
-                                    if (existingUuid != null) {
-                                        cloudImagePaths.add("$userId/$existingUuid.enc")
+                                    val uploadedPath = SupabaseStorageEngine.uploadMedia(
+                                        context = context,
+                                        localPath = file.absolutePath,
+                                        userId = userId,
+                                        accessToken = currentToken,
+                                        dataKey = dataKey
+                                    )
+                                    if (uploadedPath != null) {
+                                        cloudImagePaths.add(uploadedPath)
                                     } else {
-                                        Log.w(TAG, "Failed uploading image attachment $path; deferring note upload to prevent data loss")
+                                        Log.w(TAG, "Failed uploading image attachment $clean; deferring note upload to prevent data loss")
                                         mediaUploadFailed = true
                                     }
                                 }
-                            } else if (path.isNotBlank()) {
-                                cloudImagePaths.add(path)
+                            } else {
+                                val fileName = file.name
+                                if (fileName.endsWith(".enc")) {
+                                    // Corrupted path self-healing: use cloud UUID from filename
+                                    cloudImagePaths.add("$userId/$fileName")
+                                } else if (!clean.startsWith("/") && clean.endsWith(".enc")) {
+                                    val cloudRef = if (clean.startsWith("$userId/")) clean else "$userId/$clean"
+                                    cloudImagePaths.add(cloudRef)
+                                } else if (clean.isNotBlank()) {
+                                    cloudImagePaths.add(clean)
+                                }
                             }
                         }
                     }
@@ -684,32 +712,55 @@ object SupabaseSyncEngine {
                     // Upload any local audio attachments to Supabase Storage
                     val cloudAudioPaths = mutableListOf<String>()
                     note.getAudioUris().forEach { path ->
-                        if (path.contains("/") && path.endsWith(".enc")) {
-                            // Already an anonymized cloud reference, preserve directly
-                            cloudAudioPaths.add(path)
+                        val clean = path.trim()
+                        if (clean.isBlank()) return@forEach
+
+                        val isLocalPath = clean.startsWith("/") ||
+                                          clean.startsWith("file:") ||
+                                          clean.startsWith("content:") ||
+                                          clean.contains("keep_images") ||
+                                          clean.contains("keep_audio") ||
+                                          clean.contains("com.focusbyrj.app") ||
+                                          clean.contains("/data/")
+
+                        if (!isLocalPath && clean.contains("/") && clean.endsWith(".enc")) {
+                            // Already an anonymized cloud reference (e.g. "$userId/<uuid>.enc"), preserve directly
+                            cloudAudioPaths.add(clean)
                         } else {
-                            val file = java.io.File(path)
+                            val file = java.io.File(clean.removePrefix("file://"))
                             if (file.exists() && file.length() > 0L) {
-                                val uploadedPath = SupabaseStorageEngine.uploadMedia(
-                                    context = context,
-                                    localPath = path,
-                                    userId = userId,
-                                    accessToken = currentToken,
-                                    dataKey = dataKey
-                                )
-                                if (uploadedPath != null) {
-                                    cloudAudioPaths.add(uploadedPath)
+                                val existingUuid = SupabaseStorageEngine.getCloudUuid(context, userId, clean)
+                                    ?: SupabaseStorageEngine.getCloudUuid(context, userId, file.absolutePath)
+                                    ?: if (file.name.endsWith(".enc")) file.name.removeSuffix(".enc") else null
+
+                                if (existingUuid != null) {
+                                    SupabaseStorageEngine.bindCloudUuid(context, userId, file.absolutePath, existingUuid)
+                                    cloudAudioPaths.add("$userId/$existingUuid.enc")
                                 } else {
-                                    val existingUuid = SupabaseStorageEngine.getCloudUuid(context, userId, path)
-                                    if (existingUuid != null) {
-                                        cloudAudioPaths.add("$userId/$existingUuid.enc")
+                                    val uploadedPath = SupabaseStorageEngine.uploadMedia(
+                                        context = context,
+                                        localPath = file.absolutePath,
+                                        userId = userId,
+                                        accessToken = currentToken,
+                                        dataKey = dataKey
+                                    )
+                                    if (uploadedPath != null) {
+                                        cloudAudioPaths.add(uploadedPath)
                                     } else {
-                                        Log.w(TAG, "Failed uploading audio attachment $path; deferring note upload to prevent data loss")
+                                        Log.w(TAG, "Failed uploading audio attachment $clean; deferring note upload to prevent data loss")
                                         mediaUploadFailed = true
                                     }
                                 }
-                            } else if (path.isNotBlank()) {
-                                cloudAudioPaths.add(path)
+                            } else {
+                                val fileName = file.name
+                                if (fileName.endsWith(".enc")) {
+                                    cloudAudioPaths.add("$userId/$fileName")
+                                } else if (!clean.startsWith("/") && clean.endsWith(".enc")) {
+                                    val cloudRef = if (clean.startsWith("$userId/")) clean else "$userId/$clean"
+                                    cloudAudioPaths.add(cloudRef)
+                                } else if (clean.isNotBlank()) {
+                                    cloudAudioPaths.add(clean)
+                                }
                             }
                         }
                     }

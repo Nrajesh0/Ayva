@@ -38,7 +38,7 @@ object SupabaseStorageEngine {
     fun bindCloudUuid(context: Context, userId: String, localPath: String, cloudUuid: String) {
         if (userId.isBlank() || localPath.isBlank() || cloudUuid.isBlank()) return
         val prefs = context.getSharedPreferences(MEDIA_MANIFEST_PREFS, Context.MODE_PRIVATE)
-        prefs.edit().putString("$userId:$localPath", cloudUuid).apply()
+        prefs.edit().putString("$userId:$localPath", cloudUuid).commit()
     }
 
     /**
@@ -184,29 +184,36 @@ object SupabaseStorageEngine {
         accessToken: String,
         dataKey: ByteArray?
     ): String? {
-        val rawFileName = cloudPath.substringAfterLast('/')
+        val clean = cloudPath.trim()
+        val rawFileName = clean.substringAfterLast('/')
         val safeFileName = File(rawFileName).name.replace("..", "_").ifBlank { "media_${UUID.randomUUID()}.enc" }
         val targetDir = File(context.filesDir, subDirName).apply { if (!exists()) mkdirs() }
         val targetFile = File(targetDir, safeFileName)
 
+        val session = SupabaseKeyManager.getSessionState(context)
+        val userId = session.userId ?: ""
+
         // If file already exists locally with non-zero size, reuse immediately and ensure manifest is populated
         if (targetFile.exists() && targetFile.length() > 0L) {
             val cloudUuid = if (safeFileName.endsWith(".enc")) safeFileName.removeSuffix(".enc") else null
-            if (!cloudUuid.isNullOrBlank()) {
-                val session = SupabaseKeyManager.getSessionState(context)
-                val userId = session.userId ?: ""
-                if (userId.isNotBlank()) {
-                    val manifestPrefs = context.getSharedPreferences(MEDIA_MANIFEST_PREFS, Context.MODE_PRIVATE)
-                    if (!manifestPrefs.contains("$userId:${targetFile.absolutePath}")) {
-                        manifestPrefs.edit().putString("$userId:${targetFile.absolutePath}", cloudUuid).apply()
-                    }
-                }
+            if (!cloudUuid.isNullOrBlank() && userId.isNotBlank()) {
+                bindCloudUuid(context, userId, targetFile.absolutePath, cloudUuid)
             }
             return targetFile.absolutePath
         }
 
-        val endpointUrl = "${SupabaseConfig.STORAGE_OBJECT_URL}/authenticated/${SupabaseConfig.STORAGE_BUCKET}/$cloudPath"
-        val fallbackUrl = "${SupabaseConfig.STORAGE_OBJECT_URL}/${SupabaseConfig.STORAGE_BUCKET}/$cloudPath"
+        // Normalize cloud path: Supabase Storage bucket `vault_media` stores objects under "$userId/$safeFileName".
+        // Strip any leaked local Android paths (e.g. /data/user/0/..., keep_images/) to restore the valid cloud object key.
+        val normalizedCloudPath = if (userId.isNotBlank()) {
+            "$userId/$safeFileName"
+        } else if (!clean.startsWith("/") && clean.contains("/") && !clean.contains("keep_images") && !clean.contains("data/")) {
+            clean
+        } else {
+            safeFileName
+        }
+
+        val endpointUrl = "${SupabaseConfig.STORAGE_OBJECT_URL}/authenticated/${SupabaseConfig.STORAGE_BUCKET}/$normalizedCloudPath"
+        val fallbackUrl = "${SupabaseConfig.STORAGE_OBJECT_URL}/${SupabaseConfig.STORAGE_BUCKET}/$normalizedCloudPath"
 
         fun attemptDownload(urlStr: String): ByteArray? {
             var conn: HttpURLConnection? = null
@@ -231,7 +238,11 @@ object SupabaseStorageEngine {
             }
         }
 
-        val downloadedBytes = attemptDownload(endpointUrl) ?: attemptDownload(fallbackUrl)
+        val downloadedBytes = attemptDownload(endpointUrl)
+            ?: attemptDownload(fallbackUrl)
+            ?: if (normalizedCloudPath != clean && !clean.startsWith("/") && !clean.contains("keep_images")) {
+                attemptDownload("${SupabaseConfig.STORAGE_OBJECT_URL}/authenticated/${SupabaseConfig.STORAGE_BUCKET}/$clean")
+            } else null
         if (downloadedBytes == null || downloadedBytes.isEmpty()) {
             Log.w(TAG, "Could not download media file: $cloudPath")
             return null
@@ -301,7 +312,13 @@ object SupabaseStorageEngine {
             // Local file path or local filename: perform manifest lookup if user is signed in
             userId.isNotBlank() -> {
                 val mappedUuid = getCloudUuid(context, userId, clean)
-                if (mappedUuid != null) "$userId/$mappedUuid.enc" else cleanName
+                if (mappedUuid != null) {
+                    "$userId/$mappedUuid.enc"
+                } else if (cleanName.endsWith(".enc")) {
+                    "$userId/$cleanName"
+                } else {
+                    cleanName
+                }
             }
             else -> cleanName
         }
