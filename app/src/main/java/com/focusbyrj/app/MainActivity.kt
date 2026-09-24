@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import com.focusbyrj.app.ui.screens.notes.NotesScreen
 import androidx.compose.material.icons.filled.Warning
@@ -553,61 +554,79 @@ fun MainAppScreen(
                             }
                         },
                         actions = {
-                            // Live Streak Flame Pill
-                            Surface(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .clickable {
-                                        navController.navigate(Screen.Account.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    },
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("🔥", fontSize = 12.sp)
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = "${activeStreakDays}d",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-
-                            // Interactive Profile Avatar Ring -> Opens full-page Preferences & Settings Hub
-                            val avatarRes = ProfileAvatarManager.getAvatarImageRes(economyProfile.selectedAvatar, economyProfile.avatarTier)
-                            val avatarBorder = ProfileAvatarManager.getAvatarBorderColor(economyProfile.selectedAvatar, economyProfile.avatarTier)
-
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 8.dp, end = 12.dp)
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .border(1.8.dp, avatarBorder, CircleShape)
-                                    .clickable {
+                            if (currentDestination?.route == Screen.Account.route) {
+                                IconButton(
+                                    onClick = {
                                         navController.navigate(Screen.PreferencesHub.route) {
                                             launchSingleTop = true
                                         }
                                     },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Image(
-                                    painter = painterResource(id = avatarRes),
-                                    contentDescription = "Settings & Preferences",
+                                    modifier = Modifier.padding(end = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Settings,
+                                        contentDescription = "Settings",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            } else {
+                                // Live Streak Flame Pill
+                                Surface(
                                     modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(2.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .clickable {
+                                            navController.navigate(Screen.Account.route) {
+                                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("🔥", fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "${activeStreakDays}d",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+
+                                // Interactive Profile Avatar Ring -> Opens full-page Preferences & Settings Hub
+                                val avatarRes = ProfileAvatarManager.getAvatarImageRes(economyProfile.selectedAvatar, economyProfile.avatarTier)
+                                val avatarBorder = ProfileAvatarManager.getAvatarBorderColor(economyProfile.selectedAvatar, economyProfile.avatarTier)
+
+                                Box(
+                                    modifier = Modifier
+                                        .padding(start = 8.dp, end = 12.dp)
+                                        .size(36.dp)
                                         .clip(CircleShape)
-                                )
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .border(1.8.dp, avatarBorder, CircleShape)
+                                        .clickable {
+                                            navController.navigate(Screen.PreferencesHub.route) {
+                                                launchSingleTop = true
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = avatarRes),
+                                        contentDescription = "Settings & Preferences",
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(2.dp)
+                                            .clip(CircleShape)
+                                    )
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
