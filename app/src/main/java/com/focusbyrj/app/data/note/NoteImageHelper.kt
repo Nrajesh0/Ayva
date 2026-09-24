@@ -110,7 +110,11 @@ object NoteImageHelper {
             finalBitmap!!.compress(Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream)
             val imageBytes = byteStream.toByteArray()
 
-            com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(outputFile, imageBytes)
+            try {
+                com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(outputFile, imageBytes)
+            } finally {
+                imageBytes.fill(0)
+            }
 
             outputFile.absolutePath
         } catch (t: Throwable) {
@@ -154,7 +158,11 @@ object NoteImageHelper {
             finalBitmap.compress(Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream)
             val imageBytes = byteStream.toByteArray()
 
-            com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(outputFile, imageBytes)
+            try {
+                com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(outputFile, imageBytes)
+            } finally {
+                imageBytes.fill(0)
+            }
 
             outputFile.absolutePath
         } catch (t: Throwable) {
@@ -206,7 +214,7 @@ object NoteImageHelper {
 
     fun processAndSaveMultipleImages(context: Context, uris: List<Uri>): List<String> {
         val paths = mutableListOf<String>()
-        for (uri in uris) {
+        for (uri in uris.take(20)) {
             val savedPath = processAndSaveImage(context, uri)
             if (savedPath != null) {
                 paths.add(savedPath)
@@ -216,25 +224,20 @@ object NoteImageHelper {
     }
 
     fun loadBitmapForWidget(context: Context, pathOrUri: String): Bitmap? {
+        var rawBytes: ByteArray? = null
         return try {
             val maxDim = 260
-            fun openStream(): java.io.InputStream? {
-                return try {
-                    if (pathOrUri.startsWith("content://") || pathOrUri.startsWith("file://")) {
-                        context.contentResolver.openInputStream(android.net.Uri.parse(pathOrUri))
-                    } else {
-                        val file = File(pathOrUri)
-                        if (!file.exists()) return null
-                        val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
-                        if (decryptedBytes != null) java.io.ByteArrayInputStream(decryptedBytes) else file.inputStream()
-                    }
-                } catch (_: Exception) {
-                    null
-                }
+            rawBytes = if (pathOrUri.startsWith("content://") || pathOrUri.startsWith("file://")) {
+                context.contentResolver.openInputStream(android.net.Uri.parse(pathOrUri))?.use { it.readBytes() }
+            } else {
+                val file = File(pathOrUri)
+                if (!file.exists()) null
+                else com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file) ?: file.readBytes()
             }
+            if (rawBytes == null || rawBytes.isEmpty()) return null
 
             val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            openStream()?.use { BitmapFactory.decodeStream(it, null, boundsOptions) } ?: return null
+            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, boundsOptions)
 
             var sampleSize = 1
             if (boundsOptions.outWidth > maxDim || boundsOptions.outHeight > maxDim) {
@@ -249,10 +252,12 @@ object NoteImageHelper {
                 inSampleSize = sampleSize
                 inPreferredConfig = Bitmap.Config.RGB_565
             }
-            openStream()?.use { BitmapFactory.decodeStream(it, null, decodeOptions) }
+            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, decodeOptions)
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        } finally {
+            rawBytes?.fill(0)
         }
     }
 }

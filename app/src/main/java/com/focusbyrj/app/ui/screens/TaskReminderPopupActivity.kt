@@ -148,8 +148,8 @@ class TaskReminderPopupActivity : ComponentActivity() {
         val initialPersistent = intent.getBooleanExtra(EXTRA_IS_PERSISTENT, false)
         val openRescheduleInitially = intent.getBooleanExtra(EXTRA_OPEN_RESCHEDULE, false)
 
-        val initialType = kotlin.runCatching { TaskType.valueOf(initialTypeStr) }.getOrDefault(TaskType.TASK)
-        val initialRecurrence = kotlin.runCatching { RecurrencePattern.valueOf(initialRecurrenceStr) }.getOrDefault(RecurrencePattern.NONE)
+        val initialType = kotlin.runCatching { TaskType.valueOf(initialTypeStr.trim().uppercase(java.util.Locale.ROOT)) }.getOrDefault(TaskType.TASK)
+        val initialRecurrence = kotlin.runCatching { RecurrencePattern.valueOf(initialRecurrenceStr.trim().uppercase(java.util.Locale.ROOT)) }.getOrDefault(RecurrencePattern.NONE)
 
         setContent {
             FocusByRjTheme {
@@ -231,6 +231,12 @@ fun TaskReminderPopupScreen(
                 val app = context.applicationContext as? FocusApplication
                 val dbTask = app?.database?.taskDao()?.getTaskById(taskId)
                 if (dbTask != null) {
+                    if (dbTask.isCompleted || dbTask.isTrashed) {
+                        withContext(Dispatchers.Main) {
+                            onDismiss()
+                        }
+                        return@withContext
+                    }
                     withContext(Dispatchers.Main) {
                         task = dbTask
                         customSelectedTimestamp = dbTask.dueDate ?: System.currentTimeMillis()

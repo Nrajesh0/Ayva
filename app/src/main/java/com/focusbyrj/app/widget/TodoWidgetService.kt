@@ -49,7 +49,7 @@ class TodoWidgetRemoteViewsFactory(
         try {
             widgetConfig = WidgetConfigHelper.getConfig(context, appWidgetId)
             val tabIndex = TodoWidgetProvider.getSelectedTab(context, appWidgetId)
-            val app = context.applicationContext as FocusApplication
+            val app = context.applicationContext as? FocusApplication ?: return
             val allTasks = runBlocking {
                 app.database.taskDao().getAllTasks().first()
             }
@@ -63,7 +63,7 @@ class TodoWidgetRemoteViewsFactory(
             }.timeInMillis
             val todayEnd = todayStart + 86400000L - 1L
 
-            val uncompleted = allTasks.filter { !it.isCompleted }
+            val uncompleted = allTasks.filter { !it.isCompleted && !it.isTrashed }
 
             tasksList = when (tabIndex) {
                 0 -> uncompleted.filter {

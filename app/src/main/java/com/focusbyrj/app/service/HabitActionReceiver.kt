@@ -62,6 +62,15 @@ class HabitActionReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ACTION_INCREMENT_HABIT -> {
                         val habit = app.habitRepository.getHabitById(habitId) ?: return@launch
+                        if (habit.isArchived || !habit.isReminderEnabled) {
+                            HabitAlarmScheduler.cancelHabitReminder(appContext, habitId)
+                            if (notificationId != -1) {
+                                notificationManager.cancel(notificationId)
+                                cleanUpHabitSummary(notificationManager, notificationId)
+                            }
+                            return@launch
+                        }
+
                         val updatedLog = app.habitRepository.incrementHabitProgress(habitId)
 
                         val completed = updatedLog.completedCount
@@ -118,6 +127,11 @@ class HabitActionReceiver : BroadcastReceiver() {
                         if (notificationId != -1) {
                             notificationManager.cancel(notificationId)
                             cleanUpHabitSummary(notificationManager, notificationId)
+                        }
+                        val habit = app.habitRepository.getHabitById(habitId)
+                        if (habit == null || habit.isArchived || !habit.isReminderEnabled) {
+                            HabitAlarmScheduler.cancelHabitReminder(appContext, habitId)
+                            return@launch
                         }
                         HabitAlarmScheduler.snoozeHabit(appContext, habitId, 30)
                     }

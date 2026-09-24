@@ -107,6 +107,13 @@ class NoteWidgetProvider : AppWidgetProvider() {
                     NoteWidgetSortBy.RECENTLY_CREATED -> rawNotes.sortedByDescending { it.createdAt }
                     NoteWidgetSortBy.PINNED_FIRST -> rawNotes.sortedWith(compareByDescending<NoteEntity> { it.isPinned }.thenByDescending { it.updatedAt })
                     NoteWidgetSortBy.ALPHABETICAL -> rawNotes.sortedBy { it.title.lowercase() }
+                }.filter { note ->
+                    val cached = NotesViewModel.latestNotesCache[note.id]
+                    if (cached != null && cached.updatedAt >= note.updatedAt) {
+                        !cached.isTrashed && !cached.isArchived
+                    } else {
+                        !note.isTrashed && !note.isArchived
+                    }
                 }
 
                 val currentIndex = NoteWidgetConfigHelper.getCurrentIndex(context, appWidgetId)
@@ -127,7 +134,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                     val rawNote = allMatchingNotes[safeIndex]
                     NoteWidgetConfigHelper.setCurrentNoteId(context, appWidgetId, rawNote.id)
                     val cached = NotesViewModel.latestNotesCache[rawNote.id]
-                    currentNote = if (cached != null && cached.updatedAt >= rawNote.updatedAt) cached else rawNote
+                    currentNote = if (cached != null && !cached.isTrashed && !cached.isArchived && cached.updatedAt >= rawNote.updatedAt) cached else rawNote
                 } else {
                     safeIndex = 0
                     NoteWidgetConfigHelper.setCurrentNoteId(context, appWidgetId, null)

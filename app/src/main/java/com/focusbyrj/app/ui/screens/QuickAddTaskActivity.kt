@@ -95,7 +95,7 @@ class QuickAddTaskActivity : ComponentActivity() {
                 QuickAddTaskOverlay(
                     onDismiss = { finish() },
                     onSave = { task ->
-                        val app = applicationContext as FocusApplication
+                        val app = applicationContext as? FocusApplication ?: return@QuickAddTaskOverlay
                         val scope = CoroutineScope(Dispatchers.IO)
                         scope.launch {
                             val id = app.database.taskDao().insertTask(task)

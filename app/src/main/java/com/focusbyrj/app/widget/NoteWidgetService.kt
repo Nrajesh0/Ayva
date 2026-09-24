@@ -105,6 +105,13 @@ class NoteWidgetRemoteViewsFactory(
                         NoteWidgetSortBy.RECENTLY_CREATED -> rawNotes.sortedByDescending { it.createdAt }
                         NoteWidgetSortBy.PINNED_FIRST -> rawNotes.sortedWith(compareByDescending<NoteEntity> { it.isPinned }.thenByDescending { it.updatedAt })
                         NoteWidgetSortBy.ALPHABETICAL -> rawNotes.sortedBy { it.title.lowercase() }
+                    }.filter { note ->
+                        val cached = com.focusbyrj.app.ui.screens.notes.NotesViewModel.latestNotesCache[note.id]
+                        if (cached != null && cached.updatedAt >= note.updatedAt) {
+                            !cached.isTrashed && !cached.isArchived
+                        } else {
+                            !note.isTrashed && !note.isArchived
+                        }
                     }
 
                     if (sortedNotes.isNotEmpty()) {
@@ -124,7 +131,13 @@ class NoteWidgetRemoteViewsFactory(
             }
 
             val cached = if (targetNote != null) com.focusbyrj.app.ui.screens.notes.NotesViewModel.latestNotesCache[targetNote.id] else null
-            val resolvedNote = if (cached != null && cached.updatedAt >= (targetNote?.updatedAt ?: 0L)) cached else targetNote
+            val resolvedNote = if (cached != null && !cached.isTrashed && !cached.isArchived && cached.updatedAt >= (targetNote?.updatedAt ?: 0L)) {
+                cached
+            } else if (targetNote != null && !targetNote.isTrashed && !targetNote.isArchived) {
+                targetNote
+            } else {
+                null
+            }
 
             currentNote = resolvedNote
             if (resolvedNote != null && resolvedNote.isChecklist) {
@@ -139,7 +152,8 @@ class NoteWidgetRemoteViewsFactory(
                 textParagraphs = emptyList()
             } else if (resolvedNote != null) {
                 checklistItems = emptyList()
-                val rawText = resolvedNote.content.ifBlank { "(Empty note - tap to write)" }
+                val cleanText = com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.toPlainText(resolvedNote.content)
+                val rawText = cleanText.ifBlank { "(Empty note - tap to write)" }
                 textParagraphs = rawText.split("\n")
             } else {
                 checklistItems = emptyList()

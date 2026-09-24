@@ -232,6 +232,13 @@ fun QuickEditNoteOverlay(
                     else -> null
                 }
                 if (entity != null) {
+                    if (entity.isTrashed) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(appContext, "Cannot edit trashed note.", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                        return@withContext
+                    }
                     if (entity.isArchived && com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultStatus(appContext) == com.focusbyrj.app.data.note.ArchiveVaultSecurity.VaultStatus.ENABLED) {
                         withContext(Dispatchers.Main) {
                             Toast.makeText(appContext, "Secret Vault note is protected. Open main app to unlock.", Toast.LENGTH_SHORT).show()
@@ -320,13 +327,12 @@ fun QuickEditNoteOverlay(
             )
 
             if (candidate.isEmptyNote()) {
-                // If it was already in DB and completely empty (no text, checklist, images, audio, labels), delete it
+                // If it was already in DB and completely empty (no text, checklist, images, audio, labels), soft-delete it
                 if (loadedNote != null && loadedNote!!.id > 0) {
                     val toDelete = loadedNote!!
-                    com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(appContext, toDelete)
-                    com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(appContext, "NOTE", toDelete.id)
-                    com.focusbyrj.app.data.note.NoteMediaManager.deleteNoteMediaFiles(toDelete)
-                    noteDao.deleteNote(toDelete)
+                    val now = System.currentTimeMillis()
+                    com.focusbyrj.app.util.backup.DataSafetyManager.writePreOpSnapshot(appContext, noteDao, "empty_note_soft_delete")
+                    noteDao.softDeleteNote(toDelete.id, now)
                     NotesViewModel.latestNotesCache.remove(toDelete.id)
                     com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(appContext)
                     loadedNote = null

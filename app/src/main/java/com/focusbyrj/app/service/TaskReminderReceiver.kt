@@ -56,8 +56,8 @@ class TaskReminderReceiver : BroadcastReceiver() {
 
                     if (app != null) {
                         val task = app.database.taskDao().getTaskById(taskId)
-                        if (task == null || task.isCompleted) {
-                            // Task is completed or deleted, stop nagging!
+                        if (task == null || task.isCompleted || task.isTrashed) {
+                            // Task is completed, trashed, or deleted, stop nagging!
                             TaskReminderHelper.cancelReminderById(appContext, taskId)
                             return@launch
                         }

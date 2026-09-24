@@ -57,7 +57,7 @@ class BootReceiver : BroadcastReceiver() {
                     // 2. Reschedule all task reminders on boot or update
                     try {
                         val tasks = app.taskRepository.allTasks.firstOrNull() ?: emptyList()
-                        tasks.filter { !it.isCompleted && it.dueDate != null }.forEach { task ->
+                        tasks.filter { !it.isCompleted && !it.isTrashed && it.dueDate != null }.forEach { task ->
                             TaskReminderHelper.scheduleReminder(context, task)
                         }
                     } catch (e: Exception) {

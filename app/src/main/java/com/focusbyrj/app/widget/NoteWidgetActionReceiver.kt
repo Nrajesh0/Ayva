@@ -87,7 +87,7 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                     cached != null -> cached
                                     else -> null
                                 }
-                                if (note != null && note.isChecklist && !note.isArchived) {
+                                if (note != null && note.isChecklist && !note.isArchived && !note.isTrashed) {
                                     val remainingItems = note.getChecklistItems().filterNot { it.id == itemId }
                                     val (uncompleted, completed) = remainingItems.partition { !it.isChecked }
                                     val updatedNote = note.copy(
@@ -125,7 +125,7 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                     cached != null -> cached
                                     else -> null
                                 }
-                                if (note != null && note.isChecklist && !note.isArchived) {
+                                if (note != null && note.isChecklist && !note.isArchived && !note.isTrashed) {
                                     val items = note.getChecklistItems().toMutableList()
                                     val idx = items.indexOfFirst { it.id == itemId }
                                     if (idx != -1) {

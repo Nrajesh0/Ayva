@@ -102,6 +102,8 @@ sealed interface NotesnookBlock {
 object NotesnookBlockManager {
     const val BLOCKS_PREFIX = "<!--NOTESNOOK_BLOCKS:"
     const val BLOCKS_SUFFIX = ":BLOCKS_END-->"
+    const val ALT_BLOCKS_START = "<!--BLOCKS_START-->"
+    const val ALT_BLOCKS_END = "<!--BLOCKS_END-->"
     private const val TABLE_START = "<!--TABLE_START:"
     private const val TABLE_END = ":TABLE_END-->"
 
@@ -226,6 +228,33 @@ object NotesnookBlockManager {
     fun parse(raw: String): List<NotesnookBlock> {
         if (raw.isBlank()) {
             return listOf(NotesnookBlock.Text())
+        }
+
+        // Support alternative BLOCKS_START format
+        if (raw.contains(ALT_BLOCKS_START) && raw.contains(ALT_BLOCKS_END)) {
+            val startIdx = raw.indexOf(ALT_BLOCKS_START)
+            val endIdx = raw.indexOf(ALT_BLOCKS_END, startIdx + ALT_BLOCKS_START.length)
+            if (startIdx != -1 && endIdx != -1) {
+                val textBefore = raw.substring(0, startIdx).trim()
+                val textAfter = raw.substring(endIdx + ALT_BLOCKS_END.length).trim()
+                val jsonStr = raw.substring(startIdx + ALT_BLOCKS_START.length, endIdx).trim()
+                val blocks = mutableListOf<NotesnookBlock>()
+                if (textBefore.isNotEmpty()) {
+                    blocks.add(NotesnookBlock.Text(text = textBefore))
+                }
+                try {
+                    val array = JSONArray(jsonStr)
+                    for (i in 0 until array.length()) {
+                        val obj = array.optJSONObject(i) ?: continue
+                        val text = obj.optString("content", obj.optString("text", ""))
+                        blocks.add(NotesnookBlock.Text(id = obj.optString("id", UUID.randomUUID().toString()), text = text))
+                    }
+                } catch (_: Exception) {}
+                if (textAfter.isNotEmpty()) {
+                    blocks.add(NotesnookBlock.Text(text = textAfter))
+                }
+                if (blocks.isNotEmpty()) return blocks
+            }
         }
 
         // 1. Check for native Notesnook Blocks JSON
@@ -524,6 +553,33 @@ object NotesnookBlockManager {
      * Converts raw note content (which may contain blocks) to clean plain text.
      */
     fun toPlainText(rawContent: String): String {
+        if (rawContent.contains(ALT_BLOCKS_START) && rawContent.contains(ALT_BLOCKS_END)) {
+            try {
+                val startIdx = rawContent.indexOf(ALT_BLOCKS_START)
+                val endIdx = rawContent.indexOf(ALT_BLOCKS_END, startIdx + ALT_BLOCKS_START.length)
+                if (startIdx != -1 && endIdx != -1) {
+                    val textBefore = rawContent.substring(0, startIdx).trim()
+                    val textAfter = rawContent.substring(endIdx + ALT_BLOCKS_END.length).trim()
+                    val jsonStr = rawContent.substring(startIdx + ALT_BLOCKS_START.length, endIdx).trim()
+                    val array = JSONArray(jsonStr)
+                    val sb = StringBuilder()
+                    if (textBefore.isNotEmpty()) sb.append(textBefore)
+                    for (i in 0 until array.length()) {
+                        val obj = array.optJSONObject(i) ?: continue
+                        val text = obj.optString("content", obj.optString("text", ""))
+                        if (text.isNotBlank()) {
+                            if (sb.isNotEmpty()) sb.append("\n")
+                            sb.append(text)
+                        }
+                    }
+                    if (textAfter.isNotEmpty()) {
+                        if (sb.isNotEmpty()) sb.append("\n")
+                        sb.append(textAfter)
+                    }
+                    return sb.toString()
+                }
+            } catch (_: Exception) {}
+        }
         return if (rawContent.contains(BLOCKS_PREFIX) || rawContent.contains(TABLE_START)) {
             toPlainText(parse(rawContent))
         } else {

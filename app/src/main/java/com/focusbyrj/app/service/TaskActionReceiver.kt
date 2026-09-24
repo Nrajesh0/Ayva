@@ -24,72 +24,77 @@ class TaskActionReceiver : BroadcastReceiver() {
 
         val pendingResult = goAsync()
 
-        when (intent.action) {
-            ACTION_TASK_DISMISSED -> {
-                TaskReminderHelper.cleanUpTaskSummaryNotification(context, taskId)
-                pendingResult.finish()
-            }
-            ACTION_COMPLETE_TASK -> {
-                TaskReminderHelper.completeTask(context, taskId) {
+        try {
+            when (intent.action) {
+                ACTION_TASK_DISMISSED -> {
+                    TaskReminderHelper.cleanUpTaskSummaryNotification(context, taskId)
+                    pendingResult.finish()
+                }
+                ACTION_COMPLETE_TASK -> {
+                    TaskReminderHelper.completeTask(context, taskId) {
+                        pendingResult.finish()
+                    }
+                }
+                ACTION_IGNORE_TASK -> {
+                    TaskReminderHelper.ignoreTask(context, taskId)
+                    pendingResult.finish()
+                }
+                ACTION_SNOOZE_TASK -> {
+                    val snoozeMinutes = intent.getIntExtra(EXTRA_SNOOZE_MINUTES, 15)
+                    val newDueDate = System.currentTimeMillis() + (snoozeMinutes * 60 * 1000L)
+                    TaskReminderHelper.rescheduleTask(context, taskId, newDueDate) {
+                        pendingResult.finish()
+                    }
+                }
+                ACTION_OPEN_RESCHEDULE -> {
+                    val title = intent.getStringExtra("taskTitle") ?: "Task Reminder"
+                    val details = intent.getStringExtra("taskDetails") ?: ""
+                    val dueDate = intent.getLongExtra("taskDueDate", System.currentTimeMillis())
+                    val typeStr = intent.getStringExtra("taskType") ?: "TASK"
+                    val recurrenceStr = intent.getStringExtra("taskRecurrence") ?: "NONE"
+                    val isPersistent = intent.getBooleanExtra("isPersistent", false)
+
+                    TaskReminderOverlayManager.showReminderOverlay(
+                        context = context,
+                        taskId = taskId,
+                        taskTitle = title,
+                        taskDetails = details,
+                        taskDueDate = dueDate,
+                        taskTypeStr = typeStr,
+                        taskRecurrenceStr = recurrenceStr,
+                        isPersistent = isPersistent,
+                        openRescheduleInitially = true
+                    )
+                    pendingResult.finish()
+                }
+                ACTION_SHOW_POPUP -> {
+                    val title = intent.getStringExtra("taskTitle") ?: "Task Reminder"
+                    val details = intent.getStringExtra("taskDetails") ?: ""
+                    val dueDate = intent.getLongExtra("taskDueDate", System.currentTimeMillis())
+                    val typeStr = intent.getStringExtra("taskType") ?: "TASK"
+                    val recurrenceStr = intent.getStringExtra("taskRecurrence") ?: "NONE"
+                    val isPersistent = intent.getBooleanExtra("isPersistent", false)
+
+                    TaskReminderOverlayManager.showReminderOverlay(
+                        context = context,
+                        taskId = taskId,
+                        taskTitle = title,
+                        taskDetails = details,
+                        taskDueDate = dueDate,
+                        taskTypeStr = typeStr,
+                        taskRecurrenceStr = recurrenceStr,
+                        isPersistent = isPersistent,
+                        openRescheduleInitially = false
+                    )
+                    pendingResult.finish()
+                }
+                else -> {
                     pendingResult.finish()
                 }
             }
-            ACTION_IGNORE_TASK -> {
-                TaskReminderHelper.ignoreTask(context, taskId)
-                pendingResult.finish()
-            }
-            ACTION_SNOOZE_TASK -> {
-                val snoozeMinutes = intent.getIntExtra(EXTRA_SNOOZE_MINUTES, 15)
-                val newDueDate = System.currentTimeMillis() + (snoozeMinutes * 60 * 1000L)
-                TaskReminderHelper.rescheduleTask(context, taskId, newDueDate) {
-                    pendingResult.finish()
-                }
-            }
-            ACTION_OPEN_RESCHEDULE -> {
-                val title = intent.getStringExtra("taskTitle") ?: "Task Reminder"
-                val details = intent.getStringExtra("taskDetails") ?: ""
-                val dueDate = intent.getLongExtra("taskDueDate", System.currentTimeMillis())
-                val typeStr = intent.getStringExtra("taskType") ?: "TASK"
-                val recurrenceStr = intent.getStringExtra("taskRecurrence") ?: "NONE"
-                val isPersistent = intent.getBooleanExtra("isPersistent", false)
-
-                TaskReminderOverlayManager.showReminderOverlay(
-                    context = context,
-                    taskId = taskId,
-                    taskTitle = title,
-                    taskDetails = details,
-                    taskDueDate = dueDate,
-                    taskTypeStr = typeStr,
-                    taskRecurrenceStr = recurrenceStr,
-                    isPersistent = isPersistent,
-                    openRescheduleInitially = true
-                )
-                pendingResult.finish()
-            }
-            ACTION_SHOW_POPUP -> {
-                val title = intent.getStringExtra("taskTitle") ?: "Task Reminder"
-                val details = intent.getStringExtra("taskDetails") ?: ""
-                val dueDate = intent.getLongExtra("taskDueDate", System.currentTimeMillis())
-                val typeStr = intent.getStringExtra("taskType") ?: "TASK"
-                val recurrenceStr = intent.getStringExtra("taskRecurrence") ?: "NONE"
-                val isPersistent = intent.getBooleanExtra("isPersistent", false)
-
-                TaskReminderOverlayManager.showReminderOverlay(
-                    context = context,
-                    taskId = taskId,
-                    taskTitle = title,
-                    taskDetails = details,
-                    taskDueDate = dueDate,
-                    taskTypeStr = typeStr,
-                    taskRecurrenceStr = recurrenceStr,
-                    isPersistent = isPersistent,
-                    openRescheduleInitially = false
-                )
-                pendingResult.finish()
-            }
-            else -> {
-                pendingResult.finish()
-            }
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            pendingResult.finish()
         }
     }
 }

@@ -206,7 +206,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 // Calculate task count asynchronously
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        val app = context.applicationContext as FocusApplication
+                        val app = context.applicationContext as? FocusApplication ?: return@launch
                         val allTasks = app.database.taskDao().getAllTasks().first()
 
                         val now = Calendar.getInstance()
@@ -218,7 +218,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                         }.timeInMillis
                         val todayEnd = todayStart + 86400000L - 1L
 
-                        val uncompleted = allTasks.filter { !it.isCompleted }
+                        val uncompleted = allTasks.filter { !it.isCompleted && !it.isTrashed }
 
                         val count = when (selectedTab) {
                             0 -> uncompleted.count {
