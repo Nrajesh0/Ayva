@@ -50,7 +50,12 @@ android {
           signingConfig = signingConfigs.getByName("release")
       }
     }
-    debug { signingConfig = signingConfigs.getByName("debug") }
+    debug {
+      signingConfig = signingConfigs.getByName("debug")
+      ndk {
+        abiFilters += listOf("arm64-v8a")
+      }
+    }
   }
 
   bundle {

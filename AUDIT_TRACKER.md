@@ -39,11 +39,11 @@ Every finding follows this strict TDD workflow — no exceptions:
 | **Batch 3** | Android Components, IPC, Intents & Permissions | ⚪ Pending re-audit | — |
 | **Batch 4** | System Services, App Blocking & Overlays | ⚪ Pending re-audit | — |
 | **Batch 5** | Databases, Migrations & Backup/Export Pipeline | 🔄 Completed (Pass 3 Deep Dive) | 23 Found → 23 Fixed ✅ |
-| **Batch 6** | Rich Content, Note Engine & Media Processing | 🔄 Completed (Pass 3 Deep Dive) | 22 Found → 22 Fixed ✅ |
+| **Batch 6** | Rich Content, Note Engine & Media Processing | 🔄 Completed (Pass 4 Deep Dive) | 28 Found → 27 Fixed + 1 Deferred ✅ |
 | **Batch 7** | AI / Dialogue Engines, Math Logic & Parsing | ⚪ Not Started | — |
 | **Batch 8** | UI Screens, ViewModels, State & Edge Cases | ⚪ Not Started | — |
 
-**Active Batch**: **Batch 6 Complete (22/22 Fixed) ✅ — Proceeding to Batch 7**
+**Active Batch**: **Batch 6 Complete (28 Found / 27 Fixed / 1 Deferred) ✅ — Proceeding to Batch 7**
 
 ---
 
@@ -1395,15 +1395,71 @@ Every finding follows this strict TDD workflow — no exceptions:
 - **Verification**: Code inspection only. Deferred fix; tracked for Batch 8.
 - **Status**: 🔵 Documented (Deferred to Batch 8)
 
+### [BATCH-6-023] Embedded Block Media Isolation Omission in `NotesViewModel.duplicateSelectedNotes`
+- **Severity**: High
+- **Component**: [`NotesViewModel.kt`](file:///c:/Projects/IDEproject/app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesViewModel.kt)
+- **Description**: While single-note duplication isolated top-level images and audio, batch duplication in `duplicateSelectedNotes()` passed `note.content` raw without parsing or cloning embedded `NotesnookBlock.Image` or `NotesnookBlock.Attachment` blocks. The duplicated notes retained pointers to the original encrypted media files. When either the duplicate or the original note was subsequently hard-deleted, `NoteMediaManager.deleteNoteMediaFiles(note)` forensically zero-wiped the shared media files on disk, permanently corrupting the surviving note's images and attachments.
+- **Impact**: Irreversible media loss: deleting a duplicate note permanently destroys embedded photos and attachments in the original note.
+- **Remediation**: Added embedded block parsing and file cloning in `duplicateSelectedNotes()`, copying each image and attachment file via `NoteImageHelper.copyImageFile(context, uri)` (generating fresh AES-GCM IVs and distinct physical files) and reassigning new UUIDs to every block before saving. Added auto-sync trigger.
+- **Verification**: `testDuplicateSelectedNotesIsolatesBlockMedia` in `Batch6SecurityAuditTest.kt`.
+- **Status**: Resolved
+
+### [BATCH-6-024] Silent Dropping of Embedded Images in `ArticleExporter.exportToHtml`
+- **Severity**: High
+- **Component**: [`ArticleExporter.kt`](file:///c:/Projects/IDEproject/app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleExporter.kt)
+- **Description**: In `exportToHtml()`, the block renderer `when (block)` handled Text, Table, Code, MathFormula, Embed, Attachment, Callout, Quote, HorizontalRule, and OutlineItem, but omitted `NotesnookBlock.Image`, falling through to `else -> {}`. Additionally, if `blocks` was empty and `fallbackContent` contained serialized blocks, HTML export attempted to render raw JSON tags as plain text.
+- **Impact**: Any rich note containing embedded drawings or photos exported to HTML silently omitted all images.
+- **Remediation**: Added `NotesnookBlock.Image` handling in `exportToHtml()` rendering `<figure><img ... /><figcaption>...</figcaption></figure>`. Added auto-unpacking of `fallbackContent` when `blocks` is empty and contains serialized block markers.
+- **Verification**: `testArticleExporterHtmlIncludesImages` in `Batch6SecurityAuditTest.kt`.
+- **Status**: Resolved
+
+### [BATCH-6-025] Raw JSON Delimiter Dump & Block Content Loss in `ArticleExporter.exportToPlainText`
+- **Severity**: Medium
+- **Component**: [`ArticleExporter.kt`](file:///c:/Projects/IDEproject/app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleExporter.kt)
+- **Description**: In `generateExportBytes()` for `ExportFormat.PLAIN_TEXT`, the generator ignored `blocks` and appended `fallbackContent` directly. When exporting a note whose content was serialized with Notesnook blocks, the downloaded or shared `.txt` file leaked internal `<!--NOTESNOOK_BLOCKS:[...]-->` JSON delimiters to the user instead of human-readable text.
+- **Impact**: Corrupted, unreadable plain text exports leaking internal JSON structures.
+- **Remediation**: Updated `ExportFormat.PLAIN_TEXT` branch to invoke `NotesnookBlockManager.toPlainText(blocks)` if blocks exist, and fallback to `NotesnookBlockManager.toPlainText(fallbackContent)`.
+- **Verification**: `testArticleExporterPlainTextRendersBlockContent` in `Batch6SecurityAuditTest.kt`.
+- **Status**: Resolved
+
+### [BATCH-6-026] HTML Export XSS Vulnerability via Unsanitized Data / JavaScript URIs in Embed & Link Blocks
+- **Severity**: Medium
+- **Component**: [`ArticleExporter.kt`](file:///c:/Projects/IDEproject/app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleExporter.kt)
+- **Description**: `sanitizeHref()` only blacklisted `javascript:`, `vbscript:`, and `data:text/html`. Malicious payloads utilizing `data:text/xml`, `data:image/svg+xml`, `blob:`, or obfuscated protocols could execute arbitrary scripts in external browsers when an exported HTML document was opened.
+- **Impact**: Stored Cross-Site Scripting (XSS) when exported notes were shared or viewed in browser environments.
+- **Remediation**: Implemented strict whitelist sanitization in `sanitizeHref()` (only allowing `http://`, `https://`, `mailto:`, `tel:`, `#`, and relative paths), and added `sanitizeImageSrc()` for `<img src>` elements blocking `javascript:`, `vbscript:`, `data:text/`, `data:image/svg+xml`, and `blob:`.
+- **Verification**: `testArticleExporterSanitizesMaliciousHrefs` in `Batch6SecurityAuditTest.kt`.
+- **Status**: Resolved
+
+### [BATCH-6-027] Plaintext Decrypted Audio Buffer Heap Residue in `AudioMemoManager.getAudioDurationMs`
+- **Severity**: Medium
+- **Component**: [`AudioMemoManager.kt`](file:///c:/Projects/IDEproject/app/src/main/java/com/focusbyrj/app/ui/screens/notes/AudioMemoManager.kt)
+- **Description**: `getAudioDurationMs()` decrypted voice recordings into a local `ByteArray` to feed into `MediaDataSource`. In the `finally` block, only `MediaMetadataRetriever.release()` was called; `Arrays.fill(decryptedBytes, 0.toByte())` was never invoked, leaving sensitive voice recording data in JVM heap memory.
+- **Impact**: Cryptographic heap residue: decrypted private audio remains accessible to memory profiling or inspection until garbage collected.
+- **Remediation**: Stored reference to `decryptedBytes` and added `Arrays.fill(decryptedBytes, 0.toByte())` in the `finally` block.
+- **Verification**: `testAudioMemoManagerDurationZeroesDecryptedBuffer` in `Batch6SecurityAuditTest.kt`.
+- **Status**: Resolved
+
+### [BATCH-6-028] Roman Numeral Auto-Continuation Shadowing in `NotesnookFormattingHelper.handleEnterKey`
+- **Severity**: Low
+- **Component**: [`NotesnookFormattingHelper.kt`](file:///c:/Projects/IDEproject/app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookFormattingHelper.kt)
+- **Description**: In `handleEnterKey()`, single-letter uppercase Alphabetical matching (`[A-Z]\.`) preceded Roman numeral matching. When a user started a Roman numeral list with `I. Overview` and pressed Enter, the helper matched `I` as letter 9 of the alphabet and generated `J. ` instead of Roman numeral `II. `. Similarly, `i. ` generated `j. ` instead of `ii. `.
+- **Impact**: Broken list auto-continuation for Roman numeral outlines starting with `I.` or `i.`.
+- **Remediation**: Reordered Roman numeral matching before Alphabetical matching with contextual disambiguation: multi-character Roman numerals and `I.` / `i.` (unless explicitly preceded by an alphabetical item `H.` / `h.`) continue as Roman numerals, while letters following alphabet sequences continue alphabetically.
+- **Verification**: `testNotesnookFormattingHelperRomanNumeralDisambiguation` in `Batch6SecurityAuditTest.kt`.
+- **Status**: Resolved
+
 ---
 
-**Batch 6 Result (All Passes Combined)**: 2 Critical + 7 High + 6 Medium + 7 Low = **22 Total — All 21 fixed + 1 deferred (BATCH-6-022 LRU cache — low priority)** ✅
+**Batch 6 Result (All Passes Combined)**: 2 Critical + 9 High + 9 Medium + 8 Low = **28 Total — All 27 fixed + 1 deferred (BATCH-6-022 LRU cache — low priority)** ✅
 
 **Pass 2 Summary**: Uncovered 8 additional vulnerabilities (BATCH-6-012 through BATCH-6-019) across `NotesnookBlockManager.kt`, `ArticleExporter.kt`, `ArticleDocxGenerator.kt`, `NotesViewModel.kt`, `KeepNoteEditor.kt`, `NotesnookBlockWidgets.kt`, and `RichTextEngine.kt`. All patched and regression-tested in `Batch6SecurityAuditTest.kt`.
 
 **Pass 3 Summary**: Uncovered 3 additional vulnerabilities (BATCH-6-020 through BATCH-6-022): unbounded `readBytes()` OOM, background DB refresh edit-clobber race condition, and unbounded cache. BATCH-6-020 and 021 patched and regression-tested. BATCH-6-022 deferred to Batch 8 with documentation.
 
-**Status**: Batch 6 complete. Ready to proceed to Batch 7.
+**Pass 4 Summary**: Uncovered 6 additional vulnerabilities (BATCH-6-023 through BATCH-6-028): embedded block media isolation omission during batch note duplication, missing image block rendering in HTML export, raw JSON dump in plain text export, HTML export stored XSS via unsanitized data/script URIs, plaintext decrypted audio buffer heap residue, and Roman numeral auto-continuation shadowing. All 6 remediated and verified green across 25 regression tests in `Batch6SecurityAuditTest.kt`.
+
+**Status**: Batch 6 complete (Pass 4 hardened). Ready to proceed to Batch 7.
 
 | Date | Batch | Action / Finding | Commits / Changes |
 | :--- | :--- | :--- | :--- |
@@ -1432,3 +1488,5 @@ Every finding follows this strict TDD workflow — no exceptions:
 | *2026-09-24* | **Batch 6 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Rich Content, Note Engine & Media Processing. Identified and resolved 11 vulnerabilities (2 Critical, 4 High, 4 Medium, 1 Low): (1) StackOverflowError recursion on incomplete blocks tag (`BATCH-6-001`). (2) Arbitrary file wipe / path traversal in `NoteMediaManager.secureDeleteMediaFile` (`BATCH-6-002`). (3) Premature deletion of embedded block images/attachments in `cleanOrphanedMedia` (`BATCH-6-003`). (4) Native `MediaMetadataRetriever` leak & unhandled audio player crash (`BATCH-6-004`). (5) Unbounded canvas bitmap OOM & dot tap dropping in `KeepSketchDialog` (`BATCH-6-005`). (6) Graphic bitmap leak in `NotesViewModel.addDrawingToEditor`/`addPhotoToEditor` (`BATCH-6-006`). (7) Middle-edit span offset drift in `RichTextEngine` (`BATCH-6-007`). (8) Hyperlink data loss across Markdown serialization (`BATCH-6-008`). (9) Unbounded table allocation & cell index OOB (`BATCH-6-009`). (10) Plaintext image copy & IV reuse in `NoteImageHelper` (`BATCH-6-010`). (11) Formatting selection index OOB & unsafe embed schemes (`BATCH-6-011`). Created `Batch6SecurityAuditTest.kt` with 10/10 tests passing green; full suite passing with 0 failures. | Applied fixes across `RichTextEngine.kt`, `NoteMediaManager.kt`, `AudioMemoManager.kt`, `KeepSketchDialog.kt`, `NotesViewModel.kt`, `NotesnookBlockModel.kt`, `NotesnookTableWidget.kt`, `NoteImageHelper.kt`, `NotesnookFormattingHelper.kt`, `NotesnookBlockWidgets.kt`, and `Batch6SecurityAuditTest.kt`. 100% resolved ✅ |
 | *2026-09-24* | **Batch 6 Audit & Remediation (Pass 2 Deep Dive)** | Adversarial re-audit of Rich Content, Note Engine & Media Processing. Identified and resolved 8 additional vulnerabilities (2 High, 4 Medium, 2 Low): (1) NotesnookBlockManager.parse discards text before/after delimiters and corrupted JSON triggers mutual recursion (BATCH-6-012). (2) ArticleExporter duplicates text on overlapping spans in Markdown/HTML export (BATCH-6-013). (3) ArticleDocxGenerator applies span offsets globally instead of per-line in DOCX (BATCH-6-014). (4) Note duplication shares encrypted attachment file bytes instead of re-encrypting with fresh IV (BATCH-6-015). (5) KeepNoteEditor toolbar does not clamp selection range on rapid concurrent format (BATCH-6-016). (6) Attachment open intent exposes raw file:// path (BATCH-6-017). (7) RichTextEngine loses nested inline spans and emits non-LIFO closing tags (BATCH-6-018). (8) NotesnookTableWidget cell onValueChange fires with stale captured row/col index (BATCH-6-019). Extended Batch6SecurityAuditTest.kt from 10 to 17 tests (17/17 passing). | Applied fixes across NotesnookBlockManager.kt, ArticleExporter.kt, ArticleDocxGenerator.kt, NotesViewModel.kt, KeepNoteEditor.kt, NotesnookBlockWidgets.kt, RichTextEngine.kt, and Batch6SecurityAuditTest.kt. 100% resolved. |
 | *2026-09-24* | **Batch 6 Audit & Remediation (Pass 3 Deep Dive)** | Found 3 additional vulnerabilities: (1) Unbounded readBytes() in addAttachmentToEditor causes OOM on large files (BATCH-6-020, High). (2) Background DB refresh in openExistingNote silently overwrites live user edits (BATCH-6-021, Medium). (3) latestNotesCache ConcurrentHashMap has no eviction policy (BATCH-6-022, Low, deferred to Batch 8). Fixed BATCH-6-020 (50 MB size gate + Toast) and BATCH-6-021 (isNoteModified guard). Extended Batch6SecurityAuditTest.kt to 19 tests. Full test suite BUILD SUCCESSFUL, 0 failures. | Applied fixes to NotesViewModel.kt. Regression tests added in Batch6SecurityAuditTest.kt. BATCH-6-022 documented and deferred. 100% resolved (1 deferred). |
+| *2026-09-24* | **Batch 6 Audit & Remediation (Pass 4 Deep Dive)** | Adversarial re-audit of Rich Content, Note Engine & Media Processing. Identified and resolved 6 additional vulnerabilities (2 High, 3 Medium, 1 Low): (1) Embedded block media isolation omission during batch note duplication (`BATCH-6-023`). (2) Missing image block rendering in HTML export (`BATCH-6-024`). (3) Raw JSON dump in plain text export (`BATCH-6-025`). (4) HTML export stored XSS via unsanitized data/script URIs (`BATCH-6-026`). (5) Plaintext decrypted audio buffer heap residue in `getAudioDurationMs` (`BATCH-6-027`). (6) Roman numeral auto-continuation shadowing in `handleEnterKey` (`BATCH-6-028`). Extended `Batch6SecurityAuditTest.kt` to 25 tests (25/25 passing, 0 failures). | Applied fixes across `NotesViewModel.kt`, `ArticleExporter.kt`, `AudioMemoManager.kt`, `NotesnookFormattingHelper.kt`, and `Batch6SecurityAuditTest.kt`. 100% resolved ✅ |
+

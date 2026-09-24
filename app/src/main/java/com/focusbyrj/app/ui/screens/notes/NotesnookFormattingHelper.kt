@@ -195,7 +195,81 @@ object NotesnookFormattingHelper {
                 return TextFieldValue(insertedText, TextRange(newPos, newPos))
             }
 
-            // 5. Check for Uppercase Alphabetical list (A. , B. , C. )
+            // Identify the line before previousLine to disambiguate Roman vs Alphabetical (e.g. H. -> I. vs IV. -> V.)
+            val lineBeforePrevious = if (lineStart > 1) {
+                val prevEnd = lineStart - 1
+                val prevStart = oldText.lastIndexOf('\n', startIndex = max(0, prevEnd - 1)).let { if (it == -1) 0 else it + 1 }
+                oldText.substring(prevStart, prevEnd).trim()
+            } else ""
+
+            // 5. Check for Roman numerals (I. , II. , III. , i. , ii. )
+            val upperRomanMatch = Regex("^([IVXLCDM]+)\\.\\s+").find(previousLine)
+            if (upperRomanMatch != null) {
+                val roman = upperRomanMatch.groupValues[1]
+                val isDefiniteRoman = roman.length > 1
+                val isPrecededByRoman = when (roman) {
+                    "V" -> Regex("^IV\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "X" -> Regex("^IX\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "L" -> Regex("^XLIX\\.\\s+|^XL\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "C" -> Regex("^XCIX\\.\\s+|^XC\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "D" -> Regex("^CDXCIX\\.\\s+|^CD\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "M" -> Regex("^CMXCIX\\.\\s+|^CM\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    else -> false
+                }
+                val isPrecededByAlphabet = when (roman) {
+                    "I" -> Regex("^H\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "V" -> Regex("^U\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "X" -> Regex("^W\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    else -> false
+                }
+
+                val shouldTreatAsRoman = isDefiniteRoman || isPrecededByRoman || (roman == "I" && !isPrecededByAlphabet)
+
+                if (shouldTreatAsRoman) {
+                    val value = parseRomanNumeral(roman)
+                    if (value != null) {
+                        val nextPrefix = "${intToRomanNumeral(value + 1, false)}. "
+                        val insertedText = newText.substring(0, newSel.start) + nextPrefix + newText.substring(newSel.start)
+                        val newPos = newSel.start + nextPrefix.length
+                        return TextFieldValue(insertedText, TextRange(newPos, newPos))
+                    }
+                }
+            }
+
+            val lowerRomanMatch = Regex("^([ivxlcdm]+)\\.\\s+").find(previousLine)
+            if (lowerRomanMatch != null) {
+                val roman = lowerRomanMatch.groupValues[1]
+                val isDefiniteRoman = roman.length > 1
+                val isPrecededByRoman = when (roman) {
+                    "v" -> Regex("^iv\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "x" -> Regex("^ix\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "l" -> Regex("^xlix\\.\\s+|^xl\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "c" -> Regex("^xcix\\.\\s+|^xc\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "d" -> Regex("^cdxcix\\.\\s+|^cd\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "m" -> Regex("^cmxcix\\.\\s+|^cm\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    else -> false
+                }
+                val isPrecededByAlphabet = when (roman) {
+                    "i" -> Regex("^h\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "v" -> Regex("^u\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    "x" -> Regex("^w\\.\\s+").containsMatchIn(lineBeforePrevious)
+                    else -> false
+                }
+
+                val shouldTreatAsRoman = isDefiniteRoman || isPrecededByRoman || (roman == "i" && !isPrecededByAlphabet)
+
+                if (shouldTreatAsRoman) {
+                    val value = parseRomanNumeral(roman)
+                    if (value != null) {
+                        val nextPrefix = "${intToRomanNumeral(value + 1, true)}. "
+                        val insertedText = newText.substring(0, newSel.start) + nextPrefix + newText.substring(newSel.start)
+                        val newPos = newSel.start + nextPrefix.length
+                        return TextFieldValue(insertedText, TextRange(newPos, newPos))
+                    }
+                }
+            }
+
+            // 6. Check for Uppercase Alphabetical list (A. , B. , C. )
             val upperAlphaMatch = Regex("^([A-Z])\\.\\s+").find(previousLine)
             if (upperAlphaMatch != null) {
                 val ch = upperAlphaMatch.groupValues[1][0]
@@ -206,7 +280,7 @@ object NotesnookFormattingHelper {
                 return TextFieldValue(insertedText, TextRange(newPos, newPos))
             }
 
-            // 6. Check for Lowercase Alphabetical list (a. , b. , c. )
+            // 7. Check for Lowercase Alphabetical list (a. , b. , c. )
             val lowerAlphaMatch = Regex("^([a-z])\\.\\s+").find(previousLine)
             if (lowerAlphaMatch != null) {
                 val ch = lowerAlphaMatch.groupValues[1][0]
@@ -215,31 +289,6 @@ object NotesnookFormattingHelper {
                 val insertedText = newText.substring(0, newSel.start) + nextPrefix + newText.substring(newSel.start)
                 val newPos = newSel.start + nextPrefix.length
                 return TextFieldValue(insertedText, TextRange(newPos, newPos))
-            }
-
-            // 7. Check for Roman numerals (I. , II. , III. , i. , ii. )
-            val upperRomanMatch = Regex("^([IVXLCDM]+)\\.\\s+").find(previousLine)
-            if (upperRomanMatch != null) {
-                val roman = upperRomanMatch.groupValues[1]
-                val value = parseRomanNumeral(roman)
-                if (value != null) {
-                    val nextPrefix = "${intToRomanNumeral(value + 1, false)}. "
-                    val insertedText = newText.substring(0, newSel.start) + nextPrefix + newText.substring(newSel.start)
-                    val newPos = newSel.start + nextPrefix.length
-                    return TextFieldValue(insertedText, TextRange(newPos, newPos))
-                }
-            }
-
-            val lowerRomanMatch = Regex("^([ivxlcdm]+)\\.\\s+").find(previousLine)
-            if (lowerRomanMatch != null) {
-                val roman = lowerRomanMatch.groupValues[1]
-                val value = parseRomanNumeral(roman)
-                if (value != null) {
-                    val nextPrefix = "${intToRomanNumeral(value + 1, true)}. "
-                    val insertedText = newText.substring(0, newSel.start) + nextPrefix + newText.substring(newSel.start)
-                    val newPos = newSel.start + nextPrefix.length
-                    return TextFieldValue(insertedText, TextRange(newPos, newPos))
-                }
             }
 
             // 8. Check for Greek letters (α. , β. , γ. )

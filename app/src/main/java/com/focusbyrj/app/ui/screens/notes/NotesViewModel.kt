@@ -364,10 +364,35 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 val newAudios = note.getAudioUris().mapNotNull { path ->
                     AudioMemoManager.copyAudioFile(context, path) ?: path
                 }
+                // BATCH-6-023: Isolate embedded NotesnookBlock.Image and NotesnookBlock.Attachment files in note.content
+                val newContent = if (note.content.contains(NotesnookBlockManager.BLOCKS_PREFIX)) {
+                    try {
+                        val blocks = NotesnookBlockManager.parse(note.content)
+                        val clonedBlocks = blocks.map { block ->
+                            when (block) {
+                                is NotesnookBlock.Image -> {
+                                    val copiedUri = NoteImageHelper.copyImageFile(context, block.uri) ?: block.uri
+                                    block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                }
+                                is NotesnookBlock.Attachment -> {
+                                    val copiedUri = NoteImageHelper.copyImageFile(context, block.uri) ?: block.uri
+                                    block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                }
+                                else -> block
+                            }
+                        }
+                        NotesnookBlockManager.serialize(clonedBlocks)
+                    } catch (_: Exception) {
+                        note.content
+                    }
+                } else {
+                    note.content
+                }
                 repository.saveNote(
                     note.copy(
                         id = 0,
                         title = if (note.title.isNotBlank()) "${note.title} (Copy)" else "",
+                        content = newContent,
                         checklistJson = checklistJson,
                         imageUrisJson = JSONArray(newImages).toString(),
                         audioUrisJson = JSONArray(newAudios).toString(),
@@ -376,6 +401,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 )
             }
+            triggerAutoSync()
         }
         clearSelection()
     }

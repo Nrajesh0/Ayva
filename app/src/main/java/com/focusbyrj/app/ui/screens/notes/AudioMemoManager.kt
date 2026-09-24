@@ -508,21 +508,23 @@ class AudioMemoManager(private val context: Context) {
 
         fun getAudioDurationMs(path: String): Long {
             var mmr: android.media.MediaMetadataRetriever? = null
+            var decryptedBytes: ByteArray? = null
             return try {
                 val file = File(path)
                 if (!file.exists()) return 0L
                 val retriever = android.media.MediaMetadataRetriever()
                 mmr = retriever
-                val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
-                if (decryptedBytes != null && com.focusbyrj.app.util.crypto.EncryptedMediaStorage.isEncrypted(file)) {
+                val bytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
+                decryptedBytes = bytes
+                if (bytes != null && com.focusbyrj.app.util.crypto.EncryptedMediaStorage.isEncrypted(file)) {
                     retriever.setDataSource(object : android.media.MediaDataSource() {
                         override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
-                            if (position >= decryptedBytes.size) return -1
-                            val length = minOf(size, (decryptedBytes.size - position).toInt())
-                            System.arraycopy(decryptedBytes, position.toInt(), buffer, offset, length)
+                            if (position >= bytes.size) return -1
+                            val length = minOf(size, (bytes.size - position).toInt())
+                            System.arraycopy(bytes, position.toInt(), buffer, offset, length)
                             return length
                         }
-                        override fun getSize(): Long = decryptedBytes.size.toLong()
+                        override fun getSize(): Long = bytes.size.toLong()
                         override fun close() {}
                     })
                 } else {
@@ -536,6 +538,9 @@ class AudioMemoManager(private val context: Context) {
                 try {
                     mmr?.release()
                 } catch (_: Throwable) {}
+                if (decryptedBytes != null) {
+                    java.util.Arrays.fill(decryptedBytes, 0.toByte())
+                }
             }
         }
 

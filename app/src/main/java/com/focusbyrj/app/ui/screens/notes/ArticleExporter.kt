@@ -304,6 +304,16 @@ object ArticleExporter {
             sb.append("<h1>").append(escapeHtml(title)).append("</h1>\n")
         }
 
+        val effectiveBlocks = if (blocks.isEmpty() && fallbackContent.contains(NotesnookBlockManager.BLOCKS_PREFIX)) {
+            try {
+                NotesnookBlockManager.parse(fallbackContent)
+            } catch (_: Exception) {
+                blocks
+            }
+        } else {
+            blocks
+        }
+
         if (isChecklist && checklistItems.isNotEmpty()) {
             sb.append("<ul class=\"checklist\">\n")
             checklistItems.forEach { item ->
@@ -314,12 +324,12 @@ object ArticleExporter {
                     .append(strikeStart).append(escapeHtml(item.text)).append(strikeEnd).append("</li>\n")
             }
             sb.append("</ul>\n")
-        } else if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
-            val text = if (blocks.isNotEmpty()) (blocks[0] as NotesnookBlock.Text).text else fallbackContent
-            val spans = if (blocks.isNotEmpty()) (blocks[0] as NotesnookBlock.Text).spans else emptyList()
+        } else if (effectiveBlocks.size <= 1 && (effectiveBlocks.isEmpty() || effectiveBlocks[0] is NotesnookBlock.Text)) {
+            val text = if (effectiveBlocks.isNotEmpty()) (effectiveBlocks[0] as NotesnookBlock.Text).text else fallbackContent
+            val spans = if (effectiveBlocks.isNotEmpty()) (effectiveBlocks[0] as NotesnookBlock.Text).spans else emptyList()
             sb.append(convertTextSpansToHtml(text, spans))
         } else {
-            blocks.forEach { block ->
+            effectiveBlocks.forEach { block ->
                 when (block) {
                     is NotesnookBlock.Text -> {
                         if (block.text.isNotBlank()) {
@@ -372,6 +382,17 @@ object ArticleExporter {
                         val bullet = if (block.isNumbered) "1. " else "• "
                         val margin = (block.level + 1) * 20
                         sb.append("<p style=\"margin-left: ").append(margin).append("px;\">").append(bullet).append(escapeHtml(block.text)).append("</p>\n")
+                    }
+                    is NotesnookBlock.Image -> {
+                        sb.append("<figure style=\"margin: 1.5em 0; text-align: center;\">\n")
+                        sb.append("  <img src=\"").append(sanitizeImageSrc(block.uri)).append("\" alt=\"")
+                            .append(escapeHtml(block.caption.ifBlank { "Image" }))
+                            .append("\" style=\"max-width: 100%; height: auto; border-radius: 8px;\" />\n")
+                        if (block.caption.isNotBlank()) {
+                            sb.append("  <figcaption style=\"font-size: 0.85em; color: #64748b; margin-top: 6px;\">")
+                                .append(escapeHtml(block.caption)).append("</figcaption>\n")
+                        }
+                        sb.append("</figure>\n")
                     }
                     else -> {}
                 }
@@ -482,8 +503,30 @@ object ArticleExporter {
         if (url.isNullOrBlank()) return "#"
         val trimmed = url.trim()
         val lower = trimmed.lowercase(Locale.ROOT)
-        if (lower.startsWith("javascript:") || lower.startsWith("vbscript:") || lower.startsWith("data:text/html")) {
+        val isSafeScheme = lower.startsWith("http://") ||
+                lower.startsWith("https://") ||
+                lower.startsWith("mailto:") ||
+                lower.startsWith("tel:") ||
+                trimmed.startsWith("#") ||
+                trimmed.startsWith("/") ||
+                trimmed.startsWith("./")
+        if (!isSafeScheme) {
             return "#"
+        }
+        return escapeHtml(trimmed)
+    }
+
+    private fun sanitizeImageSrc(url: String?): String {
+        if (url.isNullOrBlank()) return ""
+        val trimmed = url.trim()
+        val lower = trimmed.lowercase(Locale.ROOT)
+        if (lower.startsWith("javascript:") ||
+            lower.startsWith("vbscript:") ||
+            lower.startsWith("data:text/") ||
+            lower.startsWith("data:image/svg+xml") ||
+            lower.startsWith("blob:")
+        ) {
+            return ""
         }
         return escapeHtml(trimmed)
     }
@@ -549,8 +592,10 @@ object ArticleExporter {
                     if (title.isNotBlank()) append(title).append("\n\n")
                     if (isChecklist && checklistItems.isNotEmpty()) {
                         checklistItems.forEach { append(if (it.isChecked) "[x] " else "[ ] ").append(it.text).append("\n") }
+                    } else if (blocks.isNotEmpty()) {
+                        append(NotesnookBlockManager.toPlainText(blocks))
                     } else {
-                        append(fallbackContent)
+                        append(NotesnookBlockManager.toPlainText(fallbackContent))
                     }
                 }.trim()
                 text.toByteArray(StandardCharsets.UTF_8)
