@@ -800,7 +800,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     latestNotesCache[freshDecrypted.id] = freshDecrypted
                     withContext(Dispatchers.Main) {
                         val curr = _editingState.value
-                        if (curr != null && curr.originalId == freshDecrypted.id) {
+                        // BATCH-6-021 FIX: Only refresh from DB if the user has NOT yet made
+                        // any edits. If the user started typing in the narrow window between
+                        // openExistingNote() and the completion of this IO fetch, their edits
+                        // would be silently overwritten. Guard with isNoteModified() check.
+                        val userHasEdited = isNoteModified(curr ?: return@withContext, initialSnapshot)
+                        if (curr.originalId == freshDecrypted.id && !userHasEdited) {
                             val freshState = curr.copy(
                                 title = freshDecrypted.title,
                                 content = freshDecrypted.content,
@@ -896,6 +901,20 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         }
                     }
+                }
+
+                // BATCH-6-020 FIX: Reject attachments exceeding 50 MB before any heap allocation.
+                // readBytes() with no limit causes OOM on low-memory devices.
+                val maxAttachmentBytes = 50L * 1024 * 1024
+                if (sizeBytes > maxAttachmentBytes) {
+                    kotlinx.coroutines.withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "Attachment too large. Maximum file size is 50 MB.",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    return@launch
                 }
 
                 val imagesDir = java.io.File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
