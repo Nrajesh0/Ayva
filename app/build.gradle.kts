@@ -53,7 +53,7 @@ android {
     debug {
       signingConfig = signingConfigs.getByName("debug")
       ndk {
-        abiFilters += listOf("arm64-v8a")
+        abiFilters += listOf("arm64-v8a", "x86_64")
       }
     }
   }
