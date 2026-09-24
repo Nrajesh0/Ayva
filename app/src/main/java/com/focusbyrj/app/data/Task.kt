@@ -59,11 +59,18 @@ data class Subtask(
                 val list = mutableListOf<Subtask>()
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
+                    val title = if (obj.has("title")) obj.optString("title", "") else obj.optString("text", "")
+                    val isDone = when {
+                        obj.has("isDone") -> obj.optBoolean("isDone", false)
+                        obj.has("isCompleted") -> obj.optBoolean("isCompleted", false)
+                        obj.has("isChecked") -> obj.optBoolean("isChecked", false)
+                        else -> false
+                    }
                     list.add(
                         Subtask(
                             id = obj.optString("id", java.util.UUID.randomUUID().toString()),
-                            title = obj.optString("title", ""),
-                            isDone = obj.optBoolean("isDone", false)
+                            title = title,
+                            isDone = isDone
                         )
                     )
                 }

@@ -213,6 +213,7 @@ fun KeepNoteEditor(
     onRemoveChecklistItem: (Int) -> Unit,
     onMoveChecklistItem: (Int, Int) -> Unit,
     onAddImageUri: (Uri) -> Unit,
+    onAddAttachmentUri: (Uri) -> Unit = {},
     onAddDrawing: (Bitmap) -> Unit,
     onRemoveImage: (String) -> Unit,
     onAddLabel: (String) -> Unit,
@@ -453,7 +454,12 @@ fun KeepNoteEditor(
         contract = ActivityResultContracts.GetMultipleContents(),
         onResult = { uris ->
             uris.forEach { uri ->
-                onAddImageUri(uri)
+                val mimeType = context.contentResolver.getType(uri)
+                if (mimeType?.startsWith("image/") == true) {
+                    onAddImageUri(uri)
+                } else {
+                    onAddAttachmentUri(uri)
+                }
             }
         }
     )

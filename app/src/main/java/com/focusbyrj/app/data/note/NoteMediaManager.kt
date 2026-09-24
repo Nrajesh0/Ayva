@@ -30,10 +30,52 @@ object NoteMediaManager {
     private const val TAG = "NoteMediaManager"
 
     /**
+     * Verifies that the target file resides within legitimate media storage directories
+     * (keep_images, keep_audio, or cache) and is not traversing into sensitive database or preference folders.
+     */
+    fun isAllowedMediaFile(file: File, context: Context? = null): Boolean {
+        return try {
+            val canonical = file.canonicalFile
+            val parent = canonical.parentFile ?: return false
+            val parentName = parent.name
+
+            // Strict blacklist against databases, shared_prefs, or system files
+            val path = canonical.absolutePath
+            if (path.contains("/databases") || path.contains("\\databases") ||
+                path.contains("/shared_prefs") || path.contains("\\shared_prefs") ||
+                path.endsWith(".db") || path.endsWith(".db-wal") || path.endsWith(".db-shm") ||
+                path.endsWith(".xml")) {
+                return false
+            }
+
+            // Must reside in keep_images, keep_audio, or a cache directory
+            if (parentName != "keep_images" && parentName != "keep_audio" && !canonical.path.contains("cache")) {
+                return false
+            }
+
+            if (context != null) {
+                val filesDir = context.filesDir.canonicalPath
+                val cacheDir = context.cacheDir.canonicalPath
+                if (!path.startsWith(filesDir) && !path.startsWith(cacheDir)) {
+                    return false
+                }
+            }
+
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
      * Forensically overwrites file with zeros before deleting to ensure privacy and security.
      */
-    fun secureDeleteMediaFile(file: File) {
+    fun secureDeleteMediaFile(file: File, context: Context? = null) {
         if (!file.exists() || !file.isFile) return
+        if (!isAllowedMediaFile(file, context)) {
+            Log.w(TAG, "Refusing to delete unverified or restricted media path: ${file.path}")
+            return
+        }
         try {
             val length = file.length()
             if (length > 0) {
@@ -58,15 +100,16 @@ object NoteMediaManager {
     /**
      * Deletes media by file path with secure wipe.
      */
-    fun secureDeleteMediaFile(path: String) {
+    fun secureDeleteMediaFile(path: String, context: Context? = null) {
         try {
             val file = File(path)
-            secureDeleteMediaFile(file)
+            secureDeleteMediaFile(file, context)
         } catch (_: Exception) {}
     }
 
     /**
-     * Securely deletes all media files attached to a note.
+     * Securely deletes all media files attached to a note, including header images, voice memos,
+     * and embedded Notesnook block images/attachments.
      */
     fun deleteNoteMediaFiles(note: NoteEntity) {
         try {
@@ -75,6 +118,22 @@ object NoteMediaManager {
             }
             note.getAudioUris().forEach { path ->
                 secureDeleteMediaFile(path)
+            }
+            if (note.content.contains(com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.BLOCKS_PREFIX)) {
+                try {
+                    val blocks = com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.parse(note.content)
+                    for (b in blocks) {
+                        when (b) {
+                            is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Image -> {
+                                if (b.uri.isNotBlank()) secureDeleteMediaFile(b.uri)
+                            }
+                            is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Attachment -> {
+                                if (b.uri.isNotBlank()) secureDeleteMediaFile(b.uri)
+                            }
+                            else -> {}
+                        }
+                    }
+                } catch (_: Exception) {}
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting note media files for note ${note.id}", e)
@@ -113,6 +172,27 @@ object NoteMediaManager {
                 }
                 note.getImageUris().forEach { validImagePaths.add(it) }
                 note.getAudioUris().forEach { validAudioPaths.add(it) }
+
+                // Collect media referenced inside embedded Notesnook blocks
+                if (note.content.contains(com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.BLOCKS_PREFIX)) {
+                    try {
+                        val blocks = com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.parse(note.content)
+                        for (b in blocks) {
+                            when (b) {
+                                is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Image -> {
+                                    if (b.uri.isNotBlank()) validImagePaths.add(b.uri)
+                                }
+                                is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Attachment -> {
+                                    if (b.uri.isNotBlank()) {
+                                        validImagePaths.add(b.uri)
+                                        validAudioPaths.add(b.uri)
+                                    }
+                                }
+                                else -> {}
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
             }
 
             // Clean orphaned images
@@ -125,7 +205,7 @@ object NoteMediaManager {
                         if (ageMs > 300_000L) {
                             Log.i(TAG, "Removing orphaned image: ${file.name}")
                             com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, file.absolutePath)
-                            secureDeleteMediaFile(file)
+                            secureDeleteMediaFile(file, context)
                         }
                     }
                 }
@@ -140,7 +220,7 @@ object NoteMediaManager {
                         if (ageMs > 300_000L) {
                             Log.i(TAG, "Removing orphaned audio: ${file.name}")
                             com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(context, file.absolutePath)
-                            secureDeleteMediaFile(file)
+                            secureDeleteMediaFile(file, context)
                         }
                     }
                 }

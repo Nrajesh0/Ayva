@@ -352,12 +352,17 @@ class AudioMemoManager(private val context: Context) {
 
         stopPlayback()
 
+        var player: MediaPlayer? = null
         try {
             val file = File(audioPath)
             if (!file.exists()) return
 
             val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
-            val player = MediaPlayer().apply {
+            val newPlayer = MediaPlayer().apply {
+                setOnErrorListener { _, _, _ ->
+                    stopPlayback()
+                    true
+                }
                 if (decryptedBytes != null && com.focusbyrj.app.util.crypto.EncryptedMediaStorage.isEncrypted(file)) {
                     setDataSource(object : android.media.MediaDataSource() {
                         override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
@@ -389,18 +394,21 @@ class AudioMemoManager(private val context: Context) {
                 }
                 start()
             }
-            mediaPlayer = player
+            player = newPlayer
+            mediaPlayer = newPlayer
 
             _playbackState.value = _playbackState.value.copy(
                 currentPath = audioPath,
                 isPlaying = true,
                 currentPositionMs = 0,
-                durationMs = player.duration
+                durationMs = newPlayer.duration
             )
 
             startPlaybackTracking()
         } catch (e: Exception) {
-            e.printStackTrace()
+            try {
+                player?.release()
+            } catch (_: Throwable) {}
             stopPlayback()
         }
     }
@@ -499,12 +507,15 @@ class AudioMemoManager(private val context: Context) {
         }
 
         fun getAudioDurationMs(path: String): Long {
+            var mmr: android.media.MediaMetadataRetriever? = null
             return try {
                 val file = File(path)
-                val mmr = android.media.MediaMetadataRetriever()
+                if (!file.exists()) return 0L
+                val retriever = android.media.MediaMetadataRetriever()
+                mmr = retriever
                 val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
                 if (decryptedBytes != null && com.focusbyrj.app.util.crypto.EncryptedMediaStorage.isEncrypted(file)) {
-                    mmr.setDataSource(object : android.media.MediaDataSource() {
+                    retriever.setDataSource(object : android.media.MediaDataSource() {
                         override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
                             if (position >= decryptedBytes.size) return -1
                             val length = minOf(size, (decryptedBytes.size - position).toInt())
@@ -515,13 +526,16 @@ class AudioMemoManager(private val context: Context) {
                         override fun close() {}
                     })
                 } else {
-                    mmr.setDataSource(path)
+                    retriever.setDataSource(path)
                 }
-                val durationStr = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                mmr.release()
+                val durationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                 durationStr?.toLongOrNull() ?: 0L
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 0L
+            } finally {
+                try {
+                    mmr?.release()
+                } catch (_: Throwable) {}
             }
         }
 
@@ -534,6 +548,7 @@ class AudioMemoManager(private val context: Context) {
                 val dest = File(audioDir, "audio_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext")
                 val rawBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(src) ?: src.readBytes()
                 com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(dest, rawBytes)
+                java.util.Arrays.fill(rawBytes, 0.toByte())
                 dest.absolutePath
             } catch (e: Exception) {
                 e.printStackTrace()

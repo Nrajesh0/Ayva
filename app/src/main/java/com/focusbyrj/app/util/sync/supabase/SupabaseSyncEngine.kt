@@ -248,7 +248,19 @@ object SupabaseSyncEngine {
 
         // B2-P3-009: Use getExistingSyncId() to avoid creating a new UUID for never-synced items.
         // If the item has never been pushed to the cloud, there is nothing on the server to tombstone.
-        val syncId = getExistingSyncId(context, userId, type, localId) ?: return
+        val syncId = getExistingSyncId(context, userId, type, localId)
+            ?: run {
+                val prefs = context.getSharedPreferences(SYNC_MAP_PREFS, Context.MODE_PRIVATE)
+                val direct = prefs.getString("$userId:$type:$localId", null)
+                if (!direct.isNullOrBlank()) direct else {
+                    val legacyScoped = UUID.nameUUIDFromBytes("$userId:$type:$localId".toByteArray(Charsets.UTF_8)).toString()
+                    val legacyUnscoped = UUID.nameUUIDFromBytes("$type:$localId".toByteArray(Charsets.UTF_8)).toString()
+                    if (prefs.contains("$userId:$type:rev:$legacyScoped")) legacyScoped
+                    else if (prefs.contains("$userId:$type:rev:$legacyUnscoped")) legacyUnscoped
+                    else null
+                }
+            }
+            ?: return
 
         val prefs = context.getSharedPreferences(DELETIONS_PREFS, Context.MODE_PRIVATE)
         val currentDeletions = prefs.getStringSet("pending_deletions", mutableSetOf()) ?: mutableSetOf()
@@ -373,8 +385,80 @@ object SupabaseSyncEngine {
                 }
             }
 
+            // ── PHASE 1.5: PUSH LOCAL DELETIONS (Tombstones) ──────────────────
+            // Must execute BEFORE cloud-to-local pull sync to guarantee that items deleted
+            // locally on this device are committed as tombstones in the cloud and never
+            // resurrected/re-inserted during the pull phase.
+            val deletionPrefs = context.getSharedPreferences(DELETIONS_PREFS, Context.MODE_PRIVATE)
+            val pendingDeletions = deletionPrefs.getStringSet("pending_deletions", emptySet()) ?: emptySet()
+            val pendingDeletionSyncIds = pendingDeletions.mapNotNull { record ->
+                val parts = record.split(":", limit = 2)
+                if (parts.size >= 2) parts[1] else null
+            }.toSet()
+            val successfullySyncedDeletions = mutableSetOf<String>()
+
+            val deleteToken = SupabaseAuthManager.getValidAccessToken(context) ?: token
+            pendingDeletions.forEach { record ->
+                val parts = record.split(":", limit = 2)
+                if (parts.size >= 2) {
+                    val type = parts[0]
+                    val syncId = parts[1]
+                    val seqNum = SupabaseKeyManager.nextSequenceNumber(context, syncId)
+                    // Tombstone signature uses empty ciphertext sentinel
+                    val tombstoneSig = if (hmacKey != null) {
+                        SupabaseKeyManager.generateSignature(
+                            itemId = syncId,
+                            clientSeqNum = seqNum,
+                            isDeleted = true,
+                            ciphertext = "",
+                            hmacKey = hmacKey
+                        )
+                    } else ""
+
+                    val success = uploadCloudItem(
+                        context = context,
+                        endpoint = activeEndpoint,
+                        typeColumn = activeTypeColumn,
+                        accessToken = deleteToken,
+                        userId = userId,
+                        id = syncId,
+                        type = "OPAQUE",
+                        iv = "",
+                        salt = "",
+                        ciphertext = "",
+                        wrappedKey = "",
+                        signature = tombstoneSig,
+                        clientSeqNum = seqNum,
+                        updatedAt = System.currentTimeMillis(),
+                        isDeleted = true
+                    )
+                    if (success) {
+                        successfullySyncedDeletions.add(record)
+                        val mappedLocalId = getLocalIdForSyncId(context, userId, type, syncId)
+                        unbindSyncId(context, userId, type, mappedLocalId, syncId)
+                        if (mappedLocalId != null && type == "TASK") {
+                            val taskTsPrefs = context.getSharedPreferences(TASK_TIMESTAMPS_PREFS, Context.MODE_PRIVATE)
+                            taskTsPrefs.edit().remove("fp_$mappedLocalId").remove("ts_$mappedLocalId").apply()
+                        }
+                        uploaded++
+                    }
+                }
+            }
+
+            if (successfullySyncedDeletions.isNotEmpty()) {
+                val currentDeletions = deletionPrefs.getStringSet("pending_deletions", emptySet())?.toMutableSet() ?: mutableSetOf()
+                currentDeletions.removeAll(successfullySyncedDeletions)
+                deletionPrefs.edit().putStringSet("pending_deletions", currentDeletions).commit()
+            }
+
             // 2. Process Cloud-to-Local (PULL SYNC)
             cloudItems.forEach { cloudItem ->
+                // Skip items that have a pending or just-completed local deletion on this device
+                if (cloudItem.id in pendingDeletionSyncIds || pendingDeletions.any { it.endsWith(":${cloudItem.id}") }) {
+                    Log.d(TAG, "Skipping cloud item ${cloudItem.id} because it was deleted locally on this device.")
+                    return@forEach
+                }
+
                 // Check sequence number monotonicity: reject stale or replayed items
                 val storedSeqNum = SupabaseKeyManager.getSequenceNumber(context, cloudItem.id)
                 if (cloudItem.clientSeqNum > 0L && cloudItem.clientSeqNum < storedSeqNum) {
@@ -1021,65 +1105,64 @@ object SupabaseSyncEngine {
                 }
             }
 
-            // 4. Push local deletions (Tombstones)
-            val deletionPrefs = context.getSharedPreferences(DELETIONS_PREFS, Context.MODE_PRIVATE)
-            val pendingDeletions = deletionPrefs.getStringSet("pending_deletions", emptySet()) ?: emptySet()
-            val successfullySyncedDeletions = mutableSetOf<String>()
+            // 4. Sweep any concurrent local deletions added while sync was in flight
+            val remainingDeletions = deletionPrefs.getStringSet("pending_deletions", emptySet()) ?: emptySet()
+            if (remainingDeletions.isNotEmpty()) {
+                val sweptDeletions = mutableSetOf<String>()
+                remainingDeletions.forEach { record ->
+                    val parts = record.split(":", limit = 2)
+                    if (parts.size >= 2) {
+                        val type = parts[0]
+                        val syncId = parts[1]
+                        val seqNum = SupabaseKeyManager.nextSequenceNumber(context, syncId)
+                        // Tombstone signature uses empty ciphertext sentinel
+                        val tombstoneSig = if (hmacKey != null) {
+                            SupabaseKeyManager.generateSignature(
+                                itemId = syncId,
+                                clientSeqNum = seqNum,
+                                isDeleted = true,
+                                ciphertext = "",
+                                hmacKey = hmacKey
+                            )
+                        } else ""
 
-            pendingDeletions.forEach { record ->
-                val parts = record.split(":", limit = 2)
-                if (parts.size >= 2) {
-                    val type = parts[0]
-                    val syncId = parts[1]
-                    val seqNum = SupabaseKeyManager.nextSequenceNumber(context, syncId)
-                    // Tombstone signature uses empty ciphertext sentinel
-                    val tombstoneSig = if (hmacKey != null) {
-                        SupabaseKeyManager.generateSignature(
-                            itemId = syncId,
-                            clientSeqNum = seqNum,
-                            isDeleted = true,
+                        val success = uploadCloudItem(
+                            context = context,
+                            endpoint = activeEndpoint,
+                            typeColumn = activeTypeColumn,
+                            accessToken = currentToken,
+                            userId = userId,
+                            id = syncId,
+                            type = "OPAQUE",
+                            iv = "",
+                            salt = "",
                             ciphertext = "",
-                            hmacKey = hmacKey
+                            wrappedKey = "",
+                            signature = tombstoneSig,
+                            clientSeqNum = seqNum,
+                            updatedAt = System.currentTimeMillis(),
+                            isDeleted = true
                         )
-                    } else ""
-
-                    val success = uploadCloudItem(
-                        context = context,
-                        endpoint = activeEndpoint,
-                        typeColumn = activeTypeColumn,
-                        accessToken = currentToken,
-                        userId = userId,
-                        id = syncId,
-                        type = "OPAQUE",
-                        iv = "",
-                        salt = "",
-                        ciphertext = "",
-                        wrappedKey = "",
-                        signature = tombstoneSig,
-                        clientSeqNum = seqNum,
-                        updatedAt = System.currentTimeMillis(),
-                        isDeleted = true
-                    )
-                    if (success) {
-                        successfullySyncedDeletions.add(record)
-                        val mappedLocalId = getLocalIdForSyncId(context, userId, type, syncId)
-                        unbindSyncId(context, userId, type, mappedLocalId, syncId)
-                        if (mappedLocalId != null && type == "TASK") {
-                            val taskTsPrefs = context.getSharedPreferences(TASK_TIMESTAMPS_PREFS, Context.MODE_PRIVATE)
-                            taskTsPrefs.edit().remove("fp_$mappedLocalId").remove("ts_$mappedLocalId").apply()
+                        if (success) {
+                            sweptDeletions.add(record)
+                            val mappedLocalId = getLocalIdForSyncId(context, userId, type, syncId)
+                            unbindSyncId(context, userId, type, mappedLocalId, syncId)
+                            if (mappedLocalId != null && type == "TASK") {
+                                val taskTsPrefs = context.getSharedPreferences(TASK_TIMESTAMPS_PREFS, Context.MODE_PRIVATE)
+                                taskTsPrefs.edit().remove("fp_$mappedLocalId").remove("ts_$mappedLocalId").apply()
+                            }
+                            uploaded++
                         }
-                        uploaded++
                     }
                 }
-            }
 
-            if (successfullySyncedDeletions.isNotEmpty()) {
-                // B2-P3-012 FIX: Re-read the current set before writing back to pick up any
-                // new deletion entries added concurrently by the UI thread during this sync cycle.
-                // This prevents a read-modify-write race that would silently drop concurrent additions.
-                val currentDeletions = deletionPrefs.getStringSet("pending_deletions", emptySet())?.toMutableSet() ?: mutableSetOf()
-                currentDeletions.removeAll(successfullySyncedDeletions)
-                deletionPrefs.edit().putStringSet("pending_deletions", currentDeletions).commit()
+                if (sweptDeletions.isNotEmpty()) {
+                    // B2-P3-012 FIX: Re-read the current set before writing back to pick up any
+                    // new deletion entries added concurrently by the UI thread during this sync cycle.
+                    val currentDeletions = deletionPrefs.getStringSet("pending_deletions", emptySet())?.toMutableSet() ?: mutableSetOf()
+                    currentDeletions.removeAll(sweptDeletions)
+                    deletionPrefs.edit().putStringSet("pending_deletions", currentDeletions).commit()
+                }
             }
 
             // 4.1 Process Pending Media Deletions (Photos & Audio Memos in Supabase Storage)

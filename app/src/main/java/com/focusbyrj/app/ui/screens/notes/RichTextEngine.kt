@@ -86,7 +86,7 @@ object RichTextEngine {
     fun parse(raw: String): Pair<String, List<RichSpan>> {
         if (raw.isEmpty()) return Pair("", emptyList())
 
-        if (raw.contains(NotesnookBlockManager.BLOCKS_PREFIX)) {
+        if (raw.contains(NotesnookBlockManager.BLOCKS_PREFIX) && raw.contains(NotesnookBlockManager.BLOCKS_SUFFIX)) {
             val blocks = NotesnookBlockManager.parse(raw)
             val sb = StringBuilder()
             val spans = mutableListOf<RichSpan>()
@@ -185,117 +185,7 @@ object RichTextEngine {
             }
 
             // Inline markdown & HTML parsing for this line
-            var i = 0
-            while (i < processedLine.length) {
-                if (processedLine.startsWith("<sub>", i, ignoreCase = true)) {
-                    val closeIdx = processedLine.indexOf("</sub>", i + 5, ignoreCase = true)
-                    if (closeIdx != -1) {
-                        val inner = processedLine.substring(i + 5, closeIdx)
-                        val spanStart = sb.length
-                        sb.append(inner)
-                        val spanEnd = sb.length
-                        if (spanEnd > spanStart) {
-                            spans.add(RichSpan(RichSpanType.SUBSCRIPT, spanStart, spanEnd))
-                        }
-                        i = closeIdx + 6
-                        continue
-                    }
-                } else if (processedLine.startsWith("<sup>", i, ignoreCase = true)) {
-                    val closeIdx = processedLine.indexOf("</sup>", i + 5, ignoreCase = true)
-                    if (closeIdx != -1) {
-                        val inner = processedLine.substring(i + 5, closeIdx)
-                        val spanStart = sb.length
-                        sb.append(inner)
-                        val spanEnd = sb.length
-                        if (spanEnd > spanStart) {
-                            spans.add(RichSpan(RichSpanType.SUPERSCRIPT, spanStart, spanEnd))
-                        }
-                        i = closeIdx + 6
-                        continue
-                    }
-                } else if (processedLine.startsWith("**", i)) {
-                    val closeIdx = processedLine.indexOf("**", i + 2)
-                    if (closeIdx != -1) {
-                        val inner = processedLine.substring(i + 2, closeIdx)
-                        val spanStart = sb.length
-                        sb.append(inner)
-                        val spanEnd = sb.length
-                        if (spanEnd > spanStart) {
-                            spans.add(RichSpan(RichSpanType.BOLD, spanStart, spanEnd))
-                        }
-                        i = closeIdx + 2
-                        continue
-                    }
-                } else if (processedLine.startsWith("~~", i)) {
-                    val closeIdx = processedLine.indexOf("~~", i + 2)
-                    if (closeIdx != -1) {
-                        val inner = processedLine.substring(i + 2, closeIdx)
-                        val spanStart = sb.length
-                        sb.append(inner)
-                        val spanEnd = sb.length
-                        if (spanEnd > spanStart) {
-                            spans.add(RichSpan(RichSpanType.STRIKETHROUGH, spanStart, spanEnd))
-                        }
-                        i = closeIdx + 2
-                        continue
-                    }
-                } else if (processedLine.startsWith("==", i)) {
-                    val closeIdx = processedLine.indexOf("==", i + 2)
-                    if (closeIdx != -1) {
-                        val inner = processedLine.substring(i + 2, closeIdx)
-                        val spanStart = sb.length
-                        sb.append(inner)
-                        val spanEnd = sb.length
-                        if (spanEnd > spanStart) {
-                            spans.add(RichSpan(RichSpanType.HIGHLIGHT, spanStart, spanEnd))
-                        }
-                        i = closeIdx + 2
-                        continue
-                    }
-                } else if (processedLine.startsWith("<u>", i, ignoreCase = true)) {
-                    val closeIdx = processedLine.indexOf("</u>", i + 3, ignoreCase = true)
-                    if (closeIdx != -1) {
-                        val inner = processedLine.substring(i + 3, closeIdx)
-                        val spanStart = sb.length
-                        sb.append(inner)
-                        val spanEnd = sb.length
-                        if (spanEnd > spanStart) {
-                            spans.add(RichSpan(RichSpanType.UNDERLINE, spanStart, spanEnd))
-                        }
-                        i = closeIdx + 4
-                        continue
-                    }
-                } else if (processedLine.startsWith("*", i) && !processedLine.startsWith("**", i)) {
-                    val closeIdx = processedLine.indexOf("*", i + 1)
-                    if (closeIdx != -1 && closeIdx > i + 1) {
-                        val inner = processedLine.substring(i + 1, closeIdx)
-                        val spanStart = sb.length
-                        sb.append(inner)
-                        val spanEnd = sb.length
-                        if (spanEnd > spanStart) {
-                            spans.add(RichSpan(RichSpanType.ITALIC, spanStart, spanEnd))
-                        }
-                        i = closeIdx + 1
-                        continue
-                    }
-                } else if (processedLine.startsWith("`", i) && !processedLine.startsWith("```", i)) {
-                    val closeIdx = processedLine.indexOf("`", i + 1)
-                    if (closeIdx != -1 && closeIdx > i + 1) {
-                        val inner = processedLine.substring(i + 1, closeIdx)
-                        val spanStart = sb.length
-                        sb.append(inner)
-                        val spanEnd = sb.length
-                        if (spanEnd > spanStart) {
-                            spans.add(RichSpan(RichSpanType.CODE, spanStart, spanEnd))
-                        }
-                        i = closeIdx + 1
-                        continue
-                    }
-                }
-
-                sb.append(processedLine[i])
-                i++
-            }
+            parseInline(processedLine, sb, spans)
 
             val lineEndInText = sb.length
             if (headingType != null && lineEndInText > lineStartInText) {
@@ -304,6 +194,141 @@ object RichTextEngine {
         }
 
         return Pair(sb.toString(), spans)
+    }
+
+    private fun parseInline(
+        line: String,
+        sb: StringBuilder,
+        spans: MutableList<RichSpan>
+    ) {
+        var i = 0
+        while (i < line.length) {
+            if (line.startsWith("<sub>", i, ignoreCase = true)) {
+                val closeIdx = line.indexOf("</sub>", i + 5, ignoreCase = true)
+                if (closeIdx != -1) {
+                    val inner = line.substring(i + 5, closeIdx)
+                    val spanStart = sb.length
+                    parseInline(inner, sb, spans)
+                    val spanEnd = sb.length
+                    if (spanEnd > spanStart) {
+                        spans.add(RichSpan(RichSpanType.SUBSCRIPT, spanStart, spanEnd))
+                    }
+                    i = closeIdx + 6
+                    continue
+                }
+            } else if (line.startsWith("<sup>", i, ignoreCase = true)) {
+                val closeIdx = line.indexOf("</sup>", i + 5, ignoreCase = true)
+                if (closeIdx != -1) {
+                    val inner = line.substring(i + 5, closeIdx)
+                    val spanStart = sb.length
+                    parseInline(inner, sb, spans)
+                    val spanEnd = sb.length
+                    if (spanEnd > spanStart) {
+                        spans.add(RichSpan(RichSpanType.SUPERSCRIPT, spanStart, spanEnd))
+                    }
+                    i = closeIdx + 6
+                    continue
+                }
+            } else if (line.startsWith("**", i)) {
+                val closeIdx = line.indexOf("**", i + 2)
+                if (closeIdx != -1) {
+                    val inner = line.substring(i + 2, closeIdx)
+                    val spanStart = sb.length
+                    parseInline(inner, sb, spans)
+                    val spanEnd = sb.length
+                    if (spanEnd > spanStart) {
+                        spans.add(RichSpan(RichSpanType.BOLD, spanStart, spanEnd))
+                    }
+                    i = closeIdx + 2
+                    continue
+                }
+            } else if (line.startsWith("~~", i)) {
+                val closeIdx = line.indexOf("~~", i + 2)
+                if (closeIdx != -1) {
+                    val inner = line.substring(i + 2, closeIdx)
+                    val spanStart = sb.length
+                    parseInline(inner, sb, spans)
+                    val spanEnd = sb.length
+                    if (spanEnd > spanStart) {
+                        spans.add(RichSpan(RichSpanType.STRIKETHROUGH, spanStart, spanEnd))
+                    }
+                    i = closeIdx + 2
+                    continue
+                }
+            } else if (line.startsWith("==", i)) {
+                val closeIdx = line.indexOf("==", i + 2)
+                if (closeIdx != -1) {
+                    val inner = line.substring(i + 2, closeIdx)
+                    val spanStart = sb.length
+                    parseInline(inner, sb, spans)
+                    val spanEnd = sb.length
+                    if (spanEnd > spanStart) {
+                        spans.add(RichSpan(RichSpanType.HIGHLIGHT, spanStart, spanEnd))
+                    }
+                    i = closeIdx + 2
+                    continue
+                }
+            } else if (line.startsWith("<u>", i, ignoreCase = true)) {
+                val closeIdx = line.indexOf("</u>", i + 3, ignoreCase = true)
+                if (closeIdx != -1) {
+                    val inner = line.substring(i + 3, closeIdx)
+                    val spanStart = sb.length
+                    parseInline(inner, sb, spans)
+                    val spanEnd = sb.length
+                    if (spanEnd > spanStart) {
+                        spans.add(RichSpan(RichSpanType.UNDERLINE, spanStart, spanEnd))
+                    }
+                    i = closeIdx + 4
+                    continue
+                }
+            } else if (line.startsWith("*", i) && !line.startsWith("**", i)) {
+                val closeIdx = line.indexOf("*", i + 1)
+                if (closeIdx != -1 && closeIdx > i + 1) {
+                    val inner = line.substring(i + 1, closeIdx)
+                    val spanStart = sb.length
+                    parseInline(inner, sb, spans)
+                    val spanEnd = sb.length
+                    if (spanEnd > spanStart) {
+                        spans.add(RichSpan(RichSpanType.ITALIC, spanStart, spanEnd))
+                    }
+                    i = closeIdx + 1
+                    continue
+                }
+            } else if (line.startsWith("`", i) && !line.startsWith("```", i)) {
+                val closeIdx = line.indexOf("`", i + 1)
+                if (closeIdx != -1 && closeIdx > i + 1) {
+                    val inner = line.substring(i + 1, closeIdx)
+                    val spanStart = sb.length
+                    sb.append(inner)
+                    val spanEnd = sb.length
+                    if (spanEnd > spanStart) {
+                        spans.add(RichSpan(RichSpanType.CODE, spanStart, spanEnd))
+                    }
+                    i = closeIdx + 1
+                    continue
+                }
+            } else if (line.startsWith("[", i)) {
+                val closeBracket = line.indexOf(']', i + 1)
+                if (closeBracket != -1 && closeBracket + 1 < line.length && line[closeBracket + 1] == '(') {
+                    val closeParen = line.indexOf(')', closeBracket + 2)
+                    if (closeParen != -1) {
+                        val innerText = line.substring(i + 1, closeBracket)
+                        val url = line.substring(closeBracket + 2, closeParen)
+                        val spanStart = sb.length
+                        parseInline(innerText, sb, spans)
+                        val spanEnd = sb.length
+                        if (spanEnd > spanStart) {
+                            spans.add(RichSpan(RichSpanType.LINK, spanStart, spanEnd, payload = url))
+                        }
+                        i = closeParen + 1
+                        continue
+                    }
+                }
+            }
+
+            sb.append(line[i])
+            i++
+        }
     }
 
     /**
@@ -352,39 +377,41 @@ object RichTextEngine {
             // Inline characters
             for (charIdx in line.indices) {
                 val absIdx = lineStart + charIdx
-                // Check opens
-                for (span in validSpans) {
-                    if (span.start == absIdx) {
-                        when (span.type) {
-                            RichSpanType.BOLD -> sb.append("**")
-                            RichSpanType.ITALIC -> sb.append("*")
-                            RichSpanType.UNDERLINE -> sb.append("<u>")
-                            RichSpanType.STRIKETHROUGH -> sb.append("~~")
-                            RichSpanType.HIGHLIGHT -> sb.append("==")
-                            RichSpanType.CODE -> sb.append("`")
-                            RichSpanType.SUBSCRIPT -> sb.append("<sub>")
-                            RichSpanType.SUPERSCRIPT -> sb.append("<sup>")
-                            else -> {}
-                        }
+                // Check opens - outer spans first, then by type ordinal
+                val openingSpans = validSpans.filter { it.start == absIdx }
+                    .sortedWith(compareBy({ -it.end }, { it.type.ordinal }))
+                for (span in openingSpans) {
+                    when (span.type) {
+                        RichSpanType.BOLD -> sb.append("**")
+                        RichSpanType.ITALIC -> sb.append("*")
+                        RichSpanType.UNDERLINE -> sb.append("<u>")
+                        RichSpanType.STRIKETHROUGH -> sb.append("~~")
+                        RichSpanType.HIGHLIGHT -> sb.append("==")
+                        RichSpanType.CODE -> sb.append("`")
+                        RichSpanType.SUBSCRIPT -> sb.append("<sub>")
+                        RichSpanType.SUPERSCRIPT -> sb.append("<sup>")
+                        RichSpanType.LINK -> sb.append("[")
+                        else -> {}
                     }
                 }
 
                 sb.append(line[charIdx])
 
-                // Check closes
-                for (span in validSpans) {
-                    if (span.end == absIdx + 1) {
-                        when (span.type) {
-                            RichSpanType.BOLD -> sb.append("**")
-                            RichSpanType.ITALIC -> sb.append("*")
-                            RichSpanType.UNDERLINE -> sb.append("</u>")
-                            RichSpanType.STRIKETHROUGH -> sb.append("~~")
-                            RichSpanType.HIGHLIGHT -> sb.append("==")
-                            RichSpanType.CODE -> sb.append("`")
-                            RichSpanType.SUBSCRIPT -> sb.append("</sub>")
-                            RichSpanType.SUPERSCRIPT -> sb.append("</sup>")
-                            else -> {}
-                        }
+                // Check closes - LIFO order (innermost first)
+                val closingSpans = validSpans.filter { it.end == absIdx + 1 }
+                    .sortedWith(compareBy({ -it.start }, { -it.type.ordinal }))
+                for (span in closingSpans) {
+                    when (span.type) {
+                        RichSpanType.BOLD -> sb.append("**")
+                        RichSpanType.ITALIC -> sb.append("*")
+                        RichSpanType.UNDERLINE -> sb.append("</u>")
+                        RichSpanType.STRIKETHROUGH -> sb.append("~~")
+                        RichSpanType.HIGHLIGHT -> sb.append("==")
+                        RichSpanType.CODE -> sb.append("`")
+                        RichSpanType.SUBSCRIPT -> sb.append("</sub>")
+                        RichSpanType.SUPERSCRIPT -> sb.append("</sup>")
+                        RichSpanType.LINK -> sb.append("](${span.payload ?: ""})")
+                        else -> {}
                     }
                 }
             }
@@ -556,23 +583,53 @@ object RichTextEngine {
             startChange++
         }
 
+        var oldEnd = oldText.length
+        var newEnd = newText.length
+        while (oldEnd > startChange && newEnd > startChange && oldText[oldEnd - 1] == newText[newEnd - 1]) {
+            oldEnd--
+            newEnd--
+        }
+
         val updated = mutableListOf<RichSpan>()
         val textLength = newText.length
 
         for (span in spans) {
             if (span.end <= startChange) {
+                // Completely before replaced region
                 if (span.end <= textLength) updated.add(span)
-            } else if (span.start >= startChange + max(0, -delta)) {
+            } else if (span.start >= oldEnd) {
+                // Completely after replaced region
                 val newStart = (span.start + delta).coerceIn(0, textLength)
                 val newEnd = (span.end + delta).coerceIn(0, textLength)
                 if (newEnd > newStart) {
                     updated.add(span.copy(start = newStart, end = newEnd))
                 }
             } else {
-                val newStart = span.start.coerceIn(0, textLength)
-                val newEnd = (span.end + delta).coerceIn(0, textLength)
-                if (newEnd > newStart) {
-                    updated.add(span.copy(start = newStart, end = newEnd))
+                // Overlaps or is inside replaced region
+                if (span.start < startChange && span.end > oldEnd) {
+                    val newSpanStart = span.start.coerceIn(0, textLength)
+                    val newSpanEnd = (span.end + delta).coerceIn(0, textLength)
+                    if (newSpanEnd > newSpanStart) {
+                        updated.add(span.copy(start = newSpanStart, end = newSpanEnd))
+                    }
+                } else if (span.start >= startChange && span.end <= oldEnd) {
+                    val newSpanStart = startChange.coerceIn(0, textLength)
+                    val newSpanEnd = newEnd.coerceIn(0, textLength)
+                    if (newSpanEnd > newSpanStart) {
+                        updated.add(span.copy(start = newSpanStart, end = newSpanEnd))
+                    }
+                } else if (span.start < startChange) {
+                    val newSpanStart = span.start.coerceIn(0, textLength)
+                    val newSpanEnd = newEnd.coerceIn(0, textLength)
+                    if (newSpanEnd > newSpanStart) {
+                        updated.add(span.copy(start = newSpanStart, end = newSpanEnd))
+                    }
+                } else {
+                    val newSpanStart = startChange.coerceIn(0, textLength)
+                    val newSpanEnd = (span.end + delta).coerceIn(0, textLength)
+                    if (newSpanEnd > newSpanStart) {
+                        updated.add(span.copy(start = newSpanStart, end = newSpanEnd))
+                    }
                 }
             }
         }

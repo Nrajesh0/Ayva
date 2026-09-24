@@ -191,7 +191,7 @@ object ArticleDocxGenerator {
         if (title.isNotBlank()) {
             sb.append("    <w:p>\n")
             sb.append("      <w:pPr><w:pStyle w:val=\"Title\"/></w:pPr>\n")
-            sb.append("      <w:r><w:t>").append(escapeXml(title)).append("</w:t></w:r>\n")
+            sb.append("      <w:r><w:t xml:space=\"preserve\">").append(escapeXml(title)).append("</w:t></w:r>\n")
             sb.append("    </w:p>\n")
         }
 
@@ -200,10 +200,10 @@ object ArticleDocxGenerator {
                 val box = if (item.isChecked) "☑  " else "☐  "
                 sb.append("    <w:p>\n")
                 sb.append("      <w:pPr><w:ind w:left=\"360\"/></w:pPr>\n")
-                sb.append("      <w:r><w:rPr><w:b/><w:color w:val=\"").append(if (item.isChecked) "22C55E" else "6B7280").append("\"/></w:rPr><w:t>").append(box).append("</w:t></w:r>\n")
+                sb.append("      <w:r><w:rPr><w:b/><w:color w:val=\"").append(if (item.isChecked) "22C55E" else "6B7280").append("\"/></w:rPr><w:t xml:space=\"preserve\">").append(box).append("</w:t></w:r>\n")
                 sb.append("      <w:r><w:rPr>")
                 if (item.isChecked) sb.append("<w:strike/><w:color w:val=\"9CA3AF\"/>")
-                sb.append("</w:rPr><w:t>").append(escapeXml(item.text)).append("</w:t></w:r>\n")
+                sb.append("</w:rPr><w:t xml:space=\"preserve\">").append(escapeXml(item.text)).append("</w:t></w:r>\n")
                 sb.append("    </w:p>\n")
             }
         } else if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
@@ -211,12 +211,23 @@ object ArticleDocxGenerator {
             val spans = if (blocks.isNotEmpty()) (blocks[0] as NotesnookBlock.Text).spans else emptyList()
             if (text.isNotBlank()) {
                 val lines = text.split("\n")
+                var currentLineOffset = 0
                 lines.forEach { line ->
                     if (line.isNotBlank()) {
-                        sb.append(renderParagraphWithSpans(line, spans))
+                        val lineStart = currentLineOffset
+                        val lineEnd = lineStart + line.length
+                        val lineSpans = spans.mapNotNull { span ->
+                            val s = maxOf(span.start, lineStart)
+                            val e = minOf(span.end, lineEnd)
+                            if (s < e) {
+                                span.copy(start = s - lineStart, end = e - lineStart)
+                            } else null
+                        }
+                        sb.append(renderParagraphWithSpans(line, lineSpans))
                     } else {
                         sb.append("    <w:p/>\n")
                     }
+                    currentLineOffset += line.length + 1
                 }
             }
         } else {
@@ -224,12 +235,23 @@ object ArticleDocxGenerator {
                 when (block) {
                     is NotesnookBlock.Text -> {
                         if (block.text.isNotBlank()) {
+                            var currentLineOffset = 0
                             block.text.split("\n").forEach { line ->
                                 if (line.isNotBlank()) {
-                                    sb.append(renderParagraphWithSpans(line, block.spans))
+                                    val lineStart = currentLineOffset
+                                    val lineEnd = lineStart + line.length
+                                    val lineSpans = block.spans.mapNotNull { span ->
+                                        val s = maxOf(span.start, lineStart)
+                                        val e = minOf(span.end, lineEnd)
+                                        if (s < e) {
+                                            span.copy(start = s - lineStart, end = e - lineStart)
+                                        } else null
+                                    }
+                                    sb.append(renderParagraphWithSpans(line, lineSpans))
                                 } else {
                                     sb.append("    <w:p/>\n")
                                 }
+                                currentLineOffset += line.length + 1
                             }
                         }
                     }
@@ -238,8 +260,8 @@ object ArticleDocxGenerator {
                         val bulletSymbol = if (block.isNumbered) "• " else "– "
                         sb.append("    <w:p>\n")
                         sb.append("      <w:pPr><w:ind w:left=\"").append(indent).append("\"/></w:pPr>\n")
-                        sb.append("      <w:r><w:rPr><w:b/><w:color w:val=\"3B82F6\"/></w:rPr><w:t>").append(bulletSymbol).append("</w:t></w:r>\n")
-                        sb.append("      <w:r><w:t>").append(escapeXml(block.text)).append("</w:t></w:r>\n")
+                        sb.append("      <w:r><w:rPr><w:b/><w:color w:val=\"3B82F6\"/></w:rPr><w:t xml:space=\"preserve\">").append(bulletSymbol).append("</w:t></w:r>\n")
+                        sb.append("      <w:r><w:t xml:space=\"preserve\">").append(escapeXml(block.text)).append("</w:t></w:r>\n")
                         sb.append("    </w:p>\n")
                     }
                     is NotesnookBlock.Callout -> {
@@ -249,14 +271,14 @@ object ArticleDocxGenerator {
                         sb.append("        <w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"EFF6FF\"/>\n")
                         sb.append("        <w:ind w:left=\"360\" w:right=\"360\"/>\n")
                         sb.append("      </w:pPr>\n")
-                        sb.append("      <w:r><w:rPr><w:b/><w:color w:val=\"1D4ED8\"/></w:rPr><w:t>[").append(escapeXml(block.calloutType.uppercase())).append("] </w:t></w:r>\n")
-                        sb.append("      <w:r><w:t>").append(escapeXml(block.text)).append("</w:t></w:r>\n")
+                        sb.append("      <w:r><w:rPr><w:b/><w:color w:val=\"1D4ED8\"/></w:rPr><w:t xml:space=\"preserve\">[").append(escapeXml(block.calloutType.uppercase())).append("] </w:t></w:r>\n")
+                        sb.append("      <w:r><w:t xml:space=\"preserve\">").append(escapeXml(block.text)).append("</w:t></w:r>\n")
                         sb.append("    </w:p>\n")
                     }
                     is NotesnookBlock.Quote -> {
                         sb.append("    <w:p>\n")
                         sb.append("      <w:pPr><w:pStyle w:val=\"Quote\"/></w:pPr>\n")
-                        sb.append("      <w:r><w:t>").append(escapeXml(block.text)).append("</w:t></w:r>\n")
+                        sb.append("      <w:r><w:t xml:space=\"preserve\">").append(escapeXml(block.text)).append("</w:t></w:r>\n")
                         sb.append("    </w:p>\n")
                     }
                     is NotesnookBlock.Code -> {
@@ -283,8 +305,8 @@ object ArticleDocxGenerator {
                         sb.append("        <w:ind w:left=\"360\" w:right=\"360\"/>\n")
                         sb.append("        <w:spacing w:before=\"120\" w:after=\"120\"/>\n")
                         sb.append("      </w:pPr>\n")
-                        sb.append("      <w:r><w:rPr><w:b/><w:color w:val=\"16A34A\"/></w:rPr><w:t>[MATH] </w:t></w:r>\n")
-                        sb.append("      <w:r><w:rPr><w:i/><w:rFonts w:ascii=\"Cambria Math\" w:hAnsi=\"Cambria Math\"/><w:sz w:val=\"26\"/></w:rPr><w:t>").append(escapeXml(block.formula.ifBlank { "E = mc²" })).append("</w:t></w:r>\n")
+                        sb.append("      <w:r><w:rPr><w:b/><w:color w:val=\"16A34A\"/></w:rPr><w:t xml:space=\"preserve\">[MATH] </w:t></w:r>\n")
+                        sb.append("      <w:r><w:rPr><w:i/><w:rFonts w:ascii=\"Cambria Math\" w:hAnsi=\"Cambria Math\"/><w:sz w:val=\"26\"/></w:rPr><w:t xml:space=\"preserve\">").append(escapeXml(block.formula.ifBlank { "E = mc²" })).append("</w:t></w:r>\n")
                         sb.append("    </w:p>\n")
                     }
                     is NotesnookBlock.Table -> {
@@ -315,7 +337,7 @@ object ArticleDocxGenerator {
                                     sb.append("          <w:p>\n")
                                     sb.append("            <w:r><w:rPr>")
                                     if (rowIndex == 0) sb.append("<w:b/>")
-                                    sb.append("</w:rPr><w:t>").append(escapeXml(cell)).append("</w:t></w:r>\n")
+                                    sb.append("</w:rPr><w:t xml:space=\"preserve\">").append(escapeXml(cell)).append("</w:t></w:r>\n")
                                     sb.append("          </w:p>\n")
                                     sb.append("        </w:tc>\n")
                                 }
@@ -341,7 +363,8 @@ object ArticleDocxGenerator {
     }
 
     private fun renderParagraphWithSpans(text: String, spans: List<RichSpan>): String {
-        val lineHeaderSpan = spans.firstOrNull {
+        val validSpans = spans.filter { it.isValid(text.length) }
+        val lineHeaderSpan = validSpans.firstOrNull {
             it.type in setOf(
                 RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
                 RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
@@ -361,7 +384,7 @@ object ArticleDocxGenerator {
             sb.append("      <w:pPr><w:pStyle w:val=\"").append(styleVal).append("\"/></w:pPr>\n")
         }
 
-        val inlineSpans = spans.filterNot {
+        val inlineSpans = validSpans.filterNot {
             it.type in setOf(
                 RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
                 RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
@@ -369,37 +392,37 @@ object ArticleDocxGenerator {
         }
 
         if (inlineSpans.isEmpty()) {
-            sb.append("      <w:r><w:t>").append(escapeXml(text)).append("</w:t></w:r>\n")
+            sb.append("      <w:r><w:t xml:space=\"preserve\">").append(escapeXml(text)).append("</w:t></w:r>\n")
         } else {
-            val sorted = inlineSpans.sortedWith(compareBy({ it.start }, { -it.end }))
-            var lastIdx = 0
-            sorted.forEach { span ->
-                val s = span.start.coerceIn(0, text.length)
-                val e = span.end.coerceIn(s, text.length)
-                if (s > lastIdx) {
-                    sb.append("      <w:r><w:t>").append(escapeXml(text.substring(lastIdx, s))).append("</w:t></w:r>\n")
-                }
-                val slice = text.substring(s, e)
-                sb.append("      <w:r>\n")
-                sb.append("        <w:rPr>")
-                when (span.type) {
-                    RichSpanType.BOLD -> sb.append("<w:b/>")
-                    RichSpanType.ITALIC -> sb.append("<w:i/>")
-                    RichSpanType.UNDERLINE -> sb.append("<w:u w:val=\"single\"/>")
-                    RichSpanType.STRIKETHROUGH -> sb.append("<w:strike/>")
-                    RichSpanType.HIGHLIGHT -> sb.append("<w:highlight w:val=\"yellow\"/>")
-                    RichSpanType.CODE -> sb.append("<w:rFonts w:ascii=\"Consolas\" w:hAnsi=\"Consolas\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F3F4F6\"/>")
-                    RichSpanType.SUBSCRIPT -> sb.append("<w:vertAlign w:val=\"subscript\"/>")
-                    RichSpanType.SUPERSCRIPT -> sb.append("<w:vertAlign w:val=\"superscript\"/>")
-                    else -> {}
-                }
-                sb.append("</w:rPr>\n")
-                sb.append("        <w:t>").append(escapeXml(slice)).append("</w:t>\n")
-                sb.append("      </w:r>\n")
-                lastIdx = e
+            val boundaries = sortedSetOf(0, text.length)
+            for (span in inlineSpans) {
+                boundaries.add(span.start.coerceIn(0, text.length))
+                boundaries.add(span.end.coerceIn(0, text.length))
             }
-            if (lastIdx < text.length) {
-                sb.append("      <w:r><w:t>").append(escapeXml(text.substring(lastIdx))).append("</w:t></w:r>\n")
+            val boundaryList = boundaries.toList()
+
+            for (idx in 0 until boundaryList.size - 1) {
+                val segStart = boundaryList[idx]
+                val segEnd = boundaryList[idx + 1]
+                if (segStart >= segEnd) continue
+                val slice = text.substring(segStart, segEnd)
+                val active = inlineSpans.filter { it.start <= segStart && it.end >= segEnd }
+
+                sb.append("      <w:r>\n")
+                if (active.isNotEmpty()) {
+                    sb.append("        <w:rPr>")
+                    if (active.any { it.type == RichSpanType.BOLD }) sb.append("<w:b/>")
+                    if (active.any { it.type == RichSpanType.ITALIC }) sb.append("<w:i/>")
+                    if (active.any { it.type == RichSpanType.UNDERLINE }) sb.append("<w:u w:val=\"single\"/>")
+                    if (active.any { it.type == RichSpanType.STRIKETHROUGH }) sb.append("<w:strike/>")
+                    if (active.any { it.type == RichSpanType.HIGHLIGHT }) sb.append("<w:highlight w:val=\"yellow\"/>")
+                    if (active.any { it.type == RichSpanType.CODE }) sb.append("<w:rFonts w:ascii=\"Consolas\" w:hAnsi=\"Consolas\"/><w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"F3F4F6\"/>")
+                    if (active.any { it.type == RichSpanType.SUBSCRIPT }) sb.append("<w:vertAlign w:val=\"subscript\"/>")
+                    if (active.any { it.type == RichSpanType.SUPERSCRIPT }) sb.append("<w:vertAlign w:val=\"superscript\"/>")
+                    sb.append("</w:rPr>\n")
+                }
+                sb.append("        <w:t xml:space=\"preserve\">").append(escapeXml(slice)).append("</w:t>\n")
+                sb.append("      </w:r>\n")
             }
         }
 
@@ -409,6 +432,7 @@ object ArticleDocxGenerator {
 
     private fun escapeXml(text: String): String {
         return text
+            .replace(Regex("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]"), "")
             .replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")

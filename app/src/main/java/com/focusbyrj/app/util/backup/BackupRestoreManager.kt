@@ -111,6 +111,9 @@ object BackupRestoreManager {
         password: String
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
         try {
+            if (password.isBlank()) {
+                throw IllegalArgumentException("Backup password cannot be empty or blank.")
+            }
             val app = context.applicationContext as FocusApplication
             val focusDb = app.database
             val noteDb = NoteDatabase.getInstance(app)
@@ -186,10 +189,12 @@ object BackupRestoreManager {
                         put("imageUrisJson", note.imageUrisJson)
                         put("audioUrisJson", note.audioUrisJson)
                         put("colorKey", note.colorKey)
+                        put("fontKey", note.fontKey)
                         put("isPinned", note.isPinned)
                         put("isArchived", note.isArchived)
                         put("isTrashed", note.isTrashed)
                         if (note.trashedAt != null) put("trashedAt", note.trashedAt)
+                        if (note.deletedAt != null) put("deletedAt", note.deletedAt)
                         put("createdAt", note.createdAt)
                         put("updatedAt", note.updatedAt)
                     })
@@ -246,6 +251,7 @@ object BackupRestoreManager {
                         put("recurrence", t.recurrence.name)
                         put("isPersistent", t.isPersistent)
                         put("isPriority", t.isPriority)
+                        put("subtasksJson", t.subtasksJson)
                         put("updatedAt", t.updatedAt)
                         put("isTrashed", t.isTrashed)
                         put("trashedAt", t.trashedAt ?: JSONObject.NULL)
@@ -406,6 +412,9 @@ object BackupRestoreManager {
         cleanRestore: Boolean = false
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
         try {
+            if (password.isBlank()) {
+                throw IllegalArgumentException("Backup password cannot be empty or blank.")
+            }
             val app = context.applicationContext as FocusApplication
             val focusDb = app.database
             val noteDb = NoteDatabase.getInstance(app)
@@ -414,8 +423,8 @@ object BackupRestoreManager {
             val inStream = app.contentResolver.openInputStream(sourceUri)
                 ?: throw IOException("Could not open backup source stream.")
 
-            // 0. Fail-Safe: capture a pre-restore safety snapshot of the live notes before applying backup
-            DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "pre_encrypted_restore")
+            // 0. Fail-Safe: capture a pre-restore safety snapshot of live database before applying backup
+            DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "pre_encrypted_restore", focusDb)
 
             var jsonDataStr: String? = null
 
@@ -430,16 +439,26 @@ object BackupRestoreManager {
                                 if (entry.name == "data.json") {
                                     jsonDataStr = zipIn.bufferedReader(Charsets.UTF_8).readText()
                                 } else if (entry.name.startsWith("media/")) {
-                                    val relativePath = entry.name.removePrefix("media/")
-                                    val targetFile = File(app.filesDir, relativePath)
-                                    // Zip Slip vulnerability protection: verify canonical path stays strictly inside filesDir
-                                    if (!targetFile.canonicalFile.toPath().startsWith(app.filesDir.canonicalFile.toPath())) {
-                                        throw SecurityException("Zip Slip directory traversal detected in backup media entry: $relativePath")
+                                    val normalized = entry.name.removePrefix("media/").replace('\\', '/').trimStart('/')
+                                    val topFolder = normalized.substringBefore('/')
+                                    if (topFolder !in MEDIA_FOLDERS || normalized.contains("..") || normalized.isEmpty()) {
+                                        throw SecurityException("Invalid or disallowed media path in backup archive: $normalized. Must reside in: $MEDIA_FOLDERS")
+                                    }
+                                    val targetDir = File(app.filesDir, topFolder).canonicalFile
+                                    val targetFile = File(app.filesDir, normalized).canonicalFile
+                                    if (!targetFile.toPath().startsWith(targetDir.toPath())) {
+                                        throw SecurityException("Zip Slip directory traversal detected in backup media entry: $normalized")
                                     }
                                     targetFile.parentFile?.mkdirs()
+                                    val maxEntrySize = 50L * 1024L * 1024L // 50MB per media file decompression limit
+                                    var totalBytesWritten = 0L
                                     FileOutputStream(targetFile).use { fos ->
                                         var read = zipIn.read(buffer)
                                         while (read != -1) {
+                                            totalBytesWritten += read
+                                            if (totalBytesWritten > maxEntrySize) {
+                                                throw SecurityException("Backup media entry exceeds maximum allowed size (50MB): $normalized")
+                                            }
                                             fos.write(buffer, 0, read)
                                             read = zipIn.read(buffer)
                                         }
@@ -464,6 +483,12 @@ object BackupRestoreManager {
 
             // 4. Build NoteEntities from backup
             val notesArray = rootJson.optJSONArray("notes") ?: JSONArray()
+            val hasArchivedNotes = (0 until notesArray.length()).any {
+                notesArray.getJSONObject(it).optBoolean("isArchived", false)
+            }
+            if (hasArchivedNotes && ArchiveVaultSecurity.isVaultLocked(app)) {
+                throw IllegalStateException("Cannot restore backup: Secret Archive Vault is locked. Please unlock your secret vault first so private notes can be restored securely.")
+            }
             val noteEntities = mutableListOf<NoteEntity>()
             val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
             for (i in 0 until notesArray.length()) {
@@ -478,12 +503,14 @@ object BackupRestoreManager {
                     imageUrisJson = obj.optString("imageUrisJson", "[]"),
                     audioUrisJson = obj.optString("audioUrisJson", "[]"),
                     colorKey = obj.optString("colorKey", "default"),
+                    fontKey = obj.optString("fontKey", "default"),
                     isPinned = obj.optBoolean("isPinned", false),
                     isArchived = obj.optBoolean("isArchived", false),
                     isTrashed = obj.optBoolean("isTrashed", false),
                     createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                     updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                    trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null
+                    trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
+                    deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null
                 )
                 if (note.isArchived && subKey != null && !VaultPayloadEncryptor.isVaultEncrypted(note)) {
                     note = VaultPayloadEncryptor.encryptNotePayload(note, subKey)
@@ -580,6 +607,7 @@ object BackupRestoreManager {
                         recurrence = try { RecurrencePattern.valueOf(obj.optString("recurrence", "NONE")) } catch (_: Exception) { RecurrencePattern.NONE },
                         isPersistent = obj.optBoolean("isPersistent", false),
                         isPriority = obj.optBoolean("isPriority", false),
+                        subtasksJson = obj.optString("subtasksJson", "[]"),
                         updatedAt = if (obj.has("updatedAt") && !obj.isNull("updatedAt")) obj.optLong("updatedAt") else System.currentTimeMillis(),
                         isTrashed = obj.optBoolean("isTrashed", false),
                         trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
@@ -661,27 +689,31 @@ object BackupRestoreManager {
 
             // 10. Restore Vocab
             val idiomsArray = rootJson.optJSONArray("learnedIdioms") ?: JSONArray()
-            for (i in 0 until idiomsArray.length()) {
-                val obj = idiomsArray.getJSONObject(i)
-                val id = obj.getInt("id")
-                val learnedAt = obj.optLong("learned_at", System.currentTimeMillis())
-                val isMastered = obj.optInt("is_mastered", 0)
-                val isBookmarked = obj.optInt("is_bookmarked", 0)
-                vocabDb.vocabDao().setIdiomLearned(id, learnedAt)
-                vocabDb.vocabDao().setIdiomMastery(id, isMastered, learnedAt)
-                vocabDb.vocabDao().setIdiomBookmarked(id, isBookmarked)
-            }
-
             val owsArray = rootJson.optJSONArray("learnedOws") ?: JSONArray()
-            for (i in 0 until owsArray.length()) {
-                val obj = owsArray.getJSONObject(i)
-                val id = obj.getInt("id")
-                val learnedAt = obj.optLong("learned_at", System.currentTimeMillis())
-                val isMastered = obj.optInt("is_mastered", 0)
-                val isBookmarked = obj.optInt("is_bookmarked", 0)
-                vocabDb.vocabDao().setOwsLearned(id, learnedAt)
-                vocabDb.vocabDao().setOwsMastery(id, isMastered, learnedAt)
-                vocabDb.vocabDao().setOwsBookmarked(id, isBookmarked)
+            if (idiomsArray.length() > 0 || owsArray.length() > 0) {
+                vocabDb.withTransaction {
+                    for (i in 0 until idiomsArray.length()) {
+                        val obj = idiomsArray.getJSONObject(i)
+                        val id = obj.getInt("id")
+                        val learnedAt = obj.optLong("learned_at", System.currentTimeMillis())
+                        val isMastered = obj.optInt("is_mastered", 0)
+                        val isBookmarked = obj.optInt("is_bookmarked", 0)
+                        vocabDb.vocabDao().setIdiomLearned(id, learnedAt)
+                        vocabDb.vocabDao().setIdiomMastery(id, isMastered, learnedAt)
+                        vocabDb.vocabDao().setIdiomBookmarked(id, isBookmarked)
+                    }
+
+                    for (i in 0 until owsArray.length()) {
+                        val obj = owsArray.getJSONObject(i)
+                        val id = obj.getInt("id")
+                        val learnedAt = obj.optLong("learned_at", System.currentTimeMillis())
+                        val isMastered = obj.optInt("is_mastered", 0)
+                        val isBookmarked = obj.optInt("is_bookmarked", 0)
+                        vocabDb.vocabDao().setOwsLearned(id, learnedAt)
+                        vocabDb.vocabDao().setOwsMastery(id, isMastered, learnedAt)
+                        vocabDb.vocabDao().setOwsBookmarked(id, isBookmarked)
+                    }
+                }
             }
 
             // 11. Restore SharedPreferences
@@ -693,6 +725,9 @@ object BackupRestoreManager {
                     val pObj = prefsObj.getJSONObject(prefName)
                     val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                     val editor = sp.edit()
+                    if (cleanRestore) {
+                        editor.clear()
+                    }
                     val innerKeys = pObj.keys()
                     while (innerKeys.hasNext()) {
                         val k = innerKeys.next()
@@ -713,7 +748,7 @@ object BackupRestoreManager {
                             }
                         }
                     }
-                    editor.apply()
+                    editor.commit()
                 }
             }
 

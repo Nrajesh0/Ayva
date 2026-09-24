@@ -1453,8 +1453,10 @@ fun NotesnookTableWidget(
                                             value = cellTfv,
                                             onValueChange = { newVal ->
                                                 cellTfv = newVal
-                                                table.data[r][c] = newVal.text
-                                                onUpdate()
+                                                if (r < table.data.size && c < table.data[r].size) {
+                                                    table.data[r][c] = newVal.text
+                                                    onUpdate()
+                                                }
                                             },
                                             textStyle = TextStyle(
                                                 color = textColor,

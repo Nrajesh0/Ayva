@@ -229,20 +229,27 @@ object NotesnookBlockManager {
         }
 
         // 1. Check for native Notesnook Blocks JSON
-        if (raw.contains(BLOCKS_PREFIX) && raw.contains(BLOCKS_SUFFIX)) {
+        val prefixIdx = raw.indexOf(BLOCKS_PREFIX)
+        val suffixIdx = if (prefixIdx != -1) raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length) else -1
+        if (prefixIdx != -1 && suffixIdx != -1) {
+            val textBefore = raw.substring(0, prefixIdx).trim()
+            val textAfter = raw.substring(suffixIdx + BLOCKS_SUFFIX.length).trim()
+            val jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
+            val blocks = mutableListOf<NotesnookBlock>()
+
+            if (textBefore.isNotEmpty()) {
+                val parsed = RichTextEngine.parse(textBefore)
+                blocks.add(NotesnookBlock.Text(text = parsed.first, spans = parsed.second))
+            }
+
             try {
-                val start = raw.indexOf(BLOCKS_PREFIX) + BLOCKS_PREFIX.length
-                val end = raw.indexOf(BLOCKS_SUFFIX, startIndex = start)
-                if (start in 0 until end) {
-                    val jsonStr = raw.substring(start, end)
-                    val root = JSONObject(jsonStr)
-                    val array = root.optJSONArray("blocks")
-                    if (array != null && array.length() > 0) {
-                        val blocks = mutableListOf<NotesnookBlock>()
-                        for (i in 0 until array.length()) {
-                            val obj = array.getJSONObject(i)
-                            val id = obj.optString("id", UUID.randomUUID().toString())
-                            when (obj.optString("type")) {
+                val root = JSONObject(jsonStr)
+                val array = root.optJSONArray("blocks")
+                if (array != null && array.length() > 0) {
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        val id = obj.optString("id", UUID.randomUUID().toString())
+                        when (obj.optString("type")) {
                                 "text" -> {
                                     val text = obj.optString("text", "")
                                     val spans = mutableListOf<RichSpan>()
@@ -271,8 +278,8 @@ object NotesnookBlockManager {
                                     blocks.add(NotesnookBlock.Text(id = id, text = text, spans = spans))
                                 }
                                 "table" -> {
-                                    val rows = obj.optInt("rows", 2)
-                                    val cols = obj.optInt("cols", 2)
+                                    val rows = obj.optInt("rows", 2).coerceIn(1, 100)
+                                    val cols = obj.optInt("cols", 2).coerceIn(1, 50)
                                     val columnWidths = mutableListOf<Int>()
                                     val widthsArr = obj.optJSONArray("columnWidths")
                                     if (widthsArr != null) {
@@ -372,10 +379,23 @@ object NotesnookBlockManager {
                                 }
                             }
                         }
-                        if (blocks.isNotEmpty()) return blocks
                     }
+            } catch (_: Exception) {
+                // Malformed block JSON: Do NOT call RichTextEngine.parse(raw) because that triggers
+                // infinite mutual recursion. Recover jsonStr directly as fallback plain text block.
+                val fallbackContent = jsonStr.replace(Regex("""[{"}\[\]]"""), " ").trim()
+                if (fallbackContent.isNotEmpty()) {
+                    blocks.add(NotesnookBlock.Text(text = fallbackContent))
                 }
-            } catch (_: Exception) {}
+            }
+
+            if (textAfter.isNotEmpty()) {
+                val parsed = RichTextEngine.parse(textAfter)
+                blocks.add(NotesnookBlock.Text(text = parsed.first, spans = parsed.second))
+            }
+
+            if (blocks.isNotEmpty()) return blocks
+            return listOf(NotesnookBlock.Text())
         }
 
         // 2. Check for legacy TABLE_START tags
@@ -403,8 +423,8 @@ object NotesnookBlockManager {
                     try {
                         val jsonObj = JSONObject(jsonStr)
                         val id = jsonObj.optString("id", UUID.randomUUID().toString())
-                        val rows = jsonObj.optInt("rows", 2)
-                        val cols = jsonObj.optInt("cols", 2)
+                        val rows = jsonObj.optInt("rows", 2).coerceIn(1, 100)
+                        val cols = jsonObj.optInt("cols", 2).coerceIn(1, 50)
                         val dataArr = jsonObj.optJSONArray("data")
                         val tableData = mutableListOf<MutableList<String>>()
                         for (r in 0 until rows) {

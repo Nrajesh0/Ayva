@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,21 +74,46 @@ fun TodosScreen(
     
     var pendingDeleteTask by remember { mutableStateOf<Task?>(null) }
     var deleteCountdown by remember { mutableStateOf(4) }
-    
-    LaunchedEffect(pendingDeleteTask) {
-        if (pendingDeleteTask != null) {
-            deleteCountdown = 4
-            while (deleteCountdown > 0) {
-                delay(1000L)
-                deleteCountdown -= 1
+    var locallyDeletedTaskIds by remember { mutableStateOf(emptySet<Long>()) }
+
+    // Prune locallyDeletedTaskIds once Room database update has propagated
+    LaunchedEffect(tasks) {
+        val currentIds = tasks.map { it.id }.toSet()
+        locallyDeletedTaskIds = locallyDeletedTaskIds.filter { it in currentIds }.toSet()
+    }
+
+    val onRequestDelete: (Task) -> Unit = { task ->
+        pendingDeleteTask?.let { previous ->
+            if (previous.id != task.id) {
+                viewModel.deleteTask(previous)
             }
-            pendingDeleteTask?.let { viewModel.deleteTask(it) }
+        }
+        locallyDeletedTaskIds = locallyDeletedTaskIds + task.id
+        pendingDeleteTask = task
+        deleteCountdown = 4
+    }
+
+    LaunchedEffect(pendingDeleteTask) {
+        val task = pendingDeleteTask ?: return@LaunchedEffect
+        deleteCountdown = 4
+        while (deleteCountdown > 0) {
+            delay(1000L)
+            deleteCountdown -= 1
+        }
+        viewModel.deleteTask(task)
+        if (pendingDeleteTask?.id == task.id) {
             pendingDeleteTask = null
         }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            pendingDeleteTask?.let { viewModel.deleteTask(it) }
+        }
+    }
+
     // Filter tasks
-    val filteredTasks = remember(tasks, selectedTab, pendingDeleteTask) {
+    val filteredTasks = remember(tasks, selectedTab, pendingDeleteTask, locallyDeletedTaskIds) {
         val now = Calendar.getInstance()
         val todayStart = now.apply {
             set(Calendar.HOUR_OF_DAY, 0)
@@ -110,7 +136,7 @@ fun TodosScreen(
             else -> emptyList()
         }
         baseList
-            .filter { !it.isCompleted && it.id != pendingDeleteTask?.id }
+            .filter { !it.isCompleted && it.id !in locallyDeletedTaskIds && it.id != pendingDeleteTask?.id }
             .sortedWith(
                 compareByDescending<Task> { it.isPriority }
                     .thenBy { it.dueDate ?: Long.MAX_VALUE }
@@ -119,7 +145,7 @@ fun TodosScreen(
     }
 
     // Completed tasks (only shown for "Today" and "All")
-    val completedTasks = remember(tasks, selectedTab, pendingDeleteTask) {
+    val completedTasks = remember(tasks, selectedTab, pendingDeleteTask, locallyDeletedTaskIds) {
         val now = Calendar.getInstance()
         val todayStart = now.apply {
             set(Calendar.HOUR_OF_DAY, 0)
@@ -133,12 +159,14 @@ fun TodosScreen(
             0 -> tasks.filter { 
                 it.isCompleted && 
                 it.type == TaskType.TASK && 
+                it.id !in locallyDeletedTaskIds &&
                 it.id != pendingDeleteTask?.id &&
                 (it.completedAt != null && it.completedAt >= todayStart)
             }.sortedByDescending { it.completedAt ?: it.updatedAt }
             2 -> tasks.filter { 
                 it.isCompleted && 
                 it.type == TaskType.TASK && 
+                it.id !in locallyDeletedTaskIds &&
                 it.id != pendingDeleteTask?.id &&
                 (it.completedAt == null || it.completedAt >= thirtyDaysAgo)
             }.sortedByDescending { it.completedAt ?: it.updatedAt }
@@ -232,31 +260,42 @@ fun TodosScreen(
                         ) {
                             if (filteredTasks.isEmpty() && completedTasks.isNotEmpty()) {
                                 item(key = "empty_pending_header") {
-                                    Box(
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            0.8.dp,
+                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)
+                                        ),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 24.dp),
-                                        contentAlignment = Alignment.Center
+                                            .padding(start = 2.dp, end = 2.dp, top = 4.dp, bottom = 2.dp)
                                     ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(48.dp)
-                                                    .clip(RoundedCornerShape(16.dp))
-                                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                                    .size(22.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Outlined.CheckCircle,
+                                                    imageVector = Icons.Filled.Check,
                                                     contentDescription = null,
-                                                    modifier = Modifier.size(26.dp),
+                                                    modifier = Modifier.size(13.dp),
                                                     tint = MaterialTheme.colorScheme.primary
                                                 )
                                             }
-                                            Spacer(modifier = Modifier.height(8.dp))
                                             Text(
-                                                text = "All tasks completed!",
-                                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                                text = "All tasks completed",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = FontWeight.Medium,
+                                                    letterSpacing = 0.15.sp
+                                                ),
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
                                         }
@@ -289,11 +328,7 @@ fun TodosScreen(
                                             viewModel.toggleTaskCompletion(it)
                                         }
                                     },
-                                    onDelete = {
-                                        pendingDeleteTask?.let { deleted -> viewModel.deleteTask(deleted) }
-                                        pendingDeleteTask = it
-                                        deleteCountdown = 4
-                                    },
+                                    onDelete = { onRequestDelete(it) },
                                     onEdit = { editingTask = it },
                                     onToggleSubtask = { t, subtaskId ->
                                         viewModel.toggleSubtask(t, subtaskId)
@@ -305,17 +340,14 @@ fun TodosScreen(
                                 item(key = "completed_accordion") {
                                     CompletedAccordion(
                                         tasks = completedTasks,
+                                        showDivider = filteredTasks.isNotEmpty(),
                                         onToggle = { task ->
                                             coroutineScope.launch {
                                                 delay(200)
                                                 viewModel.toggleTaskCompletion(task)
                                             }
                                         },
-                                        onDelete = { task ->
-                                            pendingDeleteTask?.let { deleted -> viewModel.deleteTask(deleted) }
-                                            pendingDeleteTask = task
-                                            deleteCountdown = 4
-                                        },
+                                        onDelete = { onRequestDelete(it) },
                                         onEdit = { editingTask = it },
                                         onToggleSubtask = { t, subtaskId ->
                                             viewModel.toggleSubtask(t, subtaskId)
@@ -381,7 +413,12 @@ fun TodosScreen(
                         )
                         
                         Button(
-                            onClick = { pendingDeleteTask = null },
+                            onClick = {
+                                pendingDeleteTask?.let { task ->
+                                    locallyDeletedTaskIds = locallyDeletedTaskIds - task.id
+                                }
+                                pendingDeleteTask = null
+                            },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = MaterialTheme.colorScheme.onPrimary
@@ -419,9 +456,7 @@ fun TodosScreen(
             },
             onDelete = if (editingTask != null) {
                 { taskToDelete ->
-                    pendingDeleteTask?.let { deleted -> viewModel.deleteTask(deleted) }
-                    pendingDeleteTask = taskToDelete
-                    deleteCountdown = 4
+                    onRequestDelete(taskToDelete)
                     showAddDialog = false
                     editingTask = null
                 }
@@ -872,9 +907,10 @@ fun CompletedAccordion(
     onDelete: (Task) -> Unit,
     onEdit: (Task) -> Unit,
     onToggleSubtask: ((Task, String) -> Unit)? = null,
+    showDivider: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    var isExpanded by remember { mutableStateOf(false) }
+    var isExpanded by rememberSaveable { mutableStateOf(false) }
     val rotationAngle by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
         animationSpec = tween(250),
@@ -884,14 +920,15 @@ fun CompletedAccordion(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 16.dp, bottom = 8.dp)
+            .padding(top = if (showDivider) 14.dp else 4.dp, bottom = 8.dp)
     ) {
-        // Subtle Divider line
-        HorizontalDivider(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            thickness = 0.8.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
-        )
+        if (showDivider) {
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                thickness = 0.8.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+            )
+        }
 
         // Accordion Toggle Header
         Row(
@@ -899,7 +936,7 @@ fun CompletedAccordion(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
                 .clickable { isExpanded = !isExpanded }
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -953,23 +990,25 @@ fun CompletedAccordion(
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 tasks.forEachIndexed { index, task ->
-                    val isFirst = index == 0
-                    val isLast = index == tasks.lastIndex
-                    val cardShape = when {
-                        isFirst && isLast -> RoundedCornerShape(16.dp)
-                        isFirst -> RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
-                        isLast -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
-                        else -> RoundedCornerShape(4.dp)
-                    }
+                    key(task.id) {
+                        val isFirst = index == 0
+                        val isLast = index == tasks.lastIndex
+                        val cardShape = when {
+                            isFirst && isLast -> RoundedCornerShape(16.dp)
+                            isFirst -> RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
+                            isLast -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
+                            else -> RoundedCornerShape(4.dp)
+                        }
 
-                    TaskItem(
-                        task = task,
-                        shape = cardShape,
-                        onToggle = onToggle,
-                        onDelete = onDelete,
-                        onEdit = onEdit,
-                        onToggleSubtask = onToggleSubtask
-                    )
+                        TaskItem(
+                            task = task,
+                            shape = cardShape,
+                            onToggle = onToggle,
+                            onDelete = onDelete,
+                            onEdit = onEdit,
+                            onToggleSubtask = onToggleSubtask
+                        )
+                    }
                 }
             }
         }

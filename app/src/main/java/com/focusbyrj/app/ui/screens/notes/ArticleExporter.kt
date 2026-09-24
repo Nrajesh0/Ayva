@@ -182,68 +182,91 @@ object ArticleExporter {
     }
 
     private fun convertTextSpansToMarkdown(text: String, spans: List<RichSpan>): String {
+        if (text.isBlank()) return text
         if (spans.isEmpty()) return text
-        if (text.isBlank()) return ""
 
-        val sortedSpans = spans.sortedWith(compareBy({ it.start }, { -it.end }))
-        val lineHeaderSpan = sortedSpans.firstOrNull {
+        val validSpans = spans.filter { it.isValid(text.length) }
+        val lineHeaderSpan = validSpans.firstOrNull {
             it.type in setOf(
                 RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
                 RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
             )
         }
 
-        var prefix = ""
-        if (lineHeaderSpan != null) {
-            prefix = when (lineHeaderSpan.type) {
-                RichSpanType.HEADING_1 -> "# "
-                RichSpanType.HEADING_2 -> "## "
-                RichSpanType.HEADING_3 -> "### "
-                RichSpanType.HEADING_4 -> "#### "
-                RichSpanType.HEADING_5 -> "##### "
-                else -> "###### "
-            }
+        val prefix = when (lineHeaderSpan?.type) {
+            RichSpanType.HEADING_1 -> "# "
+            RichSpanType.HEADING_2 -> "## "
+            RichSpanType.HEADING_3 -> "### "
+            RichSpanType.HEADING_4 -> "#### "
+            RichSpanType.HEADING_5 -> "##### "
+            RichSpanType.HEADING_6 -> "###### "
+            else -> ""
         }
 
-        val inlineSpans = sortedSpans.filterNot {
+        val inlineSpans = validSpans.filterNot {
             it.type in setOf(
                 RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
                 RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
             )
         }
 
-        val result = StringBuilder()
-        var lastIdx = 0
+        if (inlineSpans.isEmpty()) return prefix + text
 
-        inlineSpans.forEach { span ->
-            val s = span.start.coerceIn(0, text.length)
-            val e = span.end.coerceIn(s, text.length)
-            if (s > lastIdx) {
-                result.append(text.substring(lastIdx, s))
+        val boundaries = sortedSetOf(0, text.length)
+        for (span in inlineSpans) {
+            boundaries.add(span.start.coerceIn(0, text.length))
+            boundaries.add(span.end.coerceIn(0, text.length))
+        }
+        val boundaryList = boundaries.toList()
+
+        val sb = StringBuilder()
+        for (idx in 0 until boundaryList.size - 1) {
+            val segStart = boundaryList[idx]
+            val segEnd = boundaryList[idx + 1]
+            if (segStart >= segEnd) continue
+            val slice = text.substring(segStart, segEnd)
+
+            val active = inlineSpans.filter { it.start <= segStart && it.end >= segEnd }
+            if (active.isEmpty()) {
+                sb.append(slice)
+            } else {
+                var formatted = slice
+                if (active.any { it.type == RichSpanType.CODE }) {
+                    formatted = "`$formatted`"
+                }
+                val linkSpan = active.firstOrNull { it.type == RichSpanType.LINK }
+                if (linkSpan != null) {
+                    formatted = "[$formatted](${linkSpan.payload ?: ""})"
+                }
+                if (active.any { it.type == RichSpanType.STRIKETHROUGH }) {
+                    formatted = "~~$formatted~~"
+                }
+                if (active.any { it.type == RichSpanType.HIGHLIGHT }) {
+                    formatted = "<mark>$formatted</mark>"
+                }
+                if (active.any { it.type == RichSpanType.UNDERLINE }) {
+                    formatted = "<u>$formatted</u>"
+                }
+                if (active.any { it.type == RichSpanType.SUBSCRIPT }) {
+                    formatted = "<sub>$formatted</sub>"
+                }
+                if (active.any { it.type == RichSpanType.SUPERSCRIPT }) {
+                    formatted = "<sup>$formatted</sup>"
+                }
+                if (active.any { it.type == RichSpanType.ITALIC }) {
+                    formatted = "*$formatted*"
+                }
+                if (active.any { it.type == RichSpanType.BOLD }) {
+                    formatted = "**$formatted**"
+                }
+                if (active.any { it.type == RichSpanType.QUOTE }) {
+                    formatted = "> $formatted"
+                }
+                sb.append(formatted)
             }
-            val slice = text.substring(s, e)
-            val formattedSlice = when (span.type) {
-                RichSpanType.BOLD -> "**$slice**"
-                RichSpanType.ITALIC -> "*$slice*"
-                RichSpanType.UNDERLINE -> "<u>$slice</u>"
-                RichSpanType.STRIKETHROUGH -> "~~$slice~~"
-                RichSpanType.HIGHLIGHT -> "<mark>$slice</mark>"
-                RichSpanType.CODE -> "`$slice`"
-                RichSpanType.SUBSCRIPT -> "<sub>$slice</sub>"
-                RichSpanType.SUPERSCRIPT -> "<sup>$slice</sup>"
-                RichSpanType.LINK -> "[$slice](${span.payload ?: ""})"
-                RichSpanType.QUOTE -> "> $slice"
-                else -> slice
-            }
-            result.append(formattedSlice)
-            lastIdx = e
         }
 
-        if (lastIdx < text.length) {
-            result.append(text.substring(lastIdx))
-        }
-
-        return prefix + result.toString()
+        return prefix + sb.toString()
     }
 
     fun exportToHtml(
@@ -329,7 +352,7 @@ object ArticleExporter {
                     }
                     is NotesnookBlock.Embed -> {
                         sb.append("<div style=\"background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin: 1.2em 0;\">\n")
-                        sb.append("  <strong>Media: </strong><a href=\"").append(escapeHtml(block.url)).append("\" target=\"_blank\">")
+                        sb.append("  <strong>Media: </strong><a href=\"").append(sanitizeHref(block.url)).append("\" target=\"_blank\">")
                             .append(escapeHtml(block.title.ifBlank { block.url })).append("</a>\n</div>\n")
                     }
                     is NotesnookBlock.Attachment -> {
@@ -361,8 +384,8 @@ object ArticleExporter {
 
     private fun convertTextSpansToHtml(text: String, spans: List<RichSpan>): String {
         if (text.isBlank()) return ""
-        val sortedSpans = spans.sortedWith(compareBy({ it.start }, { -it.end }))
-        val lineHeaderSpan = sortedSpans.firstOrNull {
+        val validSpans = spans.filter { it.isValid(text.length) }
+        val lineHeaderSpan = validSpans.firstOrNull {
             it.type in setOf(
                 RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
                 RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
@@ -379,45 +402,71 @@ object ArticleExporter {
             else -> "p"
         }
 
-        val inlineSpans = sortedSpans.filterNot {
+        val inlineSpans = validSpans.filterNot {
             it.type in setOf(
                 RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
                 RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
             )
         }
-
-        val result = StringBuilder()
-        var lastIdx = 0
-
-        inlineSpans.forEach { span ->
-            val s = span.start.coerceIn(0, text.length)
-            val e = span.end.coerceIn(s, text.length)
-            if (s > lastIdx) {
-                result.append(escapeHtml(text.substring(lastIdx, s)))
-            }
-            val slice = escapeHtml(text.substring(s, e))
-            val formattedSlice = when (span.type) {
-                RichSpanType.BOLD -> "<b>$slice</b>"
-                RichSpanType.ITALIC -> "<i>$slice</i>"
-                RichSpanType.UNDERLINE -> "<u>$slice</u>"
-                RichSpanType.STRIKETHROUGH -> "<s>$slice</s>"
-                RichSpanType.HIGHLIGHT -> "<mark>$slice</mark>"
-                RichSpanType.CODE -> "<code>$slice</code>"
-                RichSpanType.SUBSCRIPT -> "<sub>$slice</sub>"
-                RichSpanType.SUPERSCRIPT -> "<sup>$slice</sup>"
-                RichSpanType.LINK -> "<a href=\"${escapeHtml(span.payload ?: "")}\">$slice</a>"
-                RichSpanType.QUOTE -> "<blockquote>$slice</blockquote>"
-                else -> slice
-            }
-            result.append(formattedSlice)
-            lastIdx = e
+        if (inlineSpans.isEmpty()) {
+            return "<$tag>${escapeHtml(text)}</$tag>\n"
         }
 
-        if (lastIdx < text.length) {
-            result.append(escapeHtml(text.substring(lastIdx)))
+        val boundaries = sortedSetOf(0, text.length)
+        for (span in inlineSpans) {
+            boundaries.add(span.start.coerceIn(0, text.length))
+            boundaries.add(span.end.coerceIn(0, text.length))
+        }
+        val boundaryList = boundaries.toList()
+
+        val sb = StringBuilder()
+        for (idx in 0 until boundaryList.size - 1) {
+            val segStart = boundaryList[idx]
+            val segEnd = boundaryList[idx + 1]
+            if (segStart >= segEnd) continue
+            val slice = escapeHtml(text.substring(segStart, segEnd))
+
+            val active = inlineSpans.filter { it.start <= segStart && it.end >= segEnd }
+            if (active.isEmpty()) {
+                sb.append(slice)
+            } else {
+                var formatted = slice
+                if (active.any { it.type == RichSpanType.CODE }) {
+                    formatted = "<code>$formatted</code>"
+                }
+                val linkSpan = active.firstOrNull { it.type == RichSpanType.LINK }
+                if (linkSpan != null) {
+                    formatted = "<a href=\"${sanitizeHref(linkSpan.payload)}\">$formatted</a>"
+                }
+                if (active.any { it.type == RichSpanType.STRIKETHROUGH }) {
+                    formatted = "<s>$formatted</s>"
+                }
+                if (active.any { it.type == RichSpanType.HIGHLIGHT }) {
+                    formatted = "<mark>$formatted</mark>"
+                }
+                if (active.any { it.type == RichSpanType.UNDERLINE }) {
+                    formatted = "<u>$formatted</u>"
+                }
+                if (active.any { it.type == RichSpanType.SUBSCRIPT }) {
+                    formatted = "<sub>$formatted</sub>"
+                }
+                if (active.any { it.type == RichSpanType.SUPERSCRIPT }) {
+                    formatted = "<sup>$formatted</sup>"
+                }
+                if (active.any { it.type == RichSpanType.ITALIC }) {
+                    formatted = "<i>$formatted</i>"
+                }
+                if (active.any { it.type == RichSpanType.BOLD }) {
+                    formatted = "<b>$formatted</b>"
+                }
+                if (active.any { it.type == RichSpanType.QUOTE }) {
+                    formatted = "<blockquote>$formatted</blockquote>"
+                }
+                sb.append(formatted)
+            }
         }
 
-        return "<$tag>${result.toString()}</$tag>\n"
+        return "<$tag>${sb.toString()}</$tag>\n"
     }
 
     private fun escapeHtml(text: String): String {
@@ -427,6 +476,16 @@ object ArticleExporter {
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
+    }
+
+    private fun sanitizeHref(url: String?): String {
+        if (url.isNullOrBlank()) return "#"
+        val trimmed = url.trim()
+        val lower = trimmed.lowercase(Locale.ROOT)
+        if (lower.startsWith("javascript:") || lower.startsWith("vbscript:") || lower.startsWith("data:text/html")) {
+            return "#"
+        }
+        return escapeHtml(trimmed)
     }
 
     fun generateExportBytes(

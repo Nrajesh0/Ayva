@@ -10,6 +10,9 @@ import com.focusbyrj.app.data.subtasks
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.data.TaskRepository
 import com.focusbyrj.app.data.TaskType
+import com.focusbyrj.app.FocusApplication
+import com.focusbyrj.app.data.note.NoteDatabase
+import com.focusbyrj.app.util.backup.DataSafetyManager
 import com.focusbyrj.app.util.TaskReminderHelper
 import com.focusbyrj.app.widget.TodoWidgetProvider
 import kotlinx.coroutines.flow.SharingStarted
@@ -90,6 +93,11 @@ class TaskViewModel(
 
     fun emptyTrash() {
         viewModelScope.launch {
+            try {
+                val app = getApplication<FocusApplication>()
+                val noteDb = NoteDatabase.getInstance(app)
+                DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "emptyTasksTrash", app.database)
+            } catch (_: Exception) {}
             val currentTrashed = trashedTasks.value
             currentTrashed.forEach { t ->
                 com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "TASK", t.id)

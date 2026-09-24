@@ -44,8 +44,8 @@ object NotesnookFormattingHelper {
     ): TextFieldValue {
         val text = tfv.text
         val sel = tfv.selection
-        val minSel = min(sel.start, sel.end)
-        val maxSel = max(sel.start, sel.end)
+        val minSel = min(sel.start, sel.end).coerceIn(0, text.length)
+        val maxSel = max(sel.start, sel.end).coerceIn(0, text.length)
 
         if (minSel != maxSel) {
             val selectedText = text.substring(minSel, maxSel)
@@ -84,7 +84,7 @@ object NotesnookFormattingHelper {
     ): TextFieldValue {
         val text = tfv.text
         val sel = tfv.selection
-        val cursor = min(sel.start, sel.end)
+        val cursor = min(sel.start, sel.end).coerceIn(0, text.length)
 
         val lineStart = text.lastIndexOf('\n', startIndex = max(0, cursor - 1)).let {
             if (it == -1) 0 else it + 1
@@ -293,7 +293,7 @@ object NotesnookFormattingHelper {
         val sdf = SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.getDefault())
         val formattedDate = sdf.format(Date())
         val text = tfv.text
-        val pos = min(tfv.selection.start, tfv.selection.end)
+        val pos = min(tfv.selection.start, tfv.selection.end).coerceIn(0, text.length)
         val newText = text.substring(0, pos) + formattedDate + text.substring(pos)
         val newCursor = pos + formattedDate.length
         return tfv.copy(
@@ -305,8 +305,8 @@ object NotesnookFormattingHelper {
     fun insertLinkTemplate(tfv: TextFieldValue): TextFieldValue {
         val text = tfv.text
         val sel = tfv.selection
-        val minSel = min(sel.start, sel.end)
-        val maxSel = max(sel.start, sel.end)
+        val minSel = min(sel.start, sel.end).coerceIn(0, text.length)
+        val maxSel = max(sel.start, sel.end).coerceIn(0, text.length)
 
         if (minSel != maxSel) {
             val title = text.substring(minSel, maxSel)

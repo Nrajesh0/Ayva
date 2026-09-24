@@ -132,8 +132,21 @@ object SupabaseAuthManager {
         context: Context,
         email: String,
         masterPassword: String
+    ): Result<AuthResponse> {
+        val chars = masterPassword.toCharArray()
+        try {
+            return signUp(context, email, chars)
+        } finally {
+            java.util.Arrays.fill(chars, '\u0000')
+        }
+    }
+
+    suspend fun signUp(
+        context: Context,
+        email: String,
+        masterPasswordChars: CharArray
     ): Result<AuthResponse> = withContext(Dispatchers.IO) {
-        if (email.isBlank() || masterPassword.length < 6) {
+        if (email.isBlank() || masterPasswordChars.size < 6) {
             return@withContext Result.failure(Exception("Please provide a valid email and master password (min 6 chars)."))
         }
 
@@ -144,7 +157,7 @@ object SupabaseAuthManager {
             // B2-P3-002: Generate a per-account random vault salt for DEK/HMAC uniqueness.
             // Auth password derivation in deriveKeys() is unaffected (deterministic by design).
             vaultSalt = generateRandomVaultSalt()
-            derived = SupabaseKeyManager.deriveKeys(email, masterPassword.toCharArray(), vaultSalt = vaultSalt)
+            derived = SupabaseKeyManager.deriveKeys(email, masterPasswordChars, vaultSalt = vaultSalt)
 
             val body = JSONObject().apply {
                 put("email", email.trim().lowercase(java.util.Locale.ROOT))
@@ -238,8 +251,21 @@ object SupabaseAuthManager {
         context: Context,
         email: String,
         masterPassword: String
+    ): Result<AuthResponse> {
+        val chars = masterPassword.toCharArray()
+        try {
+            return signIn(context, email, chars)
+        } finally {
+            java.util.Arrays.fill(chars, '\u0000')
+        }
+    }
+
+    suspend fun signIn(
+        context: Context,
+        email: String,
+        masterPasswordChars: CharArray
     ): Result<AuthResponse> = withContext(Dispatchers.IO) {
-        if (email.isBlank() || masterPassword.isBlank()) {
+        if (email.isBlank() || masterPasswordChars.isEmpty()) {
             return@withContext Result.failure(Exception("Please enter email and master password."))
         }
 
@@ -249,7 +275,7 @@ object SupabaseAuthManager {
             // Check for locally stored vault_salt first (fast path — no server round-trip needed).
             // Auth password is deterministic and does NOT use vaultSalt, so we can always authenticate.
             val localVaultSalt = SupabaseKeyManager.getUserSalt(context)
-            derived = SupabaseKeyManager.deriveKeys(email, masterPassword.toCharArray(), vaultSalt = localVaultSalt)
+            derived = SupabaseKeyManager.deriveKeys(email, masterPasswordChars, vaultSalt = localVaultSalt)
 
             val body = JSONObject().apply {
                 put("email", email.trim().lowercase(java.util.Locale.ROOT))
@@ -291,7 +317,7 @@ object SupabaseAuthManager {
                     // Server had a vault_salt that was absent locally (e.g. after reinstall).
                     // Re-derive DEK + HMAC using the recovered salt.
                     // Auth password is unaffected — deterministic derivation already used above.
-                    SupabaseKeyManager.deriveKeys(email, masterPassword.toCharArray(), vaultSalt = effectiveVaultSalt)
+                    SupabaseKeyManager.deriveKeys(email, masterPasswordChars, vaultSalt = effectiveVaultSalt)
                 } else {
                     // Local salt was already incorporated, or this is a legacy account (null).
                     derived

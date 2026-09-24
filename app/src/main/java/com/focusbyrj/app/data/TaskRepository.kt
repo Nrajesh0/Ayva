@@ -19,6 +19,9 @@ class TaskRepository(private val taskDao: TaskDao) {
      */
     suspend fun deleteTask(task: Task) {
         taskDao.deleteTask(task)
+        if (task.id > 0L) {
+            taskDao.deleteTaskById(task.id)
+        }
     }
 
     suspend fun moveToTrash(id: Long) {
@@ -35,6 +38,9 @@ class TaskRepository(private val taskDao: TaskDao) {
      */
     suspend fun deletePermanently(task: Task) {
         taskDao.deleteTask(task)
+        if (task.id > 0L) {
+            taskDao.deleteTaskById(task.id)
+        }
     }
 
     suspend fun emptyTrash() {

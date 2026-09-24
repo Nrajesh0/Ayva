@@ -451,7 +451,7 @@ object SupabaseStorageEngine {
             } catch (e: java.net.ProtocolException) {
                 if (method == "DELETE" && !overrideHeader) {
                     Log.w(TAG, "HttpURLConnection DELETE does not support body on this runtime; retrying with POST + X-HTTP-Method-Override: DELETE")
-                    executeDelete("POST", true)
+                    return executeDelete("POST", true)
                 } else {
                     Log.e(TAG, "ProtocolException deleting batch cloud media $cloudPaths", e)
                     false

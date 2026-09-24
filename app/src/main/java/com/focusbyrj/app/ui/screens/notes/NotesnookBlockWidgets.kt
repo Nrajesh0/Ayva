@@ -20,6 +20,7 @@ package com.focusbyrj.app.ui.screens.notes
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import java.io.File
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -931,8 +932,12 @@ fun NotesnookEmbedWidget(
             .border(1.dp, borderCol, RoundedCornerShape(8.dp))
             .clickable {
                 try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(block.url))
-                    context.startActivity(intent)
+                    val uri = Uri.parse(block.url)
+                    val scheme = uri.scheme?.lowercase()
+                    if (scheme == "http" || scheme == "https") {
+                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                        context.startActivity(intent)
+                    }
                 } catch (_: Exception) {}
             }
             .padding(12.dp)
@@ -1000,8 +1005,37 @@ fun NotesnookAttachmentWidget(
             .border(1.dp, borderCol, RoundedCornerShape(8.dp))
             .clickable {
                 try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(block.uri))
-                    context.startActivity(intent)
+                    val uri = Uri.parse(block.uri)
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        if (uri.scheme == "content" || uri.scheme == "http" || uri.scheme == "https") {
+                            setDataAndType(uri, "*/*")
+                        } else {
+                            val srcFile = File(block.uri)
+                            if (srcFile.exists()) {
+                                val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+                                val safeName = block.fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifEmpty { srcFile.name }
+                                val exportFile = File(exportDir, safeName)
+                                val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(srcFile)
+                                if (decryptedBytes != null) {
+                                    exportFile.writeBytes(decryptedBytes)
+                                } else {
+                                    srcFile.copyTo(exportFile, overwrite = true)
+                                }
+                                val contentUri = androidx.core.content.FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    exportFile
+                                )
+                                val mimeType = android.webkit.MimeTypeMap.getSingleton()
+                                    .getMimeTypeFromExtension(exportFile.extension.lowercase()) ?: "*/*"
+                                setDataAndType(contentUri, mimeType)
+                            } else {
+                                setDataAndType(uri, "*/*")
+                            }
+                        }
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Open attachment"))
                 } catch (_: Exception) {}
             }
             .padding(12.dp)

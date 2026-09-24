@@ -19,6 +19,7 @@ package com.focusbyrj.app.data
 
 import android.content.Context
 import android.util.Log
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -80,7 +81,8 @@ object FocusDatabaseMigrationHelper {
             } ?: return
 
             runBlocking(Dispatchers.IO) {
-                // 1. Migrate AppRestrictions
+                encryptedDb.withTransaction {
+                    // 1. Migrate AppRestrictions
                 try {
                     val cursor = rawDb.rawQuery("SELECT * FROM app_restrictions", null)
                     val restrictions = mutableListOf<AppRestriction>()
@@ -183,6 +185,11 @@ object FocusDatabaseMigrationHelper {
                         val isPersistentIdx = c.getColumnIndex("isPersistent")
                         val isPriorityIdx = c.getColumnIndex("isPriority")
                         val completedAtIdx = c.getColumnIndex("completedAt")
+                        val updatedAtIdx = c.getColumnIndex("updatedAt")
+                        val isTrashedIdx = c.getColumnIndex("isTrashed")
+                        val trashedAtIdx = c.getColumnIndex("trashedAt")
+                        val deletedAtIdx = c.getColumnIndex("deletedAt")
+                        val subtasksJsonIdx = c.getColumnIndex("subtasksJson")
 
                         while (c.moveToNext()) {
                             val title = if (titleIdx != -1) c.getString(titleIdx) ?: "" else ""
@@ -201,7 +208,12 @@ object FocusDatabaseMigrationHelper {
                                 } catch (_: Exception) { RecurrencePattern.NONE },
                                 isPersistent = if (isPersistentIdx != -1) c.getInt(isPersistentIdx) == 1 else false,
                                 isPriority = if (isPriorityIdx != -1) c.getInt(isPriorityIdx) == 1 else false,
-                                completedAt = if (completedAtIdx != -1 && !c.isNull(completedAtIdx)) c.getLong(completedAtIdx) else null
+                                completedAt = if (completedAtIdx != -1 && !c.isNull(completedAtIdx)) c.getLong(completedAtIdx) else null,
+                                subtasksJson = if (subtasksJsonIdx != -1 && !c.isNull(subtasksJsonIdx)) c.getString(subtasksJsonIdx) ?: "[]" else "[]",
+                                updatedAt = if (updatedAtIdx != -1 && !c.isNull(updatedAtIdx)) c.getLong(updatedAtIdx) else System.currentTimeMillis(),
+                                isTrashed = if (isTrashedIdx != -1) c.getInt(isTrashedIdx) == 1 else false,
+                                trashedAt = if (trashedAtIdx != -1 && !c.isNull(trashedAtIdx)) c.getLong(trashedAtIdx) else null,
+                                deletedAt = if (deletedAtIdx != -1 && !c.isNull(deletedAtIdx)) c.getLong(deletedAtIdx) else null
                             )
                             encryptedDb.taskDao().insertTask(task)
                         }
@@ -297,22 +309,52 @@ object FocusDatabaseMigrationHelper {
                 } catch (e: Exception) {
                     Log.w(TAG, "Habit logs migration skipped or failed", e)
                 }
+                }
             }
 
             rawDb.close()
 
-            // Safely rename migrated plaintext database so it is never re-processed
+            // Securely zero-wipe and delete legacy plaintext database files so unencrypted data never lingers on disk
             try {
-                val backupFile = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME.migrated")
-                dbFile.renameTo(backupFile)
-                File(dbFile.parentFile, "$PLAINTEXT_DB_NAME-wal").delete()
-                File(dbFile.parentFile, "$PLAINTEXT_DB_NAME-shm").delete()
-                Log.i(TAG, "Successfully migrated legacy FocusDatabase to SQLCipher vault and archived plaintext database.")
+                val walFile = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME-wal")
+                val shmFile = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME-shm")
+                val legacyMigrated = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME.migrated")
+                if (legacyMigrated.exists()) secureWipeAndDelete(legacyMigrated)
+                secureWipeAndDelete(dbFile)
+                secureWipeAndDelete(walFile)
+                secureWipeAndDelete(shmFile)
+                Log.i(TAG, "Successfully migrated legacy FocusDatabase to SQLCipher vault and securely zero-wiped plaintext database files.")
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to archive old database file after migration", e)
+                Log.w(TAG, "Failed to securely wipe old database files after migration", e)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error in checkAndMigrateIfLegacyPlaintextExists", e)
+        }
+    }
+
+    /**
+     * Overwrites file contents with zeros before unlinking/deleting, preventing forensic recovery.
+     */
+    private fun secureWipeAndDelete(file: File) {
+        if (!file.exists()) return
+        try {
+            val length = file.length()
+            if (length > 0) {
+                java.io.RandomAccessFile(file, "rws").use { raf ->
+                    val buffer = ByteArray(4096)
+                    var remaining = length
+                    while (remaining > 0) {
+                        val toWrite = minOf(remaining, buffer.size.toLong()).toInt()
+                        raf.write(buffer, 0, toWrite)
+                        remaining -= toWrite
+                    }
+                    raf.fd.sync()
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to zero-overwrite file ${file.name} before deletion", e)
+        } finally {
+            file.delete()
         }
     }
 }

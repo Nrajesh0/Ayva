@@ -870,6 +870,65 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun addAttachmentToEditor(contentUri: android.net.Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                var fileName = "attachment"
+                var fileSize = "0 KB"
+                var sizeBytes = 0L
+
+                val cursor = context.contentResolver.query(contentUri, null, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        val sizeIndex = it.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                        if (nameIndex != -1) {
+                            val name = it.getString(nameIndex)
+                            if (!name.isNullOrBlank()) fileName = name
+                        }
+                        if (sizeIndex != -1) {
+                            sizeBytes = it.getLong(sizeIndex)
+                            fileSize = when {
+                                sizeBytes >= 1024 * 1024 -> String.format(java.util.Locale.US, "%.1f MB", sizeBytes.toDouble() / (1024 * 1024))
+                                sizeBytes >= 1024 -> "${sizeBytes / 1024} KB"
+                                else -> "$sizeBytes B"
+                            }
+                        }
+                    }
+                }
+
+                val imagesDir = java.io.File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
+                val ext = fileName.substringAfterLast('.', "").ifEmpty { "bin" }
+                val safeFileName = "att_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext"
+                val destFile = java.io.File(imagesDir, safeFileName)
+
+                context.contentResolver.openInputStream(contentUri)?.use { input ->
+                    val bytes = input.readBytes()
+                    com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(destFile, bytes)
+                    java.util.Arrays.fill(bytes, 0.toByte())
+                }
+
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    val current = _editingState.value ?: return@withContext
+                    val blocks = NotesnookBlockManager.parse(current.content).toMutableList()
+                    blocks.add(
+                        NotesnookBlock.Attachment(
+                            uri = destFile.absolutePath,
+                            fileName = fileName,
+                            fileSize = fileSize
+                        )
+                    )
+                    val newContent = NotesnookBlockManager.serialize(blocks)
+                    _editingState.value = current.copy(content = newContent, updatedAt = System.currentTimeMillis())
+                    persistCurrentEditorState()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     fun addDrawingToEditor(bitmap: android.graphics.Bitmap) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -883,6 +942,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                try {
+                    if (!bitmap.isRecycled) bitmap.recycle()
+                } catch (_: Throwable) {}
             }
         }
     }
@@ -900,6 +963,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                try {
+                    if (!bitmap.isRecycled) bitmap.recycle()
+                } catch (_: Throwable) {}
             }
         }
     }
@@ -1036,9 +1103,36 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 AudioMemoManager.copyAudioFile(context, path) ?: path
             }
             val newChecklistItems = current.checklistItems.map { it.copy(id = UUID.randomUUID().toString()) }
+
+            // Isolate embedded block media files so deleting/editing one copy does not affect the other
+            val newContent = if (current.content.contains(NotesnookBlockManager.BLOCKS_PREFIX) &&
+                current.content.contains(NotesnookBlockManager.BLOCKS_SUFFIX)) {
+                try {
+                    val originalBlocks = NotesnookBlockManager.parse(current.content)
+                    val duplicatedBlocks = originalBlocks.map { block ->
+                        when (block) {
+                            is NotesnookBlock.Image -> {
+                                val copiedUri = NoteImageHelper.copyImageFile(context, block.uri) ?: block.uri
+                                block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                            }
+                            is NotesnookBlock.Attachment -> {
+                                val copiedUri = NoteImageHelper.copyImageFile(context, block.uri) ?: block.uri
+                                block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                            }
+                            else -> block
+                        }
+                    }
+                    NotesnookBlockManager.serialize(duplicatedBlocks)
+                } catch (_: Exception) {
+                    current.content
+                }
+            } else {
+                current.content
+            }
+
             val newNote = NoteEntity(
                 title = copyTitle,
-                content = current.content,
+                content = newContent,
                 isChecklist = current.isChecklist,
                 checklistJson = ChecklistItem.listToJson(newChecklistItems),
                 colorKey = current.colorKey,
@@ -1058,6 +1152,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             _editingState.value = current.copy(
                 originalId = newId,
                 title = copyTitle,
+                content = newContent,
                 checklistItems = newChecklistItems,
                 imageUris = newImages,
                 audioUris = newAudios,
@@ -1338,6 +1433,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                try {
+                    if (!bitmap.isRecycled) bitmap.recycle()
+                } catch (_: Throwable) {}
             }
         }
     }

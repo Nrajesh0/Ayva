@@ -434,102 +434,119 @@ fun KeepSketchDialog(
                             // Done / Save Button
                             Button(
                                 onClick = {
-                                    val w = if (canvasSize.width > 0) canvasSize.width else 1080
-                                    val h = if (canvasSize.height > 0) canvasSize.height else 1440
-                                    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                                    val canvas = android.graphics.Canvas(bitmap)
+                                    val rawW = if (canvasSize.width > 0) canvasSize.width else 1080
+                                    val rawH = if (canvasSize.height > 0) canvasSize.height else 1440
+                                    val maxDim = 1920
+                                    val scale = minOf(1f, maxDim.toFloat() / maxOf(rawW, rawH).coerceAtLeast(1))
+                                    val w = (rawW * scale).toInt().coerceAtLeast(1)
+                                    val h = (rawH * scale).toInt().coerceAtLeast(1)
 
-                                    // 1. Draw Paper Background onto Bitmap
-                                    val bgPaint = Paint().apply { isAntiAlias = true }
-                                    when (paperStyle) {
-                                        PaperStyle.BLANK -> {
-                                            canvas.drawColor(if (isSystemDark) android.graphics.Color.rgb(30, 31, 34) else android.graphics.Color.WHITE)
-                                        }
-                                        PaperStyle.BLACKBOARD -> {
-                                            canvas.drawColor(android.graphics.Color.rgb(20, 22, 26))
-                                        }
-                                        PaperStyle.DOTS, PaperStyle.LINES, PaperStyle.GRID -> {
-                                            canvas.drawColor(if (isSystemDark) android.graphics.Color.rgb(30, 31, 34) else android.graphics.Color.WHITE)
-                                            val linePaint = Paint().apply {
-                                                isAntiAlias = true
-                                                color = if (isSystemDark) android.graphics.Color.argb(40, 255, 255, 255) else android.graphics.Color.argb(40, 0, 0, 0)
-                                                strokeWidth = 2f
+                                    try {
+                                        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                                        val canvas = android.graphics.Canvas(bitmap)
+
+                                        // 1. Draw Paper Background onto Bitmap
+                                        val bgPaint = Paint().apply { isAntiAlias = true }
+                                        when (paperStyle) {
+                                            PaperStyle.BLANK -> {
+                                                canvas.drawColor(if (isSystemDark) android.graphics.Color.rgb(30, 31, 34) else android.graphics.Color.WHITE)
                                             }
-                                            if (paperStyle == PaperStyle.LINES) {
-                                                var y = 60f
-                                                while (y < h) {
-                                                    canvas.drawLine(0f, y, w.toFloat(), y, linePaint)
-                                                    y += 60f
+                                            PaperStyle.BLACKBOARD -> {
+                                                canvas.drawColor(android.graphics.Color.rgb(20, 22, 26))
+                                            }
+                                            PaperStyle.DOTS, PaperStyle.LINES, PaperStyle.GRID -> {
+                                                canvas.drawColor(if (isSystemDark) android.graphics.Color.rgb(30, 31, 34) else android.graphics.Color.WHITE)
+                                                val linePaint = Paint().apply {
+                                                    isAntiAlias = true
+                                                    color = if (isSystemDark) android.graphics.Color.argb(40, 255, 255, 255) else android.graphics.Color.argb(40, 0, 0, 0)
+                                                    strokeWidth = 2f * scale
                                                 }
-                                            } else if (paperStyle == PaperStyle.GRID) {
-                                                var x = 50f
-                                                while (x < w) {
-                                                    canvas.drawLine(x, 0f, x, h.toFloat(), linePaint)
-                                                    x += 50f
-                                                }
-                                                var y = 50f
-                                                while (y < h) {
-                                                    canvas.drawLine(0f, y, w.toFloat(), y, linePaint)
-                                                    y += 50f
-                                                }
-                                            } else if (paperStyle == PaperStyle.DOTS) {
-                                                var x = 40f
-                                                while (x < w) {
-                                                    var y = 40f
+                                                if (paperStyle == PaperStyle.LINES) {
+                                                    var y = 60f * scale
                                                     while (y < h) {
-                                                        canvas.drawCircle(x, y, 3f, linePaint)
-                                                        y += 40f
+                                                        canvas.drawLine(0f, y, w.toFloat(), y, linePaint)
+                                                        y += 60f * scale
                                                     }
-                                                    x += 40f
+                                                } else if (paperStyle == PaperStyle.GRID) {
+                                                    var x = 50f * scale
+                                                    while (x < w) {
+                                                        canvas.drawLine(x, 0f, x, h.toFloat(), linePaint)
+                                                        x += 50f * scale
+                                                    }
+                                                    var y = 50f * scale
+                                                    while (y < h) {
+                                                        canvas.drawLine(0f, y, w.toFloat(), y, linePaint)
+                                                        y += 50f * scale
+                                                    }
+                                                } else if (paperStyle == PaperStyle.DOTS) {
+                                                    var x = 40f * scale
+                                                    while (x < w) {
+                                                        var y = 40f * scale
+                                                        while (y < h) {
+                                                            canvas.drawCircle(x, y, 3f * scale, linePaint)
+                                                            y += 40f * scale
+                                                        }
+                                                        x += 40f * scale
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
 
-                                    // 2. Draw Vector Strokes & Shapes onto Bitmap
-                                    val strokePaint = Paint().apply {
-                                        isAntiAlias = true
-                                        style = Paint.Style.STROKE
-                                        strokeCap = Paint.Cap.ROUND
-                                        strokeJoin = Paint.Join.ROUND
-                                    }
-
-                                    for (item in paths) {
-                                        val alphaInt = (item.color.alpha * item.opacity * 255).toInt().coerceIn(0, 255)
-                                        val argb = android.graphics.Color.argb(
-                                            alphaInt,
-                                            (item.color.red * 255).toInt(),
-                                            (item.color.green * 255).toInt(),
-                                            (item.color.blue * 255).toInt()
-                                        )
-                                        strokePaint.color = argb
-                                        strokePaint.strokeWidth = item.strokeWidth
-
-                                        if (item.tool == DrawingTool.HIGHLIGHTER) {
-                                            strokePaint.strokeCap = Paint.Cap.SQUARE
-                                        } else {
-                                            strokePaint.strokeCap = Paint.Cap.ROUND
+                                        // 2. Draw Vector Strokes & Shapes onto Bitmap
+                                        val strokePaint = Paint().apply {
+                                            isAntiAlias = true
+                                            style = Paint.Style.STROKE
+                                            strokeCap = Paint.Cap.ROUND
+                                            strokeJoin = Paint.Join.ROUND
                                         }
 
-                                        if (item.shapeType != null && item.startPoint != null && item.endPoint != null) {
-                                            drawShapeOnAndroidCanvas(canvas, strokePaint, item.shapeType, item.startPoint, item.endPoint)
-                                        } else if (item.points.size > 1) {
-                                            val aPath = AndroidPath()
-                                            aPath.moveTo(item.points[0].x, item.points[0].y)
-                                            for (i in 1 until item.points.size) {
-                                                val p0 = item.points[i - 1]
-                                                val p1 = item.points[i]
-                                                val midX = (p0.x + p1.x) / 2f
-                                                val midY = (p0.y + p1.y) / 2f
-                                                aPath.quadTo(p0.x, p0.y, midX, midY)
+                                        for (item in paths) {
+                                            val alphaInt = (item.color.alpha * item.opacity * 255).toInt().coerceIn(0, 255)
+                                            val argb = android.graphics.Color.argb(
+                                                alphaInt,
+                                                (item.color.red * 255).toInt(),
+                                                (item.color.green * 255).toInt(),
+                                                (item.color.blue * 255).toInt()
+                                            )
+                                            strokePaint.color = argb
+                                            strokePaint.strokeWidth = item.strokeWidth * scale
+
+                                            if (item.tool == DrawingTool.HIGHLIGHTER) {
+                                                strokePaint.strokeCap = Paint.Cap.SQUARE
+                                            } else {
+                                                strokePaint.strokeCap = Paint.Cap.ROUND
                                             }
-                                            val last = item.points.last()
-                                            aPath.lineTo(last.x, last.y)
-                                            canvas.drawPath(aPath, strokePaint)
-                                        }
-                                    }
 
-                                    onSaveDrawing(bitmap)
+                                            if (item.shapeType != null && item.startPoint != null && item.endPoint != null) {
+                                                val scaledStart = Offset(item.startPoint.x * scale, item.startPoint.y * scale)
+                                                val scaledEnd = Offset(item.endPoint.x * scale, item.endPoint.y * scale)
+                                                drawShapeOnAndroidCanvas(canvas, strokePaint, item.shapeType, scaledStart, scaledEnd)
+                                            } else if (item.points.size > 1) {
+                                                val aPath = AndroidPath()
+                                                aPath.moveTo(item.points[0].x * scale, item.points[0].y * scale)
+                                                for (i in 1 until item.points.size) {
+                                                    val p0 = item.points[i - 1]
+                                                    val p1 = item.points[i]
+                                                    val midX = ((p0.x + p1.x) / 2f) * scale
+                                                    val midY = ((p0.y + p1.y) / 2f) * scale
+                                                    aPath.quadTo(p0.x * scale, p0.y * scale, midX, midY)
+                                                }
+                                                val last = item.points.last()
+                                                aPath.lineTo(last.x * scale, last.y * scale)
+                                                canvas.drawPath(aPath, strokePaint)
+                                            } else if (item.points.size == 1) {
+                                                val pt = item.points[0]
+                                                val origStyle = strokePaint.style
+                                                strokePaint.style = Paint.Style.FILL
+                                                canvas.drawCircle(pt.x * scale, pt.y * scale, (item.strokeWidth * scale) / 2f, strokePaint)
+                                                strokePaint.style = origStyle
+                                            }
+                                        }
+
+                                        onSaveDrawing(bitmap)
+                                    } catch (oom: Throwable) {
+                                        android.util.Log.e("KeepSketchDialog", "Failed to allocate sketch export bitmap", oom)
+                                    }
                                 },
                                 shape = RoundedCornerShape(18.dp),
                                 colors = ButtonDefaults.buttonColors(
@@ -666,6 +683,12 @@ fun KeepSketchDialog(
                                         join = StrokeJoin.Round
                                     )
                                 )
+                            } else if (pathData.points.size == 1) {
+                                drawCircle(
+                                    color = pathData.color.copy(alpha = pathData.color.alpha * pathData.opacity),
+                                    radius = pathData.strokeWidth / 2f,
+                                    center = pathData.points[0]
+                                )
                             }
                         }
 
@@ -687,6 +710,18 @@ fun KeepSketchDialog(
                                     cap = cap,
                                     join = StrokeJoin.Round
                                 )
+                            )
+                        } else if (currentPoints.size == 1) {
+                            val effectiveOpacity = when (currentTool) {
+                                DrawingTool.HIGHLIGHTER -> 0.35f * selectedOpacity
+                                DrawingTool.PENCIL -> 0.85f * selectedOpacity
+                                DrawingTool.MARKER -> 0.75f * selectedOpacity
+                                else -> selectedOpacity
+                            }
+                            drawCircle(
+                                color = selectedColor.copy(alpha = selectedColor.alpha * effectiveOpacity),
+                                radius = selectedStrokeWidth / 2f,
+                                center = currentPoints[0]
                             )
                         }
 

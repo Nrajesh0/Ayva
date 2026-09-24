@@ -127,6 +127,10 @@ object ArchiveVaultSecurity {
         }
     }
 
+    fun isVaultLocked(context: Context): Boolean {
+        return getVaultStatus(context) == VaultStatus.ENABLED && getActiveVaultSubKey() == null
+    }
+
     /**
      * Checks whether BIP-39 mnemonic phrase emergency recovery is configured for this vault.
      */

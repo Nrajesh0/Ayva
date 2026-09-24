@@ -99,35 +99,40 @@ fun SupabaseAuthScreen(
         }
 
         isLoading = true
+        val pwdChars = password.toCharArray()
+        password = ""
+        confirmPassword = ""
         scope.launch {
-            if (authMode == FullPageAuthMode.SIGN_UP) {
-                val result = SupabaseAuthManager.signUp(context, trimmedEmail, password)
-                result.onSuccess { res ->
-                    isLoading = false
-                    Toast.makeText(context, res.message ?: "Account created successfully", Toast.LENGTH_SHORT).show()
-                    if (SupabaseKeyManager.getSessionState(context).isSignedIn) {
+            try {
+                if (authMode == FullPageAuthMode.SIGN_UP) {
+                    val result = SupabaseAuthManager.signUp(context, trimmedEmail, pwdChars)
+                    result.onSuccess { res ->
+                        isLoading = false
+                        Toast.makeText(context, res.message ?: "Account created successfully", Toast.LENGTH_SHORT).show()
+                        if (SupabaseKeyManager.getSessionState(context).isSignedIn) {
+                            AutoSyncManager.triggerImmediateSync(context.applicationContext)
+                            navController.popBackStack()
+                        } else {
+                            authMode = FullPageAuthMode.SIGN_IN
+                        }
+                    }.onFailure { err ->
+                        isLoading = false
+                        errorMessage = err.message ?: "Sign up failed. Please try again."
+                    }
+                } else {
+                    val result = SupabaseAuthManager.signIn(context, trimmedEmail, pwdChars)
+                    result.onSuccess {
+                        isLoading = false
+                        Toast.makeText(context, "Signed in successfully", Toast.LENGTH_SHORT).show()
                         AutoSyncManager.triggerImmediateSync(context.applicationContext)
                         navController.popBackStack()
-                    } else {
-                        authMode = FullPageAuthMode.SIGN_IN
-                        password = ""
-                        confirmPassword = ""
+                    }.onFailure { err ->
+                        isLoading = false
+                        errorMessage = err.message ?: "Invalid email or password."
                     }
-                }.onFailure { err ->
-                    isLoading = false
-                    errorMessage = err.message ?: "Sign up failed. Please try again."
                 }
-            } else {
-                val result = SupabaseAuthManager.signIn(context, trimmedEmail, password)
-                result.onSuccess {
-                    isLoading = false
-                    Toast.makeText(context, "Signed in successfully", Toast.LENGTH_SHORT).show()
-                    AutoSyncManager.triggerImmediateSync(context.applicationContext)
-                    navController.popBackStack()
-                }.onFailure { err ->
-                    isLoading = false
-                    errorMessage = err.message ?: "Invalid email or password."
-                }
+            } finally {
+                java.util.Arrays.fill(pwdChars, '\u0000')
             }
         }
     }

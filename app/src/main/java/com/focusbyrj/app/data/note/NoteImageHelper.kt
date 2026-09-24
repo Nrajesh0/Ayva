@@ -194,7 +194,9 @@ object NoteImageHelper {
             val imagesDir = File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
             val ext = src.extension.ifEmpty { "jpg" }
             val dest = File(imagesDir, "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext")
-            src.copyTo(dest, overwrite = true)
+            val rawBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(src) ?: src.readBytes()
+            com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(dest, rawBytes)
+            java.util.Arrays.fill(rawBytes, 0.toByte())
             dest.absolutePath
         } catch (e: Exception) {
             e.printStackTrace()

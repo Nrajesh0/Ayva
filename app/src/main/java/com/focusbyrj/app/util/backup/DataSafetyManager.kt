@@ -19,10 +19,12 @@ package com.focusbyrj.app.util.backup
 
 import android.content.Context
 import android.util.Log
+import androidx.room.withTransaction
 import com.focusbyrj.app.data.AppRestriction
 import com.focusbyrj.app.data.FocusDatabase
 import com.focusbyrj.app.data.FocusSchedule
 import com.focusbyrj.app.data.Habit
+import com.focusbyrj.app.data.HabitLog
 import com.focusbyrj.app.data.HabitType
 import com.focusbyrj.app.data.RecurrencePattern
 import com.focusbyrj.app.data.Task
@@ -332,12 +334,14 @@ object DataSafetyManager {
                         imageUrisJson = obj.optString("imageUrisJson", "[]"),
                         audioUrisJson = obj.optString("audioUrisJson", "[]"),
                         colorKey = obj.optString("colorKey", "default"),
+                        fontKey = obj.optString("fontKey", "default"),
                         isPinned = obj.optBoolean("isPinned", false),
                         isArchived = obj.optBoolean("isArchived", false),
                         isTrashed = obj.optBoolean("isTrashed", false),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                         updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                        trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.getLong("trashedAt") else null
+                        trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.getLong("trashedAt") else null,
+                        deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.getLong("deletedAt") else null
                     )
                     restoredNotes.add(note)
                 }
@@ -349,131 +353,158 @@ object DataSafetyManager {
                 }
             }
 
-            // 2. Restore FocusDatabase entities if provided
+            // 2. Restore FocusDatabase entities if provided atomically
             if (focusDb != null) {
-                // Tasks
-                val tasksArr = root.optJSONArray("tasks")
-                if (tasksArr != null && tasksArr.length() > 0) {
-                    val restoredTasks = mutableListOf<Task>()
-                    for (i in 0 until tasksArr.length()) {
-                        val obj = tasksArr.getJSONObject(i)
-                        restoredTasks.add(
-                            Task(
-                                id = obj.optLong("id", 0L),
-                                title = obj.getString("title"),
-                                details = obj.optString("details", ""),
-                                dueDate = if (obj.has("dueDate") && !obj.isNull("dueDate")) obj.optLong("dueDate") else null,
-                                isCompleted = obj.optBoolean("isCompleted", false),
-                                completedAt = if (obj.has("completedAt") && !obj.isNull("completedAt")) obj.optLong("completedAt") else null,
-                                type = try { TaskType.valueOf(obj.optString("type", "TASK")) } catch (_: Exception) { TaskType.TASK },
-                                recurrence = try { RecurrencePattern.valueOf(obj.optString("recurrence", "NONE")) } catch (_: Exception) { RecurrencePattern.NONE },
-                                isPersistent = obj.optBoolean("isPersistent", false),
-                                isPriority = obj.optBoolean("isPriority", false),
-                                updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                                isTrashed = obj.optBoolean("isTrashed", false),
-                                trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
-                                deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null
+                focusDb.withTransaction {
+                    // Tasks
+                    val tasksArr = root.optJSONArray("tasks")
+                    if (tasksArr != null && tasksArr.length() > 0) {
+                        val restoredTasks = mutableListOf<Task>()
+                        for (i in 0 until tasksArr.length()) {
+                            val obj = tasksArr.getJSONObject(i)
+                            restoredTasks.add(
+                                Task(
+                                    id = obj.optLong("id", 0L),
+                                    title = obj.getString("title"),
+                                    details = obj.optString("details", ""),
+                                    dueDate = if (obj.has("dueDate") && !obj.isNull("dueDate")) obj.optLong("dueDate") else null,
+                                    isCompleted = obj.optBoolean("isCompleted", false),
+                                    completedAt = if (obj.has("completedAt") && !obj.isNull("completedAt")) obj.optLong("completedAt") else null,
+                                    type = try { TaskType.valueOf(obj.optString("type", "TASK")) } catch (_: Exception) { TaskType.TASK },
+                                    recurrence = try { RecurrencePattern.valueOf(obj.optString("recurrence", "NONE")) } catch (_: Exception) { RecurrencePattern.NONE },
+                                    isPersistent = obj.optBoolean("isPersistent", false),
+                                    isPriority = obj.optBoolean("isPriority", false),
+                                    updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+                                    isTrashed = obj.optBoolean("isTrashed", false),
+                                    trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
+                                    deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null,
+                                    subtasksJson = obj.optString("subtasksJson", "[]")
+                                )
                             )
-                        )
+                        }
+                        if (restoredTasks.isNotEmpty()) {
+                            focusDb.taskDao().insertTasks(restoredTasks)
+                            totalRestored += restoredTasks.size
+                            Log.i(TAG, "Restored ${restoredTasks.size} tasks from snapshot")
+                        }
                     }
-                    if (restoredTasks.isNotEmpty()) {
-                        focusDb.taskDao().insertTasks(restoredTasks)
-                        totalRestored += restoredTasks.size
-                        Log.i(TAG, "Restored ${restoredTasks.size} tasks from snapshot")
-                    }
-                }
 
-                // Habits
-                val habitsArr = root.optJSONArray("habits")
-                if (habitsArr != null && habitsArr.length() > 0) {
-                    val restoredHabits = mutableListOf<Habit>()
-                    for (i in 0 until habitsArr.length()) {
-                        val obj = habitsArr.getJSONObject(i)
-                        restoredHabits.add(
-                            Habit(
-                                id = obj.optLong("id", 0L),
-                                title = obj.getString("title"),
-                                description = obj.optString("description", ""),
-                                iconEmoji = obj.optString("iconEmoji", "✨"),
-                                colorHex = obj.optString("colorHex", "#3B82F6"),
-                                type = try { HabitType.valueOf(obj.optString("type", "ONCE_DAILY")) } catch (_: Exception) { HabitType.ONCE_DAILY },
-                                targetPerDay = obj.optInt("targetPerDay", 1),
-                                intervalHours = obj.optInt("intervalHours", 2),
-                                intervalMinutes = obj.optInt("intervalMinutes", 0),
-                                windowStartHour = obj.optInt("windowStartHour", 8),
-                                windowStartMinute = obj.optInt("windowStartMinute", 0),
-                                windowEndHour = obj.optInt("windowEndHour", 20),
-                                windowEndMinute = obj.optInt("windowEndMinute", 0),
-                                fixedReminderHour = obj.optInt("fixedReminderHour", 9),
-                                fixedReminderMinute = obj.optInt("fixedReminderMinute", 0),
-                                isReminderEnabled = obj.optBoolean("isReminderEnabled", false),
-                                reminderSound = obj.optString("reminderSound", "default"),
-                                createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                                isArchived = obj.optBoolean("isArchived", false)
+                    // Habits
+                    val habitsArr = root.optJSONArray("habits")
+                    if (habitsArr != null && habitsArr.length() > 0) {
+                        val restoredHabits = mutableListOf<Habit>()
+                        for (i in 0 until habitsArr.length()) {
+                            val obj = habitsArr.getJSONObject(i)
+                            restoredHabits.add(
+                                Habit(
+                                    id = obj.optLong("id", 0L),
+                                    title = obj.getString("title"),
+                                    description = obj.optString("description", ""),
+                                    iconEmoji = obj.optString("iconEmoji", "✨"),
+                                    colorHex = obj.optString("colorHex", "#3B82F6"),
+                                    type = try { HabitType.valueOf(obj.optString("type", "ONCE_DAILY")) } catch (_: Exception) { HabitType.ONCE_DAILY },
+                                    targetPerDay = obj.optInt("targetPerDay", 1),
+                                    intervalHours = obj.optInt("intervalHours", 2),
+                                    intervalMinutes = obj.optInt("intervalMinutes", 0),
+                                    windowStartHour = obj.optInt("windowStartHour", 8),
+                                    windowStartMinute = obj.optInt("windowStartMinute", 0),
+                                    windowEndHour = obj.optInt("windowEndHour", 20),
+                                    windowEndMinute = obj.optInt("windowEndMinute", 0),
+                                    fixedReminderHour = obj.optInt("fixedReminderHour", 9),
+                                    fixedReminderMinute = obj.optInt("fixedReminderMinute", 0),
+                                    isReminderEnabled = obj.optBoolean("isReminderEnabled", false),
+                                    reminderSound = obj.optString("reminderSound", "default"),
+                                    createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                                    isArchived = obj.optBoolean("isArchived", false)
+                                )
                             )
-                        )
+                        }
+                        if (restoredHabits.isNotEmpty()) {
+                            focusDb.habitDao().insertHabits(restoredHabits)
+                            totalRestored += restoredHabits.size
+                            Log.i(TAG, "Restored ${restoredHabits.size} habits from snapshot")
+                        }
                     }
-                    if (restoredHabits.isNotEmpty()) {
-                        focusDb.habitDao().insertHabits(restoredHabits)
-                        totalRestored += restoredHabits.size
-                        Log.i(TAG, "Restored ${restoredHabits.size} habits from snapshot")
-                    }
-                }
 
-                // Schedules
-                val schedulesArr = root.optJSONArray("schedules")
-                if (schedulesArr != null && schedulesArr.length() > 0) {
-                    val restoredSchedules = mutableListOf<FocusSchedule>()
-                    for (i in 0 until schedulesArr.length()) {
-                        val obj = schedulesArr.getJSONObject(i)
-                        restoredSchedules.add(
-                            FocusSchedule(
-                                id = obj.optInt("id", 0),
-                                name = obj.getString("name"),
-                                startHour = obj.optInt("startHour", 9),
-                                startMinute = obj.optInt("startMinute", 0),
-                                endHour = obj.optInt("endHour", 17),
-                                endMinute = obj.optInt("endMinute", 0),
-                                daysOfWeek = obj.optString("daysOfWeek", "1,2,3,4,5"),
-                                mode = obj.optString("mode", "HARD"),
-                                restrictionMode = obj.optString("restrictionMode", "SIMPLE"),
-                                timeLimitMinutes = obj.optInt("timeLimitMinutes", 0),
-                                clickLimitCount = obj.optInt("clickLimitCount", 0),
-                                appsToBlock = obj.optString("appsToBlock", ""),
-                                isEnabled = obj.optBoolean("isEnabled", true)
+                    // Habit Logs
+                    val logsArr = root.optJSONArray("habitLogs")
+                    if (logsArr != null && logsArr.length() > 0) {
+                        val restoredLogs = mutableListOf<HabitLog>()
+                        for (i in 0 until logsArr.length()) {
+                            val obj = logsArr.getJSONObject(i)
+                            restoredLogs.add(
+                                HabitLog(
+                                    id = obj.optLong("id", 0L),
+                                    habitId = obj.getLong("habitId"),
+                                    date = obj.getString("date"),
+                                    completedCount = obj.optInt("completedCount", 1),
+                                    targetCount = obj.optInt("targetCount", 1),
+                                    lastCompletedTimestamp = if (obj.has("lastCompletedTimestamp") && !obj.isNull("lastCompletedTimestamp")) obj.getLong("lastCompletedTimestamp") else null
+                                )
                             )
-                        )
+                        }
+                        if (restoredLogs.isNotEmpty()) {
+                            restoredLogs.forEach { focusDb.habitDao().insertOrUpdateLog(it) }
+                            totalRestored += restoredLogs.size
+                            Log.i(TAG, "Restored ${restoredLogs.size} habit logs from snapshot")
+                        }
                     }
-                    if (restoredSchedules.isNotEmpty()) {
-                        focusDb.scheduleDao().insertSchedules(restoredSchedules)
-                        totalRestored += restoredSchedules.size
-                        Log.i(TAG, "Restored ${restoredSchedules.size} schedules from snapshot")
-                    }
-                }
 
-                // Restrictions
-                val restrictionsArr = root.optJSONArray("restrictions")
-                if (restrictionsArr != null && restrictionsArr.length() > 0) {
-                    val restoredRestrictions = mutableListOf<AppRestriction>()
-                    for (i in 0 until restrictionsArr.length()) {
-                        val obj = restrictionsArr.getJSONObject(i)
-                        restoredRestrictions.add(
-                            AppRestriction(
-                                packageName = obj.getString("packageName"),
-                                appName = obj.optString("appName", "Unknown App"),
-                                isRestricted = obj.optBoolean("isRestricted", false),
-                                mode = obj.optString("mode", "HARD"),
-                                restrictionMode = obj.optString("restrictionMode", "SIMPLE"),
-                                timeLimitMinutes = obj.optInt("timeLimitMinutes", 0),
-                                clickLimitCount = obj.optInt("clickLimitCount", 0),
-                                customQuote = obj.optString("customQuote", "Is this urgent, or are you chasing cheap dopamine?")
+                    // Schedules
+                    val schedulesArr = root.optJSONArray("schedules")
+                    if (schedulesArr != null && schedulesArr.length() > 0) {
+                        val restoredSchedules = mutableListOf<FocusSchedule>()
+                        for (i in 0 until schedulesArr.length()) {
+                            val obj = schedulesArr.getJSONObject(i)
+                            restoredSchedules.add(
+                                FocusSchedule(
+                                    id = obj.optInt("id", 0),
+                                    name = obj.getString("name"),
+                                    startHour = obj.optInt("startHour", 9),
+                                    startMinute = obj.optInt("startMinute", 0),
+                                    endHour = obj.optInt("endHour", 17),
+                                    endMinute = obj.optInt("endMinute", 0),
+                                    daysOfWeek = obj.optString("daysOfWeek", "1,2,3,4,5"),
+                                    mode = obj.optString("mode", "HARD"),
+                                    restrictionMode = obj.optString("restrictionMode", "SIMPLE"),
+                                    timeLimitMinutes = obj.optInt("timeLimitMinutes", 0),
+                                    clickLimitCount = obj.optInt("clickLimitCount", 0),
+                                    appsToBlock = obj.optString("appsToBlock", ""),
+                                    isEnabled = obj.optBoolean("isEnabled", true)
+                                )
                             )
-                        )
+                        }
+                        if (restoredSchedules.isNotEmpty()) {
+                            focusDb.scheduleDao().insertSchedules(restoredSchedules)
+                            totalRestored += restoredSchedules.size
+                            Log.i(TAG, "Restored ${restoredSchedules.size} schedules from snapshot")
+                        }
                     }
-                    if (restoredRestrictions.isNotEmpty()) {
-                        focusDb.appRestrictionDao().insertRestrictions(restoredRestrictions)
-                        totalRestored += restoredRestrictions.size
-                        Log.i(TAG, "Restored ${restoredRestrictions.size} restrictions from snapshot")
+
+                    // Restrictions
+                    val restrictionsArr = root.optJSONArray("restrictions")
+                    if (restrictionsArr != null && restrictionsArr.length() > 0) {
+                        val restoredRestrictions = mutableListOf<AppRestriction>()
+                        for (i in 0 until restrictionsArr.length()) {
+                            val obj = restrictionsArr.getJSONObject(i)
+                            restoredRestrictions.add(
+                                AppRestriction(
+                                    packageName = obj.getString("packageName"),
+                                    appName = obj.optString("appName", "Unknown App"),
+                                    isRestricted = obj.optBoolean("isRestricted", false),
+                                    mode = obj.optString("mode", "HARD"),
+                                    restrictionMode = obj.optString("restrictionMode", "SIMPLE"),
+                                    timeLimitMinutes = obj.optInt("timeLimitMinutes", 0),
+                                    clickLimitCount = obj.optInt("clickLimitCount", 0),
+                                    customQuote = obj.optString("customQuote", "Is this urgent, or are you chasing cheap dopamine?")
+                                )
+                            )
+                        }
+                        if (restoredRestrictions.isNotEmpty()) {
+                            focusDb.appRestrictionDao().insertRestrictions(restoredRestrictions)
+                            totalRestored += restoredRestrictions.size
+                            Log.i(TAG, "Restored ${restoredRestrictions.size} restrictions from snapshot")
+                        }
                     }
                 }
             }
@@ -553,12 +584,14 @@ object DataSafetyManager {
                     put("imageUrisJson", note.imageUrisJson)
                     put("audioUrisJson", note.audioUrisJson)
                     put("colorKey", note.colorKey)
+                    put("fontKey", note.fontKey)
                     put("isPinned", note.isPinned)
                     put("isArchived", note.isArchived)
                     put("isTrashed", note.isTrashed)
                     put("createdAt", note.createdAt)
                     put("updatedAt", note.updatedAt)
                     if (note.trashedAt != null) put("trashedAt", note.trashedAt)
+                    if (note.deletedAt != null) put("deletedAt", note.deletedAt)
                 })
             }
             put("notes", notesArr)
@@ -584,6 +617,7 @@ object DataSafetyManager {
                         put("isTrashed", t.isTrashed)
                         if (t.trashedAt != null) put("trashedAt", t.trashedAt)
                         if (t.deletedAt != null) put("deletedAt", t.deletedAt)
+                        put("subtasksJson", t.subtasksJson)
                     })
                 }
                 put("tasks", tasksArr)
@@ -616,6 +650,22 @@ object DataSafetyManager {
                     })
                 }
                 put("habits", habitsArr)
+
+                // Habit Logs
+                val habitLogs = focusDb.habitDao().getAllLogsSync()
+                put("habitLogCount", habitLogs.size)
+                val habitLogsArr = JSONArray()
+                habitLogs.forEach { l ->
+                    habitLogsArr.put(JSONObject().apply {
+                        put("id", l.id)
+                        put("habitId", l.habitId)
+                        put("date", l.date)
+                        put("completedCount", l.completedCount)
+                        put("targetCount", l.targetCount)
+                        if (l.lastCompletedTimestamp != null) put("lastCompletedTimestamp", l.lastCompletedTimestamp)
+                    })
+                }
+                put("habitLogs", habitLogsArr)
 
                 // Schedules
                 val schedules = focusDb.scheduleDao().getAllSchedulesSync()

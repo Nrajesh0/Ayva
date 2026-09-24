@@ -84,6 +84,9 @@ object NoteDatabaseMigrationHelper {
                     val audioUrisJsonIdx = c.getColumnIndex("audioUrisJson")
                     val createdAtIdx = c.getColumnIndex("createdAt")
                     val updatedAtIdx = c.getColumnIndex("updatedAt")
+                    val fontKeyIdx = c.getColumnIndex("fontKey")
+                    val trashedAtIdx = c.getColumnIndex("trashedAt")
+                    val deletedAtIdx = c.getColumnIndex("deletedAt")
 
                     while (c.moveToNext()) {
                         val id = if (idIdx != -1) c.getLong(idIdx) else 0L
@@ -92,9 +95,12 @@ object NoteDatabaseMigrationHelper {
                         val isChecklist = if (isChecklistIdx != -1) c.getInt(isChecklistIdx) == 1 else false
                         val checklistJson = if (checklistJsonIdx != -1) c.getString(checklistJsonIdx) ?: "[]" else "[]"
                         val colorKey = if (colorKeyIdx != -1) c.getString(colorKeyIdx) ?: "default" else "default"
+                        val fontKey = if (fontKeyIdx != -1 && !c.isNull(fontKeyIdx)) c.getString(fontKeyIdx) ?: "default" else "default"
                         val isPinned = if (isPinnedIdx != -1) c.getInt(isPinnedIdx) == 1 else false
                         val isArchived = if (isArchivedIdx != -1) c.getInt(isArchivedIdx) == 1 else false
                         val isTrashed = if (isTrashedIdx != -1) c.getInt(isTrashedIdx) == 1 else false
+                        val trashedAt = if (trashedAtIdx != -1 && !c.isNull(trashedAtIdx)) c.getLong(trashedAtIdx) else null
+                        val deletedAt = if (deletedAtIdx != -1 && !c.isNull(deletedAtIdx)) c.getLong(deletedAtIdx) else null
                         val labelsJson = if (labelsJsonIdx != -1) c.getString(labelsJsonIdx) ?: "[]" else "[]"
                         val imageUrisJson = if (imageUrisJsonIdx != -1) c.getString(imageUrisJsonIdx) ?: "[]" else "[]"
                         val audioUrisJson = if (audioUrisJsonIdx != -1) c.getString(audioUrisJsonIdx) ?: "[]" else "[]"
@@ -109,9 +115,12 @@ object NoteDatabaseMigrationHelper {
                                 isChecklist = isChecklist,
                                 checklistJson = checklistJson,
                                 colorKey = colorKey,
+                                fontKey = fontKey,
                                 isPinned = isPinned,
                                 isArchived = isArchived,
                                 isTrashed = isTrashed,
+                                trashedAt = trashedAt,
+                                deletedAt = deletedAt,
                                 labelsJson = labelsJson,
                                 imageUrisJson = imageUrisJson,
                                 audioUrisJson = audioUrisJson,

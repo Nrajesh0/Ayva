@@ -1604,6 +1604,7 @@ fun NotesScreen(
                         onRemoveChecklistItem = { viewModel.removeChecklistItem(it) },
                         onMoveChecklistItem = { from, to -> viewModel.moveChecklistItem(from, to) },
                         onAddImageUri = { viewModel.addImageUriToEditor(it) },
+                        onAddAttachmentUri = { viewModel.addAttachmentToEditor(it) },
                         onAddDrawing = { viewModel.addDrawingToEditor(it) },
                         onRemoveImage = { viewModel.removeImageFromEditor(it) },
                         onAddLabel = { viewModel.addLabelToEditor(it) },

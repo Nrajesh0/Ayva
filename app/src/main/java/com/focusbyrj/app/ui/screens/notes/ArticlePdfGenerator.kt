@@ -53,10 +53,10 @@ object ArticlePdfGenerator {
         checklistItems: List<ChecklistItem> = emptyList()
     ): ByteArray {
         val pdfDoc = PdfDocument()
-
-        var pageNumber = 1
-        var pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create()
-        var currentPage = pdfDoc.startPage(pageInfo)
+        try {
+            var pageNumber = 1
+            var pageInfo = PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create()
+            var currentPage = pdfDoc.startPage(pageInfo)
         var canvas = currentPage.canvas
 
         var currentY = MARGIN_TOP
@@ -569,9 +569,13 @@ object ArticlePdfGenerator {
 
         val baos = ByteArrayOutputStream()
         pdfDoc.writeTo(baos)
-        pdfDoc.close()
         return baos.toByteArray()
+    } finally {
+        try {
+            pdfDoc.close()
+        } catch (_: Throwable) {}
     }
+}
 
     private fun createStaticLayout(text: CharSequence, paint: TextPaint, width: Int): StaticLayout {
         val safeWidth = maxOf(width, 10)
