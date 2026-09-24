@@ -72,6 +72,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val persistMutex = Mutex()
     private var autoSaveJob: Job? = null
 
+    /**
+     * Holds the DB-assigned ID for a new note that has been persisted by [persistCurrentEditorState]
+     * but whose [EditingNoteState.originalId] update may not yet have propagated back to Main.
+     * [closeEditor] reads this to avoid a second INSERT that would produce a duplicate.
+     * Reset to 0L at the start of every new-note session.
+     */
+    @Volatile private var pendingNewNoteId: Long = 0L
+
+    /** Debounce job for undo snapshot pushes during continuous text typing. */
+    private var undoPushJob: Job? = null
+
     // Secret Archive Vault Security State
     private val _isVaultUnlocked = MutableStateFlow(false)
     val isVaultUnlocked: StateFlow<Boolean> = _isVaultUnlocked.asStateFlow()
@@ -582,6 +593,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     // EDITOR STATE (Live editing in full-screen)
     // ==========================================
     data class EditingNoteState(
+        val sessionId: String = java.util.UUID.randomUUID().toString(),
         val originalId: Long = 0L,
         val title: String = "",
         val content: String = "",
@@ -694,7 +706,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun isNoteModified(current: EditingNoteState, initial: EditingNoteState?): Boolean {
         if (initial == null) return true
-        if (current.originalId == 0L) return true
+        if (current.originalId == 0L) {
+            // For brand-new unsaved notes, only consider "modified" (worth saving) if there
+            // is actual user content. An empty new note tapped and immediately closed should
+            // never produce a DB row or a duplicate on close.
+            return current.title.isNotBlank() ||
+                    current.content.isNotBlank() ||
+                    current.checklistItems.any { it.text.isNotBlank() } ||
+                    current.imageUris.isNotEmpty() ||
+                    current.audioUris.isNotEmpty()
+        }
         return current.title != initial.title ||
                 current.content != initial.content ||
                 current.isChecklist != initial.isChecklist ||
@@ -713,6 +734,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
         autoSaveJob?.cancel()
+        undoPushJob?.cancel()
+        pendingNewNoteId = 0L
         resetUndoHistory()
         initialSnapshot = null
         val initialItems = if (asChecklist) listOf(ChecklistItem(text = "", isChecked = false)) else emptyList()
@@ -734,6 +757,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
         autoSaveJob?.cancel()
+        undoPushJob?.cancel()
+        pendingNewNoteId = 0L
         resetUndoHistory()
         val cached = latestNotesCache[note.id]
         val resolvedNote = if (cached != null && cached.updatedAt >= note.updatedAt) cached else note
@@ -1001,15 +1026,28 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateEditorTitle(title: String) {
-        pushUndoSnapshot()
+        scheduleDebouncedUndoSnapshot()
         _editingState.value = _editingState.value?.copy(title = title, updatedAt = System.currentTimeMillis())
         persistCurrentEditorState()
     }
 
     fun updateEditorContent(content: String) {
-        pushUndoSnapshot()
+        scheduleDebouncedUndoSnapshot()
         _editingState.value = _editingState.value?.copy(content = content, updatedAt = System.currentTimeMillis())
         persistCurrentEditorState()
+    }
+
+    /**
+     * Debounced undo snapshot — only pushes a snapshot after the user pauses typing for
+     * 800 ms. This gives paragraph-level undo granularity instead of per-keystroke undo,
+     * which is what users expect from a production notes app.
+     */
+    private fun scheduleDebouncedUndoSnapshot() {
+        undoPushJob?.cancel()
+        undoPushJob = viewModelScope.launch {
+            delay(800L)
+            pushUndoSnapshot()
+        }
     }
 
     fun toggleEditorPin() {
@@ -1415,7 +1453,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openNewNoteWithVoice(transcription: String) {
+        audioMemoManager.stopPlayback()
+        audioMemoManager.cancelRecording()
+        autoSaveJob?.cancel()
+        undoPushJob?.cancel()
+        pendingNewNoteId = 0L
         resetUndoHistory()
+        initialSnapshot = null
         _editingState.value = EditingNoteState(
             originalId = 0L,
             title = "",
@@ -1623,6 +1667,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
         autoSaveJob?.cancel()
+        undoPushJob?.cancel()
         val current = _editingState.value ?: return
         _editingState.value = null
 
@@ -1632,12 +1677,26 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
         // If existing note is unmodified, do NOT overwrite timestamp or re-save
         if (!modified && current.originalId != 0L) {
+            pendingNewNoteId = 0L
+            return
+        }
+
+        // If a brand-new note was not modified at all, discard immediately without saving
+        if (!modified && current.originalId == 0L && pendingNewNoteId == 0L) {
             return
         }
 
         viewModelScope.launch(Dispatchers.IO) {
             persistMutex.withLock {
-                val entity = buildEntityFromState(current, isModified = modified)
+                // Promote originalId from pendingNewNoteId if persistCurrentEditorState() already
+                // inserted this note before or during this close call.
+                // Re-checking inside withLock ensures that if persistCurrentEditorState() was mid-flight,
+                // its returned ID is observed and we UPDATE instead of doing a second INSERT (duplicate).
+                val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
+                pendingNewNoteId = 0L
+                val resolvedCurrent = if (effectiveId != current.originalId) current.copy(originalId = effectiveId) else current
+
+                val entity = buildEntityFromState(resolvedCurrent, isModified = modified)
                 if (entity.isEmptyNote()) {
                     if (entity.id != 0L) {
                         // Accidental clear protection: An existing note was cleared of content.
@@ -1675,17 +1734,25 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             }
             persistMutex.withLock {
                 val latest = _editingState.value ?: return@withLock
-                val latestModified = isNoteModified(latest, initialSnapshot)
-                if (!latestModified && latest.originalId != 0L) return@withLock
+                // Resolve the effective originalId — pendingNewNoteId may have been set by a
+                // prior iteration of this coroutine and the Main callback may not have fired yet.
+                val effectiveId = if (latest.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else latest.originalId
+                val resolvedLatest = if (effectiveId != latest.originalId) latest.copy(originalId = effectiveId) else latest
 
-                val entity = buildEntityFromState(latest, isModified = true)
-                if (entity.isEmptyNote() && latest.originalId == 0L) return@withLock
+                val latestModified = isNoteModified(resolvedLatest, initialSnapshot)
+                if (!latestModified && resolvedLatest.originalId != 0L) return@withLock
+
+                val entity = buildEntityFromState(resolvedLatest, isModified = true)
+                if (entity.isEmptyNote() && resolvedLatest.originalId == 0L) return@withLock
 
                 val savedId = repository.saveNote(entity)
                 val finalEntity = if (entity.id == 0L) entity.copy(id = savedId) else entity
                 latestNotesCache[savedId] = finalEntity
 
-                if (latest.originalId == 0L && savedId != 0L) {
+                // Set pendingNewNoteId BEFORE releasing the mutex so that any concurrent
+                // closeEditor() call will see the assigned ID and use UPDATE, not INSERT.
+                if (resolvedLatest.originalId == 0L && savedId != 0L) {
+                    pendingNewNoteId = savedId
                     withContext(Dispatchers.Main) {
                         _editingState.value = _editingState.value?.copy(originalId = savedId)
                     }

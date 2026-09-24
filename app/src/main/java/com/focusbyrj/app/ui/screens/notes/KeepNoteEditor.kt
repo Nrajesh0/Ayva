@@ -278,8 +278,8 @@ fun KeepNoteEditor(
     var showEditorialSheet by remember { mutableStateOf(false) }
     var lineSpacingPreset by remember { mutableStateOf(LineSpacingPreset.COMFORTABLE) }
 
-    val initialParsed = remember(state.originalId) { RichTextEngine.parse(state.content) }
-    var richSpans by remember(state.originalId) { mutableStateOf(initialParsed.second) }
+    val initialParsed = remember(state.sessionId) { RichTextEngine.parse(state.content) }
+    var richSpans by remember(state.sessionId) { mutableStateOf(initialParsed.second) }
     var pendingTypingStyles by remember { mutableStateOf(setOf<RichSpanType>()) }
 
     val contentFocusRequester = remember { FocusRequester() }
@@ -296,7 +296,7 @@ fun KeepNoteEditor(
         }
     }
 
-    var contentTfv by remember(state.originalId) {
+    var contentTfv by remember(state.sessionId) {
         mutableStateOf(
             TextFieldValue(
                 text = initialParsed.first,
@@ -305,12 +305,12 @@ fun KeepNoteEditor(
         )
     }
 
-    var blocks by remember(state.originalId) {
+    var blocks by remember(state.sessionId) {
         mutableStateOf(NotesnookBlockManager.parse(state.content))
     }
 
-    var activeBlockIndex by remember(state.originalId) { mutableIntStateOf(0) }
-    val textBlockStates = remember(state.originalId) { mutableStateMapOf<String, TextFieldValue>() }
+    var activeBlockIndex by remember(state.sessionId) { mutableIntStateOf(0) }
+    val textBlockStates = remember(state.sessionId) { mutableStateMapOf<String, TextFieldValue>() }
 
     fun syncAndCommitBlocks(newBlocks: List<NotesnookBlock>) {
         blocks = newBlocks
@@ -401,17 +401,49 @@ fun KeepNoteEditor(
 
     fun insertBlockItem(blockToInsert: NotesnookBlock) {
         val newBlocks = blocks.toMutableList()
-        if (newBlocks.size == 1 && newBlocks[0] is NotesnookBlock.Text && (newBlocks[0] as NotesnookBlock.Text).text.isBlank()) {
-            newBlocks.clear()
-        } else if (newBlocks.size == 1 && newBlocks[0] is NotesnookBlock.Text) {
-            newBlocks[0] = NotesnookBlock.Text(text = contentTfv.text, spans = richSpans)
+        // In single-block mode, capture the current text and spans
+        if (newBlocks.size == 1 && newBlocks[0] is NotesnookBlock.Text) {
+            if (contentTfv.text.isBlank()) {
+                newBlocks.clear()
+            } else {
+                newBlocks[0] = NotesnookBlock.Text(text = contentTfv.text, spans = richSpans)
+            }
         }
-        val insertedIdx = newBlocks.size
-        newBlocks.add(blockToInsert)
-        val followingText = NotesnookBlock.Text()
-        newBlocks.add(followingText)
-        activeBlockIndex = insertedIdx + 1
-        syncAndCommitBlocks(newBlocks)
+
+        val currentIdx = activeBlockIndex.coerceIn(0, newBlocks.size)
+
+        // If currently focused block is an empty Text block, replace it with the new widget!
+        if (currentIdx < newBlocks.size && newBlocks[currentIdx] is NotesnookBlock.Text && (newBlocks[currentIdx] as NotesnookBlock.Text).text.isBlank()) {
+            newBlocks[currentIdx] = blockToInsert
+            val nextIdx = currentIdx + 1
+            val hasTrailingText = nextIdx < newBlocks.size && newBlocks[nextIdx] is NotesnookBlock.Text
+            if (!hasTrailingText) {
+                newBlocks.add(nextIdx, NotesnookBlock.Text())
+            }
+            activeBlockIndex = nextIdx
+        } else {
+            // Otherwise insert after the active block (or at beginning if empty)
+            val insertAt = if (newBlocks.isEmpty()) 0 else (currentIdx + 1).coerceAtMost(newBlocks.size)
+            newBlocks.add(insertAt, blockToInsert)
+            val nextIdx = insertAt + 1
+            val hasTrailingText = nextIdx < newBlocks.size && newBlocks[nextIdx] is NotesnookBlock.Text
+            if (!hasTrailingText) {
+                newBlocks.add(nextIdx, NotesnookBlock.Text())
+            }
+            activeBlockIndex = nextIdx
+        }
+
+        // Deduplicate consecutive blank Text blocks so spacers never accumulate
+        val cleanedBlocks = mutableListOf<NotesnookBlock>()
+        for (b in newBlocks) {
+            val last = cleanedBlocks.lastOrNull()
+            if (b is NotesnookBlock.Text && b.text.isBlank() && last is NotesnookBlock.Text && last.text.isBlank()) {
+                continue
+            }
+            cleanedBlocks.add(b)
+        }
+
+        syncAndCommitBlocks(if (cleanedBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else cleanedBlocks)
         showNotesnookInsertSheet = false
     }
 
@@ -832,6 +864,16 @@ fun KeepNoteEditor(
                                                     if (it.isFocused) {
                                                         activeBlockIndex = index
                                                     }
+                                                }
+                                                .onKeyEvent { keyEvent ->
+                                                    if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.Backspace && textVal.text.isEmpty() && blocks.size > 1) {
+                                                        val newBlocks = blocks.filterIndexed { i, _ -> i != index }
+                                                        activeBlockIndex = (index - 1).coerceAtLeast(0)
+                                                        syncAndCommitBlocks(if (newBlocks.isEmpty()) listOf(NotesnookBlock.Text()) else newBlocks)
+                                                        true
+                                                    } else {
+                                                        false
+                                                    }
                                                 },
                                             visualTransformation = textVisualTrans,
                                             textStyle = TextStyle(
@@ -842,9 +884,9 @@ fun KeepNoteEditor(
                                             ),
                                             cursorBrush = SolidColor(textColor),
                                             decorationBox = { innerTextField ->
-                                                if (block.text.isEmpty()) {
+                                                if (block.text.isEmpty() && index == 0 && blocks.none { it !is NotesnookBlock.Text || (it as? NotesnookBlock.Text)?.text?.isNotEmpty() == true }) {
                                                     Text(
-                                                        text = if (index == 0) "Note" else "Continue writing...",
+                                                        text = "Note",
                                                         style = TextStyle(
                                                             color = textColor.copy(alpha = 0.35f),
                                                             fontSize = fontSizeSp.sp,

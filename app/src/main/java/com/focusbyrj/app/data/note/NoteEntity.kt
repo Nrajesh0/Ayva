@@ -135,9 +135,44 @@ data class NoteEntity(
         if (isChecklist) {
             val items = getChecklistItems()
             return items.none { it.text.isNotBlank() }
-        } else {
-            return content.isBlank()
         }
+        // For block-serialized content (<!--NOTESNOOK_BLOCKS:{...}-->), treat a note as empty
+        // only when every block is a Text block with blank text. Non-text blocks (Table, Code,
+        // Image, Callout, etc.) are always considered real content.
+        val blockPrefix = "<!--NOTESNOOK_BLOCKS:"
+        val prefixIdx = content.indexOf(blockPrefix)
+        if (prefixIdx != -1) {
+            val suffixIdx = content.indexOf(":BLOCKS_END-->", prefixIdx + blockPrefix.length).takeIf { it != -1 }
+                ?: content.indexOf("-->", prefixIdx + blockPrefix.length)
+            if (suffixIdx != -1) {
+                return try {
+                    var jsonStr = content.substring(prefixIdx + blockPrefix.length, suffixIdx).trim()
+                    if (jsonStr.endsWith(":BLOCKS_END")) {
+                        jsonStr = jsonStr.removeSuffix(":BLOCKS_END").trim()
+                    }
+                    val root = JSONObject(jsonStr)
+                    val blocks = root.optJSONArray("blocks") ?: return true
+                    var allTextEmpty = true
+                    for (i in 0 until blocks.length()) {
+                        val block = blocks.getJSONObject(i)
+                        val type = block.optString("type", "text")
+                        if (type != "text") {
+                            // Any non-text block (table, code, image, etc.) counts as content
+                            allTextEmpty = false
+                            break
+                        }
+                        if (block.optString("text", "").isNotBlank()) {
+                            allTextEmpty = false
+                            break
+                        }
+                    }
+                    allTextEmpty
+                } catch (_: Exception) {
+                    content.isBlank()
+                }
+            }
+        }
+        return content.isBlank()
     }
 }
 
