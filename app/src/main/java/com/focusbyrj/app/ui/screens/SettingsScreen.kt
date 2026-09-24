@@ -605,32 +605,6 @@ fun SettingsScreen(navController: NavController) {
                         showTabDropdown = false
                     }
                 )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                // PC Sync & Zero-Knowledge Vault Navigation Row
-                SettingsNavigationRow(
-                    icon = Icons.Filled.Lock,
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    title = "Cloud Vault & Security",
-                    subtitle = "Zero-Knowledge E2EE Supabase sync, backup & recovery",
-                    onClick = {
-                        navController.navigate(com.focusbyrj.app.ui.navigation.Screen.DeviceSync.route) {
-                            launchSingleTop = true
-                        }
-                    },
-                    trailing = {
-                        Icon(
-                            imageVector = Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                )
             }
 
                 Spacer(modifier = Modifier.height(24.dp))
