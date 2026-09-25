@@ -28,8 +28,31 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface NoteDao {
 
-    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isArticle = 0 ORDER BY isPinned DESC, updatedAt DESC")
     fun getAllActiveNotes(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isArticle = 1 ORDER BY isPinned DESC, updatedAt DESC")
+    fun getAllArticles(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isArticle = 1 AND isPublished = 0 ORDER BY isPinned DESC, updatedAt DESC")
+    fun getDraftArticles(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isArticle = 1 AND isPublished = 1 ORDER BY isPinned DESC, COALESCE(publishedAt, updatedAt) DESC")
+    fun getPublishedArticles(): Flow<List<NoteEntity>>
+
+    @Query("""
+        SELECT * FROM keep_notes 
+        WHERE isTrashed = 0 AND isArchived = 0 AND isArticle = 1
+        AND (title LIKE '%' || :query || '%' OR subtitle LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%' OR labelsJson LIKE '%' || :query || '%')
+        ORDER BY isPinned DESC, updatedAt DESC
+    """)
+    fun searchArticles(query: String): Flow<List<NoteEntity>>
+
+    @Query("UPDATE keep_notes SET isPublished = :isPublished, publishedAt = :publishedAt, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateArticlePublishStatus(id: Long, isPublished: Boolean, publishedAt: Long?, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE keep_notes SET isArticle = :isArticle, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateArticleType(id: Long, isArticle: Boolean, updatedAt: Long = System.currentTimeMillis())
 
     @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 1 ORDER BY updatedAt DESC")
     fun getArchivedNotes(): Flow<List<NoteEntity>>

@@ -36,6 +36,42 @@ class NoteRepository(
         emit(emptyList())
     }
 
+    fun getAllArticles(): Flow<List<NoteEntity>> = noteDao.getAllArticles().catch { e ->
+        Log.e(TAG, "Error collecting articles", e)
+        emit(emptyList())
+    }
+
+    fun getDraftArticles(): Flow<List<NoteEntity>> = noteDao.getDraftArticles().catch { e ->
+        Log.e(TAG, "Error collecting draft articles", e)
+        emit(emptyList())
+    }
+
+    fun getPublishedArticles(): Flow<List<NoteEntity>> = noteDao.getPublishedArticles().catch { e ->
+        Log.e(TAG, "Error collecting published articles", e)
+        emit(emptyList())
+    }
+
+    fun searchArticles(query: String): Flow<List<NoteEntity>> = noteDao.searchArticles(query).catch { e ->
+        Log.e(TAG, "Error searching articles", e)
+        emit(emptyList())
+    }
+
+    suspend fun updateArticlePublishStatus(id: Long, isPublished: Boolean, publishedAt: Long? = if (isPublished) System.currentTimeMillis() else null) {
+        try {
+            noteDao.updateArticlePublishStatus(id, isPublished, publishedAt)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating publish status for article $id", e)
+        }
+    }
+
+    suspend fun convertNoteToArticle(id: Long, isArticle: Boolean) {
+        try {
+            noteDao.updateArticleType(id, isArticle)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling article type for note $id", e)
+        }
+    }
+
     fun getArchivedNotes(): Flow<List<NoteEntity>> = noteDao.getArchivedNotes()
         .map { notes ->
             notes.map { note ->

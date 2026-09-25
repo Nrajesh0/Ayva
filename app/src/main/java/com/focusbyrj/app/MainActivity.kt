@@ -118,6 +118,8 @@ import com.focusbyrj.app.ui.screens.SecurityScreen
 import com.focusbyrj.app.ui.screens.SettingsScreen
 import com.focusbyrj.app.ui.screens.SubscriptionScreen
 import com.focusbyrj.app.ui.screens.TimeScreen
+import com.focusbyrj.app.ui.screens.stories.StoriesScreen
+import com.focusbyrj.app.ui.screens.stories.StoriesViewModel
 import com.focusbyrj.app.ui.theme.BorderGlass
 import com.focusbyrj.app.ui.theme.FocusByRjTheme
 import com.focusbyrj.app.ui.viewmodels.FocusViewModel
@@ -277,6 +279,7 @@ fun MainAppScreen(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val notesViewModel: com.focusbyrj.app.ui.screens.notes.NotesViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val storiesViewModel: StoriesViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
     val pendingRoute by viewModel.pendingNavigationRoute.collectAsStateWithLifecycle()
     val pendingOpenAdd by viewModel.pendingOpenAddDialog.collectAsStateWithLifecycle()
@@ -322,7 +325,7 @@ fun MainAppScreen(
         Screen.Dashboard,
         Screen.Todos,
         Screen.Empty,
-        Screen.Time,
+        Screen.Stories,
         Screen.Account
     )
 
@@ -409,6 +412,7 @@ fun MainAppScreen(
                 val hideTopBarRoutes = listOf(
                     Screen.Habits.route,
                     Screen.Empty.route,
+                    Screen.Stories.route,
                     Screen.PreferencesHub.route,
                     Screen.Settings.route,
                     Screen.Security.route,
@@ -629,7 +633,10 @@ fun MainAppScreen(
                 )
                 val notesEditingState by notesViewModel.editingState.collectAsStateWithLifecycle()
                 val isEditingNote = currentDestination?.route == Screen.Empty.route && notesEditingState != null
-                if (currentDestination?.route !in hideBottomBarRoutes && !isSessionActive && !isEditingNote) {
+                val storyEditingState by storiesViewModel.editingStory.collectAsStateWithLifecycle()
+                val storyReadingState by storiesViewModel.readingStory.collectAsStateWithLifecycle()
+                val isStoryFullscreen = currentDestination?.route == Screen.Stories.route && (storyEditingState != null || storyReadingState != null)
+                if (currentDestination?.route !in hideBottomBarRoutes && !isSessionActive && !isEditingNote && !isStoryFullscreen) {
                     FocusBottomBar(
                         items = items,
                         currentDestination = currentDestination,
@@ -769,6 +776,9 @@ fun MainAppScreen(
                         navController = navController,
                         onOpenSetupGuide = { showSetupDialog = true }
                     )
+                }
+                composable(Screen.Stories.route) {
+                    StoriesScreen(storiesViewModel)
                 }
                 composable(Screen.Time.route) {
                     TimeScreen()

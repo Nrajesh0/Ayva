@@ -26,7 +26,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import net.sqlcipher.database.SQLiteDatabase
 import net.sqlcipher.database.SupportFactory
 
-@Database(entities = [NoteEntity::class], version = 5, exportSchema = false)
+@Database(entities = [NoteEntity::class], version = 6, exportSchema = false)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -131,9 +131,6 @@ abstract class NoteDatabase : RoomDatabase() {
 
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Add trashedAt: records when a note was moved to trash (for 30-day auto-purge).
-                // Add deletedAt: soft-deletion audit log field (set before hard-delete, enabling recovery).
-                // Both are nullable so existing rows default to NULL safely.
                 try {
                     db.execSQL("ALTER TABLE keep_notes ADD COLUMN trashedAt INTEGER")
                 } catch (e: Exception) {
@@ -143,6 +140,41 @@ abstract class NoteDatabase : RoomDatabase() {
                     db.execSQL("ALTER TABLE keep_notes ADD COLUMN deletedAt INTEGER")
                 } catch (e: Exception) {
                     android.util.Log.e("NoteDatabase", "MIGRATION_4_5: deletedAt column may already exist", e)
+                }
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("ALTER TABLE keep_notes ADD COLUMN isArticle INTEGER NOT NULL DEFAULT 0")
+                } catch (e: Exception) {
+                    android.util.Log.e("NoteDatabase", "MIGRATION_5_6: isArticle column may already exist", e)
+                }
+                try {
+                    db.execSQL("ALTER TABLE keep_notes ADD COLUMN subtitle TEXT NOT NULL DEFAULT ''")
+                } catch (e: Exception) {
+                    android.util.Log.e("NoteDatabase", "MIGRATION_5_6: subtitle column may already exist", e)
+                }
+                try {
+                    db.execSQL("ALTER TABLE keep_notes ADD COLUMN coverImageUri TEXT")
+                } catch (e: Exception) {
+                    android.util.Log.e("NoteDatabase", "MIGRATION_5_6: coverImageUri column may already exist", e)
+                }
+                try {
+                    db.execSQL("ALTER TABLE keep_notes ADD COLUMN isPublished INTEGER NOT NULL DEFAULT 0")
+                } catch (e: Exception) {
+                    android.util.Log.e("NoteDatabase", "MIGRATION_5_6: isPublished column may already exist", e)
+                }
+                try {
+                    db.execSQL("ALTER TABLE keep_notes ADD COLUMN publishedAt INTEGER")
+                } catch (e: Exception) {
+                    android.util.Log.e("NoteDatabase", "MIGRATION_5_6: publishedAt column may already exist", e)
+                }
+                try {
+                    db.execSQL("ALTER TABLE keep_notes ADD COLUMN readingTimeMinutes INTEGER NOT NULL DEFAULT 0")
+                } catch (e: Exception) {
+                    android.util.Log.e("NoteDatabase", "MIGRATION_5_6: readingTimeMinutes column may already exist", e)
                 }
             }
         }
@@ -171,6 +203,34 @@ abstract class NoteDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_1_6 = object : Migration(1, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_1_5.migrate(db)
+                MIGRATION_5_6.migrate(db)
+            }
+        }
+
+        val MIGRATION_2_6 = object : Migration(2, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_2_5.migrate(db)
+                MIGRATION_5_6.migrate(db)
+            }
+        }
+
+        val MIGRATION_3_6 = object : Migration(3, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_3_5.migrate(db)
+                MIGRATION_5_6.migrate(db)
+            }
+        }
+
+        val MIGRATION_4_6 = object : Migration(4, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_4_5.migrate(db)
+                MIGRATION_5_6.migrate(db)
+            }
+        }
+
         fun getInstance(context: Context): NoteDatabase {
             return INSTANCE ?: synchronized(this) {
                 if (INSTANCE != null) return INSTANCE!!
@@ -193,9 +253,10 @@ abstract class NoteDatabase : RoomDatabase() {
                     )
                         .openHelperFactory(factory)
                         .addMigrations(
-                            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+                            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
                             MIGRATION_1_3, MIGRATION_1_4, MIGRATION_2_4,
-                            MIGRATION_1_5, MIGRATION_2_5, MIGRATION_3_5
+                            MIGRATION_1_5, MIGRATION_2_5, MIGRATION_3_5,
+                            MIGRATION_1_6, MIGRATION_2_6, MIGRATION_3_6, MIGRATION_4_6
                         )
                         .build()
                 } catch (t: Throwable) {

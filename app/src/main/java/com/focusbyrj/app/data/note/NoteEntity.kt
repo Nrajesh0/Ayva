@@ -53,7 +53,22 @@ data class NoteEntity(
      * the row is actually removed, giving a recovery window.
      * Null for active / trashed notes.
      */
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    /**
+     * Flag indicating this is a dedicated long-form Story / Article,
+     * segregating it from quick sticky notes in Tab 3 into the Stories Studio (Tab 4).
+     */
+    val isArticle: Boolean = false,
+    /** Subtitle or editorial standfirst / deck for blog posts and articles. */
+    val subtitle: String = "",
+    /** High-resolution hero cover image URI for the story header. */
+    val coverImageUri: String? = null,
+    /** Status flag: false = Draft (WIP), true = Published story. */
+    val isPublished: Boolean = false,
+    /** Timestamp (epoch ms) when this article was published. */
+    val publishedAt: Long? = null,
+    /** Estimated reading time in minutes computed from word count. */
+    val readingTimeMinutes: Int = 0
 ) {
     fun getImageUris(): List<String> {
         if (imageUrisJson.isBlank()) return emptyList()
@@ -129,6 +144,8 @@ data class NoteEntity(
 
     fun isEmptyNote(): Boolean {
         if (title.isNotBlank()) return false
+        if (subtitle.isNotBlank()) return false
+        if (!coverImageUri.isNullOrBlank()) return false
         if (getImageUris().isNotEmpty()) return false
         if (getAudioUris().isNotEmpty()) return false
         if (getLabels().isNotEmpty()) return false
