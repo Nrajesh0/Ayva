@@ -21,14 +21,11 @@ android {
   }
 
   signingConfigs {
-    val debugKeystore = file("${rootDir}/debug.keystore")
-    if (debugKeystore.exists()) {
-      create("debugConfig") {
-        storeFile = debugKeystore
-        storePassword = "android"
-        keyAlias = "androiddebugkey"
-        keyPassword = "android"
-      }
+    create("debugConfig") {
+      storeFile = file("${rootDir}/debug.keystore")
+      storePassword = "android"
+      keyAlias = "androiddebugkey"
+      keyPassword = "android"
     }
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
@@ -60,10 +57,7 @@ android {
       }
     }
     debug {
-      val debugKeystore = file("${rootDir}/debug.keystore")
-      if (debugKeystore.exists()) {
-        signingConfig = signingConfigs.getByName("debugConfig")
-      }
+      signingConfig = signingConfigs.getByName("debugConfig")
       ndk {
         abiFilters += listOf("arm64-v8a", "x86_64")
       }
