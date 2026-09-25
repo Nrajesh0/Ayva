@@ -76,11 +76,22 @@ class HabitActionReceiver : BroadcastReceiver() {
                         val completed = updatedLog.completedCount
                         val target = habit.targetPerDay
                         val isGoalMet = completed >= target
+                        val isMilestoneReached = completed == target
 
-                        // Reward with economy EXP & Gold
-                        val xpReward = if (isGoalMet) 25 else 10
-                        val goldReward = if (isGoalMet) 15 else 5
-                        com.focusbyrj.app.util.FocusEconomyManager.addRewards(xpReward, goldReward)
+                        // Reward with economy EXP & Gold (guard against over-target infinite farming)
+                        val xpReward = when {
+                            completed > target -> 0
+                            isMilestoneReached -> 25
+                            else -> 10
+                        }
+                        val goldReward = when {
+                            completed > target -> 0
+                            isMilestoneReached -> 15
+                            else -> 5
+                        }
+                        if (xpReward > 0 || goldReward > 0) {
+                            com.focusbyrj.app.util.FocusEconomyManager.addRewards(xpReward, goldReward)
+                        }
 
                         val feedbackTitle = if (isGoalMet) {
                             "${habit.iconEmoji} Daily Goal Achieved! 🎉 (+${xpReward} XP)"

@@ -308,14 +308,19 @@ fun MainAppScreen(
 
     LaunchedEffect(pendingRoute) {
         pendingRoute?.let { route ->
-            navController.navigate(route) {
-                popUpTo(navController.graph.findStartDestination().id) {
-                    saveState = true
+            try {
+                navController.navigate(route) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
                 }
-                launchSingleTop = true
-                restoreState = true
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "Failed to navigate to route: $route", e)
+            } finally {
+                viewModel.clearNavigation()
             }
-            viewModel.clearNavigation()
         }
     }
 

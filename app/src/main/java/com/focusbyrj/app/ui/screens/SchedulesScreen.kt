@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,19 +64,22 @@ import java.util.Calendar
 @Composable
 fun SchedulesScreen(viewModel: FocusViewModel) {
     val schedules by viewModel.schedules.collectAsStateWithLifecycle()
-    var showCreateScreen by remember { mutableStateOf(false) }
-    var scheduleToEdit by remember { mutableStateOf<com.focusbyrj.app.data.FocusSchedule?>(null) }
+    var showCreateScreen by rememberSaveable { mutableStateOf(false) }
+    var scheduleToEditId by rememberSaveable { mutableStateOf<Int?>(null) }
+    val scheduleToEdit = remember(scheduleToEditId, schedules) {
+        scheduleToEditId?.let { id -> schedules.find { it.id == id } }
+    }
 
-    if (showCreateScreen || scheduleToEdit != null) {
+    if (showCreateScreen || scheduleToEditId != null) {
         CreateRoutineScreen(
             scheduleToEdit = scheduleToEdit,
             onBack = { 
                 showCreateScreen = false
-                scheduleToEdit = null
+                scheduleToEditId = null
             },
             onSave = { name, startH, startM, endH, endM, days, mode, apps, restrictionMode, timeLimitMinutes, clickLimitCount ->
                 if (scheduleToEdit != null) {
-                    viewModel.updateSchedule(scheduleToEdit!!.copy(
+                    viewModel.updateSchedule(scheduleToEdit.copy(
                         name = name, startHour = startH, startMinute = startM,
                         endHour = endH, endMinute = endM, daysOfWeek = days,
                         mode = mode, appsToBlock = apps,
@@ -87,7 +91,7 @@ fun SchedulesScreen(viewModel: FocusViewModel) {
                     viewModel.addSchedule(name, startH, startM, endH, endM, days, mode, apps, restrictionMode, timeLimitMinutes, clickLimitCount)
                 }
                 showCreateScreen = false
-                scheduleToEdit = null
+                scheduleToEditId = null
             }
         )
     } else {
@@ -138,7 +142,7 @@ fun SchedulesScreen(viewModel: FocusViewModel) {
                             RoutineCard(
                                 schedule = schedule, 
                                 onToggle = { isChecked -> viewModel.updateSchedule(schedule.copy(isEnabled = isChecked)) },
-                                onEdit = { scheduleToEdit = schedule },
+                                onEdit = { scheduleToEditId = schedule.id },
                                 onDelete = { viewModel.deleteSchedule(schedule) }
                             )
                         }

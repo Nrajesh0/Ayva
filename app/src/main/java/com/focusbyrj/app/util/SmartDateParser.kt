@@ -81,8 +81,8 @@ object SmartDateParser {
             return text.removeRange(match.range).trim().replace("\\s+".toRegex(), " ")
         }
 
-        // 0. Clean task command prefixes like "task ,", "task:", "task -", "todo:", "remind me to", "add task", "remember to", "reschedule ... to", "postpone ... to"
-        val prefixRegex = Regex("(?i)^\\s*(?:(?:add|new|create)\\s+(?:task|todo)|task|todo|please\\s+remind\\s+me\\s+to|remind\\s+me\\s+to|remember\\s+to|need\\s+to|don't\\s+forget\\s+to|have\\s+to|reschedule(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|postpone(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|move(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|push(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|delay(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|bump(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|change(?:\\s+(?:the|my)?\\s*(?:due\\s+)?(?:date|time))?(?:\\s+to)?|set(?:\\s+(?:the|my)?\\s*(?:due\\s+)?(?:date|time))?(?:\\s+to)?)\\s*[,:\\-]?\\s*")
+        // 0. Clean task command prefixes like "task ,", "task:", "task -", "todo:", "remind me to", "schedule a reminder to", "add task", "remember to", "reschedule ... to", "postpone ... to"
+        val prefixRegex = Regex("(?i)^\\s*(?:(?:please\\s+)?(?:add|new|create|schedule)\\s+(?:a\\s+)?(?:task|todo|reminder)(?:\\s+to)?|task|todo|reminder|please\\s+remind\\s+me\\s+to|remind\\s+me\\s+to|remember\\s+to|need\\s+to|i\\s+need\\s+to|have\\s+to|i\\s+have\\s+to|must\\b|don't\\s+forget\\s+to|reschedule(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|postpone(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|move(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|push(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|delay(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|bump(?:\\s+(?:the|my)?\\s*task)?(?:\\s+to)?|change(?:\\s+(?:the|my)?\\s*(?:due\\s+)?(?:date|time))?(?:\\s+to)?|set(?:\\s+(?:the|my)?\\s*(?:due\\s+)?(?:date|time))?(?:\\s+to)?)\\s*[,:\\-]?\\s*")
         prefixRegex.find(text)?.let { match ->
             text = removeMatch(match)
         }
@@ -364,8 +364,8 @@ object SmartDateParser {
                         var hour = rawHour
                         // Check if followed or preceded by contextual time indicators like "in the morning", "in the evening", "in the afternoon", "tonight"
                         val lowerContext = text.lowercase()
-                        val isEveningContext = lowerContext.contains("evening") || lowerContext.contains("night") || lowerContext.contains("pm")
-                        val isMorningContext = lowerContext.contains("morning") || lowerContext.contains("am")
+                        val isEveningContext = lowerContext.contains("evening") || lowerContext.contains("night") || Regex("(?i)\\b(?:pm|p\\.m\\.|tonight)\\b").containsMatchIn(text)
+                        val isMorningContext = lowerContext.contains("morning") || Regex("(?i)\\b(?:am|a\\.m\\.)\\b").containsMatchIn(text)
                         val isAfternoonContext = lowerContext.contains("afternoon")
 
                         if (isEveningContext && hour in 1..11) {
@@ -479,10 +479,21 @@ object SmartDateParser {
         }
 
         if (hasExplicitDate && !hasExplicitTime) {
-            cal.set(Calendar.HOUR_OF_DAY, 8)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
+            val isToday = cal.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) &&
+                          cal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)
+            if (isToday && nowCal.get(Calendar.HOUR_OF_DAY) >= 8) {
+                val targetHour = if (nowCal.get(Calendar.HOUR_OF_DAY) >= 21) 23 else 21
+                val targetMinute = if (targetHour == 23) 59 else 0
+                cal.set(Calendar.HOUR_OF_DAY, targetHour)
+                cal.set(Calendar.MINUTE, targetMinute)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+            } else {
+                cal.set(Calendar.HOUR_OF_DAY, 8)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+            }
         } else if (!hasExplicitDate && !hasExplicitTime && detectedRecurrence == RecurrencePattern.NONE) {
             return ParseResult(input.trim(), null, false, RecurrencePattern.NONE)
         } else if (!hasExplicitDate && detectedRecurrence != RecurrencePattern.NONE) {

@@ -45,7 +45,7 @@ object AppIconManager {
             title = "Default RuN",
             subtitle = "Classic Minimalist Emblem",
             previewRes = R.drawable.app_icon,
-            aliasName = "com.focusbyrj.app.MainActivity"
+            aliasName = "com.focusbyrj.app.MainActivityAliasDefault"
         ),
         AppIconOption(
             id = "wanderer",
@@ -133,6 +133,19 @@ object AppIconManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val savedId = prefs.getString(KEY_APP_ICON, DEFAULT_ICON_ID) ?: DEFAULT_ICON_ID
         _currentIconFlow.value = savedId
+
+        // Invariant: Base MainActivity must always be kept enabled to support alias targeting, widgets, and notifications
+        try {
+            val pm = context.packageManager
+            val mainComp = ComponentName(context.packageName, "com.focusbyrj.app.MainActivity")
+            if (pm.getComponentEnabledSetting(mainComp) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                pm.setComponentEnabledSetting(
+                    mainComp,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    PackageManager.DONT_KILL_APP
+                )
+            }
+        } catch (_: Exception) {}
     }
 
     fun getCurrentIcon(context: Context): AppIconOption {
@@ -147,6 +160,16 @@ object AppIconManager {
         val packageName = context.packageName
 
         try {
+            // Guarantee base MainActivity is always explicitly enabled
+            val mainComp = ComponentName(packageName, "com.focusbyrj.app.MainActivity")
+            if (pm.getComponentEnabledSetting(mainComp) != PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                pm.setComponentEnabledSetting(
+                    mainComp,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    PackageManager.DONT_KILL_APP
+                )
+            }
+
             // Enable the target component if not already enabled
             val targetComponent = ComponentName(packageName, targetOption.aliasName)
             if (pm.getComponentEnabledSetting(targetComponent) != PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
@@ -157,16 +180,18 @@ object AppIconManager {
                 )
             }
 
-            // Disable all other components if they are not already disabled
+            // Disable all other alias components if they are not already disabled
             iconOptions.filter { it.id != iconId }.forEach { option ->
-                val comp = ComponentName(packageName, option.aliasName)
-                val currentState = pm.getComponentEnabledSetting(comp)
-                if (currentState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
-                    pm.setComponentEnabledSetting(
-                        comp,
-                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                        PackageManager.DONT_KILL_APP
-                    )
+                if (option.aliasName != "com.focusbyrj.app.MainActivity") {
+                    val comp = ComponentName(packageName, option.aliasName)
+                    val currentState = pm.getComponentEnabledSetting(comp)
+                    if (currentState != PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
+                        pm.setComponentEnabledSetting(
+                            comp,
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            PackageManager.DONT_KILL_APP
+                        )
+                    }
                 }
             }
 

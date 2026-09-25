@@ -671,9 +671,20 @@ object HabitFloatingOverlayManager {
                     try {
                         val updatedLog = app.habitRepository.incrementHabitProgress(habit.id)
                         val isGoalMet = updatedLog.completedCount >= habit.targetPerDay
-                        val xpReward = if (isGoalMet) 35 else 15
-                        val goldReward = if (isGoalMet) 20 else 5
-                        com.focusbyrj.app.util.FocusEconomyManager.addRewards(xpReward, goldReward)
+                        val isMilestoneReached = updatedLog.completedCount == habit.targetPerDay
+                        val xpReward = when {
+                            updatedLog.completedCount > habit.targetPerDay -> 0
+                            isMilestoneReached -> 35
+                            else -> 15
+                        }
+                        val goldReward = when {
+                            updatedLog.completedCount > habit.targetPerDay -> 0
+                            isMilestoneReached -> 20
+                            else -> 5
+                        }
+                        if (xpReward > 0 || goldReward > 0) {
+                            com.focusbyrj.app.util.FocusEconomyManager.addRewards(xpReward, goldReward)
+                        }
                         HabitAlarmScheduler.scheduleHabitReminder(
                             context,
                             habit,

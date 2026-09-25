@@ -43,6 +43,10 @@ class TaskRepository(private val taskDao: TaskDao) {
         }
     }
 
+    suspend fun getTrashedTasksSync(): List<Task> {
+        return taskDao.getTrashedTasksSync()
+    }
+
     suspend fun emptyTrash() {
         taskDao.emptyTrash()
     }
@@ -51,6 +55,10 @@ class TaskRepository(private val taskDao: TaskDao) {
         return taskDao.getTaskById(taskId)
     }
     
+    suspend fun getCompletedTaskIdsBefore(threshold: Long): List<Long> {
+        return taskDao.getCompletedTaskIdsBefore(threshold)
+    }
+
     suspend fun deleteCompletedTasksBefore(threshold: Long) {
         taskDao.deleteCompletedTasksBefore(threshold)
     }

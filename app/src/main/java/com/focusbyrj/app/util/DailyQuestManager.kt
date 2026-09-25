@@ -198,19 +198,23 @@ object DailyQuestManager {
         refreshState()
     }
     
-    fun claimMysteryChest(): MysteryReward? {
+    fun claimMysteryChest(baseRarity: com.focusbyrj.app.ui.components.ChestRarity? = null): MysteryReward? {
         val state = _stateFlow.value
-        if (state.isEarlyBirdAvailable) {
-            markMorningChestClaimed()
-        } else if (state.isNightOwlAvailable) {
-            markEveningChestClaimed()
-        } else {
-            val cal = Calendar.getInstance()
-            val hour = cal.get(Calendar.HOUR_OF_DAY)
-            if (hour in 6..17) {
+        when (baseRarity) {
+            com.focusbyrj.app.ui.components.ChestRarity.COMMON -> {
                 markMorningChestClaimed()
-            } else {
+            }
+            com.focusbyrj.app.ui.components.ChestRarity.RARE,
+            com.focusbyrj.app.ui.components.ChestRarity.EPIC,
+            com.focusbyrj.app.ui.components.ChestRarity.LEGENDARY -> {
                 markEveningChestClaimed()
+            }
+            null -> {
+                if (state.isEarlyBirdAvailable) {
+                    markMorningChestClaimed()
+                } else if (state.isNightOwlAvailable) {
+                    markEveningChestClaimed()
+                }
             }
         }
         return null

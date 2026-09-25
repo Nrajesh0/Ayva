@@ -186,11 +186,15 @@ object AptitudeManager {
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
     }
 
+    internal fun getDaysBetweenDates(fromDateStr: String, toDateStr: String): Int = getDaysBetween(fromDateStr, toDateStr)
+
     private fun getDaysBetween(fromDateStr: String, toDateStr: String): Int {
         if (fromDateStr.isEmpty() || toDateStr.isEmpty()) return 999
         if (fromDateStr == toDateStr) return 0
         return try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
             val fromDate = sdf.parse(fromDateStr) ?: return 999
             val toDate = sdf.parse(toDateStr) ?: return 999
             val diffMs = toDate.time - fromDate.time
@@ -217,6 +221,20 @@ object AptitudeManager {
         val updated = minOf(3, current + amount)
         p.edit().putInt(KEY_STREAK_FREEZES, updated).apply()
         refreshProfile()
+        FocusEconomyManager.setStreakFreezes(updated)
+    }
+
+    fun consumeStreakFreeze(): Boolean {
+        val p = prefs ?: return false
+        val current = p.getInt(KEY_STREAK_FREEZES, 1)
+        if (current > 0) {
+            val updated = current - 1
+            p.edit().putInt(KEY_STREAK_FREEZES, updated).apply()
+            refreshProfile()
+            FocusEconomyManager.setStreakFreezes(updated)
+            return true
+        }
+        return false
     }
 
     fun buyStreakFreeze(cost: Int = 1000): Boolean {
@@ -226,8 +244,10 @@ object AptitudeManager {
 
         val success = FocusEconomyManager.spendGold(cost)
         if (success) {
-            p.edit().putInt(KEY_STREAK_FREEZES, currentFreezes + 1).apply()
+            val updated = minOf(3, currentFreezes + 1)
+            p.edit().putInt(KEY_STREAK_FREEZES, updated).apply()
             refreshProfile()
+            FocusEconomyManager.setStreakFreezes(updated)
             return true
         }
         return false
@@ -353,6 +373,7 @@ object AptitudeManager {
                         .putString(KEY_LAST_FREEZE_USED_DATE, today)
                         .apply()
                     freezeNotice = "🛡️ Streak Freeze preserved your $savedStreak-day streak!"
+                    FocusEconomyManager.setStreakFreezes(freezes)
                 } else {
                     // No freeze available: streak is broken
                     savedStreak = 0
@@ -451,6 +472,7 @@ object AptitudeManager {
                 lastDate = yesterday
                 prefs?.edit()?.putInt(KEY_STREAK_FREEZES, freezes)?.apply()
                 freezeNotice = "🛡️ Streak Freeze preserved your $savedStreak-day streak!"
+                FocusEconomyManager.setStreakFreezes(freezes)
             }
         }
 
