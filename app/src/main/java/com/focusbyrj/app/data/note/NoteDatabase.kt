@@ -26,7 +26,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import net.sqlcipher.database.SQLiteDatabase
 import net.sqlcipher.database.SupportFactory
 
-@Database(entities = [NoteEntity::class], version = 6, exportSchema = false)
+@Database(entities = [NoteEntity::class], version = 7, exportSchema = false)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -231,6 +231,81 @@ abstract class NoteDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("""
+                        CREATE TABLE IF NOT EXISTS keep_notes_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            title TEXT NOT NULL,
+                            content TEXT NOT NULL,
+                            isChecklist INTEGER NOT NULL,
+                            checklistJson TEXT NOT NULL,
+                            colorKey TEXT NOT NULL,
+                            fontKey TEXT NOT NULL,
+                            isPinned INTEGER NOT NULL,
+                            isArchived INTEGER NOT NULL,
+                            isTrashed INTEGER NOT NULL,
+                            labelsJson TEXT NOT NULL,
+                            imageUrisJson TEXT NOT NULL,
+                            audioUrisJson TEXT NOT NULL,
+                            createdAt INTEGER NOT NULL,
+                            updatedAt INTEGER NOT NULL,
+                            trashedAt INTEGER,
+                            deletedAt INTEGER
+                        )
+                    """.trimIndent())
+
+                    db.execSQL("""
+                        INSERT INTO keep_notes_new (
+                            id, title, content, isChecklist, checklistJson, colorKey, fontKey,
+                            isPinned, isArchived, isTrashed, labelsJson, imageUrisJson, audioUrisJson,
+                            createdAt, updatedAt, trashedAt, deletedAt
+                        )
+                        SELECT id, title, content, isChecklist, checklistJson, colorKey, fontKey,
+                               isPinned, isArchived, isTrashed, labelsJson, imageUrisJson, audioUrisJson,
+                               createdAt, updatedAt, trashedAt, deletedAt
+                        FROM keep_notes
+                    """.trimIndent())
+
+                    db.execSQL("DROP TABLE keep_notes")
+                    db.execSQL("ALTER TABLE keep_notes_new RENAME TO keep_notes")
+                } catch (e: Exception) {
+                    android.util.Log.e("NoteDatabase", "Error executing MIGRATION_6_7", e)
+                }
+            }
+        }
+
+        val MIGRATION_5_7 = object : Migration(5, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Version 5 schema is identical to Version 7 (no article columns were added)
+            }
+        }
+
+        val MIGRATION_1_7 = object : Migration(1, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_1_5.migrate(db)
+            }
+        }
+
+        val MIGRATION_2_7 = object : Migration(2, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_2_5.migrate(db)
+            }
+        }
+
+        val MIGRATION_3_7 = object : Migration(3, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_3_5.migrate(db)
+            }
+        }
+
+        val MIGRATION_4_7 = object : Migration(4, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_4_5.migrate(db)
+            }
+        }
+
         fun getInstance(context: Context): NoteDatabase {
             return INSTANCE ?: synchronized(this) {
                 if (INSTANCE != null) return INSTANCE!!
@@ -256,7 +331,9 @@ abstract class NoteDatabase : RoomDatabase() {
                             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
                             MIGRATION_1_3, MIGRATION_1_4, MIGRATION_2_4,
                             MIGRATION_1_5, MIGRATION_2_5, MIGRATION_3_5,
-                            MIGRATION_1_6, MIGRATION_2_6, MIGRATION_3_6, MIGRATION_4_6
+                            MIGRATION_1_6, MIGRATION_2_6, MIGRATION_3_6, MIGRATION_4_6,
+                            MIGRATION_6_7, MIGRATION_5_7,
+                            MIGRATION_1_7, MIGRATION_2_7, MIGRATION_3_7, MIGRATION_4_7
                         )
                         .build()
                 } catch (t: Throwable) {

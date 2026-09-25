@@ -195,12 +195,6 @@ object BackupRestoreManager {
                         put("isTrashed", note.isTrashed)
                         if (note.trashedAt != null) put("trashedAt", note.trashedAt)
                         if (note.deletedAt != null) put("deletedAt", note.deletedAt)
-                        put("isArticle", note.isArticle)
-                        put("subtitle", note.subtitle)
-                        if (note.coverImageUri != null) put("coverImageUri", note.coverImageUri)
-                        put("isPublished", note.isPublished)
-                        if (note.publishedAt != null) put("publishedAt", note.publishedAt)
-                        put("readingTimeMinutes", note.readingTimeMinutes)
                         put("createdAt", note.createdAt)
                         put("updatedAt", note.updatedAt)
                     })
@@ -516,13 +510,7 @@ object BackupRestoreManager {
                     createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                     updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
                     trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
-                    deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null,
-                    isArticle = obj.optBoolean("isArticle", false),
-                    subtitle = obj.optString("subtitle", ""),
-                    coverImageUri = if (obj.has("coverImageUri") && !obj.isNull("coverImageUri")) obj.optString("coverImageUri") else null,
-                    isPublished = obj.optBoolean("isPublished", false),
-                    publishedAt = if (obj.has("publishedAt") && !obj.isNull("publishedAt")) obj.optLong("publishedAt") else null,
-                    readingTimeMinutes = obj.optInt("readingTimeMinutes", 0)
+                    deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null
                 )
                 if (note.isArchived && subKey != null && !VaultPayloadEncryptor.isVaultEncrypted(note)) {
                     note = VaultPayloadEncryptor.encryptNotePayload(note, subKey)
