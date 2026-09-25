@@ -107,8 +107,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshVaultStatus() {
-        _vaultStatus.value = ArchiveVaultSecurity.getVaultStatus(getApplication())
+        val status = ArchiveVaultSecurity.getVaultStatus(getApplication())
+        _vaultStatus.value = status
         _isRecoveryPhraseBackedUp.value = ArchiveVaultSecurity.isRecoveryPhraseBackedUp(getApplication())
+        if (status == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+            _isVaultUnlocked.value = !ArchiveVaultSecurity.isVaultLocked(getApplication())
+        }
     }
 
     fun verifyVaultPasscode(pin: String): ArchiveVaultSecurity.VerifyResult {
@@ -180,10 +184,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun lockVault() {
+        ArchiveVaultSecurity.lockVault()
         _isVaultUnlocked.value = false
         if (_currentFolder.value == NoteFolder.ARCHIVE) {
             _currentFolder.value = NoteFolder.NOTES
         }
+        refreshVaultStatus()
     }
 
     fun getRemainingLockoutSeconds(): Long {
@@ -191,7 +197,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
-        val latestNotesCache = ConcurrentHashMap<Long, NoteEntity>()
+        private const val MAX_CACHE_SIZE = 200
+        val latestNotesCache: MutableMap<Long, NoteEntity> = java.util.Collections.synchronizedMap(
+            object : java.util.LinkedHashMap<Long, NoteEntity>(MAX_CACHE_SIZE, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, NoteEntity>?): Boolean {
+                    return size > MAX_CACHE_SIZE
+                }
+            }
+        )
     }
 
     init {
@@ -216,6 +229,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setFolder(folder: NoteFolder) {
         if (folder != NoteFolder.ARCHIVE) {
+            ArchiveVaultSecurity.lockVault()
             _isVaultUnlocked.value = false
         }
         _currentFolder.value = folder
@@ -276,6 +290,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             notes.forEach { note ->
                 repository.setPinned(note.id, anyUnpinned)
             }
+            triggerAutoSync()
         }
         clearSelection()
     }
@@ -308,6 +323,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         ids.forEach { latestNotesCache.remove(it) }
         viewModelScope.launch(Dispatchers.IO) {
             ids.forEach { id -> repository.moveToTrash(id) }
+            triggerAutoSync()
         }
         clearSelection()
     }
@@ -318,6 +334,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         ids.forEach { latestNotesCache.remove(it) }
         viewModelScope.launch(Dispatchers.IO) {
             ids.forEach { id -> repository.restoreFromTrash(id) }
+            triggerAutoSync()
         }
         clearSelection()
     }
@@ -428,6 +445,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(getApplication())
             } catch (_: Exception) {}
+            triggerAutoSync()
         }
     }
 
@@ -437,6 +455,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         ids.forEach { latestNotesCache.remove(it) }
         viewModelScope.launch(Dispatchers.IO) {
             ids.forEach { id -> repository.setColor(id, colorKey) }
+            triggerAutoSync()
         }
         clearSelection()
     }
@@ -660,7 +679,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         _canRedo.value = false
     }
 
-    private fun pushUndoSnapshot() {
+    internal fun pushUndoSnapshot() {
         val current = _editingState.value ?: return
         undoStack.push(
             UndoSnapshot(
@@ -691,6 +710,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         )
         val snap = undoStack.pop()
         _editingState.value = current.copy(
+            sessionId = UUID.randomUUID().toString(),
             title = snap.title,
             content = snap.content,
             isChecklist = snap.isChecklist,
@@ -715,6 +735,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         )
         val snap = redoStack.pop()
         _editingState.value = current.copy(
+            sessionId = UUID.randomUUID().toString(),
             title = snap.title,
             content = snap.content,
             isChecklist = snap.isChecklist,
@@ -1257,7 +1278,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 "$box ${item.text}"
             }
         } else {
-            current.content.trim()
+            NotesnookBlockManager.toPlainText(current.content).trim()
         }
         val fullText = buildString {
             if (title.isNotEmpty()) {
@@ -1288,7 +1309,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 "$box ${item.text}"
             }
         } else {
-            current.content.trim()
+            NotesnookBlockManager.toPlainText(current.content).trim()
         }
         val fullText = buildString {
             if (title.isNotEmpty()) {
@@ -1322,7 +1343,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                         appendLine("$box ${item.text}")
                     }
                 } else if (note.content.isNotBlank()) {
-                    appendLine(note.content.trim())
+                    appendLine(NotesnookBlockManager.toPlainText(note.content).trim())
                 }
             }.trim()
         }.trim()
@@ -1357,7 +1378,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                         appendLine("$box ${item.text}")
                     }
                 } else if (note.content.isNotBlank()) {
-                    appendLine(note.content.trim())
+                    appendLine(NotesnookBlockManager.toPlainText(note.content).trim())
                 }
             }.trim()
         }.trim()
@@ -1564,6 +1585,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun restoreNote(note: NoteEntity) {
+        latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
             repository.restoreFromTrash(note.id)
             triggerAutoSync()
@@ -1571,6 +1593,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun unarchiveNote(note: NoteEntity) {
+        latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
             repository.setArchived(note.id, false)
             triggerAutoSync()
@@ -1623,13 +1646,20 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         autoSaveJob?.cancel()
         val current = _editingState.value ?: return
         _editingState.value = null
-        if (current.originalId != 0L) {
-            latestNotesCache.remove(current.originalId)
+        val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
+        pendingNewNoteId = 0L
+        if (effectiveId != 0L) {
+            latestNotesCache.remove(effectiveId)
             viewModelScope.launch(Dispatchers.IO) {
                 persistMutex.withLock {
-                    repository.moveToTrash(current.originalId)
+                    repository.moveToTrash(effectiveId)
                 }
                 triggerAutoSync()
+            }
+        } else {
+            viewModelScope.launch(Dispatchers.IO) {
+                current.imageUris.forEach { NoteMediaManager.secureDeleteMediaFile(it) }
+                current.audioUris.forEach { NoteMediaManager.secureDeleteMediaFile(it) }
             }
         }
     }
@@ -1640,11 +1670,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         autoSaveJob?.cancel()
         val current = _editingState.value ?: return
         _editingState.value = null
-        if (current.originalId != 0L) {
-            latestNotesCache.remove(current.originalId)
+        val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
+        pendingNewNoteId = 0L
+        if (effectiveId != 0L) {
+            latestNotesCache.remove(effectiveId)
             viewModelScope.launch(Dispatchers.IO) {
                 persistMutex.withLock {
-                    repository.setArchived(current.originalId, true)
+                    repository.setArchived(effectiveId, true)
                 }
                 triggerAutoSync()
             }
@@ -1657,11 +1689,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         autoSaveJob?.cancel()
         val current = _editingState.value ?: return
         _editingState.value = null
-        if (current.originalId != 0L) {
-            latestNotesCache.remove(current.originalId)
+        val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
+        pendingNewNoteId = 0L
+        if (effectiveId != 0L) {
+            latestNotesCache.remove(effectiveId)
             viewModelScope.launch(Dispatchers.IO) {
                 persistMutex.withLock {
-                    repository.setArchived(current.originalId, false)
+                    repository.setArchived(effectiveId, false)
                 }
                 triggerAutoSync()
             }
@@ -1871,6 +1905,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        ArchiveVaultSecurity.lockVault()
         audioMemoManager.release()
     }
 }

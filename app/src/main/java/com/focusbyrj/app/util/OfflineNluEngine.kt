@@ -82,6 +82,16 @@ object OfflineNluEngine {
         val isNoteOrHabit = lower.contains("note") || lower.contains("notes") || lower.contains("habit") || lower.contains("habits")
         if (isRoutine || isAppOrBlock || isNoteOrHabit) return false
 
+        // Guard: overdue-management and bulk task-management phrases are NEVER task creation
+        // e.g. "clean overdue tasks", "delete all tasks", "confirm_delete_overdue", "reschedule all tasks"
+        val isOverdueManagement = lower.contains("overdue") ||
+                lower.contains("confirm_delete") || lower.contains("confirm delete") ||
+                (lower.contains("all") && (lower.contains("task") || lower.contains("todo"))) ||
+                (lower.startsWith("clean") && lower.contains("task")) ||
+                (lower.startsWith("delete") && lower.contains("task")) ||
+                (lower.startsWith("remove") && lower.contains("task"))
+        if (isOverdueManagement) return false
+
         // Common action verbs at sentence start (e.g. "check ac prices", "buy groceries", "call dentist", "pay rent")
         val actionVerbPrefix = Regex("^(?:check|call|buy|email|clean|fix|read|write|order|pay|cook|meet|send|visit|book|study|prep|prepare|get|make|wash|inspect|verify|pick\\s+up|drop\\s+off)\\b\\s+[a-zA-Z0-9]")
         if (actionVerbPrefix.containsMatchIn(lower) && !lower.startsWith("check off") && !lower.startsWith("check out") && !lower.startsWith("check status") && !lower.startsWith("check in")) {
@@ -108,7 +118,8 @@ object OfflineNluEngine {
     // 4. Intent Classification
     fun classifyIntent(query: String, pendingTasks: List<Task> = emptyList()): NluIntent {
         val lower = query.lowercase().trim()
-        val tokens = lower.split(Regex("\\s+"))
+        val normalized = lower.replace("_", " ")
+        val tokens = normalized.split(Regex("\\s+"))
 
         // Tier 1: Explicit creation prefix recognition ALWAYS takes precedence
         if (isExplicitCreation(query)) {
@@ -140,9 +151,12 @@ object OfflineNluEngine {
         if (isBlock) return if (lower.contains("filter") || lower.contains("category")) NluIntent.BLOCK_FILTER else NluIntent.BLOCK_APP
         if (isUnblock) return NluIntent.UNBLOCK
 
-        val isListTasks = ((matchesAnyFuzzy(tokens, listOf("list", "show", "what", "pending", "overdue", "today")) || lower.startsWith("what are")) && 
+        val isActionOnOverdue = lower.contains("clean") || lower.contains("clear") || lower.contains("delete") ||
+                                lower.contains("remove") || lower.contains("reschedule") || lower.contains("push") ||
+                                lower.contains("postpone") || lower.contains("triage")
+        val isListTasks = !isActionOnOverdue && (((matchesAnyFuzzy(tokens, listOf("list", "show", "what", "pending", "overdue", "today")) || lower.startsWith("what are")) && 
                            (lower.contains("task") || lower.contains("to do") || lower.contains("todo") || lower.contains("agenda"))) || 
-                           lower == "tasks" || lower == "my tasks" || lower == "todo list" || lower == "todo" || lower == "todos"
+                           lower == "tasks" || lower == "my tasks" || lower == "todo list" || lower == "todo" || lower == "todos")
         if (isListTasks) return NluIntent.LIST_TASKS
 
         // Tier 2: Disambiguate Complete
@@ -162,7 +176,9 @@ object OfflineNluEngine {
                                        (lower.contains("delay") && (lower.contains("task") || lower.contains("due"))) ||
                                        (lower.contains("overdue") && (lower.contains("tomorrow") || lower.contains("tonight") || lower.contains("next week") || lower.contains("to ")))
 
-        val isDelete = (matchesAnyFuzzy(tokens, listOf("delete", "remove", "trash", "cancel")) && (lower.contains("task") || pendingTasks.isNotEmpty())) ||
+        val isDelete = lower.contains("confirm_delete_all") || lower.contains("confirm delete all") ||
+                       lower.contains("confirm_delete_overdue") || lower.contains("confirm delete overdue") ||
+                       (matchesAnyFuzzy(tokens, listOf("delete", "remove", "trash", "cancel")) && (lower.contains("task") || lower.contains("all") || pendingTasks.isNotEmpty())) ||
                        (lower.contains("clean") && (lower.contains("overdue") || lower.contains("tasks"))) ||
                        (lower.contains("clear") && lower.contains("overdue"))
 
@@ -247,6 +263,8 @@ object OfflineNluEngine {
     fun extractTargetTaskInfo(query: String, pendingTasks: List<Task>): TargetTaskResult {
         val lower = query.lowercase().trim()
         val isAll = lower.contains("all") || lower.contains("everything") || 
+                    lower.contains("confirm_delete_all") || lower.contains("confirm delete all") ||
+                    lower.contains("confirm_delete_overdue") || lower.contains("confirm delete overdue") ||
                     (lower.contains("overdue") && (lower.contains("clean") || lower.contains("clear") || lower.contains("tasks") || lower.contains("push") || lower.contains("postpone") || lower.contains("reschedule") || lower.contains("move") || lower.contains("triage")))
         if (isAll) return TargetTaskResult(targetTask = null, isAll = true)
 
@@ -816,26 +834,20 @@ object OfflineNluEngine {
                     conflictOptions = options
                 )
             } else if (targetInfo.targetTask != null) {
-                if (timeMs != null || hasFinishVerb) {
-                    val (newTitle, dueDate) = extractTaskCreationDetails(trimmed)
-                    val dateStr = if (timeMs != null) SmartDateParser.formatDueDate(timeMs) else ""
+                if (timeMs != null) {
+                    val (newTitle, _) = extractTaskCreationDetails(trimmed)
+                    val dateStr = SmartDateParser.formatDueDate(timeMs)
                     val options = mutableListOf(
                         ConflictOption(
                             label = "Complete '${targetInfo.targetTask.title.take(32)}'",
                             emoji = "✅",
                             command = "/talk complete ${targetInfo.targetTask.title}"
-                        )
-                    )
-                    if (timeMs != null) {
-                        options.add(
-                            ConflictOption(
-                                label = "Reschedule '${targetInfo.targetTask.title.take(32)}'",
-                                emoji = "⏰",
-                                command = "/talk reschedule ${targetInfo.targetTask.title} $dateStr"
-                            )
-                        )
-                    }
-                    options.add(
+                        ),
+                        ConflictOption(
+                            label = "Reschedule '${targetInfo.targetTask.title.take(32)}'",
+                            emoji = "⏰",
+                            command = "/talk reschedule ${targetInfo.targetTask.title} $dateStr"
+                        ),
                         ConflictOption(
                             label = "Create New: '${newTitle.take(32)}'",
                             emoji = "➕",
@@ -851,6 +863,10 @@ object OfflineNluEngine {
                         conflictOptions = options
                     )
                 }
+                return NluParsedResult(
+                    intent = NluIntent.COMPLETE,
+                    targetTask = targetInfo.targetTask
+                )
             } else {
                 // 0 tasks matched for complete
                 if (timeMs != null || hasCheckVerb || hasFinishVerb) {

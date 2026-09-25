@@ -68,10 +68,21 @@ class HabitViewModel(
     fun incrementProgress(habit: Habit) {
         viewModelScope.launch {
             val updatedLog = repository.incrementHabitProgress(habit.id)
+            val isMilestoneReached = updatedLog.completedCount == habit.targetPerDay
             val isGoalMet = updatedLog.completedCount >= habit.targetPerDay
-            val xpReward = if (isGoalMet) 25 else 10
-            val goldReward = if (isGoalMet) 15 else 5
-            com.focusbyrj.app.util.FocusEconomyManager.addRewards(xpReward, goldReward)
+            val xpReward = when {
+                updatedLog.completedCount > habit.targetPerDay -> 0
+                isMilestoneReached -> 25
+                else -> 10
+            }
+            val goldReward = when {
+                updatedLog.completedCount > habit.targetPerDay -> 0
+                isMilestoneReached -> 15
+                else -> 5
+            }
+            if (xpReward > 0 || goldReward > 0) {
+                com.focusbyrj.app.util.FocusEconomyManager.addRewards(xpReward, goldReward)
+            }
 
             // Reschedule interval if applicable
             HabitAlarmScheduler.scheduleHabitReminder(

@@ -48,14 +48,22 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.FocusByRj">
+            android:theme="@style/Theme.FocusByRj" />
+
+        <!-- Dynamic Profile Avatar App Icon Aliases -->
+        <activity-alias
+            android:name=".MainActivityAliasDefault"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
-
-        <!-- Dynamic Profile Avatar App Icon Aliases -->
+        </activity-alias>
         <activity-alias
             android:name=".MainActivityAliasWanderer"
             android:enabled="false"

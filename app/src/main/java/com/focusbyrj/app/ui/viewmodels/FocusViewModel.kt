@@ -227,7 +227,7 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
         }
     }
 
-    private val _isSessionActive = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private val _isSessionActive = kotlinx.coroutines.flow.MutableStateFlow(prefs.getBoolean("isSessionActive", false))
     val isSessionActive: StateFlow<Boolean> = _isSessionActive
 
     private val _timeRemaining = kotlinx.coroutines.flow.MutableStateFlow(25 * 60L)
@@ -265,29 +265,32 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
                 var secondsAccumulator = 0
                 var statsSecs = 0
                 
-                while (_timeRemaining.value > 0 && _isSessionActive.value) {
-                    kotlinx.coroutines.delay(1000)
-                    if (!_isSessionActive.value) break
-                    _timeRemaining.value -= 1
-                    secondsAccumulator++
-                    statsSecs++
-                    
-                    if (statsSecs >= 10) {
-                        com.focusbyrj.app.util.FocusStatsManager.addFocusSessionTime(getApplication(), statsSecs.toLong())
-                        statsSecs = 0
+                try {
+                    while (_timeRemaining.value > 0 && _isSessionActive.value) {
+                        kotlinx.coroutines.delay(1000)
+                        if (!_isSessionActive.value) break
+                        _timeRemaining.value -= 1
+                        secondsAccumulator++
+                        statsSecs++
+                        
+                        if (statsSecs >= 10) {
+                            com.focusbyrj.app.util.FocusStatsManager.addFocusSessionTime(getApplication(), statsSecs.toLong())
+                            statsSecs = 0
+                        }
+                        
+                        if (secondsAccumulator >= 300) { // 5 minutes
+                            secondsAccumulator = 0
+                            totalElapsedMins += 5
+                            com.focusbyrj.app.util.FocusEconomyManager.addDurationBasedRewards(totalElapsedMins)
+                            com.focusbyrj.app.util.FocusEconomyManager.addLifetimeFocusMins(5)
+                        }
                     }
-                    
-                    if (secondsAccumulator >= 300) { // 5 minutes
-                        secondsAccumulator = 0
-                        totalElapsedMins += 5
-                        com.focusbyrj.app.util.FocusEconomyManager.addDurationBasedRewards(totalElapsedMins)
-                        com.focusbyrj.app.util.FocusEconomyManager.addLifetimeFocusMins(5)
+                } finally {
+                    if (statsSecs > 0) {
+                        com.focusbyrj.app.util.FocusStatsManager.addFocusSessionTime(getApplication(), statsSecs.toLong())
                     }
                 }
                 
-                if (statsSecs > 0) {
-                    com.focusbyrj.app.util.FocusStatsManager.addFocusSessionTime(getApplication(), statsSecs.toLong())
-                }
                 if (_timeRemaining.value <= 0L) {
                     _isSessionActive.value = false
                     _timeRemaining.value = _initialTime.value

@@ -58,7 +58,6 @@ fun DailyQuestsCard(
                 .fillMaxWidth()
                 .clickable(enabled = questState.isEarlyBirdAvailable) {
                     selectedChestRarity = ChestRarity.COMMON
-                    DailyQuestManager.markMorningChestClaimed()
                     showChestDialog = true
                 }
         ) {
@@ -120,7 +119,6 @@ fun DailyQuestsCard(
                                 textColor = Color.White,
                                 onClick = {
                                     selectedChestRarity = ChestRarity.COMMON
-                                    DailyQuestManager.markMorningChestClaimed()
                                     showChestDialog = true
                                 }
                             )
@@ -152,7 +150,6 @@ fun DailyQuestsCard(
                 .fillMaxWidth()
                 .clickable(enabled = questState.isNightOwlAvailable) {
                     selectedChestRarity = ChestRarity.RARE
-                    DailyQuestManager.markEveningChestClaimed()
                     showChestDialog = true
                 }
         ) {
@@ -214,7 +211,6 @@ fun DailyQuestsCard(
                                 textColor = Color.White,
                                 onClick = {
                                     selectedChestRarity = ChestRarity.RARE
-                                    DailyQuestManager.markEveningChestClaimed()
                                     showChestDialog = true
                                 }
                             )

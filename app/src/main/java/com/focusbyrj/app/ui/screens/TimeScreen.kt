@@ -45,7 +45,7 @@ import kotlinx.coroutines.withContext
 fun TimeScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val hasPermission = remember { UsageStatsHelper.hasUsageStatsPermission(context) }
+    var hasPermission by remember { mutableStateOf(UsageStatsHelper.hasUsageStatsPermission(context)) }
     var usageStats by remember { mutableStateOf<List<AppUsageData>>(emptyList()) }
     var totalTimeMs by remember { mutableStateOf(0L) }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -74,6 +74,7 @@ fun TimeScreen() {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                hasPermission = UsageStatsHelper.hasUsageStatsPermission(context)
                 refreshTrigger = System.currentTimeMillis()
             }
         }

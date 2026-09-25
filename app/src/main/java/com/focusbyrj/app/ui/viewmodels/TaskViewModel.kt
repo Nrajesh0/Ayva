@@ -28,7 +28,18 @@ class TaskViewModel(
     init {
         viewModelScope.launch {
             val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000L)
-            repository.deleteCompletedTasksBefore(thirtyDaysAgo)
+            try {
+                val expiredIds = repository.getCompletedTaskIdsBefore(thirtyDaysAgo)
+                if (expiredIds.isNotEmpty()) {
+                    val context = getApplication<Application>()
+                    expiredIds.forEach { id ->
+                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", id)
+                    }
+                    repository.deleteCompletedTasksBefore(thirtyDaysAgo)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TaskViewModel", "Failed to purge completed tasks", e)
+            }
         }
     }
 
@@ -55,8 +66,9 @@ class TaskViewModel(
 
     fun updateTask(task: Task) {
         viewModelScope.launch {
-            repository.updateTask(task)
-            TaskReminderHelper.scheduleReminder(getApplication(), task)
+            val updatedTask = task.copy(updatedAt = System.currentTimeMillis())
+            repository.updateTask(updatedTask)
+            TaskReminderHelper.scheduleReminder(getApplication(), updatedTask)
             TodoWidgetProvider.updateAllWidgets(getApplication())
             com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }
@@ -98,7 +110,7 @@ class TaskViewModel(
                 val noteDb = NoteDatabase.getInstance(app)
                 DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "emptyTasksTrash", app.database)
             } catch (_: Exception) {}
-            val currentTrashed = trashedTasks.value
+            val currentTrashed = repository.getTrashedTasksSync()
             currentTrashed.forEach { t ->
                 com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "TASK", t.id)
             }

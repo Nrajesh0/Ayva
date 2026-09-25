@@ -81,10 +81,10 @@ interface TaskDao {
     @Query("DELETE FROM tasks WHERE id NOT IN (:ids)")
     suspend fun deleteTasksNotIn(ids: List<Long>)
 
-    @Query("SELECT id FROM tasks WHERE isCompleted = 1 AND (completedAt < :threshold OR completedAt IS NULL)")
+    @Query("SELECT id FROM tasks WHERE isCompleted = 1 AND ((completedAt IS NOT NULL AND completedAt < :threshold) OR (completedAt IS NULL AND updatedAt < :threshold))")
     suspend fun getCompletedTaskIdsBefore(threshold: Long): List<Long>
 
-    @Query("DELETE FROM tasks WHERE isCompleted = 1 AND (completedAt < :threshold OR completedAt IS NULL)")
+    @Query("DELETE FROM tasks WHERE isCompleted = 1 AND ((completedAt IS NOT NULL AND completedAt < :threshold) OR (completedAt IS NULL AND updatedAt < :threshold))")
     suspend fun deleteCompletedTasksBefore(threshold: Long)
 
     @Query("DELETE FROM tasks")

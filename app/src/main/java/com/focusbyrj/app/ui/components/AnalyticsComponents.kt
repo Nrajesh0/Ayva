@@ -1,5 +1,6 @@
 package com.focusbyrj.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,161 +37,231 @@ fun HeatmapAndStreaksWidget(
 ) {
     var selectedTileInfo by remember { mutableStateOf<String?>(null) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
-            .padding(20.dp)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f))
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+        ) {
+            // Header with Mode Indicator & Toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // LEFT HALF: Heatmap
-                Column(modifier = Modifier.weight(1f)) {
+                Column {
                     Text(
-                        if (isDrillMode) "Drills (30D)" else "Focus (30D)",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = if (isDrillMode) "Activity • Drills" else "Activity • Focus",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp
+                        ),
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        for (row in 0..4) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                for (col in 0..5) {
-                                    val daysAgo = row * 6 + col
-                                    val targetCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
-                                    val usage = dailyUsage[targetCal.get(Calendar.DAY_OF_YEAR)] ?: 0L
-
-                                    val emptyTileColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-
-                                    val boxColor = if (isDrillMode) {
-                                        when {
-                                            usage <= 0L -> emptyTileColor
-                                            usage == 1L -> theme.colors[1]
-                                            usage in 2L..3L -> theme.colors[2]
-                                            usage in 4L..5L -> theme.colors[3]
-                                            else -> theme.colors[4]
-                                        }
-                                    } else {
-                                        when {
-                                            usage <= 0L -> emptyTileColor
-                                            usage < 15 * 60 * 1000L -> theme.colors[1]
-                                            usage < 30 * 60 * 1000L -> theme.colors[2]
-                                            usage < 60 * 60 * 1000L -> theme.colors[3]
-                                            else -> theme.colors[4]
-                                        }
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .aspectRatio(1f)
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(boxColor)
-                                            .clickable {
-                                                val dateStr = if (daysAgo == 0) "Today" else if (daysAgo == 1) "Yesterday" else {
-                                                    SimpleDateFormat("MMM d", Locale.getDefault()).format(targetCal.time)
-                                                }
-                                                selectedTileInfo = if (isDrillMode) {
-                                                    if (usage <= 0L) "$dateStr: 0 drills" else "$dateStr: $usage drill${if (usage > 1) "s" else ""}"
-                                                } else {
-                                                    val mins = usage / (60 * 1000L)
-                                                    if (mins <= 0L) "$dateStr: 0m focus" else "$dateStr: ${mins}m focus"
-                                                }
-                                            }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = selectedTileInfo ?: (if (isDrillMode) "Tap tile to inspect drills" else "Tap tile to inspect focus"),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
+                        text = "Last 30 days consistency",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 }
 
-                // RIGHT HALF: Streaks
-                Column(modifier = Modifier.weight(1f)) {
+                if (onToggleStreakSource != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onToggleStreakSource() }
+                            .testTag("streak_source_toggle")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SwapHoriz,
+                                contentDescription = "Switch streak source",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = if (isDrillMode) "Focus" else "Drills",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 11.sp
+                                ),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Streak Indicators (Seamless studio layout)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("🔥", fontSize = 20.sp)
+                    Column {
+                        Text(
+                            text = "Current Streak",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Normal
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = "$currentStreak ${if (currentStreak == 1) "day" else "days"}",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("🏆", fontSize = 20.sp)
+                    Column {
+                        Text(
+                            text = "Best Streak",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Normal
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = "$longestStreak ${if (longestStreak == 1) "day" else "days"}",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Full-Width 30-Day Activity Heatmap Grid
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                for (row in 0..4) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
-                        Text(
-                            streakTypeLabel,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f, fill = false),
-                            maxLines = 1
-                        )
-                        if (onToggleStreakSource != null) {
-                            IconButton(
-                                onClick = onToggleStreakSource,
+                        for (col in 0..5) {
+                            val daysAgo = (4 - row) * 6 + (5 - col)
+                            val targetCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
+                            val usage = dailyUsage[targetCal.get(Calendar.DAY_OF_YEAR)] ?: 0L
+
+                            val emptyTileColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+
+                            val boxColor = if (isDrillMode) {
+                                when {
+                                    usage <= 0L -> emptyTileColor
+                                    usage == 1L -> theme.colors[1]
+                                    usage in 2L..3L -> theme.colors[2]
+                                    usage in 4L..5L -> theme.colors[3]
+                                    else -> theme.colors[4]
+                                }
+                            } else {
+                                when {
+                                    usage <= 0L -> emptyTileColor
+                                    usage < 15 * 60 * 1000L -> theme.colors[1]
+                                    usage < 30 * 60 * 1000L -> theme.colors[2]
+                                    usage < 60 * 60 * 1000L -> theme.colors[3]
+                                    else -> theme.colors[4]
+                                }
+                            }
+
+                            Box(
                                 modifier = Modifier
-                                    .size(28.dp)
-                                    .testTag("streak_source_toggle")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SwapHoriz,
-                                    contentDescription = "Switch streak source",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                                    .weight(1f)
+                                    .aspectRatio(1.2f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(boxColor)
+                                    .clickable {
+                                        val dateStr = if (daysAgo == 0) "Today" else if (daysAgo == 1) "Yesterday" else {
+                                            SimpleDateFormat("MMM d", Locale.getDefault()).format(targetCal.time)
+                                        }
+                                        selectedTileInfo = if (isDrillMode) {
+                                            if (usage <= 0L) "$dateStr: 0 drills" else "$dateStr: $usage drill${if (usage > 1) "s" else ""}"
+                                        } else {
+                                            val mins = usage / (60 * 1000L)
+                                            if (mins <= 0L) "$dateStr: 0m focus" else "$dateStr: ${mins}m focus"
+                                        }
+                                    }
+                            )
                         }
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
 
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                .padding(vertical = 12.dp, horizontal = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("$currentStreak", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                                Text("Current Streak", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
+            Spacer(modifier = Modifier.height(10.dp))
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                .padding(vertical = 12.dp, horizontal = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("$longestStreak", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                                Text("Longest Streak", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
+            // Footer with Tile Details and Legend
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = selectedTileInfo ?: (if (isDrillMode) "Tap a tile to view drills" else "Tap a tile to view focus"),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                    color = if (selectedTileInfo != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    maxLines = 1
+                )
+
+                // Color ramp legend
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "Less",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)))
+                    Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(theme.colors[1]))
+                    Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(theme.colors[2]))
+                    Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(theme.colors[3]))
+                    Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(theme.colors[4]))
+                    Text(
+                        text = "More",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
                 }
             }
         }

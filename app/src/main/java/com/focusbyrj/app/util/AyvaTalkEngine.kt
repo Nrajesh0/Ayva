@@ -1026,11 +1026,9 @@ object AyvaTalkEngine {
                         val completedHabitIds = todayHabitLogs.filter { it.date == todayDateStr }.map { it.habitId }.toSet()
                         val completedHabitsCount = activeHabits.count { completedHabitIds.contains(it.id) }
 
-                        // Notes Data
-                        val activeNotes = kotlin.runCatching {
-                            com.focusbyrj.app.data.note.NoteDatabase.getInstance(context).noteDao().getAllActiveNotesSync()
-                        }.getOrNull() ?: emptyList()
-                        val pinnedNotesCount = activeNotes.count { it.isPinned }
+                        // Notes Data: Ayva Chat decoupled from Room keep_notes for zero-knowledge privacy
+                        val activeNotes = emptyList<com.focusbyrj.app.data.note.NoteEntity>()
+                        val pinnedNotesCount = 0
 
                         // Battery Context
                         val batteryIntent = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
@@ -1193,93 +1191,36 @@ object AyvaTalkEngine {
                         return TalkResponse(sb.toString().trimEnd(), actions, "habits", serializeActionsJson("habits", actions))
                     }
 
-                    // --- NOTES QUERIES (LIST, SEARCH, CREATE) ---
-                    val isNotesListQuery = cleanQuery in listOf(
+                    // --- NOTES PRIVACY & ISOLATION GUARD: Notes are never searched, queried, read, created, or edited in chat ---
+                    val isNotesQuery = cleanQuery in listOf(
                         "notes", "my notes", "show notes", "list notes", "keep notes",
                         "open notes", "view notes", "all notes", "notes list"
-                    )
-                    val searchNoteMatch = Regex("(?i)^(?:search\\s+notes?(?:\\s+for)?|find\\s+notes?(?:\\s+about)?|look\\s+for\\s+notes?)\\s+(.+)$").find(cleanQuery)
-                    val createNoteMatch = Regex("(?i)^(?:create\\s+note|add\\s+note|new\\s+note|take\\s+a?\\s*note|write\\s+note|jot\\s+down)\\s+(.+)$").find(cleanQuery)
+                    ) || cleanQuery == "/notes" || cleanQuery.startsWith("note ") || cleanQuery.startsWith("notes ") ||
+                       cleanQuery.startsWith("/notes") || cleanQuery.startsWith("/note") ||
+                       Regex("(?i)^(?:search\\s+notes?|find\\s+notes?|look\\s+for\\s+notes?|create\\s+note|add\\s+note|new\\s+note|take\\s+a?\\s*note|write\\s+note|jot\\s+down|read\\s+note|show\\s+note|delete\\s+note|edit\\s+note)\\b").containsMatchIn(cleanQuery)
 
-                    if (isNotesListQuery || searchNoteMatch != null || createNoteMatch != null) {
+                    if (isNotesQuery) {
                         lastQueriedTopicId = "notes"
-                        val noteDb = com.focusbyrj.app.data.note.NoteDatabase.getInstance(context)
-                        val noteDao = noteDb.noteDao()
-
-                        if (createNoteMatch != null) {
-                            val content = createNoteMatch.groupValues[1].trim()
-                            val parts = content.split(Regex("[:\\-]"), 2)
-                            val title = parts[0].trim().replaceFirstChar { it.uppercase() }
-                            val body = if (parts.size > 1) parts[1].trim() else ""
-                            val newNote = com.focusbyrj.app.data.note.NoteEntity(
-                                title = title,
-                                content = body,
-                                isPinned = false,
-                                createdAt = System.currentTimeMillis(),
-                                updatedAt = System.currentTimeMillis()
-                            )
-                            noteDao.insertNote(newNote)
-                            val quip = AyvaDialogueEngine.getNoteCreatedQuip(context, title)
-                            val actions = listOf(
-                                TalkAction.AskQuery("/notes", "📝 View Notes"),
-                                TalkAction.NavigateAppScreen("notes", "Open Keep Notes", "📝")
-                            )
-                            recordTurn(cleanQuery, "notes")
-                            return TalkResponse(quip, actions, "notes", serializeActionsJson("notes", actions))
-                        }
-
-                        if (searchNoteMatch != null) {
-                            val searchQuery = searchNoteMatch.groupValues[1].trim()
-                            val foundNotes: List<com.focusbyrj.app.data.note.NoteEntity> = noteDao.searchNotesSync(searchQuery)
-                            val intro = AyvaDialogueEngine.getNotesSearchIntro(context, searchQuery, foundNotes.size)
-                            val sb = StringBuilder(intro)
-                            if (foundNotes.isNotEmpty()) {
-                                sb.append("\n\n")
-                                foundNotes.take(6).forEachIndexed { idx, n ->
-                                    val pin = if (n.isPinned) "📌 " else ""
-                                    val snippet = if (n.content.isNotBlank()) " — _${n.content.take(45)}..._" else ""
-                                    sb.append("${idx + 1}. $pin**${n.title}**$snippet\n")
-                                }
-                            }
-                            val actions = listOf(
-                                TalkAction.AskQuery("/notes", "📝 All Notes"),
-                                TalkAction.NavigateAppScreen("notes", "Open Keep Notes", "📝")
-                            )
-                            recordTurn(cleanQuery, "notes")
-                            return TalkResponse(sb.toString().trimEnd(), actions, "notes", serializeActionsJson("notes", actions))
-                        }
-
-                        // Notes List
-                        val allActiveNotes: List<com.focusbyrj.app.data.note.NoteEntity> = noteDao.getAllActiveNotesSync()
-                        val pinnedCount = allActiveNotes.count { it.isPinned }
-                        val intro = AyvaDialogueEngine.getNotesListIntro(context, allActiveNotes.size, pinnedCount)
-                        val sb = StringBuilder(intro)
-                        if (allActiveNotes.isNotEmpty()) {
-                            sb.append("\n\n")
-                            allActiveNotes.take(6).forEachIndexed { idx, n ->
-                                val pin = if (n.isPinned) "📌 " else ""
-                                val snippet = if (n.content.isNotBlank()) " — _${n.content.take(40)}..._" else ""
-                                sb.append("${idx + 1}. $pin**${n.title}**$snippet\n")
-                            }
-                            if (allActiveNotes.size > 6) {
-                                sb.append("• _...and ${allActiveNotes.size - 6} more in Keep Notes._\n")
-                            }
-                        }
                         val actions = listOf(
                             TalkAction.NavigateAppScreen("notes", "Open Keep Notes", "📝"),
                             TalkAction.AskQuery("/tasks", "📋 Tasks"),
                             TalkAction.AskQuery("/status", "⚡ Focus Status")
                         )
                         recordTurn(cleanQuery, "notes")
-                        return TalkResponse(sb.toString().trimEnd(), actions, "notes", serializeActionsJson("notes", actions))
+                        return TalkResponse(
+                            formattedText = "🔒 **Keep Notes Security & Privacy**\n\nFor your security, privacy, and Secret Vault encryption protection, notes cannot be created, searched, or viewed through the chat window.\n\nPlease open Keep Notes directly to view, search, and manage your notes.",
+                            actions = actions,
+                            topicId = "notes",
+                            jsonPayload = serializeActionsJson("notes", actions)
+                        )
                     }
 
                     // Check if performing imperative task operations (ONLY IF NOT A QUESTION)
                     if (!isQuestionQuery) {
-                        val nluResult = OfflineNluEngine.parse(cleanQuery, app.taskRepository.allTasks.firstOrNull()?.filter { !it.isCompleted } ?: emptyList())
+                        val tasks = app.database.taskDao().getAllActiveTasksList()
+                        val pending = tasks.filter { !it.isCompleted }
+                        val nluResult = OfflineNluEngine.parse(cleanQuery, pending)
                         if (nluResult.intent != NluIntent.UNKNOWN) {
-                            val tasks = app.taskRepository.allTasks.firstOrNull() ?: emptyList()
-                            val pending = tasks.filter { !it.isCompleted }
 
                             if (nluResult.intent == NluIntent.CONFLICT) {
                                 val actions = nluResult.conflictOptions.map { opt ->
@@ -1306,6 +1247,7 @@ object AyvaTalkEngine {
                                 val newId = app.taskRepository.insertTask(newTask)
                                 TaskReminderHelper.scheduleReminder(context, newTask.copy(id = newId))
                                 TodoWidgetProvider.updateAllWidgets(context)
+                                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
 
                                 val dateStr = if (finalDueDate != null) " (Due: ${SmartDateParser.formatDueDate(finalDueDate)})" else ""
                                 val actions = listOf(
@@ -1340,10 +1282,27 @@ object AyvaTalkEngine {
                                     }
 
                                     if (nluResult.intent == NluIntent.DELETE) {
-                                        // User wants to clean/clear overdue tasks
+                                        val isConfirmed = cleanQuery.contains("confirm_delete_overdue") || cleanQuery.contains("confirm delete overdue")
+                                        if (!isConfirmed) {
+                                            val actions = listOf(
+                                                TalkAction.AskQuery("/talk confirm_delete_overdue", "🗑️ Move ${overdueTasks.size} to Trash", "⚠️"),
+                                                TalkAction.AskQuery("/tasks", "Cancel", "❌")
+                                            )
+                                            return TalkResponse(
+                                                formattedText = "⚠️ **Confirm Overdue Clean**\n\nAre you sure you want to move **${overdueTasks.size} overdue tasks** to the Trash?",
+                                                actions = actions,
+                                                topicId = "tasks",
+                                                jsonPayload = serializeActionsJson("tasks", actions)
+                                            )
+                                        }
+
+                                        // Capture pre-op snapshot before destructive mutation
+                                        val noteDao = com.focusbyrj.app.data.note.NoteDatabase.getInstance(context).noteDao()
+                                        com.focusbyrj.app.util.backup.DataSafetyManager.writePreOpSnapshot(context, noteDao, "ayva_talk_delete_overdue", app.database)
+
+                                        // Soft-delete overdue tasks to trash
                                         overdueTasks.forEach { 
-                                            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", it.id)
-                                            app.taskRepository.deleteTask(it)
+                                            app.taskRepository.moveToTrash(it.id)
                                             TaskReminderHelper.cancelReminder(context, it)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
@@ -1358,7 +1317,7 @@ object AyvaTalkEngine {
                                         // User wants to push/reschedule overdue tasks
                                         val targetDate = nluResult.targetDateMs ?: (now + 86400000L)
                                         overdueTasks.forEach {
-                                            val updated = it.copy(dueDate = targetDate)
+                                            val updated = it.copy(dueDate = targetDate, updatedAt = now)
                                             app.taskRepository.updateTask(updated)
                                             TaskReminderHelper.scheduleReminder(context, updated)
                                         }
@@ -1377,8 +1336,9 @@ object AyvaTalkEngine {
                                 if (nluResult.isAllTasks) {
                                     if (nluResult.intent == NluIntent.RESCHEDULE) {
                                         val newDate = nluResult.targetDateMs ?: (System.currentTimeMillis() + 86400000L)
+                                        val now = System.currentTimeMillis()
                                         pending.forEach { 
-                                            val updated = it.copy(dueDate = newDate)
+                                            val updated = it.copy(dueDate = newDate, updatedAt = now)
                                             app.taskRepository.updateTask(updated)
                                             TaskReminderHelper.scheduleReminder(context, updated)
                                         }
@@ -1390,12 +1350,16 @@ object AyvaTalkEngine {
                                         val now = System.currentTimeMillis()
                                         pending.forEach { task ->
                                             com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, task, now)
-                                            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", task.id)
-                                            app.taskRepository.deleteTask(task)
+                                            val updated = task.copy(
+                                                isCompleted = true,
+                                                completedAt = now,
+                                                updatedAt = now
+                                            )
+                                            app.taskRepository.updateTask(updated)
                                             TaskReminderHelper.cancelReminder(context, task)
                                             FocusEconomyManager.completeTaskReward(task.title, task.isPriority, task.type)
                                             if (task.recurrence != com.focusbyrj.app.data.RecurrencePattern.NONE) {
-                                                val nextTask = TaskReminderHelper.generateNextRecurringTask(task.copy(isCompleted = true, completedAt = now))
+                                                val nextTask = TaskReminderHelper.generateNextRecurringTask(updated)
                                                 val newId = app.database.taskDao().insertTask(nextTask)
                                                 TaskReminderHelper.scheduleReminder(context, nextTask.copy(id = newId))
                                             }
@@ -1405,26 +1369,50 @@ object AyvaTalkEngine {
                                         val actions = listOf(TalkAction.AskQuery("/summary", "📊 Daily Summary"), TalkAction.AskQuery("/advice", "💡 Focus Advice"))
                                         return TalkResponse("🎉 **All ${pending.size} tasks marked complete!** Entire radar is clear. Outstanding work!", actions, "tasks", serializeActionsJson("tasks", actions))
                                     } else if (nluResult.intent == NluIntent.DELETE) {
+                                        if (pending.isEmpty()) {
+                                            return TalkResponse("✨ You have no pending tasks to delete.")
+                                        }
+                                        val isConfirmed = cleanQuery.contains("confirm_delete_all") || cleanQuery.contains("confirm delete all")
+                                        if (!isConfirmed) {
+                                            val actions = listOf(
+                                                TalkAction.AskQuery("/talk confirm_delete_all", "🗑️ Move All ${pending.size} to Trash", "⚠️"),
+                                                TalkAction.AskQuery("/tasks", "Cancel", "❌")
+                                            )
+                                            return TalkResponse(
+                                                formattedText = "⚠️ **Confirm Bulk Deletion**\n\nAre you sure you want to move **all ${pending.size} pending tasks** to the Trash?",
+                                                actions = actions,
+                                                topicId = "tasks",
+                                                jsonPayload = serializeActionsJson("tasks", actions)
+                                            )
+                                        }
+
+                                        // Capture pre-op snapshot before destructive mutation
+                                        val noteDao = com.focusbyrj.app.data.note.NoteDatabase.getInstance(context).noteDao()
+                                        com.focusbyrj.app.util.backup.DataSafetyManager.writePreOpSnapshot(context, noteDao, "ayva_talk_delete_all", app.database)
+
                                         pending.forEach { 
-                                            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", it.id)
-                                            app.taskRepository.deleteTask(it)
+                                            app.taskRepository.moveToTrash(it.id)
                                             TaskReminderHelper.cancelReminder(context, it)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
                                         com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
-                                        return TalkResponse("🗑️ **Deleted all ${pending.size} pending tasks.**")
+                                        return TalkResponse("🗑️ **Moved all ${pending.size} pending tasks to Trash.** (Retained for 30 days)")
                                     }
                                 } else if (nluResult.targetTask != null) {
                                     val targetTask = nluResult.targetTask
                                     if (nluResult.intent == NluIntent.COMPLETE) {
                                         val now = System.currentTimeMillis()
                                         com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, targetTask, now)
-                                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", targetTask.id)
-                                        app.taskRepository.deleteTask(targetTask)
+                                        val updated = targetTask.copy(
+                                            isCompleted = true,
+                                            completedAt = now,
+                                            updatedAt = now
+                                        )
+                                        app.taskRepository.updateTask(updated)
                                         TaskReminderHelper.cancelReminder(context, targetTask)
                                         FocusEconomyManager.completeTaskReward(targetTask.title, targetTask.isPriority, targetTask.type)
                                         if (targetTask.recurrence != com.focusbyrj.app.data.RecurrencePattern.NONE) {
-                                            val nextTask = TaskReminderHelper.generateNextRecurringTask(targetTask.copy(isCompleted = true, completedAt = now))
+                                            val nextTask = TaskReminderHelper.generateNextRecurringTask(updated)
                                             val newId = app.database.taskDao().insertTask(nextTask)
                                             TaskReminderHelper.scheduleReminder(context, nextTask.copy(id = newId))
                                         }
@@ -1438,8 +1426,7 @@ object AyvaTalkEngine {
                                         )
                                         return TalkResponse(praise, actions, "tasks", serializeActionsJson("tasks", actions))
                                     } else if (nluResult.intent == NluIntent.DELETE) {
-                                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", targetTask.id)
-                                        app.taskRepository.deleteTask(targetTask)
+                                        app.taskRepository.moveToTrash(targetTask.id)
                                         TaskReminderHelper.cancelReminder(context, targetTask)
                                         TodoWidgetProvider.updateAllWidgets(context)
                                         com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
@@ -1447,7 +1434,7 @@ object AyvaTalkEngine {
                                         val actions = listOf(
                                             TalkAction.AskQuery("/tasks", "📋 View Tasks ($remaining)")
                                         )
-                                        return TalkResponse("🗑️ **Deleted '${targetTask.title}'**\nTask removed from your radar.", actions, "tasks", serializeActionsJson("tasks", actions))
+                                        return TalkResponse("🗑️ **Moved '${targetTask.title}' to Trash.**\nTask safely kept in trash for 30 days.", actions, "tasks", serializeActionsJson("tasks", actions))
                                     } else if (nluResult.intent == NluIntent.RESCHEDULE) {
                                         if (nluResult.targetDateMs != null) {
                                             // If user did not specify an explicit time of day, but the task already had a time, preserve that time
@@ -1462,7 +1449,7 @@ object AyvaTalkEngine {
                                             } else {
                                                 nluResult.targetDateMs
                                             }
-                                            val updated = targetTask.copy(dueDate = newDate)
+                                            val updated = targetTask.copy(dueDate = newDate, updatedAt = System.currentTimeMillis())
                                             app.taskRepository.updateTask(updated)
                                             TaskReminderHelper.scheduleReminder(context, updated)
                                             TodoWidgetProvider.updateAllWidgets(context)
@@ -1637,10 +1624,21 @@ object AyvaTalkEngine {
                                 }
 
                                 if (isStop) {
+                                    val focusPrefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
+                                    val isSessionActive = focusPrefs.getBoolean("isSessionActive", false)
+                                    val isStrictMode = focusPrefs.getString("block_mode", "HARD") == "HARD"
+                                    val activeStrictSchedule = allSchedules.firstOrNull { it.isEnabled && it.isActiveAt() && (it.mode == "HARD" || isStrictMode) }
+
                                     val target = nluResult.targetRoutineName?.trim()
                                     val isAll = nluResult.isAllTasks || target == "all" || cleanQuery.contains("all routines") || cleanQuery.contains("all schedules")
                                     
                                     if (isAll) {
+                                        if (isSessionActive || activeStrictSchedule != null) {
+                                            return TalkResponse(
+                                                formattedText = "🛡️ **Focus Mode Active**\n_Routines cannot be stopped while a strict focus session or scheduled routine is in progress. Stay in the zone!_",
+                                                topicId = "session_active"
+                                            )
+                                        }
                                         allSchedules.forEach {
                                             app.database.scheduleDao().insertSchedule(it.copy(isEnabled = false))
                                         }
@@ -1661,6 +1659,12 @@ object AyvaTalkEngine {
                                                 ?.takeIf { OfflineNluEngine.levenshtein(target.lowercase(), it.name.lowercase()) <= 2 }
 
                                         if (matched != null) {
+                                            if (matched.isEnabled && matched.isActiveAt() && (matched.mode == "HARD" || isStrictMode)) {
+                                                return TalkResponse(
+                                                    formattedText = "🛡️ **Focus Mode Active**\n_Strict routine '${matched.name}' is currently active and cannot be stopped until its scheduled window ends._",
+                                                    topicId = "session_active"
+                                                )
+                                            }
                                             app.database.scheduleDao().insertSchedule(matched.copy(isEnabled = false))
                                             val actions = listOf(
                                                 TalkAction.AskQuery("/talk start routine ${matched.name}", "▶️ Start Routine"),
@@ -1778,9 +1782,12 @@ object AyvaTalkEngine {
                                 if (isUnblock) {
                                     val focusPrefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
                                     val isSessionActive = focusPrefs.getBoolean("isSessionActive", false)
-                                    if (isSessionActive) {
+                                    val isStrictMode = focusPrefs.getString("block_mode", "HARD") == "HARD"
+                                    val app = context.applicationContext as? com.focusbyrj.app.FocusApplication
+                                    val activeSchedule = app?.database?.scheduleDao()?.getAllSchedulesSync()?.firstOrNull { it.isActiveAt() }
+                                    if (isSessionActive || (isStrictMode && activeSchedule != null)) {
                                         return TalkResponse(
-                                            formattedText = "🛡️ **Focus Session Active**\n_Apps cannot be unblocked while a focus session is in progress. Stay in the zone!_",
+                                            formattedText = "🛡️ **Focus Mode Active**\n_Apps cannot be unblocked while a focus session or scheduled routine is in progress. Stay in the zone!_",
                                             topicId = "session_active"
                                         )
                                     }
@@ -2087,7 +2094,7 @@ object AyvaTalkEngine {
                 TalkAction.AskQuery("/status", "⚡ Focus Status"),
                 TalkAction.AskQuery("/tasks", "📋 My Tasks"),
                 TalkAction.AskQuery("/habits", "🌱 Habits"),
-                TalkAction.AskQuery("/notes", "📝 Notes")
+                TalkAction.NavigateAppScreen("notes", "Keep Notes 📝", "📝")
             )
             val json = serializeActionsJson("chat", actions)
             return TalkResponse(replyText, actions, "chat", json)
@@ -2097,14 +2104,14 @@ object AyvaTalkEngine {
             TalkAction.AskQuery("/status", "⚡ Focus Status"),
             TalkAction.AskQuery("/tasks", "📋 My Tasks"),
             TalkAction.AskQuery("/habits", "🌱 Daily Habits"),
-            TalkAction.AskQuery("/notes", "📝 Keep Notes"),
+            TalkAction.NavigateAppScreen("notes", "Keep Notes 📝", "📝"),
             TalkAction.NavigateAppScreen("preferences_hub", "Preferences Hub ⚙️", "⚙️"),
             TalkAction.AskQuery("vacation mode", "🏖️ Vacation Mode"),
             TalkAction.AskQuery("why apps not blocking", "🛡️ Troubleshoot")
         )
         val json = serializeActionsJson("fallback", fallbackActions)
         val conversationalGreeting = AyvaDialogueEngine.getConversationalChatReply(context, cleanQuery)
-        val fullText = "$conversationalGreeting\n\nI'm ready to help! You can ask me to:\n• **Add / search tasks** (e.g. *\"create finish presentation tomorrow 4pm\"*)\n• **Review notes** (e.g. *\"search notes meeting\"* or *\"add note Ideas: new project\"*)\n• **Track daily habits** (e.g. *\"log habit reading\"* or *\"my habits\"*)\n• **Check focus status** (e.g. *\"status\"* or *\"today's summary\"*)\n• **Lock distracting apps** (e.g. *\"lock instagram in strict mode\"*)"
+        val fullText = "$conversationalGreeting\n\nI'm ready to help! You can ask me to:\n• **Add / manage tasks** (e.g. *\"create finish presentation tomorrow 4pm\"*)\n• **Track daily habits** (e.g. *\"log habit reading\"* or *\"my habits\"*)\n• **Check focus status** (e.g. *\"status\"* or *\"today's summary\"*)\n• **Lock distracting apps** (e.g. *\"lock instagram in strict mode\"*)"
         return TalkResponse(
             formattedText = fullText,
             actions = fallbackActions,

@@ -83,6 +83,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import kotlinx.coroutines.CoroutineScope
 
 class QuickAddTaskActivity : ComponentActivity() {
@@ -502,7 +503,7 @@ fun QuickAddTaskOverlay(
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
-                            val selectedCal = Calendar.getInstance().apply { timeInMillis = millis }
+                            val selectedCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = millis }
                             calendar.set(Calendar.YEAR, selectedCal.get(Calendar.YEAR))
                             calendar.set(Calendar.MONTH, selectedCal.get(Calendar.MONTH))
                             calendar.set(Calendar.DAY_OF_MONTH, selectedCal.get(Calendar.DAY_OF_MONTH))

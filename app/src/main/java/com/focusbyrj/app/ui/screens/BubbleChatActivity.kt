@@ -839,6 +839,7 @@ fun ChatInterface() {
                                     val newId = repo.insertTask(newTask)
                                     TaskReminderHelper.scheduleReminder(context, newTask.copy(id = newId))
                                     TodoWidgetProvider.updateAllWidgets(context)
+                                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
 
                                     val dateStr = if (dueDateToUse != null) " (Due: ${SmartDateParser.formatDueDate(dueDateToUse)})" else ""
                                     val actions = listOf(
@@ -1099,6 +1100,7 @@ fun ChatInterface() {
                                     val createdId = repo.insertTask(tTask)
                                     TaskReminderHelper.scheduleReminder(context, tTask.copy(id = createdId))
                                     TodoWidgetProvider.updateAllWidgets(context)
+                                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
 
                                     withContext(Dispatchers.Main) {
                                         val dueStr = if (tDueDate != null) SmartDateParser.formatDueDate(tDueDate) else null
@@ -1139,9 +1141,6 @@ fun ChatInterface() {
                                     set(java.util.Calendar.MILLISECOND, 0)
                                 }.timeInMillis
                                 val endOfDay = startOfDay + 86400000L - 1
-                                
-                                // Cleanup old completed tasks
-                                repo.deleteCompletedTasksBefore(startOfDay)
                                 
                                 val allTasks = repo.allTasks.first()
                                 val completedToday = com.focusbyrj.app.util.CompletedTaskHistoryManager.getTodayCompletedTasks(context)
@@ -1511,11 +1510,12 @@ fun ChatInterface() {
                                     if (nluResult.isAllTasks) {
                                         val newDate = nluResult.targetDateMs ?: (System.currentTimeMillis() + 86400000L)
                                         targetList.forEach { task ->
-                                            val updated = task.copy(dueDate = newDate)
+                                            val updated = task.copy(dueDate = newDate, updatedAt = System.currentTimeMillis())
                                             repo.updateTask(updated)
                                             TaskReminderHelper.scheduleReminder(context, updated)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         replyMsg = "⏰ **Rescheduled all ${targetList.size} tasks** to ${SmartDateParser.formatDueDate(newDate)}."
                                     } else if (nluResult.targetTask != null) {
                                         val task = nluResult.targetTask
@@ -1530,10 +1530,11 @@ fun ChatInterface() {
                                         } else {
                                             nluResult.targetDateMs ?: (System.currentTimeMillis() + 86400000L)
                                         }
-                                        val updatedTask = task.copy(dueDate = newDate)
+                                        val updatedTask = task.copy(dueDate = newDate, updatedAt = System.currentTimeMillis())
                                         repo.updateTask(updatedTask)
                                         TaskReminderHelper.scheduleReminder(context, updatedTask)
                                         TodoWidgetProvider.updateAllWidgets(context)
+                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         replyMsg = com.focusbyrj.app.util.AyvaDialogueEngine.getRescheduleSuccessResponse(context, task.title, SmartDateParser.formatDueDate(newDate))
                                     } else if (nluResult.matchingTasks.isNotEmpty()) {
                                         val builder = StringBuilder()
@@ -1551,10 +1552,11 @@ fun ChatInterface() {
                                             val task = targetList[num - 1]
                                             val parsed = SmartDateParser.parse("reschedule to $timeStr")
                                             if (parsed.timestamp != null) {
-                                                val updatedTask = task.copy(dueDate = parsed.timestamp)
+                                                val updatedTask = task.copy(dueDate = parsed.timestamp, updatedAt = System.currentTimeMillis())
                                                 repo.updateTask(updatedTask)
                                                 TaskReminderHelper.scheduleReminder(context, updatedTask)
                                                 TodoWidgetProvider.updateAllWidgets(context)
+                                                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                                 replyMsg = com.focusbyrj.app.util.AyvaDialogueEngine.getRescheduleSuccessResponse(context, task.title, SmartDateParser.formatDueDate(parsed.timestamp))
                                             } else {
                                                 replyMsg = "Couldn't decipher '$timeStr'. Try something like 'tomorrow at 3pm' or '5pm'."
@@ -1577,11 +1579,12 @@ fun ChatInterface() {
                                     replyMsg = "No pending tasks to postpone! 🎯"
                                 } else {
                                     tasks.forEach { 
-                                        val updatedTask = it.copy(dueDate = System.currentTimeMillis() + 86400000L)
+                                        val updatedTask = it.copy(dueDate = System.currentTimeMillis() + 86400000L, updatedAt = System.currentTimeMillis())
                                         repo.updateTask(updatedTask)
                                         TaskReminderHelper.scheduleReminder(context, updatedTask)
                                     }
                                     TodoWidgetProvider.updateAllWidgets(context)
+                                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                     replyMsg = com.focusbyrj.app.util.AyvaDialogueEngine.getPostponeAllResponse(context, tasks.size)
                                 }
                             }
@@ -1690,6 +1693,7 @@ fun ChatInterface() {
                 val newId = repo.insertTask(newTask)
                 TaskReminderHelper.scheduleReminder(context, newTask.copy(id = newId))
                 TodoWidgetProvider.updateAllWidgets(context)
+                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 
                 withContext(Dispatchers.Main) {
                     val attrs = mutableListOf<String>()
@@ -2218,8 +2222,12 @@ fun ChatInterface() {
                                     if (task != null) {
                                         val completedAt = System.currentTimeMillis()
                                         com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, task, completedAt)
-                                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", task.id)
-                                        repo.deleteTask(task)
+                                        val updated = task.copy(
+                                            isCompleted = true,
+                                            completedAt = completedAt,
+                                            updatedAt = completedAt
+                                        )
+                                        repo.updateTask(updated)
                                         TaskReminderHelper.cancelReminderById(context, taskId)
                                         FocusEconomyManager.completeTaskReward(task.title, task.isPriority, task.type)
                                         if (task.recurrence != com.focusbyrj.app.data.RecurrencePattern.NONE) {

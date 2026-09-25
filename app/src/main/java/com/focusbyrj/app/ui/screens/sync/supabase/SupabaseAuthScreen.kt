@@ -12,11 +12,10 @@ package com.focusbyrj.app.ui.screens.sync.supabase
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.focusbyrj.app.R
 import com.focusbyrj.app.data.TaskDao
 import com.focusbyrj.app.data.note.NoteDao
 import com.focusbyrj.app.util.sync.supabase.AutoSyncManager
@@ -145,22 +146,18 @@ fun SupabaseAuthScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
                     onClick = { navController.popBackStack() },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .testTag("btn_auth_back")
+                    modifier = Modifier.testTag("btn_auth_back")
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
@@ -176,106 +173,52 @@ fun SupabaseAuthScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 440.dp)
+                    .widthIn(max = 400.dp)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.Start
             ) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Modern Pill Switcher (Sign in / Sign up)
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (authMode == FullPageAuthMode.SIGN_IN) MaterialTheme.colorScheme.surface else Color.Transparent,
-                            shadowElevation = if (authMode == FullPageAuthMode.SIGN_IN) 1.dp else 0.dp,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    authMode = FullPageAuthMode.SIGN_IN
-                                    errorMessage = null
-                                }
-                                .padding(vertical = 10.dp)
-                        ) {
-                            Text(
-                                text = "Sign In",
-                                textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = if (authMode == FullPageAuthMode.SIGN_IN) FontWeight.Bold else FontWeight.Medium
-                                ),
-                                color = if (authMode == FullPageAuthMode.SIGN_IN) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
+                // Clean App Logo
+                Image(
+                    painter = painterResource(id = R.drawable.app_icon),
+                    contentDescription = "RuN",
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
 
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (authMode == FullPageAuthMode.SIGN_UP) MaterialTheme.colorScheme.surface else Color.Transparent,
-                            shadowElevation = if (authMode == FullPageAuthMode.SIGN_UP) 1.dp else 0.dp,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    authMode = FullPageAuthMode.SIGN_UP
-                                    errorMessage = null
-                                }
-                                .padding(vertical = 10.dp)
-                        ) {
-                            Text(
-                                text = "Create Account",
-                                textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = if (authMode == FullPageAuthMode.SIGN_UP) FontWeight.Bold else FontWeight.Medium
-                                ),
-                                color = if (authMode == FullPageAuthMode.SIGN_UP) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.height(20.dp))
 
-                Spacer(modifier = Modifier.height(32.dp))
+                // Title & Subtitle
+                Text(
+                    text = if (authMode == FullPageAuthMode.SIGN_IN) "Sign in" else "Create account",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 26.sp,
+                        letterSpacing = (-0.5).sp
+                    ),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
 
-                // Minimal Header Typography
-                AnimatedContent(
-                    targetState = authMode,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "auth_title"
-                ) { mode ->
-                    Column {
-                        Text(
-                            text = if (mode == FullPageAuthMode.SIGN_IN) "Welcome back" else "Create account",
-                            style = MaterialTheme.typography.headlineMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = (-0.5).sp
-                            ),
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = if (mode == FullPageAuthMode.SIGN_IN)
-                                "Sign in to synchronize your notes and tasks securely."
-                            else
-                                "Enter your credentials to create an encrypted cloud vault.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                        )
-                    }
-                }
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = if (authMode == FullPageAuthMode.SIGN_IN)
+                        "Sync your notes, tasks, and habits across devices."
+                    else
+                        "Set up your secure cloud sync in seconds.",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // Error Message
+                // Error Message if present
                 AnimatedVisibility(
                     visible = errorMessage != null,
                     enter = fadeIn() + expandVertically(),
@@ -283,39 +226,39 @@ fun SupabaseAuthScreen(
                 ) {
                     errorMessage?.let { errorText ->
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.25f)),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 20.dp)
+                                .padding(bottom = 16.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     Icons.Filled.ErrorOutline,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(10.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = errorText.ifBlank { "Invalid email or password. Please check your credentials." },
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                    text = errorText.ifBlank { "Invalid email or password." },
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.weight(1f)
                                 )
                                 IconButton(
                                     onClick = { errorMessage = null },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(20.dp)
                                 ) {
                                     Icon(
                                         Icons.Filled.Close,
                                         contentDescription = "Dismiss",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(14.dp)
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(12.dp)
                                     )
                                 }
                             }
@@ -326,14 +269,14 @@ fun SupabaseAuthScreen(
                 // Email Input
                 Text(
                     text = "Email",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it; errorMessage = null },
-                    placeholder = { Text("name@example.com", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
+                    placeholder = { Text("name@example.com", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Email,
@@ -342,11 +285,11 @@ fun SupabaseAuthScreen(
                     keyboardActions = KeyboardActions(
                         onNext = { focusManager.moveFocus(FocusDirection.Down) }
                     ),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(10.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         focusedBorderColor = MaterialTheme.colorScheme.primary
                     ),
                     modifier = Modifier
@@ -359,21 +302,21 @@ fun SupabaseAuthScreen(
                 // Password Input
                 Text(
                     text = "Password",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it; errorMessage = null },
-                    placeholder = { Text("••••••••", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
+                    placeholder = { Text("••••••••", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)) },
                     trailingIcon = {
                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
                             Icon(
                                 imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
                                 contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(20.dp)
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     },
@@ -387,11 +330,11 @@ fun SupabaseAuthScreen(
                         onNext = { focusManager.moveFocus(FocusDirection.Down) },
                         onDone = { handleAuth() }
                     ),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(10.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         focusedBorderColor = MaterialTheme.colorScheme.primary
                     ),
                     modifier = Modifier
@@ -403,22 +346,22 @@ fun SupabaseAuthScreen(
                 if (authMode == FullPageAuthMode.SIGN_UP) {
                     Spacer(modifier = Modifier.height(18.dp))
                     Text(
-                        text = "Confirm Password",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        text = "Confirm password",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     OutlinedTextField(
                         value = confirmPassword,
                         onValueChange = { confirmPassword = it; errorMessage = null },
-                        placeholder = { Text("••••••••", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
+                        placeholder = { Text("••••••••", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)) },
                         trailingIcon = {
                             IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
                                 Icon(
                                     imageVector = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
                                     contentDescription = if (confirmPasswordVisible) "Hide password" else "Show password",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(20.dp)
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         },
@@ -431,11 +374,11 @@ fun SupabaseAuthScreen(
                         keyboardActions = KeyboardActions(
                             onDone = { handleAuth() }
                         ),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                             focusedBorderColor = MaterialTheme.colorScheme.primary
                         ),
                         modifier = Modifier
@@ -444,60 +387,88 @@ fun SupabaseAuthScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-                // Primary CTA Button
+                // Primary Button
                 Button(
                     onClick = { handleAuth() },
                     enabled = !isLoading,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(48.dp)
                         .testTag("btn_auth_submit")
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(18.dp),
                             color = MaterialTheme.colorScheme.onPrimary,
                             strokeWidth = 2.dp
                         )
                     } else {
                         Text(
-                            text = if (authMode == FullPageAuthMode.SIGN_IN) "Sign In" else "Create Account",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                            text = if (authMode == FullPageAuthMode.SIGN_IN) "Sign in" else "Create account",
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(36.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Minimal 2026 Security Indicator
+                // Mode switch link
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (authMode == FullPageAuthMode.SIGN_IN) "Don't have an account? " else "Already have an account? ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = if (authMode == FullPageAuthMode.SIGN_IN) "Sign up" else "Sign in",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable {
+                                authMode = if (authMode == FullPageAuthMode.SIGN_IN) FullPageAuthMode.SIGN_UP else FullPageAuthMode.SIGN_IN
+                                errorMessage = null
+                            }
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(40.dp))
+
+                // Minimal footnote
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         Icons.Outlined.Lock,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(14.dp)
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Zero-knowledge encrypted cloud sync",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        text = "End-to-end encrypted",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
 }
+

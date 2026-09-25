@@ -809,9 +809,23 @@ object ArithmeticEngine {
         val questionStr = displaySeq.joinToString(", ") { formatNumber(it) }
 
         // The 5 options in bank exams are 5 terms from the given series, ALWAYS including the wrong number
-        val otherTerms = displaySeq.filterIndexed { index, _ -> index != wrongIdx }.shuffled().take(4)
-        val candidateOptions = (otherTerms + wrongValue).shuffled()
-
+        val wrongStr = formatNumber(wrongValue)
+        val otherTerms = displaySeq.filterIndexed { index, _ -> index != wrongIdx }
+            .map { formatNumber(it) }
+            .filter { it != wrongStr }
+            .distinct()
+            .shuffled()
+            .take(4)
+        val candidateOptionsList = (otherTerms + wrongStr).toMutableList()
+        var padOffset = 1
+        while (candidateOptionsList.size < 5) {
+            val padStr = formatNumber(wrongValue + (padOffset * 5))
+            if (!candidateOptionsList.contains(padStr)) {
+                candidateOptionsList.add(padStr)
+            }
+            padOffset++
+        }
+        val candidateOptions = candidateOptionsList.shuffled()
         val explanation = """
             💡 **Wrong Number Series Pattern:**
             $patternExplanation
@@ -819,12 +833,12 @@ object ArithmeticEngine {
             Therefore, **${formatNumber(wrongValue)}** is the wrong number in the series.
         """.trimIndent()
 
-        val correctIndex = candidateOptions.indexOf(wrongValue).takeIf { it != -1 } ?: 0
+        val correctIndex = candidateOptions.indexOf(wrongStr).takeIf { it != -1 } ?: 0
 
         return ArithmeticQuestion(
             title = "Wrong Number Series (PO Level)",
             questionText = "Find the wrong number in the series:\n$questionStr",
-            options = candidateOptions.map { formatNumber(it) },
+            options = candidateOptions,
             correctIndex = correctIndex,
             explanation = explanation
         )
@@ -833,7 +847,7 @@ object ArithmeticEngine {
     // =========================================================================
     // 5. QUADRATIC EQUATIONS (BANK CLERK & PO PRELIMS)
     // =========================================================================
-    private fun generateQuadratic(difficulty: ArithmeticDifficulty): ArithmeticQuestion {
+    internal fun generateQuadratic(difficulty: ArithmeticDifficulty): ArithmeticQuestion {
         // In PO difficulty, 25% of the time test the high-speed 10-Second Sign Trick:
         // When constant terms c1 < 0 and c2 < 0, both equations have one positive and one negative root.
         // Therefore, relationship is ALWAYS "Relationship cannot be established" (CND) without calculation!
@@ -990,7 +1004,8 @@ object ArithmeticEngine {
         question: String,
         answer: Double,
         distractorLogic: (Double) -> Double,
-        explanation: String
+        explanation: String,
+        maxBound: Double? = null
     ): ArithmeticQuestion {
         val optionsSet = mutableSetOf<Double>()
         val cleanAnswer = round(answer * 100.0) / 100.0
@@ -1000,10 +1015,18 @@ object ArithmeticEngine {
         var attempts = 0
         while (optionsSet.size < 5 && attempts < 30) {
             val dist = round(distractorLogic(cleanAnswer) * 100.0) / 100.0
-            if ((allowNegative || dist >= 0) && !optionsSet.contains(dist)) {
+            if ((allowNegative || dist >= 0) && (maxBound == null || dist < maxBound) && !optionsSet.contains(dist)) {
                 optionsSet.add(dist)
             }
             attempts++
+        }
+
+        if (maxBound != null) {
+            val maxInt = maxBound.toInt()
+            for (v in 0 until maxInt) {
+                if (optionsSet.size >= 5) break
+                optionsSet.add(v.toDouble())
+            }
         }
 
         // Fallback offsets tailored to banking calculation errors (+/- 1, +/- 2, +/- 5, +/- 10)
@@ -1011,12 +1034,17 @@ object ArithmeticEngine {
         var offsetIdx = 0
         while (optionsSet.size < 5 && offsetIdx < fallbackOffsets.size) {
             val dist = cleanAnswer + fallbackOffsets[offsetIdx++]
-            if (allowNegative || dist >= 0) optionsSet.add(round(dist * 100.0) / 100.0)
+            if ((allowNegative || dist >= 0) && (maxBound == null || dist < maxBound)) optionsSet.add(round(dist * 100.0) / 100.0)
         }
 
         var mult = 25.0
         while (optionsSet.size < 5) {
-            optionsSet.add(round((cleanAnswer + mult) * 100.0) / 100.0)
+            val dist = round((cleanAnswer + mult) * 100.0) / 100.0
+            if (maxBound == null || dist < maxBound) {
+                optionsSet.add(dist)
+            } else {
+                optionsSet.add(optionsSet.size.toDouble())
+            }
             mult += 10.0
         }
 
@@ -1403,8 +1431,9 @@ object ArithmeticEngine {
                         title = "Remainder Theorem (Product Shortcut)",
                         question = "What is the remainder when ($numA × $numB) is divided by $mod?",
                         answer = ans.toDouble(),
-                        distractorLogic = { ((it.toInt() + listOf(1, 2, 3, 4).random()) % mod).toDouble() },
-                        explanation = explanation
+                        distractorLogic = { ((it.toInt() + (1 until mod).random()) % mod).toDouble() },
+                        explanation = explanation,
+                        maxBound = mod.toDouble()
                     )
                 }
             }
@@ -1421,8 +1450,9 @@ object ArithmeticEngine {
                         title = "Remainder Theorem (Binomial Form)",
                         question = questionStr,
                         answer = ans.toDouble(),
-                        distractorLogic = { ((it.toInt() + listOf(1, 2, 3, 4).random()) % x).toDouble() },
-                        explanation = explanation
+                        distractorLogic = { ((it.toInt() + (1 until x).random()) % x).toDouble() },
+                        explanation = explanation,
+                        maxBound = x.toDouble()
                     )
                 } else {
                     val mod = 11
@@ -1442,8 +1472,9 @@ object ArithmeticEngine {
                         title = "Remainder Theorem (3-Factor Expansion)",
                         question = "Find the remainder when ($n1 × $n2 × $n3) is divided by 11.",
                         answer = ans.toDouble(),
-                        distractorLogic = { ((it.toInt() + listOf(1, 2, 3, 4).random()) % 11).toDouble() },
-                        explanation = explanation
+                        distractorLogic = { ((it.toInt() + (1 until 11).random()) % 11).toDouble() },
+                        explanation = explanation,
+                        maxBound = 11.0
                     )
                 }
             }
@@ -1463,8 +1494,9 @@ object ArithmeticEngine {
                     title = "Fermat's Remainder Theorem",
                     question = "What is the remainder when $base^$exponent is divided by $prime?",
                     answer = ans.toDouble(),
-                    distractorLogic = { ((it.toInt() + listOf(1, 2, 3).random()) % prime).toDouble() },
-                    explanation = explanation
+                    distractorLogic = { ((it.toInt() + (1 until prime).random()) % prime).toDouble() },
+                    explanation = explanation,
+                    maxBound = prime.toDouble()
                 )
             }
         }
@@ -1473,7 +1505,7 @@ object ArithmeticEngine {
     // =========================================================================
     // 8. SIMPLIFICATION / BODMAS WITH FRACTIONS
     // =========================================================================
-    private fun generateFractionBODMAS(difficulty: ArithmeticDifficulty): ArithmeticQuestion {
+    internal fun generateFractionBODMAS(difficulty: ArithmeticDifficulty): ArithmeticQuestion {
         return when (difficulty) {
             ArithmeticDifficulty.EASY -> {
                 val w1 = Random.nextInt(2, 6)
@@ -1495,8 +1527,8 @@ object ArithmeticEngine {
             ArithmeticDifficulty.MEDIUM -> {
                 val denom = listOf(3, 4, 5, 6, 7).random()
                 val numer = Random.nextInt(1, denom)
-                val base = denom * Random.nextInt(8, 20)
                 val divNum = listOf(2, 3, 4, 5).random()
+                val base = denom * divNum * Random.nextInt(2, 6)
                 val ofResult = (base / denom) * numer
                 val divPart = ofResult / divNum
                 val addPart = Random.nextInt(10, 40)
@@ -1513,8 +1545,8 @@ object ArithmeticEngine {
             ArithmeticDifficulty.HARD -> {
                 val a = Random.nextInt(3, 8)
                 val b = Random.nextInt(2, 5)
-                val factor = listOf(12, 16, 24, 36).random()
-                val term1 = (factor * a) / b
+                val factor = b * listOf(3, 4, 6, 8).random()
+                val term1 = (factor / b) * a
                 val term2 = Random.nextInt(15, 50)
                 val answer = term1 - term2
 

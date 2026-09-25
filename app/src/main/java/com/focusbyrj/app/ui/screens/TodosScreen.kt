@@ -59,17 +59,20 @@ fun TodosScreen(
     onOpenAddHandled: (() -> Unit)? = null
 ) {
     val tasks by viewModel.allTasks.collectAsStateWithLifecycle()
-    var selectedTab by remember { mutableStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val tabs = listOf("Today", "Upcoming", "All", "Occasions")
     
-    var showAddDialog by remember { mutableStateOf(initialOpenAdd) }
+    var showAddDialog by rememberSaveable { mutableStateOf(initialOpenAdd) }
     LaunchedEffect(initialOpenAdd) {
         if (initialOpenAdd) {
             showAddDialog = true
             onOpenAddHandled?.invoke()
         }
     }
-    var editingTask by remember { mutableStateOf<Task?>(null) }
+    var editingTaskId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val editingTask = remember(editingTaskId, tasks) {
+        editingTaskId?.let { id -> tasks.find { it.id == id } }
+    }
     val coroutineScope = rememberCoroutineScope()
     
     var pendingDeleteTask by remember { mutableStateOf<Task?>(null) }
@@ -106,9 +109,10 @@ fun TodosScreen(
         }
     }
 
+    val currentPendingDeleteTask by rememberUpdatedState(pendingDeleteTask)
     DisposableEffect(Unit) {
         onDispose {
-            pendingDeleteTask?.let { viewModel.deleteTask(it) }
+            currentPendingDeleteTask?.let { viewModel.deleteTask(it) }
         }
     }
 
@@ -329,7 +333,7 @@ fun TodosScreen(
                                         }
                                     },
                                     onDelete = { onRequestDelete(it) },
-                                    onEdit = { editingTask = it },
+                                    onEdit = { editingTaskId = it.id },
                                     onToggleSubtask = { t, subtaskId ->
                                         viewModel.toggleSubtask(t, subtaskId)
                                     }
@@ -348,7 +352,7 @@ fun TodosScreen(
                                             }
                                         },
                                         onDelete = { onRequestDelete(it) },
-                                        onEdit = { editingTask = it },
+                                        onEdit = { editingTaskId = it.id },
                                         onToggleSubtask = { t, subtaskId ->
                                             viewModel.toggleSubtask(t, subtaskId)
                                         }
@@ -437,28 +441,28 @@ fun TodosScreen(
         }
     }
 
-    if (showAddDialog || editingTask != null) {
+    if (showAddDialog || editingTaskId != null) {
         AddTaskDialog(
             initialTask = editingTask,
             defaultType = if (selectedTab == 3) TaskType.BIRTHDAY else TaskType.TASK,
             onDismiss = { 
                 showAddDialog = false
-                editingTask = null
+                editingTaskId = null
             },
             onSave = { task ->
                 if (editingTask != null) {
-                    viewModel.updateTask(task.copy(id = editingTask!!.id))
+                    viewModel.updateTask(task.copy(id = editingTask.id))
                 } else {
                     viewModel.addTask(task)
                 }
                 showAddDialog = false
-                editingTask = null
+                editingTaskId = null
             },
             onDelete = if (editingTask != null) {
                 { taskToDelete ->
                     onRequestDelete(taskToDelete)
                     showAddDialog = false
-                    editingTask = null
+                    editingTaskId = null
                 }
             } else null
         )

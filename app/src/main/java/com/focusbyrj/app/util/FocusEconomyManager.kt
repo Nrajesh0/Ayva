@@ -508,30 +508,52 @@ object FocusEconomyManager {
         }
     }
 
+    fun setStreakFreezes(count: Int) {
+        val p = prefs ?: return
+        val clamped = count.coerceIn(0, 3)
+        p.edit().putInt("streak_freezes", clamped).apply()
+        loadProfile()
+    }
+
     fun buyStreakFreeze(cost: Int = 150): Boolean {
         val p = prefs ?: return false
         val currentGold = _profileFlow.value.gold
+        val currentFreezes = _profileFlow.value.streakFreezes
+        if (currentFreezes >= 3) return false // Max 3 shields cap
         if (currentGold >= cost) {
-            val currentFreezes = _profileFlow.value.streakFreezes
+            val updated = minOf(3, currentFreezes + 1)
             p.edit()
                 .putInt("gold", currentGold - cost)
-                .putInt("streak_freezes", currentFreezes + 1)
+                .putInt("streak_freezes", updated)
                 .apply()
             loadProfile()
+            AptitudeManager.addStreakFreezes(1)
             emitEvent(EconomyEvent.RewardsEarned(0, 0, "Streak Freeze Shield Acquired 🛡️"))
             return true
         }
         return false
     }
 
+    fun addStreakFreezeShield(amount: Int = 1) {
+        val p = prefs ?: return
+        val currentFreezes = _profileFlow.value.streakFreezes
+        val updated = minOf(3, currentFreezes + amount)
+        p.edit()
+            .putInt("streak_freezes", updated)
+            .apply()
+        loadProfile()
+    }
+
     fun useStreakFreeze(): Boolean {
         val p = prefs ?: return false
         val currentFreezes = _profileFlow.value.streakFreezes
         if (currentFreezes > 0) {
+            val updated = currentFreezes - 1
             p.edit()
-                .putInt("streak_freezes", currentFreezes - 1)
+                .putInt("streak_freezes", updated)
                 .apply()
             loadProfile()
+            AptitudeManager.consumeStreakFreeze()
             emitEvent(EconomyEvent.RewardsEarned(0, 0, "Streak Freeze Activated ❄️"))
             return true
         }

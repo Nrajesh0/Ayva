@@ -106,6 +106,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import java.util.TimeZone
 
 class TaskReminderPopupActivity : ComponentActivity() {
 
@@ -747,7 +748,7 @@ fun TaskReminderPopupScreen(
                     onClick = {
                         val selectedDate = datePickerState.selectedDateMillis
                         if (selectedDate != null) {
-                            val pickedCal = Calendar.getInstance().apply { timeInMillis = selectedDate }
+                            val pickedCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = selectedDate }
                             val currentCal = Calendar.getInstance().apply { timeInMillis = customSelectedTimestamp }
                             currentCal.set(Calendar.YEAR, pickedCal.get(Calendar.YEAR))
                             currentCal.set(Calendar.MONTH, pickedCal.get(Calendar.MONTH))

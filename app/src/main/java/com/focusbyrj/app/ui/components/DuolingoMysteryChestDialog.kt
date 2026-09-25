@@ -490,7 +490,7 @@ fun DuolingoMysteryChestDialog(
 
             val totalGold = baseGold + bonusGold
             FocusEconomyManager.addExactRewards(exactXp = baseXp, exactGold = totalGold)
-            DailyQuestManager.claimMysteryChest()
+            DailyQuestManager.claimMysteryChest(initialRarity)
 
             val reward = MysteryReward(
                 xp = baseXp,

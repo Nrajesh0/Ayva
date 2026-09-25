@@ -1,4 +1,5 @@
 package com.focusbyrj.app.ui.screens
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.items
@@ -106,57 +107,64 @@ fun AccountScreen() {
     ) {
         
         if (profile.pendingXp > 0 || profile.pendingGold > 0) {
-            Box(
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp))
-                    .clickable { FocusEconomyManager.claimPendingRewards() }
-                    .padding(20.dp)
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                    .clickable { FocusEconomyManager.claimPendingRewards() },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     Column {
-                        Text("Unclaimed Rewards", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("${profile.pendingXp} XP • ${profile.pendingGold} Gold", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFFFD700))
+                        Text(
+                            "Unclaimed Rewards",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.5.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "+${profile.pendingXp} XP • +${profile.pendingGold} Gold",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 12.sp
+                            ),
+                            color = Color(0xFFFFD700)
+                        )
                     }
                     androidx.compose.material3.Button(
                         onClick = { FocusEconomyManager.claimPendingRewards() },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
-                        Text("Claim", fontWeight = FontWeight.Bold)
+                        Text("Claim", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
                     }
                 }
             }
         }
         
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
-                .padding(horizontal = 24.dp)
-                .padding(top = 16.dp, bottom = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            ProfileCard(
-                profile = profile, 
-                onAvatarClick = { showAvatarSheet = true },
-                onNameChange = { FocusEconomyManager.updateName(it) },
-                onInfoClick = { showRulesDialog = true }
-            )
-        }
+        // Unboxed Executive Profile Hero
+        ProfileCard(
+            profile = profile, 
+            onAvatarClick = { showAvatarSheet = true },
+            onNameChange = { FocusEconomyManager.updateName(it) },
+            onInfoClick = { showRulesDialog = true }
+        )
 
-        
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -166,17 +174,36 @@ fun AccountScreen() {
                 selectedTabIndex = pagerState.currentPage,
                 containerColor = Color.Transparent,
                 contentColor = MaterialTheme.colorScheme.primary,
-                divider = {}
+                divider = {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f),
+                        thickness = 0.8.dp
+                    )
+                }
             ) {
                 androidx.compose.material3.Tab(
                     selected = pagerState.currentPage == 0,
                     onClick = { coroutineScope.launch { pagerState.animateScrollToPage(0) } },
-                    text = { Text("Overview", style = MaterialTheme.typography.titleSmall) }
+                    text = {
+                        Text(
+                            "Overview",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = if (pagerState.currentPage == 0) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        )
+                    }
                 )
                 androidx.compose.material3.Tab(
                     selected = pagerState.currentPage == 1,
                     onClick = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
-                    text = { Text("Achievements", style = MaterialTheme.typography.titleSmall) }
+                    text = {
+                        Text(
+                            "Achievements",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = if (pagerState.currentPage == 1) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        )
+                    }
                 )
             }
             
@@ -187,8 +214,8 @@ fun AccountScreen() {
                 when (page) {
                     0 -> OverviewTab(stats, heatmapTheme, profile)
                     1 -> {
-                        val isPro by com.focusbyrj.app.util.LicenseManager.isProFlow.collectAsState()
-                        AchievementsPreviewTab(profile, stats, isPro, onViewAllClick = { showAchievementsSheet = true })
+                        val isProLicense by com.focusbyrj.app.util.LicenseManager.isProFlow.collectAsState()
+                        AchievementsDirectTab(profile, stats, isProLicense)
                     }
                 }
             }
@@ -299,229 +326,349 @@ fun ProfileCard(
     onNameChange: (String) -> Unit,
     onInfoClick: () -> Unit
 ) {
-    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     var isEditingName by remember { mutableStateOf(false) }
     var tempName by remember { mutableStateOf(profile.name) }
     val keyboardController = LocalSoftwareKeyboardController.current
-    
+
     val currentLevelXp = FocusEconomyManager.requiredXpForLevel(profile.level)
     val nextLevelXp = FocusEconomyManager.requiredXpForLevel(profile.level + 1)
     val targetXpProgress = if (profile.level >= 200) 1f else ((profile.xp - currentLevelXp).toFloat() / (nextLevelXp - currentLevelXp).toFloat()).coerceIn(0f, 1f)
-    
+
     val xpProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetXpProgress,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 1500, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 1500, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "xp_progress"
     )
-    
+
+    val currentAvatar = ProfileAvatarManager.getAvatar(profile.selectedAvatar, profile.avatarTier)
+    val unlockedCount = getAchievements(profile, com.focusbyrj.app.util.FocusStats(0, 0, emptyMap())).count { it.isUnlocked }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(
-                1.dp, 
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), 
-                RoundedCornerShape(20.dp)
-            )
-            .padding(16.dp)
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        // Info button row
+        Box(
             modifier = Modifier.fillMaxWidth()
         ) {
-            val currentAvatar = ProfileAvatarManager.getAvatar(profile.selectedAvatar, profile.avatarTier)
-            
+            IconButton(
+                onClick = onInfoClick,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = "Economy Rules",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        // Centered Avatar with Circular XP Progress Ring
+        Box(
+            modifier = Modifier.size(92.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(
+                progress = { 1f },
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                strokeWidth = 3.5.dp
+            )
+            CircularProgressIndicator(
+                progress = { xpProgress },
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 3.5.dp,
+                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
             Box(
                 modifier = Modifier
-                    .size(84.dp)
-                    .clickable { onAvatarClick() }
+                    .size(74.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .border(2.dp, currentAvatar.borderColor, CircleShape)
+                    .clickable { onAvatarClick() },
+                contentAlignment = Alignment.Center
             ) {
-                Box(
+                Image(
+                    painter = painterResource(id = currentAvatar.imageRes),
+                    contentDescription = "Change Avatar",
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .size(80.dp)
+                        .fillMaxSize()
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .border(3.dp, currentAvatar.borderColor, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(id = currentAvatar.imageRes),
-                        contentDescription = currentAvatar.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                    )
-                }
-                
-                // Edit / Camera Badge indicator
+                )
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .size(26.dp)
+                        .size(20.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surface)
-                        .border(1.5.dp, currentAvatar.borderColor, CircleShape),
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Edit,
-                        contentDescription = "Change Avatar",
+                        contentDescription = "Edit Avatar",
                         tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(10.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Centered Name with quick inline edit
+        if (isEditingName) {
+            BasicTextField(
+                value = tempName,
+                onValueChange = { tempName = it },
+                textStyle = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                singleLine = true,
+                modifier = Modifier
+                    .wrapContentWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = {
+                        isEditingName = false
+                        if (tempName.isNotBlank()) onNameChange(tempName)
+                        keyboardController?.hide()
+                    }
+                )
+            )
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.clickable { isEditingName = true }
+            ) {
+                Text(
+                    text = profile.name.ifBlank { "Focus Warrior" },
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = "Edit name",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(13.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Level Pill + XP Subtitle
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = currentAvatar.borderColor.copy(alpha = 0.12f),
+                border = BorderStroke(0.8.dp, currentAvatar.borderColor.copy(alpha = 0.35f))
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = currentAvatar.borderColor,
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Text(
+                        text = "Level ${profile.level} • ${currentAvatar.title}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp
+                        ),
+                        color = currentAvatar.borderColor
+                    )
+                }
+            }
+
+            Text(
+                text = if (profile.level >= 200) "MAX LEVEL" else "${profile.xp} / $nextLevelXp XP (${(targetXpProgress * 100).toInt()}%)",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 11.5.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+            )
+        }
+
+        // Recover XP pill if available
+        if (profile.level < profile.maxLevel) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { FocusEconomyManager.recoverXp(500, 500) }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(13.dp)
                     )
-                }
-            }
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                if (isEditingName) {
-                    BasicTextField(
-                        value = tempName,
-                        onValueChange = { tempName = it },
-                        textStyle = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-                            .padding(8.dp),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                    Text(
+                        "Recover 500 XP (500",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp
                         ),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                            onDone = {
-                                isEditingName = false
-                                if (tempName.isNotBlank()) onNameChange(tempName)
-                                keyboardController?.hide()
-                            }
-                        )
+                        color = MaterialTheme.colorScheme.primary
                     )
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { isEditingName = true }) {
-                        Text(
-                            text = profile.name,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(12.dp))
-                    }
+                    Icon(
+                        Icons.Filled.MonetizationOn,
+                        contentDescription = null,
+                        tint = Color(0xFFFFD700),
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Text(
+                        ")",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
-                
-                Spacer(modifier = Modifier.height(2.dp))
-                
-                Text(
-                    text = currentAvatar.title.uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
-                    color = currentAvatar.borderColor
-                )
-            }
-            
-            IconButton(onClick = onInfoClick) {
-                Icon(
-                    imageVector = Icons.Filled.Info,
-                    contentDescription = "Economy Rules",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
             }
         }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Level ${profile.level}", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
-            if (profile.level >= 200) {
-                Text("MAX LEVEL", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-            } else {
-                Text("${profile.xp} / $nextLevelXp XP", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        LinearProgressIndicator(
-            progress = { xpProgress },
-            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        
-        val unlockedCount = getAchievements(profile, com.focusbyrj.app.util.FocusStats(0,0, emptyMap())).count { it.isUnlocked }
-        
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
-                .padding(vertical = 12.dp, horizontal = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Unified Quick-Metrics Capsule (No boxed tiles!)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f))
         ) {
-            ProfileStatItem(
-                icon = androidx.compose.material.icons.Icons.Filled.MonetizationOn, 
-                value = "${profile.gold}", 
-                label = "Coins", 
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f)
-            )
-            Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)))
-            ProfileStatItem(
-                icon = androidx.compose.material.icons.Icons.Filled.LocalFireDepartment, 
-                value = "${FocusEconomyManager.getGoldMultiplier(profile.level)}x", 
-                label = "Multiplier", 
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f)
-            )
-            Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)))
-            ProfileStatItem(
-                icon = androidx.compose.material.icons.Icons.Filled.EmojiEvents, 
-                value = "$unlockedCount", 
-                label = "Awards", 
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        
-        if (profile.level < profile.maxLevel) {
-            Spacer(modifier = Modifier.height(18.dp))
-            androidx.compose.material3.Button(
-                onClick = { FocusEconomyManager.recoverXp(500, 500) },
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().height(48.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 11.dp, horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(androidx.compose.material.icons.Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Recover 500 XP", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.weight(1f))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("500", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(androidx.compose.material.icons.Icons.Filled.MonetizationOn, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
-                }
+                MetricCapsuleItem(
+                    icon = Icons.Filled.MonetizationOn,
+                    value = "${profile.gold}",
+                    label = "Coins",
+                    color = Color(0xFFFFD700)
+                )
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(24.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                )
+                MetricCapsuleItem(
+                    icon = Icons.Filled.LocalFireDepartment,
+                    value = "${FocusEconomyManager.getGoldMultiplier(profile.level)}x",
+                    label = "Boost",
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(24.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                )
+                MetricCapsuleItem(
+                    icon = Icons.Filled.Whatshot,
+                    value = "${profile.currentStreak}d",
+                    label = "Streak",
+                    color = Color(0xFFFF9600)
+                )
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(24.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                )
+                MetricCapsuleItem(
+                    icon = Icons.Filled.EmojiEvents,
+                    value = "$unlockedCount",
+                    label = "Badges",
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }
 }
 
 @Composable
-fun ProfileStatItem(icon: ImageVector, value: String, label: String, color: Color, modifier: Modifier = Modifier) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(value, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+fun MetricCapsuleItem(
+    icon: ImageVector,
+    value: String,
+    label: String,
+    color: Color
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(15.dp))
+        Column {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.5.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Normal
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+            )
         }
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+@Composable
+fun ProfileStatItem(icon: ImageVector, value: String, label: String, color: Color, modifier: Modifier = Modifier) {
+    MetricCapsuleItem(icon = icon, value = value, label = label, color = color)
 }
 
 @Composable
@@ -547,14 +694,12 @@ fun OverviewTab(stats: com.focusbyrj.app.util.FocusStats, heatmapTheme: com.focu
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = 20.dp)
             .verticalScroll(rememberScrollState())
     ) {
         Spacer(modifier = Modifier.height(16.dp))
-        // Duolingo-style Daily Quests card
-        DailyQuestsCard()
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Heatmap & Streaks Widget (Full width, Executive layout)
         com.focusbyrj.app.ui.components.HeatmapAndStreaksWidget(
             dailyUsage = activeDailyUsage,
             theme = heatmapTheme,
@@ -568,26 +713,35 @@ fun OverviewTab(stats: com.focusbyrj.app.util.FocusStats, heatmapTheme: com.focu
                 com.focusbyrj.app.util.StreakManager.setStreakSource(context, nextSource)
             }
         )
-        
-        Spacer(modifier = Modifier.height(32.dp))
+
+        Spacer(modifier = Modifier.height(20.dp))
         StatsGrid(profile = profile)
-        
-        Spacer(modifier = Modifier.height(64.dp))
+
+        Spacer(modifier = Modifier.height(48.dp))
     }
 }
-
 
 @Composable
 fun StatsGrid(profile: UserProfile) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Lifetime Stats", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(
+            text = "Lifetime Milestones",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp
+            ),
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             StatCard(
                 title = "Total Focus",
                 value = formatMinutesToHours(profile.lifetimeFocusMins),
-                icon = androidx.compose.material.icons.Icons.Filled.CheckCircle,
+                icon = Icons.Filled.HourglassEmpty,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f)
             )
@@ -599,10 +753,13 @@ fun StatsGrid(profile: UserProfile) {
                 modifier = Modifier.weight(1f)
             )
         }
-        Spacer(modifier = Modifier.height(16.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             StatCard(
-                title = "Tasks Completed",
+                title = "Tasks Done",
                 value = profile.lifetimeTasksCompleted.toString(),
                 icon = androidx.compose.material.icons.Icons.Filled.CheckCircle,
                 color = MaterialTheme.colorScheme.primary,
@@ -612,7 +769,7 @@ fun StatsGrid(profile: UserProfile) {
                 title = "Vault Coins",
                 value = profile.gold.toString(),
                 icon = androidx.compose.material.icons.Icons.Filled.MonetizationOn,
-                color = MaterialTheme.colorScheme.primary,
+                color = Color(0xFFFFD700),
                 modifier = Modifier.weight(1f)
             )
         }
@@ -621,21 +778,46 @@ fun StatsGrid(profile: UserProfile) {
 
 @Composable
 fun StatCard(title: String, value: String, icon: ImageVector, color: Color, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
-            .padding(16.dp)
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f))
     ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(color.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(15.dp))
+                }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(value, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
@@ -645,6 +827,115 @@ fun formatMinutesToHours(minutes: Int): String {
     val hours = minutes / 60
     val mins = minutes % 60
     return if (mins == 0) "${hours}h" else "${hours}h ${mins}m"
+}
+
+@Composable
+fun AchievementsDirectTab(profile: UserProfile, stats: com.focusbyrj.app.util.FocusStats, isPro: Boolean) {
+    val achievements = getAchievements(profile, stats, isPro)
+    val unlockedCount = achievements.count { it.isUnlocked }
+    val totalCount = achievements.size
+    val context = LocalContext.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp)
+    ) {
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Milestones & Badges",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "$unlockedCount of $totalCount Unlocked",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LinearProgressIndicator(
+            progress = { (unlockedCount.toFloat() / totalCount.toFloat()).coerceIn(0f, 1f) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(
+                achievements,
+                key = { it.title },
+                contentType = { "Achievement" }
+            ) { achievement ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            val status = if (achievement.isUnlocked) "Unlocked ✓" else "Locked"
+                            android.widget.Toast.makeText(context, "${achievement.title} ($status): ${achievement.description}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        .padding(vertical = 4.dp, horizontal = 2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    MedievalMedal(
+                        iconRes = achievement.iconRes,
+                        color = achievement.color,
+                        isUnlocked = achievement.isUnlocked,
+                        modifier = Modifier.size(56.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = achievement.title,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
+                        ),
+                        color = if (achievement.isUnlocked) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Text(
+                        text = achievement.description,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
 }
 
 
