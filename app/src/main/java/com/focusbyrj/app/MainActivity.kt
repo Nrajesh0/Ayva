@@ -19,8 +19,10 @@ package com.focusbyrj.app
 
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,6 +49,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -103,6 +106,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -268,6 +272,136 @@ class MainActivity : FragmentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun MainTopBar(
+    title: String,
+    isDashboard: Boolean = false,
+    showBack: Boolean = false,
+    activeStreakDays: Int,
+    economyProfile: com.focusbyrj.app.util.UserProfile,
+    navController: NavController
+) {
+    TopAppBar(
+        title = {
+            if (isDashboard) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.app_icon),
+                        contentDescription = "RuN App Logo",
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
+                    )
+                    Text(
+                        text = "RuN",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            } else {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        },
+        navigationIcon = {
+            if (showBack) {
+                Box(
+                    modifier = Modifier
+                        .padding(start = 12.dp, end = 4.dp)
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+                        .clickable { navController.popBackStack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        },
+        actions = {
+            // Live Streak Flame Pill
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable {
+                        navController.navigate(Screen.Account.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🔥", fontSize = 12.sp)
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "${activeStreakDays}d",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            // Interactive Profile Avatar Ring -> Opens full-page Preferences & Settings Hub
+            val avatarRes = ProfileAvatarManager.getAvatarImageRes(economyProfile.selectedAvatar, economyProfile.avatarTier)
+            val avatarBorder = ProfileAvatarManager.getAvatarBorderColor(economyProfile.selectedAvatar, economyProfile.avatarTier)
+
+            Box(
+                modifier = Modifier
+                    .padding(start = 8.dp, end = 12.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .border(1.8.dp, avatarBorder, CircleShape)
+                    .clickable {
+                        navController.navigate(Screen.PreferencesHub.route) {
+                            launchSingleTop = true
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = avatarRes),
+                    contentDescription = "Settings & Preferences",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(2.dp)
+                        .clip(CircleShape)
+                )
+            }
+        },
+        windowInsets = WindowInsets(0, 0, 0, 0),
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun MainAppScreen(
     viewModel: FocusViewModel, 
     taskViewModel: com.focusbyrj.app.ui.viewmodels.TaskViewModel,
@@ -412,234 +546,7 @@ fun MainAppScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
-            topBar = {
-                val hideTopBarRoutes = listOf(
-                    Screen.Habits.route,
-                    Screen.Empty.route,
-                    Screen.PreferencesHub.route,
-                    Screen.Settings.route,
-                    Screen.Security.route,
-                    Screen.BubbleSettings.route,
-                    Screen.Subscription.route,
-                    Screen.AddRestriction.route,
-                    Screen.CloudAuth.route,
-                    Screen.DeviceSync.route,
-                    Screen.Account.route
-                )
-                if (!isSessionActive && currentDestination?.route !in hideTopBarRoutes) {
-                    TopAppBar(
-                        title = {
-                            AnimatedContent(
-                                targetState = currentDestination?.route,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing)) togetherWith 
-                                    fadeOut(animationSpec = tween(160, easing = FastOutLinearInEasing))
-                                },
-                                label = "TopBarTitleTransition"
-                            ) { route ->
-                                when (route) {
-                                    Screen.Dashboard.route -> {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            Image(
-                                                painter = painterResource(id = R.drawable.app_icon),
-                                                contentDescription = "RuN App Logo",
-                                                modifier = Modifier
-                                                    .size(30.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
-                                            )
-                                            Text(
-                                                text = "RuN",
-                                                style = MaterialTheme.typography.titleLarge.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 20.sp,
-                                                    letterSpacing = 0.5.sp
-                                                ),
-                                                color = MaterialTheme.colorScheme.onBackground
-                                            )
-                                        }
-                                    }
-                                    Screen.Todos.route -> {
-                                        Text(
-                                            text = "Todos",
-                                            style = MaterialTheme.typography.titleLarge.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 20.sp
-                                            ),
-                                            color = MaterialTheme.colorScheme.onBackground
-                                        )
-                                    }
-                                    Screen.Schedules.route -> {
-                                        Text(
-                                            text = "Routines",
-                                            style = MaterialTheme.typography.titleLarge.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 20.sp
-                                            ),
-                                            color = MaterialTheme.colorScheme.onBackground
-                                        )
-                                    }
-                                    Screen.Time.route -> {
-                                        Text(
-                                            text = "Screen Time",
-                                            style = MaterialTheme.typography.titleLarge.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 20.sp
-                                            ),
-                                            color = MaterialTheme.colorScheme.onBackground
-                                        )
-                                    }
-                                    Screen.Account.route -> {
-                                        Text(
-                                            text = "Profile & Stats",
-                                            style = MaterialTheme.typography.titleLarge.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 20.sp
-                                            ),
-                                            color = MaterialTheme.colorScheme.onBackground
-                                        )
-                                    }
-                                    Screen.Empty.route -> {
-                                        Text(
-                                            text = "Notes",
-                                            style = MaterialTheme.typography.titleLarge.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 20.sp
-                                            ),
-                                            color = MaterialTheme.colorScheme.onBackground
-                                        )
-                                    }
-                                    else -> {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            Image(
-                                                 painter = painterResource(id = R.drawable.app_icon),
-                                                 contentDescription = "RuN App Logo",
-                                                 modifier = Modifier
-                                                     .size(30.dp)
-                                                     .clip(RoundedCornerShape(8.dp))
-                                                     .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(8.dp))
-                                            )
-                                            Text(
-                                                 text = "RuN",
-                                                 style = MaterialTheme.typography.titleLarge.copy(
-                                                     fontWeight = FontWeight.Bold,
-                                                     fontSize = 20.sp,
-                                                     letterSpacing = 0.5.sp
-                                                 ),
-                                                 color = MaterialTheme.colorScheme.onBackground
-                                             )
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        navigationIcon = {
-                            if (currentDestination?.route == Screen.Schedules.route) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(start = 12.dp, end = 4.dp)
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-                                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
-                                        .clickable { navController.popBackStack() },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Back",
-                                        tint = MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                        },
-                        actions = {
-                            if (currentDestination?.route == Screen.Account.route) {
-                                IconButton(
-                                    onClick = {
-                                        navController.navigate(Screen.PreferencesHub.route) {
-                                            launchSingleTop = true
-                                        }
-                                    },
-                                    modifier = Modifier.padding(end = 4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Settings,
-                                        contentDescription = "Settings",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            } else {
-                                // Live Streak Flame Pill
-                                Surface(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .clickable {
-                                            navController.navigate(Screen.Account.route) {
-                                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                                launchSingleTop = true
-                                                restoreState = true
-                                            }
-                                        },
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("🔥", fontSize = 12.sp)
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        Text(
-                                            text = "${activeStreakDays}d",
-                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
 
-                                // Interactive Profile Avatar Ring -> Opens full-page Preferences & Settings Hub
-                                val avatarRes = ProfileAvatarManager.getAvatarImageRes(economyProfile.selectedAvatar, economyProfile.avatarTier)
-                                val avatarBorder = ProfileAvatarManager.getAvatarBorderColor(economyProfile.selectedAvatar, economyProfile.avatarTier)
-
-                                Box(
-                                    modifier = Modifier
-                                        .padding(start = 8.dp, end = 12.dp)
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                        .border(1.8.dp, avatarBorder, CircleShape)
-                                        .clickable {
-                                            navController.navigate(Screen.PreferencesHub.route) {
-                                                launchSingleTop = true
-                                            }
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Image(
-                                        painter = painterResource(id = avatarRes),
-                                        contentDescription = "Settings & Preferences",
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(2.dp)
-                                            .clip(CircleShape)
-                                    )
-                                }
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-                    )
-                }
-            },
             bottomBar = {
                 val hideBottomBarRoutes = listOf(
                     Screen.Schedules.route,
@@ -698,9 +605,15 @@ fun MainAppScreen(
                     navController = navController,
                     startDestination = startDest,
                     enterTransition = {
-                        fadeIn(
+                        scaleIn(
+                            initialScale = 0.96f,
                             animationSpec = tween(
-                                durationMillis = 200,
+                                durationMillis = 220,
+                                easing = FastOutSlowInEasing
+                            )
+                        ) + fadeIn(
+                            animationSpec = tween(
+                                durationMillis = 220,
                                 easing = LinearOutSlowInEasing
                             )
                         )
@@ -708,15 +621,21 @@ fun MainAppScreen(
                     exitTransition = {
                         fadeOut(
                             animationSpec = tween(
-                                durationMillis = 150,
-                                easing = FastOutSlowInEasing
+                                durationMillis = 180,
+                                easing = FastOutLinearInEasing
                             )
                         )
                     },
                     popEnterTransition = {
-                        fadeIn(
+                        scaleIn(
+                            initialScale = 0.96f,
                             animationSpec = tween(
-                                durationMillis = 200,
+                                durationMillis = 220,
+                                easing = FastOutSlowInEasing
+                            )
+                        ) + fadeIn(
+                            animationSpec = tween(
+                                durationMillis = 220,
                                 easing = LinearOutSlowInEasing
                             )
                         )
@@ -724,8 +643,8 @@ fun MainAppScreen(
                     popExitTransition = {
                         fadeOut(
                             animationSpec = tween(
-                                durationMillis = 150,
-                                easing = FastOutSlowInEasing
+                                durationMillis = 180,
+                                easing = FastOutLinearInEasing
                             )
                         )
                     }
@@ -737,32 +656,43 @@ fun MainAppScreen(
                     val initialTime by viewModel.initialTime.collectAsStateWithLifecycle()
                     val habitsWithProgress by habitViewModel.habitsWithProgress.collectAsStateWithLifecycle()
 
-                    DashboardScreen(
-                        restrictions = restrictions,
-                        schedules = schedules,
-                        habits = habitsWithProgress,
-                        onToggle = { app -> viewModel.toggleRestriction(app) },
-                        onDelete = { app -> viewModel.deleteRestriction(app) },
-                        onUpdate = { app -> viewModel.updateRestriction(app) },
-                        isSessionActive = isSessionActive,
-                        timeRemaining = timeRemaining,
-                        initialTime = initialTime,
-                        onToggleSession = { viewModel.toggleFocusSession() },
-                        onSetTime = { time -> viewModel.setTimeRemaining(time) },
-                        onOpenRoutines = {
-                            navController.navigate(Screen.Schedules.route) {
-                                launchSingleTop = true
-                            }
-                        },
-                        onOpenHabits = {
-                            navController.navigate(Screen.Habits.route) {
-                                launchSingleTop = true
-                            }
-                        },
-                        onHabitIncrement = { habit ->
-                            habitViewModel.incrementProgress(habit)
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (!isSessionActive) {
+                            MainTopBar(
+                                title = "RuN",
+                                isDashboard = true,
+                                activeStreakDays = activeStreakDays,
+                                economyProfile = economyProfile,
+                                navController = navController
+                            )
                         }
-                    )
+                        DashboardScreen(
+                            restrictions = restrictions,
+                            schedules = schedules,
+                            habits = habitsWithProgress,
+                            onToggle = { app -> viewModel.toggleRestriction(app) },
+                            onDelete = { app -> viewModel.deleteRestriction(app) },
+                            onUpdate = { app -> viewModel.updateRestriction(app) },
+                            isSessionActive = isSessionActive,
+                            timeRemaining = timeRemaining,
+                            initialTime = initialTime,
+                            onToggleSession = { viewModel.toggleFocusSession() },
+                            onSetTime = { time -> viewModel.setTimeRemaining(time) },
+                            onOpenRoutines = {
+                                navController.navigate(Screen.Schedules.route) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            onOpenHabits = {
+                                navController.navigate(Screen.Habits.route) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            onHabitIncrement = { habit ->
+                                habitViewModel.incrementProgress(habit)
+                            }
+                        )
+                    }
                 }
                 composable(Screen.Empty.route) {
                     NotesScreen(
@@ -790,7 +720,17 @@ fun MainAppScreen(
                     )
                 }
                 composable(Screen.Schedules.route) {
-                    SchedulesScreen(viewModel)
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        MainTopBar(
+                            title = "Routines",
+                            isDashboard = false,
+                            showBack = true,
+                            activeStreakDays = activeStreakDays,
+                            economyProfile = economyProfile,
+                            navController = navController
+                        )
+                        SchedulesScreen(viewModel)
+                    }
                 }
                 composable(Screen.Account.route) {
                     AccountScreen(
@@ -811,7 +751,17 @@ fun MainAppScreen(
                     Box(modifier = Modifier.fillMaxSize())
                 }
                 composable(Screen.Time.route) {
-                    TimeScreen()
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        MainTopBar(
+                            title = "Screen Time",
+                            isDashboard = false,
+                            showBack = true,
+                            activeStreakDays = activeStreakDays,
+                            economyProfile = economyProfile,
+                            navController = navController
+                        )
+                        TimeScreen()
+                    }
                 }
                 composable(Screen.AddRestriction.route) {
                     AddRestrictionScreen(navController, viewModel)
@@ -829,11 +779,20 @@ fun MainAppScreen(
                     SubscriptionScreen(navController)
                 }
                 composable(Screen.Todos.route) {
-                    com.focusbyrj.app.ui.screens.TodosScreen(
-                        taskViewModel, 
-                        initialOpenAdd = initialOpenAdd || pendingOpenAdd,
-                        onOpenAddHandled = { viewModel.clearOpenAddDialog() }
-                    )
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        MainTopBar(
+                            title = "Todos",
+                            isDashboard = false,
+                            activeStreakDays = activeStreakDays,
+                            economyProfile = economyProfile,
+                            navController = navController
+                        )
+                        com.focusbyrj.app.ui.screens.TodosScreen(
+                            taskViewModel, 
+                            initialOpenAdd = initialOpenAdd || pendingOpenAdd,
+                            onOpenAddHandled = { viewModel.clearOpenAddDialog() }
+                        )
+                    }
                 }
                 composable(Screen.Habits.route) {
                     com.focusbyrj.app.ui.screens.HabitsScreen(

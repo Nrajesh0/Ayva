@@ -108,10 +108,10 @@ fun FocusBottomBar(
                     val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
 
                     val scale by animateFloatAsState(
-                        targetValue = if (selected) 1.08f else 1.0f,
+                        targetValue = if (selected) 1.06f else 1.0f,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessLow
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
                         ),
                         label = "tabScale_${screen.route}"
                     )
@@ -146,19 +146,25 @@ fun FocusBottomBar(
                         label = "iconTint_${screen.route}"
                     )
 
-                    val itemWidth by animateDpAsState(
-                        targetValue = if (selected) 68.dp else 48.dp,
+                    val indicatorAlpha by animateFloatAsState(
+                        targetValue = if (selected) 1f else 0f,
+                        animationSpec = tween(180),
+                        label = "indicatorAlpha_${screen.route}"
+                    )
+
+                    val indicatorWidth by animateDpAsState(
+                        targetValue = if (selected) 12.dp else 0.dp,
                         animationSpec = spring(
                             dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMedium
+                            stiffness = Spring.StiffnessMediumLow
                         ),
-                        label = "itemWidth_${screen.route}"
+                        label = "indicatorWidth_${screen.route}"
                     )
 
                     Box(
                         modifier = Modifier
                             .height(44.dp)
-                            .width(itemWidth)
+                            .width(52.dp)
                             .clip(RoundedCornerShape(22.dp))
                             .background(pillBg)
                             .border(if (selected) 1.dp else 0.dp, pillBorderColor, RoundedCornerShape(22.dp))
@@ -193,15 +199,13 @@ fun FocusBottomBar(
                                 tint = iconTint,
                                 modifier = Modifier.size(20.dp)
                             )
-                            if (selected) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 3.dp)
-                                        .size(width = 12.dp, height = 2.5.dp)
-                                        .clip(CircleShape)
-                                        .background(iconTint)
-                                )
-                            }
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 3.dp)
+                                    .size(width = indicatorWidth, height = 2.5.dp)
+                                    .clip(CircleShape)
+                                    .background(iconTint.copy(alpha = indicatorAlpha))
+                            )
                         }
                     }
                 }
