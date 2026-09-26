@@ -276,17 +276,13 @@ fun AccountScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 90.dp)
         ) {
-            // TOP HEADER BAR: (+) RUN// BY RJ | Identity ... [Search] [🔥 Streak Pill] [Avatar -> Settings]
+            // TOP HEADER BAR: App Icon, "Profile" ... [🔥 Streak Pill] [Avatar -> Settings]
             EnclaveTopBar(
                 colors = enclaveColors,
                 activeStreak = activeStreak,
                 avatarRes = ProfileAvatarManager.getAvatarImageRes(profile.selectedAvatar, profile.avatarTier),
                 avatarBorderColor = ProfileAvatarManager.getAvatarBorderColor(profile.selectedAvatar, profile.avatarTier),
                 onIdentityClick = { showEnclaveSystemDialog = true },
-                onSearchClick = {
-                    navController?.navigate(Screen.Empty.route) { launchSingleTop = true }
-                        ?: Toast.makeText(context, "Search initialized", Toast.LENGTH_SHORT).show()
-                },
                 onStreakClick = { showStreakDialog = true },
                 onAvatarClick = {
                     navController?.navigate(Screen.PreferencesHub.route) { launchSingleTop = true }
@@ -296,17 +292,10 @@ fun AccountScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // IDENTITY HERO CARD: Avatar, Online Dot, Node pill, Name, Dynamic Year.Month, Role, Bio, Action Buttons
+            // IDENTITY HERO CARD: Avatar, Name, Role, Bio, Action Buttons
             EnclaveIdentityHeroCard(
                 colors = enclaveColors,
                 profile = profile,
-                yearMonth = yearMonthBadge,
-                shortNodeId = shortNodeId,
-                onNodeClick = {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Node ID", nodeId))
-                    Toast.makeText(context, "Node ID copied: $nodeId", Toast.LENGTH_SHORT).show()
-                },
                 onEditProfileClick = { showEditProfileDialog = true },
                 onShareCardClick = { showShareProfileDialog = true },
                 onMoreOptionsClick = { showOptionsMenu = true },
@@ -578,7 +567,6 @@ private fun EnclaveTopBar(
     avatarRes: Int,
     avatarBorderColor: Color,
     onIdentityClick: () -> Unit,
-    onSearchClick: () -> Unit,
     onStreakClick: () -> Unit,
     onAvatarClick: () -> Unit
 ) {
@@ -588,76 +576,31 @@ private fun EnclaveTopBar(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // (+) Target badge button
-        Box(
+        // App Icon
+        Image(
+            painter = painterResource(id = R.drawable.app_icon),
+            contentDescription = "RuN Logo",
             modifier = Modifier
                 .size(34.dp)
-                .clip(CircleShape)
-                .background(colors.subCardBg)
-                .border(1.dp, colors.subCardBorder, CircleShape)
-                .clickable { onIdentityClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Add,
-                contentDescription = "System Identity",
-                tint = colors.textSecondary,
-                modifier = Modifier.size(16.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(10.dp))
-
-        // RUN// BY RJ
-        Text(
-            text = "RUN// BY RJ",
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                letterSpacing = 0.8.sp,
-                fontFamily = FontFamily.Monospace
-            ),
-            color = colors.textPrimary
+                .clip(RoundedCornerShape(9.dp))
+                .border(1.dp, colors.subCardBorder, RoundedCornerShape(9.dp))
+                .clickable { onIdentityClick() }
         )
 
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(12.dp))
 
-        // Divider |
-        Box(
-            modifier = Modifier
-                .width(1.5.dp)
-                .height(16.dp)
-                .background(colors.textMuted.copy(alpha = 0.35f))
-        )
-
-        Spacer(modifier = Modifier.width(10.dp))
-
-        // Identity
+        // Title: Profile
         Text(
-            text = "Identity",
+            text = "Profile",
             style = MaterialTheme.typography.titleLarge.copy(
                 fontWeight = FontWeight.Bold,
-                fontSize = 20.sp
+                fontSize = 20.sp,
+                letterSpacing = 0.3.sp
             ),
             color = colors.textPrimary
         )
 
         Spacer(modifier = Modifier.weight(1f))
-
-        // Search icon
-        IconButton(
-            onClick = onSearchClick,
-            modifier = Modifier.size(36.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = "Search",
-                tint = colors.textMuted,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(4.dp))
 
         // Streak Pill Button (Replaces static notification bell)
         Surface(
@@ -719,9 +662,6 @@ private fun EnclaveTopBar(
 private fun EnclaveIdentityHeroCard(
     colors: EnclaveColors,
     profile: UserProfile,
-    yearMonth: String,
-    shortNodeId: String,
-    onNodeClick: () -> Unit,
     onEditProfileClick: () -> Unit,
     onShareCardClick: () -> Unit,
     onMoreOptionsClick: () -> Unit,
@@ -729,6 +669,7 @@ private fun EnclaveIdentityHeroCard(
 ) {
     val avatarRes = ProfileAvatarManager.getAvatarImageRes(profile.selectedAvatar, profile.avatarTier)
     val avatarBorder = ProfileAvatarManager.getAvatarBorderColor(profile.selectedAvatar, profile.avatarTier)
+    var isBioExpanded by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier
@@ -743,19 +684,18 @@ private fun EnclaveIdentityHeroCard(
                 .fillMaxWidth()
                 .padding(20.dp)
         ) {
-            // Top Row: Avatar & Node identifier pill
+            // Profile Info: Avatar on left, Details on right
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Large Avatar without online dot
+                // Profile Picture (Larger size)
                 Box(
                     modifier = Modifier
-                        .size(84.dp)
+                        .size(96.dp)
                         .clip(CircleShape)
                         .background(colors.subCardBg)
-                        .border(2.dp, avatarBorder, CircleShape)
+                        .border(2.5.dp, avatarBorder, CircleShape)
                         .clickable { onAvatarClick() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -769,98 +709,60 @@ private fun EnclaveIdentityHeroCard(
                     )
                 }
 
-                // NODE: 0X71...F4A9 Pill
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = colors.subCardBg,
-                    border = BorderStroke(1.dp, colors.subCardBorder),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable { onNodeClick() }
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Name & Details side-by-side with avatar
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Shield,
-                            contentDescription = "Node Shield",
-                            tint = colors.accentCyan,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Text(
-                            text = "NODE: $shortNodeId",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 11.5.sp,
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = colors.textSecondary
-                        )
-                    }
+                    // Display Name
+                    Text(
+                        text = profile.name.ifBlank { "Focus Warrior" },
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            letterSpacing = 0.2.sp
+                        ),
+                        color = colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Role / Headline
+                    Text(
+                        text = profile.role.ifBlank { "Student" },
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 13.5.sp
+                        ),
+                        color = colors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Bio (Expandable multi-line)
+                    Text(
+                        text = profile.bio.ifBlank { "Be productive" },
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.sp,
+                            lineHeight = 16.5.sp
+                        ),
+                        color = colors.textMuted,
+                        maxLines = if (isBioExpanded) Int.MAX_VALUE else 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clickable { isBioExpanded = !isBioExpanded }
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // User Name & Dynamic Year.Month Badge
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = profile.name.ifBlank { "Focus Warrior" },
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 24.sp
-                    ),
-                    color = colors.textPrimary
-                )
-
-                Text(
-                    text = yearMonth,
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    color = colors.textMuted
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Role / Headline
-            Text(
-                text = profile.role.ifBlank { "Student" },
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 14.5.sp
-                ),
-                color = colors.textSecondary
-            )
-
-            Spacer(modifier = Modifier.height(3.dp))
-
-            var isBioExpanded by remember { mutableStateOf(false) }
-
-            // Bio (Expandable multi-line so long descriptions are not cut off)
-            Text(
-                text = profile.bio.ifBlank { "Be productive" },
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 12.5.sp,
-                    lineHeight = 17.sp
-                ),
-                color = colors.textMuted,
-                maxLines = if (isBioExpanded) Int.MAX_VALUE else 4,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable { isBioExpanded = !isBioExpanded }
-            )
-
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Actions: [Edit Profile] [Share Profile card] [...]
+            // Actions: [Edit Profile] [Share] [...]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -899,13 +801,13 @@ private fun EnclaveIdentityHeroCard(
                     }
                 }
 
-                // Share Profile Card Button
+                // Share Button (shortened from "Share Profile card")
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = colors.subCardBg,
                     border = BorderStroke(1.dp, colors.subCardBorder),
                     modifier = Modifier
-                        .weight(1.3f)
+                        .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
                         .clickable { onShareCardClick() }
                 ) {
@@ -916,13 +818,13 @@ private fun EnclaveIdentityHeroCard(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Share,
-                            contentDescription = "Share Card",
+                            contentDescription = "Share",
                             tint = colors.textPrimary,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Share Profile card",
+                            text = "Share",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp
