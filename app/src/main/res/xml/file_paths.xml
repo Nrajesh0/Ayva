@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <!-- Strictly restrict FileProvider to cacheDir/exports/ used by ArticleExporter -->
+    <!-- Strictly restrict FileProvider to cacheDir/exports/ and cacheDir/diagnostics/ -->
     <cache-path name="exports" path="exports/" />
+    <cache-path name="diagnostics" path="diagnostics/" />
 </paths>
+

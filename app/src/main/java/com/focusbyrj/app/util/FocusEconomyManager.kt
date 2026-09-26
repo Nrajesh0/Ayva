@@ -28,7 +28,9 @@ data class UserProfile(
     val lifetimeFocusMins: Int = 0,
     val lifetimeResists: Int = 0,
     val lifetimeTasksCompleted: Int = 0,
-    val streakFreezes: Int = 1
+    val streakFreezes: Int = 1,
+    val role: String = "System Architect & Generative Artist",
+    val bio: String = "Synthesizing deterministic typography with stochastic neural matrices."
 ) {
     fun xpCurrentLevelBase(): Int = FocusEconomyManager.requiredXpForLevel(level)
     fun xpNextLevelThreshold(): Int = FocusEconomyManager.requiredXpForLevel(level + 1)
@@ -88,6 +90,9 @@ object FocusEconomyManager {
             val unlockedTier = calculateUnlockedAvatarTier(maxGold)
             val selectedAvatar = it.getString("selected_avatar", "tier_$unlockedTier") ?: "tier_$unlockedTier"
             
+            val role = it.getString("user_role", "System Architect & Generative Artist") ?: "System Architect & Generative Artist"
+            val bio = it.getString("user_bio", "Synthesizing deterministic typography with stochastic neural matrices.") ?: "Synthesizing deterministic typography with stochastic neural matrices."
+
             _profileFlow.value = UserProfile(
                 name = name,
                 xp = xp,
@@ -105,7 +110,9 @@ object FocusEconomyManager {
                 lifetimeFocusMins = it.getInt("lifetime_focus_mins", 0),
                 lifetimeResists = it.getInt("lifetime_resists", 0),
                 lifetimeTasksCompleted = it.getInt("lifetime_tasks_completed", 0),
-                streakFreezes = it.getInt("streak_freezes", 1)
+                streakFreezes = it.getInt("streak_freezes", 1),
+                role = role,
+                bio = bio
             )
         }
         if (oldProfile.xp > 0 || oldProfile.gold > 0 || oldProfile.lifetimeFocusMins > 0 || oldProfile.lifetimeTasksCompleted > 0) {
@@ -155,6 +162,15 @@ object FocusEconomyManager {
 
     fun updateName(newName: String) {
         prefs?.edit()?.putString("user_name", newName)?.apply()
+        loadProfile()
+    }
+
+    fun updateProfileDetails(name: String, role: String, bio: String) {
+        prefs?.edit()
+            ?.putString("user_name", name)
+            ?.putString("user_role", role)
+            ?.putString("user_bio", bio)
+            ?.apply()
         loadProfile()
     }
 

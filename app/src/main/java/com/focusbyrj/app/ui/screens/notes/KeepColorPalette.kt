@@ -69,7 +69,7 @@ data class KeepColorTheme(
     @ReadOnlyComposable
     fun resolveBackgroundColor(isDark: Boolean): Color {
         return if (key.equals("default", ignoreCase = true)) {
-            if (isDark) darkBg else lightBg
+            MaterialTheme.colorScheme.surface
         } else {
             getBackgroundColor(isDark)
         }
@@ -79,7 +79,7 @@ data class KeepColorTheme(
     @ReadOnlyComposable
     fun resolveBorderColor(isDark: Boolean): Color {
         return if (key.equals("default", ignoreCase = true)) {
-            if (isDark) darkBorder else lightBorder
+            if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
         } else {
             getBorderColor(isDark)
         }
@@ -89,7 +89,7 @@ data class KeepColorTheme(
     @ReadOnlyComposable
     fun resolveTextColor(isDark: Boolean): Color {
         return if (key.equals("default", ignoreCase = true)) {
-            if (isDark) darkText else lightText
+            MaterialTheme.colorScheme.onSurface
         } else {
             getTextColor(isDark)
         }
@@ -99,7 +99,7 @@ data class KeepColorTheme(
     @ReadOnlyComposable
     fun resolveSecondaryTextColor(isDark: Boolean): Color {
         return if (key.equals("default", ignoreCase = true)) {
-            if (isDark) darkText.copy(alpha = 0.70f) else lightText.copy(alpha = 0.70f)
+            MaterialTheme.colorScheme.onSurfaceVariant
         } else {
             getTextColor(isDark).copy(alpha = 0.75f)
         }

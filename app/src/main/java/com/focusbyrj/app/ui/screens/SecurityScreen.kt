@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,6 +56,7 @@ import com.focusbyrj.app.ui.theme.*
 import com.focusbyrj.app.util.PermissionUtils
 import com.focusbyrj.app.util.backup.BackupRestoreManager
 import com.focusbyrj.app.util.backup.DataSafetyManager
+import com.focusbyrj.app.util.diagnostics.DiagnosticManager
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -93,6 +96,11 @@ fun SecurityScreen(navController: NavController) {
     var pendingExportPassword by remember { mutableStateOf<String?>(null) }
     var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val coroutineScope = rememberCoroutineScope()
+
+    // Diagnostics State
+    var isDiagnosticsEnabled by remember { mutableStateOf(DiagnosticManager.isRecordingEnabled()) }
+    var diagnosticStorageText by remember { mutableStateOf(DiagnosticManager.getFormattedDiagnosticStorage(context)) }
+    var isExportingDiagnostics by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val password = pendingExportPassword
@@ -475,6 +483,112 @@ fun SecurityScreen(navController: NavController) {
                                 modifier = Modifier.height(36.dp)
                             ) {
                                 Text("Snapshots", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            SecuritySectionHeader("DIAGNOSTICS & SYSTEM LOGS")
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    SecuritySwitchRow(
+                        icon = Icons.Filled.QueryStats,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        title = "Record Diagnostics",
+                        subtitle = "Continuous in-app event & performance logging for troubleshooting.",
+                        checked = isDiagnosticsEnabled,
+                        onCheckedChange = { checked ->
+                            isDiagnosticsEnabled = checked
+                            DiagnosticManager.setRecordingEnabled(checked)
+                            diagnosticStorageText = DiagnosticManager.getFormattedDiagnosticStorage(context)
+                        }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    SecurityActionRow(
+                        icon = Icons.Filled.Share,
+                        iconTint = MaterialTheme.colorScheme.secondary,
+                        title = "Export Diagnostic Logs",
+                        subtitle = "Packages telemetry, app events, logcat, and crash dump into a shareable ZIP.",
+                        action = {
+                            Button(
+                                onClick = {
+                                    if (!isExportingDiagnostics) {
+                                        coroutineScope.launch {
+                                            isExportingDiagnostics = true
+                                            val result = DiagnosticManager.createDiagnosticZip(context)
+                                            isExportingDiagnostics = false
+                                            if (result.isSuccess) {
+                                                val zip = result.getOrNull()
+                                                if (zip != null) {
+                                                    DiagnosticManager.shareDiagnosticBundle(context, zip)
+                                                    diagnosticStorageText = DiagnosticManager.getFormattedDiagnosticStorage(context)
+                                                }
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Failed to export diagnostics: ${result.exceptionOrNull()?.message}",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isExportingDiagnostics,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                if (isExportingDiagnostics) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                } else {
+                                    Text("Export", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    SecurityActionRow(
+                        icon = Icons.Filled.Delete,
+                        iconTint = MaterialTheme.colorScheme.error,
+                        title = "Clear Recorded Logs",
+                        subtitle = "Storage footprint: $diagnosticStorageText. Reset and delete stored logs.",
+                        action = {
+                            Button(
+                                onClick = {
+                                    DiagnosticManager.clearAllLogs(context)
+                                    diagnosticStorageText = DiagnosticManager.getFormattedDiagnosticStorage(context)
+                                    Toast.makeText(context, "Diagnostic logs cleared.", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Text("Clear", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     )

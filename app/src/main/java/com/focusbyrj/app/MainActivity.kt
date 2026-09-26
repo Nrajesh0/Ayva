@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -422,7 +423,8 @@ fun MainAppScreen(
                     Screen.Subscription.route,
                     Screen.AddRestriction.route,
                     Screen.CloudAuth.route,
-                    Screen.DeviceSync.route
+                    Screen.DeviceSync.route,
+                    Screen.Account.route
                 )
                 if (!isSessionActive && currentDestination?.route !in hideTopBarRoutes) {
                     TopAppBar(
@@ -678,7 +680,12 @@ fun MainAppScreen(
                 }
             }
         ) { innerPadding ->
-            Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
+            ) {
                 val defaultStartTab = remember {
                     val saved = prefs.getString("default_start_tab", null)
                         ?: context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE).getString("default_start_tab", Screen.Dashboard.route)
@@ -786,7 +793,13 @@ fun MainAppScreen(
                     SchedulesScreen(viewModel)
                 }
                 composable(Screen.Account.route) {
-                    AccountScreen()
+                    AccountScreen(
+                        navController = navController,
+                        onOpenNote = { noteId ->
+                            viewModel.triggerOpenNote(noteId)
+                            navController.navigate(Screen.Empty.route) { launchSingleTop = true }
+                        }
+                    )
                 }
                 composable(Screen.PreferencesHub.route) {
                     com.focusbyrj.app.ui.screens.PreferencesHubScreen(

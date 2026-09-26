@@ -31,6 +31,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -185,7 +186,7 @@ fun NotesScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val isGridView by viewModel.isGridView.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val currentFolder by viewModel.currentFolder.collectAsState()
@@ -259,7 +260,7 @@ fun NotesScreen(
             if (isGranted) {
                 viewModel.startVoiceRecording()
             } else {
-                Toast.makeText(context, "Microphone permission is required to record voice memos", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Microphone permission is required for live transcription", Toast.LENGTH_SHORT).show()
             }
         }
     )

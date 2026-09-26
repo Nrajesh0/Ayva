@@ -37,6 +37,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -202,7 +203,7 @@ fun QuickEditNoteOverlay(
     val appContext = remember { context.applicationContext }
     val scope = rememberCoroutineScope()
     val noteDao = remember { NoteDatabase.getInstance(appContext).noteDao() }
-    val isSystemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    val isSystemDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     var loadedNote by remember { mutableStateOf<NoteEntity?>(null) }
     var title by remember { mutableStateOf("") }

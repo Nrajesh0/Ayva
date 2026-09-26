@@ -31,6 +31,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -187,7 +188,7 @@ fun KeepSketchDialog(
     onDismiss: () -> Unit,
     onSaveDrawing: (Bitmap) -> Unit
 ) {
-    val isSystemDark = isSystemInDarkTheme()
+    val isSystemDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val haptic = LocalHapticFeedback.current
 
     // History Stacks for Undo / Redo

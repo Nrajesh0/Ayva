@@ -28,6 +28,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -161,7 +162,7 @@ fun ShareToNoteOverlay(
     var isSaving by remember { mutableStateOf(false) }
 
     val colorTheme = KeepColorPalette.getColor(selectedColorKey)
-    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val cardBg = colorTheme.resolveBackgroundColor(isDark)
     val textColor = colorTheme.resolveTextColor(isDark)
     val secondaryText = colorTheme.resolveSecondaryTextColor(isDark)

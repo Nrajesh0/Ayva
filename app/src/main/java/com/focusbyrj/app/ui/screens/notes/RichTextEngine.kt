@@ -540,7 +540,19 @@ object RichTextEngine {
         val isBullet = currentLine.startsWith("- ") || currentLine.startsWith("• ") || currentLine.startsWith("* ")
         val isNumbered = Regex("^(\\d+|[a-zA-Z]|[ivxIVX]+|[α-ωΑ-Ω])\\.\\s+").containsMatchIn(currentLine)
 
-        val headingLevel = when {
+        val pendingHeading = when {
+            pendingTypingTypes.contains(RichSpanType.HEADING_1) -> 1
+            pendingTypingTypes.contains(RichSpanType.HEADING_2) -> 2
+            pendingTypingTypes.contains(RichSpanType.HEADING_3) -> 3
+            pendingTypingTypes.contains(RichSpanType.HEADING_4) -> 4
+            pendingTypingTypes.contains(RichSpanType.HEADING_5) -> 5
+            pendingTypingTypes.contains(RichSpanType.HEADING_6) -> 6
+            else -> 0
+        }
+
+        val headingLevel = if (pendingHeading > 0) {
+            pendingHeading
+        } else when {
             isH1 -> 1
             isH2 -> 2
             isH3 -> 3
@@ -566,6 +578,22 @@ object RichTextEngine {
         )
     }
 
+    fun parseHexColor(hex: String): Color {
+        return try {
+            val clean = hex.removePrefix("#").trim()
+            val colorInt = clean.toLong(16)
+            if (clean.length == 6) {
+                Color(0xFF000000 or colorInt)
+            } else if (clean.length == 8) {
+                Color(colorInt)
+            } else {
+                Color.White
+            }
+        } catch (_: Exception) {
+            Color.White
+        }
+    }
+
     /**
      * Adjusts span offsets during user typing/editing in real time.
      */
@@ -573,7 +601,8 @@ object RichTextEngine {
         oldText: String,
         newText: String,
         spans: List<RichSpan>,
-        pendingTypes: Set<RichSpanType> = emptySet()
+        pendingTypes: Set<RichSpanType> = emptySet(),
+        pendingTextColor: String? = null
     ): List<RichSpan> {
         val delta = newText.length - oldText.length
         if (delta == 0 && oldText == newText) return spans
@@ -592,9 +621,21 @@ object RichTextEngine {
 
         val updated = mutableListOf<RichSpan>()
         val textLength = newText.length
+        val headingQuoteTypes = setOf(
+            RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
+            RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6,
+            RichSpanType.QUOTE
+        )
 
         for (span in spans) {
-            if (span.end <= startChange) {
+            if (span.type in headingQuoteTypes && span.start <= startChange && span.end >= startChange) {
+                // Expand line-level heading/quote span to encompass the full line after text change
+                val lineStart = newText.lastIndexOf('\n', startIndex = max(0, startChange - 1)).let { if (it == -1) 0 else it + 1 }
+                val lineEnd = newText.indexOf('\n', startIndex = startChange).let { if (it == -1) textLength else it }
+                if (lineEnd > lineStart) {
+                    updated.add(span.copy(start = lineStart, end = lineEnd))
+                }
+            } else if (span.end <= startChange) {
                 // Completely before replaced region
                 if (span.end <= textLength) updated.add(span)
             } else if (span.start >= oldEnd) {
@@ -635,12 +676,32 @@ object RichTextEngine {
         }
 
         if (delta > 0 && pendingTypes.isNotEmpty()) {
+            val lineStart = newText.lastIndexOf('\n', startIndex = max(0, startChange - 1)).let { if (it == -1) 0 else it + 1 }
+            val lineEnd = newText.indexOf('\n', startIndex = startChange).let { if (it == -1) textLength else it }
+
             for (pType in pendingTypes) {
-                val spanStart = startChange
-                val spanEnd = startChange + delta
-                if (spanEnd > spanStart) {
-                    updated.add(RichSpan(pType, spanStart, spanEnd))
+                if (pType in headingQuoteTypes) {
+                    updated.removeAll {
+                        it.start >= lineStart && it.end <= lineEnd && it.type in headingQuoteTypes
+                    }
+                    if (lineEnd > lineStart) {
+                        updated.add(RichSpan(pType, lineStart, lineEnd))
+                    }
+                } else {
+                    val spanStart = startChange
+                    val spanEnd = startChange + delta
+                    if (spanEnd > spanStart) {
+                        updated.add(RichSpan(pType, spanStart, spanEnd))
+                    }
                 }
+            }
+        }
+
+        if (delta > 0 && pendingTextColor != null) {
+            val spanStart = startChange
+            val spanEnd = startChange + delta
+            if (spanEnd > spanStart) {
+                updated.add(RichSpan(RichSpanType.TEXT_COLOR, spanStart, spanEnd, payload = pendingTextColor))
             }
         }
 
@@ -837,33 +898,33 @@ object RichTextEngine {
                         )
                         RichSpanType.HEADING_1 -> SpanStyle(
                             fontWeight = FontWeight.Bold,
-                            fontSize = (baseFontSizeSp * 1.35f).sp,
-                            color = accentColor
+                            fontSize = (baseFontSizeSp * 1.85f).sp,
+                            color = if (isDark) Color.White else textColor
                         )
                         RichSpanType.HEADING_2 -> SpanStyle(
                             fontWeight = FontWeight.Bold,
-                            fontSize = (baseFontSizeSp * 1.25f).sp,
-                            color = accentColor
+                            fontSize = (baseFontSizeSp * 1.50f).sp,
+                            color = if (isDark) Color.White else textColor
                         )
                         RichSpanType.HEADING_3 -> SpanStyle(
                             fontWeight = FontWeight.Bold,
-                            fontSize = (baseFontSizeSp * 1.15f).sp,
-                            color = accentColor
+                            fontSize = (baseFontSizeSp * 1.25f).sp,
+                            color = if (isDark) Color.White else textColor
                         )
                         RichSpanType.HEADING_4 -> SpanStyle(
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = (baseFontSizeSp * 1.08f).sp,
-                            color = accentColor
+                            fontSize = (baseFontSizeSp * 1.12f).sp,
+                            color = if (isDark) Color.White else textColor
                         )
                         RichSpanType.HEADING_5 -> SpanStyle(
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = (baseFontSizeSp * 1.02f).sp,
-                            color = accentColor
+                            fontSize = (baseFontSizeSp * 1.05f).sp,
+                            color = if (isDark) Color.White else textColor
                         )
                         RichSpanType.HEADING_6 -> SpanStyle(
                             fontWeight = FontWeight.Medium,
                             fontSize = (baseFontSizeSp * 0.95f).sp,
-                            color = accentColor
+                            color = if (isDark) Color.White else textColor
                         )
                         RichSpanType.QUOTE -> SpanStyle(
                             fontStyle = FontStyle.Italic,
@@ -873,9 +934,10 @@ object RichTextEngine {
                             color = accentColor,
                             textDecoration = TextDecoration.Underline
                         )
-                        RichSpanType.TEXT_COLOR -> SpanStyle(
-                            color = accentColor
-                        )
+                        RichSpanType.TEXT_COLOR -> {
+                            val col = span.payload?.let { parseHexColor(it) } ?: (if (isDark) Color.White else textColor)
+                            SpanStyle(color = col)
+                        }
                     }
                     addStyle(style, s, e)
                 }
@@ -1054,33 +1116,33 @@ object RichTextEngine {
                     )
                     RichSpanType.HEADING_1 -> SpanStyle(
                         fontWeight = FontWeight.Bold,
-                        fontSize = (baseFontSizeSp * 1.3f).sp,
-                        color = accentColor
+                        fontSize = (baseFontSizeSp * 1.85f).sp,
+                        color = if (isDark) Color.White else textColor
                     )
                     RichSpanType.HEADING_2 -> SpanStyle(
                         fontWeight = FontWeight.Bold,
-                        fontSize = (baseFontSizeSp * 1.2f).sp,
-                        color = accentColor
+                        fontSize = (baseFontSizeSp * 1.50f).sp,
+                        color = if (isDark) Color.White else textColor
                     )
                     RichSpanType.HEADING_3 -> SpanStyle(
                         fontWeight = FontWeight.Bold,
-                        fontSize = (baseFontSizeSp * 1.12f).sp,
-                        color = accentColor
+                        fontSize = (baseFontSizeSp * 1.25f).sp,
+                        color = if (isDark) Color.White else textColor
                     )
                     RichSpanType.HEADING_4 -> SpanStyle(
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = (baseFontSizeSp * 1.05f).sp,
-                        color = accentColor
+                        fontSize = (baseFontSizeSp * 1.12f).sp,
+                        color = if (isDark) Color.White else textColor
                     )
                     RichSpanType.HEADING_5 -> SpanStyle(
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = (baseFontSizeSp * 1.0f).sp,
-                        color = accentColor
+                        fontSize = (baseFontSizeSp * 1.05f).sp,
+                        color = if (isDark) Color.White else textColor
                     )
                     RichSpanType.HEADING_6 -> SpanStyle(
                         fontWeight = FontWeight.Medium,
-                        fontSize = (baseFontSizeSp * 0.92f).sp,
-                        color = accentColor
+                        fontSize = (baseFontSizeSp * 0.95f).sp,
+                        color = if (isDark) Color.White else textColor
                     )
                     RichSpanType.QUOTE -> SpanStyle(
                         fontStyle = FontStyle.Italic,
@@ -1090,9 +1152,10 @@ object RichTextEngine {
                         color = accentColor,
                         textDecoration = TextDecoration.Underline
                     )
-                    RichSpanType.TEXT_COLOR -> SpanStyle(
-                        color = accentColor
-                    )
+                    RichSpanType.TEXT_COLOR -> {
+                        val col = span.payload?.let { parseHexColor(it) } ?: (if (isDark) Color.White else textColor)
+                        SpanStyle(color = col)
+                    }
                 }
                 addStyle(style, s, e)
             }

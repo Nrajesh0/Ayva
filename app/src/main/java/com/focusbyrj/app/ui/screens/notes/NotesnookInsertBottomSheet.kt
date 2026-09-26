@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.HorizontalRule
+import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.AttachFile
@@ -132,6 +133,7 @@ fun NotesnookInsertBottomSheet(
     onOpenAttachmentDialog: () -> Unit,
     onOpenEmbedDialog: () -> Unit,
     onOpenTableDialog: () -> Unit,
+    onPasteAsMcq: () -> Unit = {},
     isDark: Boolean
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -174,7 +176,20 @@ fun NotesnookInsertBottomSheet(
                 .padding(bottom = 24.dp)
                 .testTag("notesnook_insert_bottom_sheet")
         ) {
-            // 1. Outline list
+            // 1. Paste as MCQ / Question (Teacher Quiz Formatter)
+            NotesnookInsertRow(
+                icon = Icons.Filled.Quiz,
+                title = "Paste as MCQ / Question",
+                hasChevron = false,
+                textColor = itemTextColor,
+                iconColor = NotesnookGreen,
+                onClick = {
+                    safeDismissAnd { onPasteAsMcq() }
+                },
+                testTag = "insert_mcq_question"
+            )
+
+            // 2. Outline list
             NotesnookInsertRow(
                 icon = Icons.Outlined.AccountTree,
                 title = "Outline list",
@@ -1009,7 +1024,7 @@ fun NotesnookAttachmentOptionsSheet(
             )
             NotesnookInsertRow(
                 icon = Icons.Outlined.Mic,
-                title = "Voice recording memo",
+                title = "Live transcription",
                 hasChevron = false,
                 textColor = textPrimary,
                 iconColor = textSecondary,

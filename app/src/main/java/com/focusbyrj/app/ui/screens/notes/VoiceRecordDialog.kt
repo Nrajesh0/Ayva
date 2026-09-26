@@ -200,7 +200,7 @@ fun VoiceRecordDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Mic,
-                            contentDescription = "Tap to finish recording",
+                            contentDescription = "Tap to finish live transcription",
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(38.dp)
                         )
@@ -316,7 +316,7 @@ fun VoiceRecordDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "Cancel recording",
+                            contentDescription = "Cancel live transcription",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(24.dp)
                         )

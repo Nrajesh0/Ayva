@@ -41,11 +41,14 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,8 +86,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
@@ -96,6 +97,12 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.ui.platform.LocalClipboardManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material.icons.outlined.AddBox
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.Archive
@@ -119,6 +126,17 @@ import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Publish
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.CopyAll
+import androidx.compose.material.icons.automirrored.outlined.ExitToApp
+import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material3.ripple
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -246,7 +264,7 @@ fun KeepNoteEditor(
 ) {
     val context = LocalContext.current
 
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val theme = KeepColorPalette.getColor(state.colorKey)
     val fontStyle = KeepFontPalette.getFont(state.fontKey)
     val bgColor = theme.resolveBackgroundColor(isDark)
@@ -254,7 +272,7 @@ fun KeepNoteEditor(
     val borderColor = theme.resolveBorderColor(isDark)
 
     var showColorPicker by remember { mutableStateOf(false) }
-    var showFontPicker by remember { mutableStateOf(false) }
+    var showFontPicker by remember { mutableStateOf(true) }
     var showLabelDialog by remember { mutableStateOf(false) }
     var showSketchDialog by remember { mutableStateOf(false) }
     var showAddSheet by remember { mutableStateOf(false) }
@@ -281,10 +299,17 @@ fun KeepNoteEditor(
     val initialParsed = remember(state.sessionId) { RichTextEngine.parse(state.content) }
     var richSpans by remember(state.sessionId) { mutableStateOf(initialParsed.second) }
     var pendingTypingStyles by remember { mutableStateOf(setOf<RichSpanType>()) }
+    var selectedFontColorHex by remember { mutableStateOf<String?>(null) }
+    var textAlignment by remember { mutableStateOf(TextAlign.Start) }
 
     val contentFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val coroutineScope = rememberCoroutineScope()
+    val clipboardManager = LocalClipboardManager.current
+
+    var showMcqFormatPill by remember { mutableStateOf(false) }
+    var detectedMcqRaw by remember { mutableStateOf<String?>(null) }
+    var mcqPillDismissJob by remember { mutableStateOf<Job?>(null) }
 
     fun safeRequestFocus() {
         coroutineScope.launch {
@@ -447,6 +472,90 @@ fun KeepNoteEditor(
         showNotesnookInsertSheet = false
     }
 
+    fun pasteAndFormatMcq() {
+        val clipText = clipboardManager.getText()?.text
+        if (clipText.isNullOrBlank()) {
+            Toast.makeText(context, "Clipboard is empty. Copy question text first!", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val formatted = McqTextParser.formatIfMcq(clipText, "ABCD")
+        val active = getActiveTextState()
+        if (active != null) {
+            val (idx, curTfv, curSpans) = active
+            val sel = curTfv.selection
+            val s = minOf(sel.start, sel.end)
+            val e = maxOf(sel.start, sel.end)
+            val prefixWithNewline = if (s > 0 && curTfv.text.getOrNull(s - 1) != '\n') "\n\n" else ""
+            val insertStr = prefixWithNewline + formatted + "\n"
+            val newText = curTfv.text.replaceRange(s, e, insertStr)
+            val newTfv = curTfv.copy(text = newText, selection = TextRange(s + insertStr.length))
+            val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newText, curSpans)
+            updateActiveTextState(idx, newTfv, updatedSpans)
+        } else {
+            val prefixWithNewline = if (contentTfv.text.isNotEmpty() && !contentTfv.text.endsWith("\n\n")) "\n\n" else ""
+            val newText = contentTfv.text + prefixWithNewline + formatted + "\n"
+            val newTfv = contentTfv.copy(text = newText, selection = TextRange(newText.length))
+            val updatedSpans = RichTextEngine.updateSpansOnTextChange(contentTfv.text, newText, richSpans)
+            richSpans = updatedSpans
+            val updatedBlock = NotesnookBlock.Text(text = newText, spans = updatedSpans)
+            blocks = listOf(updatedBlock)
+            onContentChange(NotesnookBlockManager.serialize(blocks))
+            contentTfv = newTfv
+        }
+        showFontPicker = true
+        coroutineScope.launch {
+            try {
+                contentFocusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (_: Exception) {}
+        }
+        Toast.makeText(context, "Pasted & formatted as MCQ ✨", Toast.LENGTH_SHORT).show()
+    }
+
+    fun formatPastedMcq() {
+        val raw = detectedMcqRaw ?: return
+        val formatted = McqTextParser.formatIfMcq(raw, "ABCD")
+        showMcqFormatPill = false
+        detectedMcqRaw = null
+        if (formatted == raw) return
+
+        val currentText = contentTfv.text
+        val exactIdx = currentText.indexOf(raw)
+        val trimmedIdx = if (exactIdx == -1) currentText.indexOf(raw.trim()) else -1
+        val replaceStart = when {
+            exactIdx != -1 -> exactIdx
+            trimmedIdx != -1 -> trimmedIdx
+            else -> -1
+        }
+        val replaceEnd = when {
+            exactIdx != -1 -> exactIdx + raw.length
+            trimmedIdx != -1 -> trimmedIdx + raw.trim().length
+            else -> -1
+        }
+        val newText = if (replaceStart != -1) {
+            currentText.replaceRange(replaceStart, replaceEnd, formatted)
+        } else {
+            val sep = if (currentText.endsWith("\n\n")) "" else if (currentText.endsWith("\n")) "\n" else "\n\n"
+            currentText + sep + formatted
+        }
+        val cursor = if (replaceStart != -1) replaceStart + formatted.length else newText.length
+        val newTfv = contentTfv.copy(text = newText, selection = TextRange(cursor))
+        val updatedSpans = RichTextEngine.updateSpansOnTextChange(contentTfv.text, newText, richSpans)
+        richSpans = updatedSpans
+        blocks = listOf(NotesnookBlock.Text(text = newText, spans = updatedSpans))
+        onContentChange(NotesnookBlockManager.serialize(blocks))
+        contentTfv = newTfv
+        showFontPicker = true
+        coroutineScope.launch {
+            try {
+                contentFocusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (_: Exception) {}
+        }
+        Toast.makeText(context, "Formatted as MCQ ✨", Toast.LENGTH_SHORT).show()
+    }
+
+
     BackHandler {
         when {
             isZenMode -> isZenMode = false
@@ -457,7 +566,6 @@ fun KeepNoteEditor(
             viewingImageUri != null -> viewingImageUri = null
             showSketchDialog -> showSketchDialog = false
             showColorPicker -> showColorPicker = false
-            showFontPicker -> showFontPicker = false
             showAddSheet -> showAddSheet = false
             showNotesnookInsertSheet -> showNotesnookInsertSheet = false
             showCodeBlockDialog -> showCodeBlockDialog = false
@@ -643,14 +751,14 @@ fun KeepNoteEditor(
                             )
                         }
 
-                        // Archive / Unarchive
+                        // More Options (3-dots overflow menu)
                         IconButton(
-                            onClick = if (state.isArchived) onUnarchive else onArchive,
-                            modifier = Modifier.testTag("editor_archive_button")
+                            onClick = { showMoreMenu = true },
+                            modifier = Modifier.testTag("editor_more_options_button")
                         ) {
                             Icon(
-                                imageVector = if (state.isArchived) Icons.Filled.Unarchive else Icons.Outlined.Archive,
-                                contentDescription = if (state.isArchived) "Unarchive" else "Archive",
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "More options",
                                 tint = textColor
                             )
                         }
@@ -762,12 +870,36 @@ fun KeepNoteEditor(
 
                                 val oldText = contentTfv.text
                                 val newText = effectiveTfv.text
+                                if (enterHandled != null || (newText.length == oldText.length + 1 && newText.getOrNull(effectiveTfv.selection.start - 1) == '\n')) {
+                                    val headingTypes = setOf(
+                                        RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
+                                        RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
+                                    )
+                                    pendingTypingStyles = pendingTypingStyles - headingTypes
+                                }
+
                                 if (oldText != newText) {
+                                    val diff = newText.length - oldText.length
+                                    if (diff >= 10) {
+                                        val changeStart = oldText.zip(newText).indexOfFirst { (o, n) -> o != n }.let { if (it == -1) 0 else it }
+                                        val changeEnd = changeStart + diff
+                                        val inserted = newText.substring(changeStart, minOf(changeEnd, newText.length))
+                                        if (McqTextParser.isLikelyMcq(inserted)) {
+                                            detectedMcqRaw = inserted
+                                            showMcqFormatPill = true
+                                            mcqPillDismissJob?.cancel()
+                                            mcqPillDismissJob = coroutineScope.launch {
+                                                delay(6000)
+                                                showMcqFormatPill = false
+                                            }
+                                        }
+                                    }
                                     val updatedSpans = RichTextEngine.updateSpansOnTextChange(
                                         oldText = oldText,
                                         newText = newText,
                                         spans = richSpans,
-                                        pendingTypes = pendingTypingStyles
+                                        pendingTypes = pendingTypingStyles,
+                                        pendingTextColor = selectedFontColorHex
                                     )
                                     richSpans = updatedSpans
                                     val updatedBlock = NotesnookBlock.Text(text = newText, spans = updatedSpans)
@@ -775,9 +907,6 @@ fun KeepNoteEditor(
                                     onContentChange(NotesnookBlockManager.serialize(blocks))
                                 }
                                 contentTfv = effectiveTfv
-                                coroutineScope.launch {
-                                    contentBringIntoViewRequester.bringIntoView()
-                                }
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -790,7 +919,8 @@ fun KeepNoteEditor(
                                 color = textColor,
                                 fontSize = fontSizeSp.sp,
                                 lineHeight = lineHeightSp.sp,
-                                fontFamily = fontStyle.fontFamily
+                                fontFamily = fontStyle.fontFamily,
+                                textAlign = textAlignment
                             ),
                             cursorBrush = SolidColor(textColor),
                             decorationBox = { innerTextField ->
@@ -849,8 +979,23 @@ fun KeepNoteEditor(
                                                 activeBlockIndex = index
                                                 val oldT = block.text
                                                 val newT = eff.text
+
+                                                if (enterHandled != null || (newT.length == oldT.length + 1 && newT.getOrNull(eff.selection.start - 1) == '\n')) {
+                                                    val headingTypes = setOf(
+                                                        RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
+                                                        RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
+                                                    )
+                                                    pendingTypingStyles = pendingTypingStyles - headingTypes
+                                                }
+
                                                 if (oldT != newT) {
-                                                    val updatedS = RichTextEngine.updateSpansOnTextChange(oldT, newT, block.spans)
+                                                    val updatedS = RichTextEngine.updateSpansOnTextChange(
+                                                        oldText = oldT,
+                                                        newText = newT,
+                                                        spans = block.spans,
+                                                        pendingTypes = pendingTypingStyles,
+                                                        pendingTextColor = selectedFontColorHex
+                                                    )
                                                     val updatedBlock = block.copy(text = newT, spans = updatedS)
                                                     val newBlocks = blocks.toMutableList()
                                                     newBlocks[index] = updatedBlock
@@ -880,7 +1025,8 @@ fun KeepNoteEditor(
                                                 color = textColor,
                                                 fontSize = fontSizeSp.sp,
                                                 lineHeight = lineHeightSp.sp,
-                                                fontFamily = fontStyle.fontFamily
+                                                fontFamily = fontStyle.fontFamily,
+                                                textAlign = textAlignment
                                             ),
                                             cursorBrush = SolidColor(textColor),
                                             decorationBox = { innerTextField ->
@@ -1525,25 +1671,35 @@ fun KeepNoteEditor(
                         if (active != null) {
                             val (idx, curTfv, curSpans) = active
                             val cursor = curTfv.selection.start
+                            val lineStart = curTfv.text.lastIndexOf('\n', startIndex = maxOf(0, cursor - 1)).let { if (it == -1) 0 else it + 1 }
+                            val lineEnd = curTfv.text.indexOf('\n', startIndex = cursor).let { if (it == -1) curTfv.text.length else it }
+
+                            val headingTypes = setOf(
+                                RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
+                                RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
+                            )
+                            val selectedHeadingType = when (level) {
+                                1 -> RichSpanType.HEADING_1
+                                2 -> RichSpanType.HEADING_2
+                                3 -> RichSpanType.HEADING_3
+                                4 -> RichSpanType.HEADING_4
+                                5 -> RichSpanType.HEADING_5
+                                6 -> RichSpanType.HEADING_6
+                                else -> null
+                            }
+                            pendingTypingStyles = (pendingTypingStyles - headingTypes) + (selectedHeadingType?.let { setOf(it) } ?: emptySet())
+
                             val newSpans = if (level == 0) {
-                                val lineStart = curTfv.text.lastIndexOf('\n', startIndex = maxOf(0, cursor - 1)).let { if (it == -1) 0 else it + 1 }
-                                val lineEnd = curTfv.text.indexOf('\n', startIndex = cursor).let { if (it == -1) curTfv.text.length else it }
                                 curSpans.filterNot {
-                                    it.start >= lineStart && it.end <= lineEnd &&
-                                            (it.type == RichSpanType.HEADING_1 || it.type == RichSpanType.HEADING_2 ||
-                                                    it.type == RichSpanType.HEADING_3 || it.type == RichSpanType.HEADING_4 ||
-                                                    it.type == RichSpanType.HEADING_5 || it.type == RichSpanType.HEADING_6)
+                                    it.start >= lineStart && it.end <= lineEnd && headingTypes.contains(it.type)
                                 }
                             } else {
-                                val type = when (level) {
-                                    1 -> RichSpanType.HEADING_1
-                                    2 -> RichSpanType.HEADING_2
-                                    3 -> RichSpanType.HEADING_3
-                                    4 -> RichSpanType.HEADING_4
-                                    5 -> RichSpanType.HEADING_5
-                                    else -> RichSpanType.HEADING_6
+                                val type = selectedHeadingType!!
+                                if (lineEnd > lineStart) {
+                                    RichTextEngine.toggleLineStyle(curSpans, type, cursor, curTfv.text)
+                                } else {
+                                    curSpans
                                 }
-                                RichTextEngine.toggleLineStyle(curSpans, type, cursor, curTfv.text)
                             }
                             updateActiveTextState(idx, curTfv, newSpans)
                         }
@@ -1633,12 +1789,41 @@ fun KeepNoteEditor(
                                 curSpans.filterNot { it.start >= lineStart && it.end <= lineEnd }
                             }
                             pendingTypingStyles = emptySet()
+                            selectedFontColorHex = null
                             updateActiveTextState(idx, curTfv, newSpans)
                         }
                         keepFocus()
                     },
                     selectedFontKey = state.fontKey,
                     onFontChange = onFontChange,
+                    selectedFontColorHex = selectedFontColorHex,
+                    onFontColorChange = { hex ->
+                        selectedFontColorHex = hex
+                        val active = getActiveTextState()
+                        if (active != null) {
+                            val (idx, curTfv, curSpans) = active
+                            val sel = curTfv.selection
+                            val s = minOf(sel.start, sel.end)
+                            val e = maxOf(sel.start, sel.end)
+                            if (s != e) {
+                                val filtered = curSpans.filterNot { it.type == RichSpanType.TEXT_COLOR && it.start < e && it.end > s }.toMutableList()
+                                if (hex != null) {
+                                    filtered.add(RichSpan(RichSpanType.TEXT_COLOR, s, e, payload = hex))
+                                }
+                                updateActiveTextState(idx, curTfv, filtered.sortedBy { it.start })
+                            }
+                        }
+                        keepFocus()
+                    },
+                    textAlign = textAlignment,
+                    onCycleAlignment = {
+                        textAlignment = when (textAlignment) {
+                            TextAlign.Start, TextAlign.Left -> TextAlign.Center
+                            TextAlign.Center -> TextAlign.End
+                            else -> TextAlign.Start
+                        }
+                        keepFocus()
+                    },
                     fontSizeSp = fontSizeSp,
                     onFontSizeChange = { fontSizeSp = it },
                     lineHeightSp = lineHeightSp,
@@ -1649,269 +1834,560 @@ fun KeepNoteEditor(
                     isDark = isDark
                 )
             }
+        }
 
-            // ==========================================
-            // BOTTOM TOOLBAR (Authentic Google Keep Layout)
-            // ==========================================
-            if (!isZenMode) {
-                Surface(
-                    color = bgColor,
-                    modifier = Modifier.fillMaxWidth()
+        // ==========================================
+        // SMART MCQ FORMAT FLOATING PILL (FLOATS OVER NOTE BODY ABOVE TOOLBAR)
+        // ==========================================
+        AnimatedVisibility(
+            visible = showMcqFormatPill,
+            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = if (showFontPicker) 58.dp else 16.dp, start = 16.dp, end = 16.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (isDark) Color(0xFF1E2822) else Color(0xFFE8F5E9),
+                border = BorderStroke(1.dp, if (isDark) Color(0xFF284834) else Color(0xFFA5D6A7)),
+                shadowElevation = 6.dp
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Icon(
+                        imageVector = Icons.Filled.Quiz,
+                        contentDescription = null,
+                        tint = Color(0xFF22C55E),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Format as MCQ?",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
+                        ),
+                        color = if (isDark) Color(0xFF34D399) else Color(0xFF166534)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            formatPastedMcq()
+                            showMcqFormatPill = false
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp)
                     ) {
-                        // Left tools: [+] Add sheet, [Palette] Color, and [Font] Typography
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = { showAddSheet = true },
-                                modifier = Modifier.testTag("editor_plus_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.AddBox,
-                                    contentDescription = "Add options",
-                                    tint = textColor.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    showColorPicker = !showColorPicker
-                                    if (showColorPicker) showFontPicker = false
-                                },
-                                modifier = Modifier.testTag("editor_palette_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Palette,
-                                    contentDescription = "Color palette",
-                                    tint = if (showColorPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    showFontPicker = !showFontPicker
-                                    if (showFontPicker) showColorPicker = false
-                                },
-                                modifier = Modifier.testTag("editor_font_button")
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(22.dp)
-                                        .border(
-                                            width = 1.5.dp,
-                                            color = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f),
-                                            shape = RoundedCornerShape(4.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "A",
-                                        style = TextStyle(
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (showFontPicker) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.85f)
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-                        // Center: Word Count & Edited Time Pill
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = textColor.copy(alpha = 0.07f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { showDocumentStatsSheet = true }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .testTag("editor_document_stats_pill")
-                        ) {
-                            Text(
-                                text = if (documentMetrics.words > 0) {
-                                    "${documentMetrics.words} words · ~${if (documentMetrics.readingTimeMinutes <= 1) 1 else documentMetrics.readingTimeMinutes} min"
-                                } else {
-                                    "Edited $formattedTime"
-                                },
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
-                                color = textColor.copy(alpha = 0.8f)
-                            )
-                        }
-
-                        // Right action: Undo, Redo, 3-dots Overflow Menu
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = onUndo,
-                                enabled = canUndo,
-                                modifier = Modifier.size(36.dp).testTag("editor_undo_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Undo,
-                                    contentDescription = "Undo",
-                                    tint = if (canUndo) textColor else textColor.copy(alpha = 0.28f),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            IconButton(
-                                onClick = onRedo,
-                                enabled = canRedo,
-                                modifier = Modifier.size(36.dp).testTag("editor_redo_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Redo,
-                                    contentDescription = "Redo",
-                                    tint = if (canRedo) textColor else textColor.copy(alpha = 0.28f),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            IconButton(
-                                onClick = { showMoreMenu = true },
-                                modifier = Modifier.size(36.dp).testTag("editor_more_options_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.MoreVert,
-                                    contentDescription = "More options",
-                                    tint = textColor.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
+                        Text("Format", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(
+                        onClick = { showMcqFormatPill = false },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Dismiss",
+                            tint = if (isDark) Color(0xFF86EFAC) else Color(0xFF15803D),
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
                 }
             }
         }
 
         // ==========================================
-        // GOOGLE KEEP "MORE" 3-DOT OVERFLOW SHEET
+        // NOTESNOOK / KEEP "MORE" 3-DOT OVERFLOW SHEET
         // ==========================================
         if (showMoreMenu) {
+            val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
             ModalBottomSheet(
                 onDismissRequest = { showMoreMenu = false },
-                containerColor = if (isDark) Color(0xFF101012) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                sheetState = sheetState,
+                containerColor = if (isDark) Color(0xFF161719) else Color(0xFFF9FAFB),
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                dragHandle = null
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 28.dp, top = 4.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp)
                 ) {
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.FormatListNumbered,
-                        title = "Table of contents",
-                        onClick = {
-                            showMoreMenu = false
-                            showTocSheet = true
-                        }
+                    // Custom centered drag handle
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(top = 4.dp, bottom = 16.dp)
+                            .size(width = 38.dp, height = 4.dp)
+                            .clip(CircleShape)
+                            .background(if (isDark) Color(0xFF3C3F46) else Color(0xFFD0D3DC))
                     )
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.Publish,
-                        title = "Export & Publish (MD / HTML)",
-                        onClick = {
-                            showMoreMenu = false
-                            showExportSheet = true
-                        }
+                    // Top Row: Note Title + Open/Zen Icon
+                    val createdAtDate = remember(state.createdAt) { Date(state.createdAt) }
+                    val updatedAtDate = remember(state.updatedAt) { Date(state.updatedAt) }
+                    val dateTimeFormat = remember { SimpleDateFormat("dd-MM-yyyy hh:mm a", Locale.getDefault()) }
+                    val createdAtFormatted = remember(createdAtDate) { dateTimeFormat.format(createdAtDate) }
+                    val updatedAtFormatted = remember(updatedAtDate) { dateTimeFormat.format(updatedAtDate) }
+
+                    val displayTitle = if (state.title.isNotBlank()) {
+                        state.title
+                    } else {
+                        "Note $createdAtFormatted"
+                    }
+
+                    Text(
+                        text = displayTitle,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.2).sp
+                        ),
+                        color = if (isDark) Color(0xFFF2F3F5) else Color(0xFF1E2024),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
                     )
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.FormatLineSpacing,
-                        title = "Editorial typography & elements",
-                        onClick = {
-                            showMoreMenu = false
-                            showEditorialSheet = true
-                        }
-                    )
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.Fullscreen,
-                        title = "Zen Focus mode",
-                        onClick = {
-                            showMoreMenu = false
-                            isZenMode = true
-                        }
-                    )
+                    // Date & Time Metadata Rows
+                    // Row 1: Created at
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Created at",
+                            fontSize = 13.sp,
+                            color = if (isDark) Color(0xFF7E828C) else Color(0xFF6B7280)
+                        )
+                        Text(
+                            text = createdAtFormatted,
+                            fontSize = 13.sp,
+                            color = if (isDark) Color(0xFFA2A6B0) else Color(0xFF374151)
+                        )
+                    }
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.Article,
-                        title = "Document statistics",
-                        onClick = {
-                            showMoreMenu = false
-                            showDocumentStatsSheet = true
-                        }
-                    )
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    KeepAddOptionRow(
-                        icon = if (state.isArchived) Icons.Outlined.Unarchive else Icons.Outlined.Archive,
-                        title = if (state.isArchived) "Unarchive" else "Archive",
-                        onClick = {
-                            showMoreMenu = false
-                            if (state.isArchived) onUnarchive() else onArchive()
-                        }
-                    )
+                    // Row 2: Last edited at
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Last edited at",
+                            fontSize = 13.sp,
+                            color = if (isDark) Color(0xFF7E828C) else Color(0xFF6B7280)
+                        )
+                        Text(
+                            text = updatedAtFormatted,
+                            fontSize = 13.sp,
+                            color = if (isDark) Color(0xFFA2A6B0) else Color(0xFF374151)
+                        )
+                    }
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.Delete,
-                        title = "Delete",
-                        onClick = {
-                            showMoreMenu = false
-                            onDelete()
-                        }
-                    )
+                    Spacer(modifier = Modifier.height(18.dp))
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.ContentCopy,
-                        title = "Make a copy",
-                        onClick = {
-                            showMoreMenu = false
-                            onDuplicate()
+                    // Tag and Color Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // "Add label +" chip
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isDark) Color(0xFF1E2822) else Color(0xFFE8F5E9))
+                                .border(
+                                    1.dp,
+                                    if (isDark) Color(0xFF284834) else Color(0xFFA5D6A7),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .clickable {
+                                    showMoreMenu = false
+                                    showLabelDialog = true
+                                }
+                                .padding(horizontal = 14.dp, vertical = 7.dp)
+                        ) {
+                            val tagText = if (state.labels.isNotEmpty()) {
+                                state.labels.first() + if (state.labels.size > 1) " +${state.labels.size - 1}" else ""
+                            } else {
+                                "Add label +"
+                            }
+                            Text(
+                                text = tagText,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (isDark) Color(0xFF34D399) else Color(0xFF166534)
+                            )
                         }
-                    )
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.Share,
-                        title = "Send",
-                        onClick = {
-                            showMoreMenu = false
-                            onShare()
-                        }
-                    )
+                        Spacer(modifier = Modifier.width(14.dp))
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.ContentCopy,
-                        title = "Copy text",
-                        onClick = {
-                            showMoreMenu = false
-                            onCopyText()
+                        // Color swatch circle
+                        val noteColor = theme.resolveBackgroundColor(isDark)
+                        val displayColor = if (state.colorKey == "default") {
+                            if (isDark) Color(0xFF90CAF9) else Color(0xFF64B5F6)
+                        } else {
+                            noteColor
                         }
-                    )
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.FontDownload,
-                        title = "Font style",
-                        onClick = {
-                            showMoreMenu = false
-                            showFontPicker = true
-                            showColorPicker = false
-                        }
-                    )
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(displayColor)
+                                .border(
+                                    1.5.dp,
+                                    if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.15f),
+                                    CircleShape
+                                )
+                                .clickable {
+                                    showMoreMenu = false
+                                    showColorPicker = true
+                                }
+                        )
 
-                    KeepAddOptionRow(
-                        icon = Icons.Outlined.Label,
-                        title = "Labels",
-                        onClick = {
-                            showMoreMenu = false
-                            showLabelDialog = true
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        // Plus button for color picker
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF23252A) else Color(0xFFE5E7EB))
+                                .border(
+                                    1.dp,
+                                    if (isDark) Color(0xFF2E323A) else Color(0xFFD1D5DB),
+                                    CircleShape
+                                )
+                                .clickable {
+                                    showMoreMenu = false
+                                    showColorPicker = true
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Change color",
+                                tint = if (isDark) Color(0xFFA0A3AD) else Color(0xFF4B5563),
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
-                    )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // ==========================================
+                    // ROW 1: PRIMARY QUICK ACTIONS (5 columns)
+                    // Pin | Archive | Share | Copy text | Export
+                    // ==========================================
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 1. Pin / Unpin
+                        KeepOverflowGridItem(
+                            icon = if (state.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                            label = if (state.isPinned) "Unpin" else "Pin",
+                            isDark = isDark,
+                            isActive = state.isPinned,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                onTogglePin()
+                            }
+                        )
+
+                        // 2. Archive / Unarchive
+                        KeepOverflowGridItem(
+                            icon = if (state.isArchived) Icons.Outlined.Unarchive else Icons.Outlined.Archive,
+                            label = if (state.isArchived) "Unarchive" else "Archive",
+                            isDark = isDark,
+                            isActive = state.isArchived,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                if (state.isArchived) onUnarchive() else onArchive()
+                            }
+                        )
+
+                        // 3. Share
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.Share,
+                            label = "Share",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                onShare()
+                            }
+                        )
+
+                        // 4. Copy text (swapped with Duplicate)
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.ContentCopy,
+                            label = "Copy\ntext",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                onCopyText()
+                            }
+                        )
+
+                        // 5. Export
+                        KeepOverflowGridItem(
+                            icon = Icons.AutoMirrored.Outlined.ExitToApp,
+                            label = "Export",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                showExportSheet = true
+                            }
+                        )
+                    }
+
+                    // Centered pill / dot indicator
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 14.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 16.dp, height = 3.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF4C505A) else Color(0xFF9CA3AF))
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(width = 8.dp, height = 3.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF2C2F36) else Color(0xFFD1D5DB))
+                        )
+                    }
+
+                    // ==========================================
+                    // GRID SECTION: 5 COLUMNS (Real App Features)
+                    // ==========================================
+
+                    // Row 1 of Grid: User most-used actions first
+                    // Add image | Take photo | Live transcription | Tick boxes | Drawing sketch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 1. Add image
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.Image,
+                            label = "Add\nimage",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                        )
+
+                        // 2. Take photo
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.PhotoCamera,
+                            label = "Take\nphoto",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                cameraLauncher.launch(null)
+                            }
+                        )
+
+                        // 3. Live transcription
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.Mic,
+                            label = "Live\ntranscription",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                onStartVoiceRecording()
+                            }
+                        )
+
+                        // 4. Tick boxes
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.CheckBox,
+                            label = if (state.isChecklist) "Hide tick\nboxes" else "Tick\nboxes",
+                            isDark = isDark,
+                            isActive = state.isChecklist,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                onToggleChecklistMode()
+                            }
+                        )
+
+                        // 5. Drawing sketch
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.Brush,
+                            label = "Drawing\nsketch",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                showSketchDialog = true
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Row 2 of Grid:
+                    // Duplicate | Table of contents | Document stats | Editorial typography | Font style
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 1. Duplicate (swapped with Copy text)
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.CopyAll,
+                            label = "Duplicate",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                onDuplicate()
+                            }
+                        )
+
+                        // 2. Table of contents
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.FormatListNumbered,
+                            label = "Table of\ncontents",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                showTocSheet = true
+                            }
+                        )
+
+                        // 3. Document statistics
+                        KeepOverflowGridItem(
+                            icon = Icons.AutoMirrored.Outlined.Article,
+                            label = "Document\nstats",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                showDocumentStatsSheet = true
+                            }
+                        )
+
+                        // 4. Editorial typography
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.FormatLineSpacing,
+                            label = "Editorial\ntypography",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                showEditorialSheet = true
+                            }
+                        )
+
+                        // 5. Font style
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.FontDownload,
+                            label = "Font\nstyle",
+                            isDark = isDark,
+                            isActive = showFontPicker,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                showFontPicker = !showFontPicker
+                                showColorPicker = false
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Row 3 of Grid:
+                    // Zen Focus mode | Attached files | Insert element | Move to trash | Spacer
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 1. Zen Focus mode
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.Fullscreen,
+                            label = "Zen Focus\nmode",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                isZenMode = true
+                            }
+                        )
+
+                        // 2. Attached files
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.AttachFile,
+                            label = "Attached\nfiles",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                showAttachmentOptionsSheet = true
+                            }
+                        )
+
+                        // 3. Insert element (table, math, callout, code)
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.AddBox,
+                            label = "Insert\nelement",
+                            isDark = isDark,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                showNotesnookInsertSheet = true
+                            }
+                        )
+
+                        // 4. Move to trash
+                        KeepOverflowGridItem(
+                            icon = Icons.Outlined.Delete,
+                            label = "Move to\ntrash",
+                            isDark = isDark,
+                            tint = Color(0xFFEF4444), // Prominent RED trash icon matching the UI
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                onDelete()
+                            }
+                        )
+
+                        // 5. Empty spacer to align 4 items symmetrically in 5-column grid
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -1951,6 +2427,9 @@ fun KeepNoteEditor(
                 },
                 onOpenTableDialog = {
                     showTableDialog = true
+                },
+                onPasteAsMcq = {
+                    pasteAndFormatMcq()
                 },
                 isDark = isDark
             )
@@ -2120,7 +2599,7 @@ fun KeepNoteEditor(
 
                     KeepAddOptionRow(
                         icon = Icons.Outlined.Mic,
-                        title = "Recording",
+                        title = "Live transcription",
                         onClick = {
                             showAddSheet = false
                             onStartVoiceRecording()
@@ -2264,6 +2743,77 @@ fun KeepNoteEditor(
                 bottomInset = navBarBottom
             )
         }
+    }
+}
+
+@Composable
+private fun KeepOverflowGridItem(
+    icon: ImageVector,
+    label: String,
+    isDark: Boolean,
+    modifier: Modifier = Modifier,
+    tint: Color? = null,
+    isActive: Boolean = false,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    if (isActive) {
+                        if (isDark) Color(0xFF2C323D) else Color(0xFFE0E7FF)
+                    } else {
+                        if (isDark) Color(0xFF212328) else Color(0xFFF1F3F5)
+                    }
+                )
+                .border(
+                    1.dp,
+                    if (isActive) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    } else {
+                        if (isDark) Color(0xFF2B2E35) else Color(0xFFE2E4E9)
+                    },
+                    RoundedCornerShape(12.dp)
+                )
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = ripple(bounded = true),
+                    onClick = onClick
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label.replace("\n", " "),
+                tint = tint ?: if (isActive) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    if (isDark) Color(0xFFC7CAD2) else Color(0xFF374151)
+                },
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            lineHeight = 13.sp,
+            color = if (isActive) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                if (isDark) Color(0xFFA0A3AD) else Color(0xFF4B5563)
+            },
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            minLines = 2,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

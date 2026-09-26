@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
@@ -49,7 +50,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatClear
+import androidx.compose.material.icons.filled.FormatColorText
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Functions
@@ -82,6 +85,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,6 +125,10 @@ fun NotesnookEditorDrawer(
     onClearFormatting: () -> Unit,
     selectedFontKey: String,
     onFontChange: (String) -> Unit,
+    selectedFontColorHex: String? = null,
+    onFontColorChange: (String?) -> Unit = {},
+    textAlign: TextAlign = TextAlign.Start,
+    onCycleAlignment: () -> Unit = {},
     fontSizeSp: Float,
     onFontSizeChange: (Float) -> Unit,
     lineHeightSp: Float,
@@ -131,8 +139,7 @@ fun NotesnookEditorDrawer(
     isDark: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var showUpperTier by remember { mutableStateOf(true) }
-    var showHeadingMenu by remember { mutableStateOf(false) }
+    var showUpperTier by remember { mutableStateOf(false) }
     var showFontMenu by remember { mutableStateOf(false) }
     var showListMenu by remember { mutableStateOf(false) }
     var showCalloutMenu by remember { mutableStateOf(false) }
@@ -176,29 +183,29 @@ fun NotesnookEditorDrawer(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Outdent / Indent
-                    NotesnookTileButton(
-                        onClick = { onIndent(true) },
-                        contentDescription = "Outdent",
-                        isDark = isDark
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.FormatAlignLeft,
-                            contentDescription = "Outdent",
-                            tint = onBgColor,
-                            modifier = Modifier.size(18.dp)
-                        )
+                    // Text Alignment Cycler Button (Cycles: Left -> Center -> Right -> Left)
+                    val alignIcon = when (textAlign) {
+                        TextAlign.Center -> Icons.Filled.FormatAlignCenter
+                        TextAlign.End, TextAlign.Right -> Icons.AutoMirrored.Filled.FormatAlignRight
+                        else -> Icons.AutoMirrored.Filled.FormatAlignLeft
+                    }
+                    val alignDesc = when (textAlign) {
+                        TextAlign.Center -> "Center Aligned (Tap to align Right)"
+                        TextAlign.End, TextAlign.Right -> "Right Aligned (Tap to align Left)"
+                        else -> "Left Aligned (Tap to align Center)"
                     }
 
                     NotesnookTileButton(
-                        onClick = { onIndent(false) },
-                        contentDescription = "Indent",
-                        isDark = isDark
+                        isActive = textAlign != TextAlign.Start && textAlign != TextAlign.Left,
+                        onClick = onCycleAlignment,
+                        contentDescription = alignDesc,
+                        isDark = isDark,
+                        activeTint = activeTint
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.FormatAlignRight,
-                            contentDescription = "Indent",
-                            tint = onBgColor,
+                            imageVector = alignIcon,
+                            contentDescription = alignDesc,
+                            tint = if (textAlign != TextAlign.Start && textAlign != TextAlign.Left) activeTint else onBgColor,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -471,7 +478,7 @@ fun NotesnookEditorDrawer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // Insert `+` (Opens authentic Notesnook Insert Sheet)
+                // 1. Insert `+` (Opens authentic Notesnook Insert Sheet)
                 NotesnookTileButton(
                     onClick = onOpenInsertMenu,
                     contentDescription = "Insert Elements",
@@ -485,21 +492,132 @@ fun NotesnookEditorDrawer(
                     )
                 }
 
-                // Clear formatting `⌫`
+                // 2. Heading / Paragraph Cycler Button `[ P ]` / `[ H1 ]` / `[ H2 ]` / `[ H3 ]`
+                val currentLevel = activeStyles.headingLevel
+                val headingCycleLabel = when (currentLevel) {
+                    1 -> "H1"
+                    2 -> "H2"
+                    3 -> "H3"
+                    4 -> "H4"
+                    5 -> "H5"
+                    6 -> "H6"
+                    else -> "P"
+                }
+                val isHeadingActive = currentLevel > 0
+
                 NotesnookTileButton(
-                    onClick = onClearFormatting,
-                    contentDescription = "Clear formatting",
-                    isDark = isDark
+                    isActive = isHeadingActive,
+                    onClick = {
+                        // Cycle: P (0) -> H1 (1) -> H2 (2) -> H3 (3) -> P (0)
+                        val nextLevel = when (currentLevel) {
+                            0 -> 1
+                            1 -> 2
+                            2 -> 3
+                            else -> 0
+                        }
+                        onToggleHeading(nextLevel)
+                    },
+                    contentDescription = "Text Heading $headingCycleLabel (Tap to cycle: P → H1 → H2 → H3)",
+                    isDark = isDark,
+                    activeTint = activeTint
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.FormatClear,
-                        contentDescription = "Clear formatting",
-                        tint = onBgColor.copy(alpha = 0.7f),
-                        modifier = Modifier.size(17.dp)
+                    Text(
+                        text = headingCycleLabel,
+                        style = TextStyle(
+                            fontSize = if (currentLevel == 0) 13.sp else 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isHeadingActive) activeTint else onBgColor
+                        )
                     )
                 }
 
-                // `[ B ]` Bold Tile
+                // 3. Font Family Selector Dropdown
+                val currentFontName = KeepFontPalette.allFonts.firstOrNull {
+                    it.key.equals(selectedFontKey, ignoreCase = true)
+                }?.name ?: "Sans-serif"
+
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isDark) Color(0xFF1E2126) else Color(0xFFE5E7EB))
+                            .clickable { showFontMenu = true }
+                            .padding(horizontal = 7.dp)
+                    ) {
+                        Text(
+                            text = currentFontName,
+                            style = TextStyle(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = onBgColor
+                            ),
+                            maxLines = 1
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "Select font",
+                            tint = onBgColor.copy(alpha = 0.7f),
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showFontMenu,
+                        onDismissRequest = { showFontMenu = false },
+                        modifier = Modifier.background(popupBg)
+                    ) {
+                        KeepFontPalette.allFonts.forEach { fontStyleItem ->
+                            val isSelected = fontStyleItem.key.equals(selectedFontKey, ignoreCase = true)
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = fontStyleItem.name,
+                                                style = TextStyle(
+                                                    fontFamily = fontStyleItem.fontFamily,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (isSelected) activeTint else onBgColor
+                                                )
+                                            )
+                                            Text(
+                                                text = fontStyleItem.description,
+                                                style = TextStyle(
+                                                    fontSize = 11.sp,
+                                                    color = onBgColor.copy(alpha = 0.6f)
+                                                )
+                                            )
+                                        }
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = null,
+                                                tint = activeTint,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onFontChange(fontStyleItem.key)
+                                    showFontMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                CompactSeparator(isDark)
+
+                // 4. `[ B ]` Bold Tile
                 NotesnookTileButton(
                     isActive = activeStyles.isBold,
                     onClick = onToggleBold,
@@ -517,7 +635,7 @@ fun NotesnookEditorDrawer(
                     )
                 }
 
-                // `[ I ]` Italic Tile
+                // 5. `[ I ]` Italic Tile
                 NotesnookTileButton(
                     isActive = activeStyles.isItalic,
                     onClick = onToggleItalic,
@@ -536,7 +654,7 @@ fun NotesnookEditorDrawer(
                     )
                 }
 
-                // `[ U ]` Underline Tile
+                // 6. `[ U ]` Underline Tile
                 NotesnookTileButton(
                     isActive = activeStyles.isUnderline,
                     onClick = onToggleUnderline,
@@ -555,7 +673,7 @@ fun NotesnookEditorDrawer(
                     )
                 }
 
-                // `[ S ]` Strikethrough Tile
+                // 7. `[ S ]` Strikethrough Tile
                 NotesnookTileButton(
                     isActive = activeStyles.isStrikethrough,
                     onClick = onToggleStrikethrough,
@@ -574,7 +692,144 @@ fun NotesnookEditorDrawer(
                     )
                 }
 
-                // `[ ⋮ ]` Toggle Upper Tier Bar
+                // 8. Clear formatting `⌫` (placed immediately after strikethrough button)
+                NotesnookTileButton(
+                    onClick = onClearFormatting,
+                    contentDescription = "Clear formatting",
+                    isDark = isDark
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.FormatClear,
+                        contentDescription = "Clear formatting",
+                        tint = onBgColor.copy(alpha = 0.7f),
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+
+                // 9. Font Color Change Dropdown
+                var showColorMenu by remember { mutableStateOf(false) }
+                val activeFontColor = selectedFontColorHex?.let {
+                    try { Color(android.graphics.Color.parseColor(it)) } catch (_: Exception) { null }
+                }
+                Box {
+                    NotesnookTileButton(
+                        isActive = showColorMenu || activeFontColor != null,
+                        onClick = { showColorMenu = !showColorMenu },
+                        contentDescription = "Font Color",
+                        isDark = isDark,
+                        activeTint = activeTint
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.FormatColorText,
+                                contentDescription = "Text Color",
+                                tint = activeFontColor ?: onBgColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .width(14.dp)
+                                    .height(2.5.dp)
+                                    .clip(RoundedCornerShape(1.dp))
+                                    .background(activeFontColor ?: activeTint)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showColorMenu,
+                        onDismissRequest = { showColorMenu = false },
+                        modifier = Modifier.background(popupBg)
+                    ) {
+                        val colorOptions = listOf(
+                            Triple("Default", null, if (isDark) Color.White else Color.Black),
+                            Triple("Red", "#EF4444", Color(0xFFEF4444)),
+                            Triple("Orange", "#F97316", Color(0xFFF97316)),
+                            Triple("Amber", "#F59E0B", Color(0xFFF59E0B)),
+                            Triple("Green", "#10B981", Color(0xFF10B981)),
+                            Triple("Cyan", "#06B6D4", Color(0xFF06B6D4)),
+                            Triple("Blue", "#3B82F6", Color(0xFF3B82F6)),
+                            Triple("Purple", "#8B5CF6", Color(0xFF8B5CF6)),
+                            Triple("Pink", "#EC4899", Color(0xFFEC4899))
+                        )
+
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                text = "Font Color",
+                                style = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold, color = onBgColor.copy(alpha = 0.7f)),
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                colorOptions.take(5).forEach { (name, hex, swatch) ->
+                                    val isColorSelected = (hex == null && selectedFontColorHex == null) || (hex != null && hex.equals(selectedFontColorHex, ignoreCase = true))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(swatch)
+                                            .border(
+                                                width = if (isColorSelected) 2.dp else 1.dp,
+                                                color = if (isColorSelected) activeTint else borderColor,
+                                                shape = CircleShape
+                                            )
+                                            .clickable {
+                                                onFontColorChange(hex)
+                                                showColorMenu = false
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isColorSelected) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = name,
+                                                tint = if (hex == null && !isDark) Color.White else if (hex == "#F59E0B") Color.Black else Color.White,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                colorOptions.drop(5).forEach { (name, hex, swatch) ->
+                                    val isColorSelected = hex != null && hex.equals(selectedFontColorHex, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(swatch)
+                                            .border(
+                                                width = if (isColorSelected) 2.dp else 1.dp,
+                                                color = if (isColorSelected) activeTint else borderColor,
+                                                shape = CircleShape
+                                            )
+                                            .clickable {
+                                                onFontColorChange(hex)
+                                                showColorMenu = false
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isColorSelected) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Check,
+                                                contentDescription = name,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                CompactSeparator(isDark)
+
+                // 10. `[ ⋮ ]` Toggle Upper Tier Bar
                 NotesnookTileButton(
                     isActive = showUpperTier,
                     onClick = { showUpperTier = !showUpperTier },
@@ -592,7 +847,7 @@ fun NotesnookEditorDrawer(
 
                 CompactSeparator(isDark)
 
-                // `—` `16px` `+` (Inline Text Size Stepper)
+                // 11. `—` `16px` `+` (Inline Text Size Stepper)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
@@ -650,169 +905,6 @@ fun NotesnookEditorDrawer(
                             tint = onBgColor,
                             modifier = Modifier.size(14.dp)
                         )
-                    }
-                }
-
-                CompactSeparator(isDark)
-
-                // `Paragraph ˅` / `H1 ˅` Dropdown Menu
-                val headingLabel = when (activeStyles.headingLevel) {
-                    1 -> "H1"
-                    2 -> "H2"
-                    3 -> "H3"
-                    4 -> "H4"
-                    5 -> "H5"
-                    6 -> "H6"
-                    else -> "Paragraph"
-                }
-
-                Box {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        modifier = Modifier
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (activeStyles.headingLevel > 0) activeTint.copy(alpha = 0.15f) else Color.Transparent)
-                            .clickable { showHeadingMenu = true }
-                            .padding(horizontal = 8.dp)
-                    ) {
-                        Text(
-                            text = headingLabel,
-                            style = TextStyle(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (activeStyles.headingLevel > 0) activeTint else activeTint
-                            )
-                        )
-                        Icon(
-                            imageVector = Icons.Filled.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = activeTint,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-
-                    DropdownMenu(
-                        expanded = showHeadingMenu,
-                        onDismissRequest = { showHeadingMenu = false }
-                    ) {
-                        val headings = listOf(
-                            0 to "Paragraph",
-                            1 to "H1",
-                            2 to "H2",
-                            3 to "H3",
-                            4 to "H4",
-                            5 to "H5",
-                            6 to "H6"
-                        )
-                        headings.forEach { (level, name) ->
-                            val isSelected = activeStyles.headingLevel == level
-                            DropdownMenuItem(
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = name,
-                                            style = TextStyle(
-                                                fontSize = if (level in 1..3) (16 - level).sp else 14.sp,
-                                                fontWeight = if (level > 0) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) activeTint else onBgColor
-                                            )
-                                        )
-                                        if (isSelected) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Check,
-                                                contentDescription = null,
-                                                tint = activeTint,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onToggleHeading(level)
-                                    showHeadingMenu = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                CompactSeparator(isDark)
-
-                // `Sans-serif ˅` Font Selector Dropdown Menu
-                val currentFontName = KeepFontPalette.allFonts.firstOrNull {
-                    it.key.equals(selectedFontKey, ignoreCase = true)
-                }?.name ?: "Sans-serif"
-
-                Box {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        modifier = Modifier
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { showFontMenu = true }
-                            .padding(horizontal = 8.dp)
-                    ) {
-                        Text(
-                            text = currentFontName,
-                            style = TextStyle(
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Normal,
-                                color = onBgColor
-                            )
-                        )
-                        Icon(
-                            imageVector = Icons.Filled.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = onBgColor.copy(alpha = 0.6f),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-
-                    DropdownMenu(
-                        expanded = showFontMenu,
-                        onDismissRequest = { showFontMenu = false }
-                    ) {
-                        KeepFontPalette.allFonts.forEach { fontItem ->
-                            val isSelected = fontItem.key.equals(selectedFontKey, ignoreCase = true)
-                            DropdownMenuItem(
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = fontItem.name,
-                                            style = TextStyle(
-                                                fontFamily = fontItem.fontFamily,
-                                                fontSize = 14.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) activeTint else onBgColor
-                                            )
-                                        )
-                                        if (isSelected) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Check,
-                                                contentDescription = null,
-                                                tint = activeTint,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onFontChange(fontItem.key)
-                                    showFontMenu = false
-                                }
-                            )
-                        }
                     }
                 }
             }

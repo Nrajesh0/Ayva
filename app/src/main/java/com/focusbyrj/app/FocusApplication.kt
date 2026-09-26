@@ -45,6 +45,8 @@ class FocusApplication : Application(), ImageLoaderFactory {
     
     override fun onCreate() {
         super.onCreate()
+        com.focusbyrj.app.util.diagnostics.AppLogger.init(this)
+        com.focusbyrj.app.util.diagnostics.CrashHandler.init(this)
         try {
             net.sqlcipher.database.SQLiteDatabase.loadLibs(this)
         } catch (t: Throwable) {
