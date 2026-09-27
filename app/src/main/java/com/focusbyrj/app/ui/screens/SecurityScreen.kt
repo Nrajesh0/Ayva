@@ -95,6 +95,8 @@ fun SecurityScreen(navController: NavController) {
     var isRestoring by remember { mutableStateOf(false) }
     var pendingExportPassword by remember { mutableStateOf<String?>(null) }
     var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var exportErrorAlert by remember { mutableStateOf<String?>(null) }
+    var exportSuccessMetadata by remember { mutableStateOf<BackupRestoreManager.BackupMetadata?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     // Diagnostics State
@@ -111,22 +113,14 @@ fun SecurityScreen(navController: NavController) {
                 isExporting = false
                 pendingExportPassword = null
                 if (result.isSuccess) {
-                    val meta = result.getOrNull()
-                    Toast.makeText(
-                        context,
-                        "Backup encrypted & saved successfully! (${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks)",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    exportSuccessMetadata = result.getOrNull()
                 } else {
-                    Toast.makeText(
-                        context,
-                        "Failed to create backup: ${result.exceptionOrNull()?.message}",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    exportErrorAlert = result.exceptionOrNull()?.message ?: "Backup export failed."
                 }
             }
         } else {
             pendingExportPassword = null
+            isExporting = false
         }
     }
 
@@ -423,7 +417,14 @@ fun SecurityScreen(navController: NavController) {
                         action = {
                             Button(
                                 onClick = {
-                                    showExportPasswordDialog = true
+                                    coroutineScope.launch {
+                                        val (canExport, reason) = BackupRestoreManager.canCreateBackup(context)
+                                        if (!canExport) {
+                                            exportErrorAlert = reason
+                                        } else {
+                                            showExportPasswordDialog = true
+                                        }
+                                    }
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -611,6 +612,73 @@ fun SecurityScreen(navController: NavController) {
                 pendingExportPassword = password
                 val suggestedName = BackupRestoreManager.generateBackupFileName()
                 exportLauncher.launch(suggestedName)
+            }
+        )
+    }
+
+    // Exporting In-Progress Modal Dialog
+    if (isExporting) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { /* Modal: cannot dismiss while writing */ }) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
+                    Spacer(modifier = Modifier.width(20.dp))
+                    Column {
+                        Text(
+                            "Exporting Backup...",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Encrypting databases and media. Please wait...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Export Success Confirmation Dialog
+    if (exportSuccessMetadata != null) {
+        val meta = exportSuccessMetadata!!
+        AlertDialog(
+            onDismissRequest = { exportSuccessMetadata = null },
+            icon = { Icon(Icons.Filled.Security, contentDescription = null, tint = Color(0xFF10B981)) },
+            title = { Text("Backup Saved Successfully") },
+            text = {
+                Text("Your encrypted backup has been saved!\n\n• Notes: ${meta.noteCount}\n• Tasks: ${meta.taskCount}\n• Habits: ${meta.habitCount}\n• Drill Sessions: ${meta.drillCount}\n• App Restrictions: ${meta.restrictionCount}")
+            },
+            confirmButton = {
+                Button(onClick = { exportSuccessMetadata = null }) {
+                    Text("Done")
+                }
+            }
+        )
+    }
+
+    // Export Error Dialog
+    if (exportErrorAlert != null) {
+        AlertDialog(
+            onDismissRequest = { exportErrorAlert = null },
+            icon = { Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Backup Not Created") },
+            text = {
+                Text(exportErrorAlert ?: "Unknown backup error.")
+            },
+            confirmButton = {
+                Button(onClick = { exportErrorAlert = null }) {
+                    Text("OK")
+                }
             }
         )
     }

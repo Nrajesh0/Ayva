@@ -142,7 +142,7 @@ object BubbleChatManager {
 
     fun isInactiveTimeout(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val lastActivity = prefs.getLong(KEY_LAST_ACTIVITY, 0L)
+        val lastActivity = prefs.getSafeLong(KEY_LAST_ACTIVITY, 0L)
         if (lastActivity == 0L) return false
         return (System.currentTimeMillis() - lastActivity) > INACTIVITY_TIMEOUT_MS
     }

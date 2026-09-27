@@ -40,6 +40,7 @@ import com.focusbyrj.app.util.DailyQuestManager
 import com.focusbyrj.app.util.FocusEconomyManager
 import com.focusbyrj.app.util.FocusStatsManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import androidx.room.withTransaction
 import org.json.JSONArray
@@ -100,6 +101,27 @@ object BackupRestoreManager {
     fun generateBackupFileName(): String {
         val dateFormat = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault())
         return "FocusBackup_${dateFormat.format(Date())}.focusbackup"
+    }
+
+    /**
+     * Pre-checks whether a backup can be created without failures.
+     * Returns false with a user-facing explanation if e.g. the Secret Archive Vault is locked.
+     */
+    suspend fun canCreateBackup(context: Context): Pair<Boolean, String?> = withContext(Dispatchers.IO) {
+        try {
+            val app = context.applicationContext as FocusApplication
+            val noteDb = NoteDatabase.getInstance(app)
+            val notes = noteDb.noteDao().getAllNotesList()
+            val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
+            val hasLockedVaultNotes = notes.any { VaultPayloadEncryptor.isVaultEncrypted(it) } && subKey == null
+            if (hasLockedVaultNotes) {
+                Pair(false, "Your Secret Archive Vault is locked. Please unlock your Secret Archive Vault with your PIN or biometrics before creating a backup, so all notes can be secured.")
+            } else {
+                Pair(true, null)
+            }
+        } catch (_: Exception) {
+            Pair(true, null)
+        }
     }
 
     /**
@@ -344,60 +366,93 @@ object BackupRestoreManager {
 
                 // Preferences
                 val prefsObj = JSONObject()
+                val prefTypesObj = JSONObject()
                 PREF_FILES.forEach { prefName ->
                     val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                     val map = sp.all
                     val pObj = JSONObject()
+                    val tObj = JSONObject()
                     map.forEach { (k, v) ->
-                        if (v is Set<*>) {
-                            pObj.put(k, JSONArray(v))
-                        } else {
-                            pObj.put(k, v ?: JSONObject.NULL)
+                        when (v) {
+                            is Boolean -> {
+                                pObj.put(k, v)
+                                tObj.put(k, "bool")
+                            }
+                            is Int -> {
+                                pObj.put(k, v)
+                                tObj.put(k, "int")
+                            }
+                            is Long -> {
+                                pObj.put(k, v)
+                                tObj.put(k, "long")
+                            }
+                            is Float -> {
+                                pObj.put(k, v.toDouble())
+                                tObj.put(k, "float")
+                            }
+                            is Set<*> -> {
+                                pObj.put(k, JSONArray(v))
+                                tObj.put(k, "set")
+                            }
+                            is String -> {
+                                pObj.put(k, v)
+                                tObj.put(k, "string")
+                            }
+                            else -> {
+                                pObj.put(k, v ?: JSONObject.NULL)
+                            }
                         }
                     }
                     prefsObj.put(prefName, pObj)
+                    prefTypesObj.put(prefName, tObj)
                 }
                 put("preferences", prefsObj)
+                put("preferenceTypes", prefTypesObj)
             }
 
             // 3. Stream unencrypted entries directly into encrypted output stream
-            app.contentResolver.openOutputStream(destinationUri)?.use { outStream ->
-                CryptoBackupEngine.openEncryptingStream(outStream, password.toCharArray()).use { encryptingStream ->
-                    ZipOutputStream(BufferedOutputStream(encryptingStream)).use { zipOut ->
-                        // Write data.json
-                        zipOut.putNextEntry(ZipEntry("data.json"))
-                        zipOut.write(rootJson.toString().toByteArray(Charsets.UTF_8))
-                        zipOut.closeEntry()
+            withContext(NonCancellable) {
+                app.contentResolver.openOutputStream(destinationUri)?.use { outStream ->
+                    CryptoBackupEngine.openEncryptingStream(outStream, password.toCharArray()).use { encryptingStream ->
+                        ZipOutputStream(BufferedOutputStream(encryptingStream)).use { zipOut ->
+                            // Write data.json
+                            zipOut.putNextEntry(ZipEntry("data.json"))
+                            zipOut.write(rootJson.toString().toByteArray(Charsets.UTF_8))
+                            zipOut.closeEntry()
 
-                        // Package media files directly with buffered stream
-                        val buffer = ByteArray(32 * 1024)
-                        MEDIA_FOLDERS.forEach { folderName ->
-                            val mediaDir = File(app.filesDir, folderName)
-                            if (mediaDir.exists() && mediaDir.isDirectory) {
-                                mediaDir.listFiles()?.forEach { file ->
-                                    if (file.isFile && file.length() > 0) {
-                                        zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
-                                        FileInputStream(file).use { input ->
-                                            var read = input.read(buffer)
-                                            while (read != -1) {
-                                                zipOut.write(buffer, 0, read)
-                                                read = input.read(buffer)
+                            // Package media files directly with buffered stream
+                            val buffer = ByteArray(32 * 1024)
+                            MEDIA_FOLDERS.forEach { folderName ->
+                                val mediaDir = File(app.filesDir, folderName)
+                                if (mediaDir.exists() && mediaDir.isDirectory) {
+                                    mediaDir.listFiles()?.forEach { file ->
+                                        if (file.isFile && file.length() > 0) {
+                                            zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
+                                            FileInputStream(file).use { input ->
+                                                var read = input.read(buffer)
+                                                while (read != -1) {
+                                                    zipOut.write(buffer, 0, read)
+                                                    read = input.read(buffer)
+                                                }
                                             }
+                                            zipOut.closeEntry()
                                         }
-                                        zipOut.closeEntry()
                                     }
                                 }
                             }
+                            zipOut.flush()
                         }
-                        zipOut.flush()
                     }
-                }
-            } ?: throw IOException("Could not open destination file stream.")
+                } ?: throw IOException("Could not open destination file stream.")
+            }
 
             Log.i(TAG, "Encrypted backup created successfully: ${metadata.noteCount} notes, ${metadata.taskCount} tasks.")
             Result.success(metadata)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create encrypted backup", e)
+            try {
+                android.provider.DocumentsContract.deleteDocument(context.contentResolver, destinationUri)
+            } catch (_: Exception) {}
             Result.failure(e)
         }
     }
@@ -718,11 +773,13 @@ object BackupRestoreManager {
 
             // 11. Restore SharedPreferences
             val prefsObj = rootJson.optJSONObject("preferences")
+            val prefTypesObj = rootJson.optJSONObject("preferenceTypes")
             if (prefsObj != null) {
                 val keys = prefsObj.keys()
                 while (keys.hasNext()) {
                     val prefName = keys.next()
                     val pObj = prefsObj.getJSONObject(prefName)
+                    val tObj = prefTypesObj?.optJSONObject(prefName)
                     val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                     val editor = sp.edit()
                     if (cleanRestore) {
@@ -732,19 +789,48 @@ object BackupRestoreManager {
                     while (innerKeys.hasNext()) {
                         val k = innerKeys.next()
                         val v = pObj.get(k)
-                        when (v) {
-                            is Boolean -> editor.putBoolean(k, v)
-                            is Int -> editor.putInt(k, v)
-                            is Long -> editor.putLong(k, v)
-                            is Float -> editor.putFloat(k, v)
-                            is Double -> editor.putFloat(k, v.toFloat())
-                            is String -> editor.putString(k, v)
-                            is JSONArray -> {
-                                val set = mutableSetOf<String>()
-                                for (s in 0 until v.length()) {
-                                    set.add(v.getString(s))
+                        val explicitType = if (tObj?.has(k) == true) tObj.getString(k) else null
+
+                        if (explicitType != null) {
+                            when (explicitType) {
+                                "bool" -> editor.putBoolean(k, pObj.optBoolean(k))
+                                "int" -> editor.putInt(k, pObj.optInt(k))
+                                "long" -> editor.putLong(k, pObj.optLong(k))
+                                "float" -> editor.putFloat(k, pObj.optDouble(k).toFloat())
+                                "string" -> editor.putString(k, pObj.optString(k))
+                                "set" -> {
+                                    val arr = pObj.optJSONArray(k)
+                                    val set = mutableSetOf<String>()
+                                    if (arr != null) {
+                                        for (s in 0 until arr.length()) {
+                                            set.add(arr.getString(s))
+                                        }
+                                    }
+                                    editor.putStringSet(k, set)
                                 }
-                                editor.putStringSet(k, set)
+                            }
+                        } else {
+                            // Smart type resolution for legacy backups without explicit types
+                            if (isKnownLongPreference(prefName, k) && v is Number) {
+                                editor.putLong(k, v.toLong())
+                            } else if (isKnownFloatPreference(prefName, k) && v is Number) {
+                                editor.putFloat(k, v.toFloat())
+                            } else {
+                                when (v) {
+                                    is Boolean -> editor.putBoolean(k, v)
+                                    is Int -> editor.putInt(k, v)
+                                    is Long -> editor.putLong(k, v)
+                                    is Float -> editor.putFloat(k, v)
+                                    is Double -> editor.putFloat(k, v.toFloat())
+                                    is String -> editor.putString(k, v)
+                                    is JSONArray -> {
+                                        val set = mutableSetOf<String>()
+                                        for (s in 0 until v.length()) {
+                                            set.add(v.getString(s))
+                                        }
+                                        editor.putStringSet(k, set)
+                                    }
+                                }
                             }
                         }
                     }
@@ -777,5 +863,28 @@ object BackupRestoreManager {
             Log.e(TAG, "Failed to restore encrypted backup", e)
             Result.failure(e)
         }
+    }
+
+    private fun isKnownLongPreference(prefName: String, key: String): Boolean {
+        if (key.startsWith("focus_day_")) return true
+        if (key.startsWith("drill_day_")) return true
+        if (key.startsWith("unlock_")) return true
+        if (key.endsWith("_timestamp") || key.endsWith("_expiry") || key.endsWith("_time") || key.endsWith("_ms")) {
+            return true
+        }
+        if (prefName == "focus_stats_prefs" && (key == "app_install_timestamp" || key.contains("streak_last_date_epoch"))) return true
+        if (prefName == "aptitude_economy_prefs" && key == "xp_boost_expiry_timestamp") return true
+        if (prefName == "usage_break_tracker_prefs" && key.contains("alert_time")) return true
+        if (prefName == "bubble_chat_prefs" && key == "last_chat_activity_timestamp") return true
+        if (prefName == "auto_backup_scheduler_prefs" && key == "last_backup_timestamp_ms") return true
+        return false
+    }
+
+    private fun isKnownFloatPreference(prefName: String, key: String): Boolean {
+        if (key == "xp_boost_multiplier" || key == "chat_font_size_sp") return true
+        if (key.endsWith("_multiplier") || key.endsWith("_scale") || key.endsWith("_sp") || key.endsWith("_fraction")) {
+            return true
+        }
+        return false
     }
 }

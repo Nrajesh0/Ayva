@@ -32,7 +32,7 @@ object TemporaryUnlockManager {
     fun isUnlocked(context: Context, packageName: String): Boolean {
         if (packageName.isBlank() || packageName == "Unknown") return false
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val expiryTime = prefs.getLong("unlock_$packageName", 0L)
+        val expiryTime = prefs.getSafeLong("unlock_$packageName", 0L)
         return System.currentTimeMillis() < expiryTime
     }
 

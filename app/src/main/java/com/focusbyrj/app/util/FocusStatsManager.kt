@@ -137,7 +137,7 @@ object FocusStatsManager {
         _themeFlow.value = HeatmapTheme.fromId(themeId)
         
         val interceptionKey = getDailyInterceptionKey(Calendar.getInstance())
-        _interceptionsFlow.value = prefs.getInt(interceptionKey, 0)
+        _interceptionsFlow.value = prefs.getSafeInt(interceptionKey, 0)
 
         refreshStats(context)
     }
@@ -145,7 +145,7 @@ object FocusStatsManager {
     fun addInterception(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = getDailyInterceptionKey(Calendar.getInstance())
-        val currentCount = prefs.getInt(key, 0)
+        val currentCount = prefs.getSafeInt(key, 0)
         prefs.edit().putInt(key, currentCount + 1).apply()
         _interceptionsFlow.value = currentCount + 1
         FocusEconomyManager.addResist()
@@ -178,7 +178,7 @@ object FocusStatsManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val cal = Calendar.getInstance()
         val key = getDailyKey(cal)
-        val currentMs = prefs.getLong(key, 0L)
+        val currentMs = prefs.getSafeLong(key, 0L)
         val newMs = currentMs + deltaMs
         prefs.edit().putLong(key, newMs).apply()
 
@@ -196,7 +196,7 @@ object FocusStatsManager {
 
     fun refreshStats(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val installTime = prefs.getLong(KEY_INSTALL_TIME, System.currentTimeMillis())
+        val installTime = prefs.getSafeLong(KEY_INSTALL_TIME, System.currentTimeMillis())
         val installCal = Calendar.getInstance().apply { timeInMillis = installTime }
         
         installCal.set(Calendar.HOUR_OF_DAY, 0)
@@ -215,7 +215,7 @@ object FocusStatsManager {
                 dailyMap[dayOfYear] = 0L
             } else {
                 val key = getDailyKey(dayCal)
-                val focusMs = prefs.getLong(key, 0L)
+                val focusMs = prefs.getSafeLong(key, 0L)
                 dailyMap[dayOfYear] = focusMs
             }
         }
@@ -251,7 +251,7 @@ object FocusStatsManager {
             }
         }
 
-        var maxStreak = prefs.getInt(KEY_LONGEST_STREAK, 0)
+        var maxStreak = prefs.getSafeInt(KEY_LONGEST_STREAK, 0)
         var runningStreak = 0
         for (i in -30..0) {
             val checkCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, i) }

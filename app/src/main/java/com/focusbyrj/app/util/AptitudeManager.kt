@@ -118,7 +118,7 @@ object AptitudeManager {
                     }
 
                     for ((key, count) in dayCounts) {
-                        val currentVal = p.getLong(key, 0L)
+                        val currentVal = p.getSafeLong(key, 0L)
                         if (count > currentVal) {
                             editor.putLong(key, count)
                             modified = true
@@ -297,10 +297,10 @@ object AptitudeManager {
 
     fun getXpMultiplier(): Float {
         val p = prefs ?: return 1.0f
-        val expiry = p.getLong(KEY_XP_BOOST_EXPIRY, 0L)
+        val expiry = p.getSafeLong(KEY_XP_BOOST_EXPIRY, 0L)
         val now = System.currentTimeMillis()
         return if (now < expiry) {
-            p.getFloat(KEY_XP_BOOST_MULTIPLIER, 2.0f)
+            p.getSafeFloat(KEY_XP_BOOST_MULTIPLIER, 2.0f)
         } else {
             1.0f
         }
@@ -308,13 +308,13 @@ object AptitudeManager {
 
     fun isXpBoostActive(): Boolean {
         val p = prefs ?: return false
-        val expiry = p.getLong(KEY_XP_BOOST_EXPIRY, 0L)
+        val expiry = p.getSafeLong(KEY_XP_BOOST_EXPIRY, 0L)
         return System.currentTimeMillis() < expiry
     }
 
     fun getXpBoostRemainingMinutes(): Int {
         val p = prefs ?: return 0
-        val expiry = p.getLong(KEY_XP_BOOST_EXPIRY, 0L)
+        val expiry = p.getSafeLong(KEY_XP_BOOST_EXPIRY, 0L)
         val remainingMillis = expiry - System.currentTimeMillis()
         return if (remainingMillis > 0) {
             (remainingMillis / (60 * 1000L)).toInt() + 1
@@ -406,7 +406,7 @@ object AptitudeManager {
             val dayCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, i) }
             val dayOfYear = dayCal.get(Calendar.DAY_OF_YEAR)
             val key = getDailyDrillKey(dayCal)
-            val count = p.getLong(key, 0L)
+            val count = p.getSafeLong(key, 0L)
             dailyDrillMap[dayOfYear] = count
         }
 
@@ -492,7 +492,7 @@ object AptitudeManager {
         // Track daily drill count for heatmap
         val cal = Calendar.getInstance()
         val dailyKey = getDailyDrillKey(cal)
-        val currentDailyDrills = prefs?.getLong(dailyKey, 0L) ?: 0L
+        val currentDailyDrills = prefs?.getSafeLong(dailyKey, 0L) ?: 0L
         val updatedDailyDrills = currentDailyDrills + 1L
 
         // Weekly XP

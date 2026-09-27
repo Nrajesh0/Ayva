@@ -196,7 +196,7 @@ object UsageBreakTracker {
         if (isNightTime) {
             // Night rule: 45 continuous minutes of single app usage
             if (continuousAppUsageMs >= NIGHT_APP_USAGE_THRESHOLD_MS) {
-                val lastAlert = prefs.getLong(KEY_LAST_NIGHT_ALERT_TIME, 0L)
+                val lastAlert = prefs.getSafeLong(KEY_LAST_NIGHT_ALERT_TIME, 0L)
                 if (now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val appName = getAppFriendlyName(context, trackedAppPackage)
                     val message = AyvaDialogueEngine.getNightSleepSuggestion(context, appName)
@@ -207,7 +207,7 @@ object UsageBreakTracker {
         } else {
             // Day rule 1: 90 continuous minutes on a single app (with grace period for quick messages)
             if (continuousAppUsageMs >= DAY_APP_USAGE_THRESHOLD_MS) {
-                val lastAlert = prefs.getLong(KEY_LAST_DAY_SINGLE_ALERT_TIME, 0L)
+                val lastAlert = prefs.getSafeLong(KEY_LAST_DAY_SINGLE_ALERT_TIME, 0L)
                 if (now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val appName = getAppFriendlyName(context, trackedAppPackage)
                     val message = AyvaDialogueEngine.getDaySingleAppBreakSuggestion(context, appName)
@@ -218,7 +218,7 @@ object UsageBreakTracker {
 
             // Day rule 2: 2 continuous hours (120 mins) total screen time across any apps
             if (continuousTotalScreenMs >= DAY_TOTAL_SCREEN_THRESHOLD_MS) {
-                val lastAlert = prefs.getLong(KEY_LAST_DAY_TOTAL_ALERT_TIME, 0L)
+                val lastAlert = prefs.getSafeLong(KEY_LAST_DAY_TOTAL_ALERT_TIME, 0L)
                 if (now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val message = AyvaDialogueEngine.getDayTotalScreenBreakSuggestion(context)
                     sendBubbleReminder(context, message)

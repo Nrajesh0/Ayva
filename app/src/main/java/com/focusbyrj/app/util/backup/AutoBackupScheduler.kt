@@ -20,6 +20,7 @@ package com.focusbyrj.app.util.backup
 import android.content.Context
 import android.util.Log
 import com.focusbyrj.app.data.note.NoteDatabase
+import com.focusbyrj.app.util.getSafeLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,7 +59,7 @@ object AutoBackupScheduler {
 
         // 2. Check if last backup is older than 24 hours (catch-up on app open)
         val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val lastBackupMs = prefs.getLong(KEY_LAST_BACKUP_MS, 0L)
+        val lastBackupMs = prefs.getSafeLong(KEY_LAST_BACKUP_MS, 0L)
         val now = System.currentTimeMillis()
         if (now - lastBackupMs > INTERVAL_MS) {
             val executionScope = scope ?: CoroutineScope(Dispatchers.IO)
