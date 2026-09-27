@@ -293,6 +293,48 @@ class HabitRepository(private val habitDao: HabitDao) {
         calculateStreaksFromLogs(habitId, targetPerDay, todayLog, logs)
     }
 
+    /**
+     * Records or updates habit progress for a specific date (yyyy-MM-dd) over the week.
+     */
+    suspend fun recordHabitProgressForDate(
+        habitId: Long,
+        date: String,
+        count: Int
+    ) = withContext(Dispatchers.IO) {
+        val habit = habitDao.getHabitById(habitId) ?: return@withContext
+        val existingLog = habitDao.getLogForHabitAndDate(habitId, date)
+        val now = System.currentTimeMillis()
+        val target = habit.targetPerDay
+        val updatedLog = if (existingLog != null) {
+            existingLog.copy(
+                completedCount = count,
+                targetCount = target,
+                lastCompletedTimestamp = now
+            )
+        } else {
+            HabitLog(
+                habitId = habitId,
+                date = date,
+                completedCount = count,
+                targetCount = target,
+                lastCompletedTimestamp = now
+            )
+        }
+        habitDao.insertOrUpdateLog(updatedLog)
+    }
+
+    /**
+     * Removes mock / placeholder starter habits so users only see their own real data.
+     */
+    suspend fun cleanPlaceholderData() = withContext(Dispatchers.IO) {
+        val placeholderTitles = setOf("Hydration Protocol", "Deep Reading", "Mindful Focus")
+        val allHabits = habitDao.getAllHabitsSync()
+        allHabits.filter { it.title in placeholderTitles }.forEach { habit ->
+            habitDao.deleteLogsForHabit(habit.id)
+            habitDao.deleteHabit(habit)
+        }
+    }
+
     companion object {
         fun getPresetHabits(): List<Habit> = listOf(
             Habit(

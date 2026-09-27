@@ -56,6 +56,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -76,6 +80,8 @@ import coil.compose.AsyncImage
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.R
 import com.focusbyrj.app.data.AppRestriction
+import com.focusbyrj.app.data.HabitWithProgress
+import com.focusbyrj.app.data.HabitDaySummary
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.data.note.NoteEntity
@@ -384,6 +390,9 @@ fun AccountScreen(
                         },
                         onManageAppBlockingClick = {
                             navController?.navigate(Screen.AddRestriction.route) { launchSingleTop = true }
+                        },
+                        onHabitsClick = {
+                            navController?.navigate(Screen.Habits.route) { launchSingleTop = true }
                         }
                     )
                 }
@@ -966,7 +975,7 @@ private fun EnclaveQuickStatsRow(
             modifier = Modifier.weight(1f),
             value = "$level",
             label = "LEVEL",
-            icon = Icons.Filled.Star,
+            icon = Icons.Filled.MilitaryTech,
             iconTint = colors.accentCyan
         )
 
@@ -1003,20 +1012,31 @@ private fun EnclaveStatCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .padding(horizontal = 12.dp, vertical = 12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.Bottom) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    val valueFontSize = when {
+                        value.any { it.isLetter() } && value.length >= 5 -> 13.sp
+                        value.any { it.isLetter() } -> 14.sp
+                        value.length >= 5 -> 14.sp
+                        else -> 16.sp
+                    }
                     Text(
                         text = value,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = valueFontSize
                         ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         color = colors.textPrimary
                     )
                     if (unit != null) {
@@ -1024,20 +1044,21 @@ private fun EnclaveStatCard(
                         Text(
                             text = unit,
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp
                             ),
                             color = colors.textMuted,
-                            modifier = Modifier.padding(bottom = 3.dp)
+                            modifier = Modifier.padding(bottom = 1.5.dp)
                         )
                     }
                 }
                 if (icon != null) {
+                    Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         imageVector = icon,
                         contentDescription = label,
                         tint = iconTint,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -1045,8 +1066,8 @@ private fun EnclaveStatCard(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 10.sp,
                     letterSpacing = 0.5.sp
                 ),
                 color = colors.textMuted
@@ -1225,39 +1246,60 @@ private fun EnclaveTabsRow(
 ) {
     val tabs = listOf("Overview", "Achievements", "Logs")
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 20.dp)
     ) {
-        tabs.forEachIndexed { index, tabTitle ->
-            val isSelected = selectedTabIndex == index
-            Column(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable { onTabSelected(index) }
-                    .padding(vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = tabTitle,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        fontSize = 16.sp
-                    ),
-                    color = if (isSelected) colors.textPrimary else colors.textMuted
+        // Faded baseline track separating top tabs from bottom content
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            colors.textMuted.copy(alpha = 0.35f),
+                            colors.textMuted.copy(alpha = 0.25f),
+                            colors.textMuted.copy(alpha = 0.12f)
+                        )
+                    )
                 )
-                Spacer(modifier = Modifier.height(6.dp))
-                // Active solid underline indicator
-                Box(
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            tabs.forEachIndexed { index, tabTitle ->
+                val isSelected = selectedTabIndex == index
+                Column(
                     modifier = Modifier
-                        .width(if (isSelected) 48.dp else 0.dp)
-                        .height(2.5.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(if (isSelected) colors.textPrimary else Color.Transparent)
-                )
+                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                        .clickable { onTabSelected(index) }
+                        .padding(top = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = tabTitle,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 15.5.sp
+                        ),
+                        color = if (isSelected) colors.textPrimary else colors.textMuted
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // Active solid underline indicator connecting directly onto the baseline
+                    Box(
+                        modifier = Modifier
+                            .width(if (isSelected) 48.dp else 0.dp)
+                            .height(2.5.dp)
+                            .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                            .background(if (isSelected) colors.textPrimary else Color.Transparent)
+                    )
+                }
             }
         }
     }
@@ -1289,7 +1331,8 @@ private fun OverviewTabContent(
     onLockAppImmediately: () -> Unit,
     onOpenNote: (Long) -> Unit,
     onChoosePinnedNotesClick: () -> Unit,
-    onManageAppBlockingClick: () -> Unit
+    onManageAppBlockingClick: () -> Unit,
+    onHabitsClick: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -1363,13 +1406,14 @@ private fun OverviewTabContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // ── SECTION 2: REAL-TIME APP BLOCKING ──────────────────────────────────
+        // ── SECTION 2: DISCIPLINE & SHIELDS ───────────────────────────────────
         EnclaveAppBlockingSection(
             colors = colors,
             restrictions = restrictions,
             dailyResisted = dailyResisted,
             lifetimeResists = profile.lifetimeResists,
-            onManageClick = onManageAppBlockingClick
+            onManageClick = onManageAppBlockingClick,
+            onHabitsClick = onHabitsClick
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -1571,7 +1615,7 @@ private fun EnclaveMatrixSection(
                                 text = "$activeStreak",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
+                                    fontSize = 18.sp
                                 ),
                                 color = colors.textPrimary
                             )
@@ -1579,14 +1623,14 @@ private fun EnclaveMatrixSection(
                             Text(
                                 text = "DAYS",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.SemiBold,
                                     fontSize = 11.sp
                                 ),
                                 color = colors.textMuted,
-                                modifier = Modifier.padding(bottom = 2.dp)
+                                modifier = Modifier.padding(bottom = 1.5.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(3.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Filled.Adjust,
@@ -1599,7 +1643,7 @@ private fun EnclaveMatrixSection(
                                 text = if (activeStreak > 0) "+100%" else "+0%",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.SemiBold,
-                                    fontSize = 11.sp
+                                    fontSize = 10.sp
                                 ),
                                 color = colors.textSecondary
                             )
@@ -1607,7 +1651,7 @@ private fun EnclaveMatrixSection(
                     }
 
                     // Col 2: ALL-TIME RECORD
-                    Column(modifier = Modifier.weight(1.2f)) {
+                    Column(modifier = Modifier.weight(1.15f)) {
                         Text(
                             text = "ALL-TIME RECORD",
                             style = MaterialTheme.typography.labelSmall.copy(
@@ -1623,7 +1667,7 @@ private fun EnclaveMatrixSection(
                                 text = "$longestStreak",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
+                                    fontSize = 18.sp
                                 ),
                                 color = colors.textPrimary
                             )
@@ -1631,19 +1675,19 @@ private fun EnclaveMatrixSection(
                             Text(
                                 text = "DAYS",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.SemiBold,
                                     fontSize = 11.sp
                                 ),
                                 color = colors.textMuted,
-                                modifier = Modifier.padding(bottom = 2.dp)
+                                modifier = Modifier.padding(bottom = 1.5.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(3.dp))
                         Text(
                             text = "CONSISTENT DISCIPLINE",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 9.5.sp
+                                fontSize = 9.sp
                             ),
                             color = colors.textMuted
                         )
@@ -1666,7 +1710,7 @@ private fun EnclaveMatrixSection(
                                 text = "${profile.streakFreezes}",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
+                                    fontSize = 18.sp
                                 ),
                                 color = colors.textPrimary
                             )
@@ -1674,77 +1718,72 @@ private fun EnclaveMatrixSection(
                             Text(
                                 text = "ACTIVE",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.SemiBold,
                                     fontSize = 11.sp
                                 ),
                                 color = colors.textMuted,
-                                modifier = Modifier.padding(bottom = 2.dp)
+                                modifier = Modifier.padding(bottom = 1.5.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(3.dp))
                         Text(
                             text = "STREAK SAFEGUARD",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 9.5.sp
+                                fontSize = 9.sp
                             ),
                             color = colors.textMuted
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Heatmap Grid: M, W, F rows x 18 week columns
                 EnclaveHeatmapGrid(colors = colors, dailyUsage = dailyUsage)
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Heatmap Footer
+                // Heatmap Footer: Balanced 2-sided layout (Multiplier / Boost on left, Legend on right)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "MULTIPLIER: ${multiplier}x",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = colors.textPrimary
-                        )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "MULTIPLIER:",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 10.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    letterSpacing = 0.5.sp
+                                ),
+                                color = colors.textMuted
+                            )
+                            Text(
+                                text = "${multiplier}x",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.5.sp,
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                color = colors.textPrimary
+                            )
+                        }
                         Text(
                             text = "GOLD BOOST",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 10.5.sp,
-                                fontFamily = FontFamily.Monospace
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                letterSpacing = 0.5.sp
                             ),
                             color = colors.accentGold
-                        )
-                    }
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "LEVEL $effectiveLevel OPERATOR",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = colors.textMuted
-                        )
-                        Text(
-                            text = "SYSTEM ACTIVE",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = colors.accentGreen
                         )
                     }
 
@@ -1758,22 +1797,24 @@ private fun EnclaveMatrixSection(
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace,
+                                letterSpacing = 0.5.sp
                             ),
                             color = colors.textMuted
                         )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Box(modifier = Modifier.size(7.dp).clip(RoundedCornerShape(1.5.dp)).background(colors.subCardBg))
-                        Box(modifier = Modifier.size(7.dp).clip(RoundedCornerShape(1.5.dp)).background(colors.accentPrimary.copy(alpha = 0.35f)))
-                        Box(modifier = Modifier.size(7.dp).clip(RoundedCornerShape(1.5.dp)).background(colors.accentPrimary.copy(alpha = 0.65f)))
-                        Box(modifier = Modifier.size(7.dp).clip(RoundedCornerShape(1.5.dp)).background(colors.accentPrimary))
-                        Spacer(modifier = Modifier.width(2.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(colors.subCardBg))
+                        Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(colors.accentPrimary.copy(alpha = 0.25f)))
+                        Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(colors.accentPrimary.copy(alpha = 0.55f)))
+                        Box(modifier = Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(colors.accentPrimary))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = "MORE",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace,
+                                letterSpacing = 0.5.sp
                             ),
                             color = colors.textMuted
                         )
@@ -1789,6 +1830,11 @@ private fun EnclaveHeatmapGrid(colors: EnclaveColors, dailyUsage: Map<Int, Long>
     val context = LocalContext.current
     val rowLabels = listOf("M", "", "W", "", "F", "", "")
     val totalCols = 18
+    val scrollState = rememberScrollState()
+
+    LaunchedEffect(Unit) {
+        scrollState.scrollTo(scrollState.maxValue)
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1801,14 +1847,14 @@ private fun EnclaveHeatmapGrid(colors: EnclaveColors, dailyUsage: Map<Int, Long>
         ) {
             for (r in 0..6) {
                 Box(
-                    modifier = Modifier.size(11.dp),
+                    modifier = Modifier.size(14.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     if (rowLabels[r].isNotEmpty()) {
                         Text(
                             text = rowLabels[r],
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 fontFamily = FontFamily.Monospace
                             ),
@@ -1823,7 +1869,7 @@ private fun EnclaveHeatmapGrid(colors: EnclaveColors, dailyUsage: Map<Int, Long>
         Row(
             modifier = Modifier
                 .weight(1f)
-                .horizontalScroll(rememberScrollState(0)),
+                .horizontalScroll(scrollState),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             for (col in 0 until totalCols) {
@@ -1846,8 +1892,8 @@ private fun EnclaveHeatmapGrid(colors: EnclaveColors, dailyUsage: Map<Int, Long>
 
                         Box(
                             modifier = Modifier
-                                .size(11.dp)
-                                .clip(RoundedCornerShape(2.5.dp))
+                                .size(14.dp)
+                                .clip(RoundedCornerShape(3.dp))
                                 .background(cellColor)
                                 .clickable {
                                     val dateStr = SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(targetCal.time)
@@ -1863,7 +1909,307 @@ private fun EnclaveHeatmapGrid(colors: EnclaveColors, dailyUsage: Map<Int, Long>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// B. REAL-TIME APP BLOCKING COMPONENT
+// B0. HABIT 7-DAY VECTOR GRAPH (AREA & SPLINE GRAPH)
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun Habit7DayVectorGraph(
+    weeklyHistory: List<HabitDaySummary>,
+    habitColor: Color,
+    isDark: Boolean,
+    colors: EnclaveColors,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val history = if (weeklyHistory.size == 7) {
+        weeklyHistory
+    } else {
+        val defaultLetters = listOf("M", "T", "W", "T", "F", "S", "S")
+        (0 until 7).map { i ->
+            weeklyHistory.getOrNull(i) ?: HabitDaySummary(
+                date = "Day $i",
+                dayOfWeekLetter = defaultLetters[i],
+                completedCount = 0,
+                targetCount = 1,
+                isCompleted = false,
+                isToday = (i == 6)
+            )
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isDark) Color(0xFF06070B) else colors.subCardBg)
+            .border(1.dp, if (isDark) Color(0xFF141720) else colors.subCardBorder, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+    ) {
+        // Trailing status & legend row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "7-DAY CADENCE GRAPH",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.5.sp
+                ),
+                color = colors.textMuted
+            )
+
+            val hits7Days = history.count { it.isCompleted }
+            val consistencyPct = ((hits7Days * 100) / 7).coerceIn(0, 100)
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(5.dp)
+                        .clip(CircleShape)
+                        .background(if (consistencyPct >= 70) habitColor else colors.textMuted)
+                )
+                Text(
+                    text = "$consistencyPct% CONSISTENCY ($hits7Days/7 DAYS)",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    color = if (consistencyPct >= 70) habitColor else colors.textPrimary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Canvas: Vector Area & Spline Graph
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(66.dp)
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val horizontalPadding = 14.dp.toPx()
+                val topPadding = 8.dp.toPx()
+                val bottomPadding = 8.dp.toPx()
+                val availableWidth = size.width - horizontalPadding * 2f
+                val availableHeight = size.height - topPadding - bottomPadding
+                val stepX = availableWidth / 6f
+                val baseY = size.height - bottomPadding
+
+                // Horizontal Guide Lines: 100% target dashed line
+                drawLine(
+                    color = habitColor.copy(alpha = 0.18f),
+                    start = Offset(horizontalPadding, topPadding),
+                    end = Offset(size.width - horizontalPadding, topPadding),
+                    strokeWidth = 1.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
+                )
+
+                // 50% target dotted line
+                val midY = topPadding + availableHeight * 0.5f
+                drawLine(
+                    color = if (isDark) Color(0xFF1E222A).copy(alpha = 0.5f) else Color(0xFFE2E8F0),
+                    start = Offset(horizontalPadding, midY),
+                    end = Offset(size.width - horizontalPadding, midY),
+                    strokeWidth = 0.8.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f), 0f)
+                )
+
+                // Baseline 0%
+                drawLine(
+                    color = if (isDark) Color(0xFF1A1E26) else Color(0xFFE2E8F0),
+                    start = Offset(horizontalPadding, baseY),
+                    end = Offset(size.width - horizontalPadding, baseY),
+                    strokeWidth = 1.dp.toPx()
+                )
+
+                // Calculate (x, y) for each of the 7 days
+                val points = history.mapIndexed { index, day ->
+                    val ratio = if (day.targetCount > 0) (day.completedCount.toFloat() / day.targetCount.toFloat()).coerceIn(0f, 1f) else 0f
+                    val x = horizontalPadding + index * stepX
+                    val y = topPadding + (1f - ratio) * availableHeight
+                    Offset(x, y)
+                }
+
+                if (points.isNotEmpty()) {
+                    // Build smooth cubic bezier curve
+                    val strokePath = Path()
+                    val fillPath = Path()
+
+                    strokePath.moveTo(points.first().x, points.first().y)
+                    fillPath.moveTo(points.first().x, baseY)
+                    fillPath.lineTo(points.first().x, points.first().y)
+
+                    for (i in 0 until points.size - 1) {
+                        val p0 = points[i]
+                        val p1 = points[i + 1]
+                        val cx1 = p0.x + (p1.x - p0.x) / 2f
+                        val cy1 = p0.y
+                        val cx2 = p0.x + (p1.x - p0.x) / 2f
+                        val cy2 = p1.y
+
+                        strokePath.cubicTo(cx1, cy1, cx2, cy2, p1.x, p1.y)
+                        fillPath.cubicTo(cx1, cy1, cx2, cy2, p1.x, p1.y)
+                    }
+
+                    fillPath.lineTo(points.last().x, baseY)
+                    fillPath.close()
+
+                    // Draw area gradient fill
+                    drawPath(
+                        path = fillPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                habitColor.copy(alpha = 0.38f),
+                                habitColor.copy(alpha = 0.08f),
+                                Color.Transparent
+                            ),
+                            startY = topPadding,
+                            endY = baseY
+                        )
+                    )
+
+                    // Draw curve line
+                    drawPath(
+                        path = strokePath,
+                        color = habitColor,
+                        style = Stroke(
+                            width = 2.6.dp.toPx(),
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
+                    )
+
+                    // Draw interactive data nodes
+                    points.forEachIndexed { i, pt ->
+                        val day = history[i]
+                        val ratio = if (day.targetCount > 0) (day.completedCount.toFloat() / day.targetCount.toFloat()).coerceIn(0f, 1f) else 0f
+                        val isToday = day.isToday
+
+                        when {
+                            ratio >= 1f -> {
+                                // Full hit: glowing outer halo + filled circle + core dot
+                                drawCircle(
+                                    color = habitColor.copy(alpha = 0.35f),
+                                    radius = 6.dp.toPx(),
+                                    center = pt
+                                )
+                                drawCircle(
+                                    color = habitColor,
+                                    radius = 4.2.dp.toPx(),
+                                    center = pt
+                                )
+                                drawCircle(
+                                    color = Color.White,
+                                    radius = 1.8.dp.toPx(),
+                                    center = pt
+                                )
+                            }
+                            ratio > 0f -> {
+                                // Partial hit: stroked ring + core
+                                drawCircle(
+                                    color = habitColor,
+                                    radius = 4.dp.toPx(),
+                                    center = pt,
+                                    style = Stroke(width = 1.8.dp.toPx())
+                                )
+                                drawCircle(
+                                    color = habitColor.copy(alpha = 0.45f),
+                                    radius = 2.2.dp.toPx(),
+                                    center = pt
+                                )
+                            }
+                            else -> {
+                                // 0: muted dot
+                                drawCircle(
+                                    color = if (isDark) Color(0xFF262C38) else Color(0xFFCBD5E1),
+                                    radius = 2.6.dp.toPx(),
+                                    center = pt
+                                )
+                            }
+                        }
+
+                        // Today pulse ring
+                        if (isToday) {
+                            drawCircle(
+                                color = if (isDark) Color.White.copy(alpha = 0.85f) else colors.textPrimary,
+                                radius = 7.5.dp.toPx(),
+                                center = pt,
+                                style = Stroke(width = 1.5.dp.toPx())
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Aligned Day Labels Axis (M, T, W, T, F, S, S)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            history.forEachIndexed { index, day ->
+                val ratio = if (day.targetCount > 0) (day.completedCount.toFloat() / day.targetCount.toFloat()).coerceIn(0f, 1f) else 0f
+                val isToday = day.isToday
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable {
+                            val msg = "${day.dayOfWeekLetter} (${day.date}): ${day.completedCount}/${day.targetCount} completed"
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = day.dayOfWeekLetter,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = if (isToday) (if (isDark) Color.White else colors.textPrimary) else colors.textMuted
+                    )
+
+                    Spacer(modifier = Modifier.height(1.dp))
+
+                    if (isToday) {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 10.dp, height = 2.dp)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(habitColor)
+                        )
+                    } else {
+                        Text(
+                            text = if (ratio >= 1f) "✓" else "${(ratio * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Normal,
+                                fontSize = 7.5.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = if (ratio >= 1f) habitColor else colors.textMuted.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B. DISCIPLINE & SHIELDS: APP RESISTANCE & 7-DAY HABIT CONSISTENCY
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun EnclaveAppBlockingSection(
@@ -1871,15 +2217,53 @@ private fun EnclaveAppBlockingSection(
     restrictions: List<AppRestriction>,
     dailyResisted: Int,
     lifetimeResists: Int,
-    onManageClick: () -> Unit
+    onManageClick: () -> Unit,
+    onHabitsClick: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val app = context.applicationContext as FocusApplication
+    val habitsProgress by app.habitRepository.activeHabitsWithProgress.collectAsState(initial = emptyList())
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        try {
+            app.habitRepository.cleanPlaceholderData()
+        } catch (_: Exception) {}
+    }
+
     val hardApps = restrictions.filter { it.isRestricted && it.mode.equals("HARD", ignoreCase = true) }
     val softApps = restrictions.filter { it.isRestricted && !it.mode.equals("HARD", ignoreCase = true) }
     val totalRestricted = restrictions.count { it.isRestricted }
     val resistedDisplay = if (dailyResisted > 0) dailyResisted else lifetimeResists
 
+    // 7-day calculations from real Room habit logs
+    val totalHabitsCount = habitsProgress.size
+    val totalPossible7Days = totalHabitsCount * 7
+    val totalHit7Days = habitsProgress.sumOf { h -> h.weeklyHistory.count { it.isCompleted } }
+    val consistencyPct = if (totalPossible7Days > 0) ((totalHit7Days * 100) / totalPossible7Days).coerceIn(0, 100) else 0
+
+    val todayCompletedCount = habitsProgress.count { it.isCompletedToday }
+    val longestActiveStreak = habitsProgress.maxOfOrNull { it.currentStreak } ?: 0
+    val streakDisplay = longestActiveStreak
+    val disciplineRank = when {
+        consistencyPct >= 85 -> "Top 1% discipline"
+        consistencyPct >= 65 -> "Top 5% cadence"
+        consistencyPct >= 40 -> "Consistent momentum"
+        else -> "Protocol initializing"
+    }
+    val todayRatio = if (totalHabitsCount > 0) (todayCompletedCount.toFloat() / totalHabitsCount.toFloat()).coerceIn(0f, 1f) else 0f
+    val remainingProtocols = (totalHabitsCount - todayCompletedCount).coerceAtLeast(0)
+
+    // Theme-adaptive styling: darker inset background in dark themes, clean soft inset in light themes
+    val isDark = colors.isDark
+    val panelBg = if (isDark) Color(0xFF090A0E) else colors.subCardBg.copy(alpha = 0.65f)
+    val panelBorder = if (isDark) Color(0xFF1B1E26) else colors.subCardBorder
+    val ringTrackColor = if (isDark) Color(0xFF1E222A) else Color(0xFFE2E8F0)
+    val ringArcColor = if (isDark) Color.White else colors.accentPrimary
+    val watermarkColor = if (isDark) Color.White.copy(alpha = 0.045f) else Color.Black.copy(alpha = 0.04f)
+
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Header
+        // Section Header: [🛡 DISCIPLINE & SHIELDS]   [● X GUARDED]
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1891,12 +2275,12 @@ private fun EnclaveAppBlockingSection(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Shield,
-                    contentDescription = "App Blocking",
+                    contentDescription = "Discipline & Shields",
                     tint = colors.textPrimary,
                     modifier = Modifier.size(15.dp)
                 )
                 Text(
-                    text = "APP BLOCKING",
+                    text = "DISCIPLINE & SHIELDS",
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
@@ -1907,14 +2291,14 @@ private fun EnclaveAppBlockingSection(
                 )
             }
 
-            // ● X APPS RESTRICTED Pill
+            // ● Status Pill (tap to view habits or shields)
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = colors.subCardBg,
                 border = BorderStroke(1.dp, colors.subCardBorder),
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable { onManageClick() }
+                    .clickable { onHabitsClick?.invoke() ?: onManageClick() }
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
@@ -1925,13 +2309,13 @@ private fun EnclaveAppBlockingSection(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(if (totalRestricted > 0) colors.accentCyan else colors.textMuted)
+                            .background(if (totalRestricted > 0 || totalHabitsCount > 0) colors.accentCyan else colors.textMuted)
                     )
                     Text(
-                        text = "$totalRestricted APPS RESTRICTED",
+                        text = if (totalRestricted > 0) "$totalRestricted APPS • $totalHabitsCount HABITS" else "$totalHabitsCount ACTIVE HABITS",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontFamily = FontFamily.Monospace
                         ),
                         color = colors.textPrimary
@@ -1942,7 +2326,7 @@ private fun EnclaveAppBlockingSection(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Main Card
+        // Main Surface Card
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
@@ -1952,289 +2336,600 @@ private fun EnclaveAppBlockingSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(18.dp)
+                    .padding(16.dp)
             ) {
-                // 3 Column Metrics Header
+                // ── DUAL PANELS: TOP METRIC 1 (DEFENSE) & TOP METRIC 2 (HABITS) ──
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Col 1: HARD BLOCKED
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "HARD BLOCKED",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 10.sp,
-                                letterSpacing = 0.5.sp
-                            ),
-                            color = colors.textMuted
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = "${hardApps.size}",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
-                                ),
-                                color = colors.textPrimary
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "APPS",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                ),
-                                color = colors.textMuted,
-                                modifier = Modifier.padding(bottom = 2.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Zero-Access Strict",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 10.5.sp
-                            ),
-                            color = colors.textMuted
-                        )
-                    }
-
-                    // Col 2: SOFT LOCKED
-                    Column(modifier = Modifier.weight(1.2f)) {
-                        Text(
-                            text = "SOFT LOCKED",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 10.sp,
-                                letterSpacing = 0.5.sp
-                            ),
-                            color = colors.textMuted
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = "${softApps.size}",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
-                                ),
-                                color = colors.textPrimary
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "APPS",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                ),
-                                color = colors.textMuted,
-                                modifier = Modifier.padding(bottom = 2.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Wait Timer Delay",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 10.5.sp
-                            ),
-                            color = colors.textMuted
-                        )
-                    }
-
-                    // Col 3: TIMES RESISTED
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "TIMES RESISTED",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 10.sp,
-                                letterSpacing = 0.5.sp
-                            ),
-                            color = colors.textMuted
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = "$resistedDisplay",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp
-                                ),
-                                color = colors.textPrimary
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "TIMES",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp
-                                ),
-                                color = colors.textMuted,
-                                modifier = Modifier.padding(bottom = 2.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Back-outs at barrier",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 10.5.sp
-                            ),
-                            color = colors.textMuted
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Row 1: HARD BLOCKED: Chips
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "HARD BLOCKED:",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = colors.textMuted
-                    )
-
-                    if (hardApps.isNotEmpty()) {
-                        hardApps.forEach { app ->
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = colors.subCardBg,
-                                border = BorderStroke(1.dp, colors.subCardBorder)
+                    // LEFT PANEL: TOP METRIC 1 (DEFENSE) - APP LAUNCHES RESISTED
+                    Surface(
+                        modifier = Modifier.weight(1.15f),
+                        shape = RoundedCornerShape(16.dp),
+                        color = panelBg,
+                        border = BorderStroke(1.dp, panelBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 13.dp)
+                        ) {
+                            // Dot + Header
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isDark) Color(0xFFE2E8F0) else colors.textPrimary)
+                                )
+                                Text(
+                                    text = "APP LAUNCHES RESISTED",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        letterSpacing = 0.5.sp
+                                    ),
+                                    color = colors.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            Text(
+                                text = "Barriers backed out of",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 11.sp
+                                ),
+                                color = colors.textSecondary
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Large Number with Watermark #01
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.BottomStart
+                            ) {
+                                // Background Watermark
+                                Text(
+                                    text = "#01",
+                                    style = MaterialTheme.typography.displayMedium.copy(
+                                        fontSize = 44.sp,
+                                        fontWeight = FontWeight.Black,
+                                        fontFamily = FontFamily.Monospace
+                                    ),
+                                    color = watermarkColor,
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .padding(end = 4.dp, bottom = 2.dp)
+                                )
+
+                                // Foreground Value: 14 TIMES DEFENSE
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    verticalAlignment = Alignment.Bottom
                                 ) {
                                     Text(
-                                        text = app.appName.ifBlank { app.packageName },
+                                        text = "$resistedDisplay",
+                                        style = MaterialTheme.typography.displaySmall.copy(
+                                            fontSize = 36.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = colors.textPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Column(modifier = Modifier.padding(bottom = 4.dp)) {
+                                        Text(
+                                            text = "TIMES",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            ),
+                                            color = colors.textPrimary
+                                        )
+                                        Text(
+                                            text = "DEFENSE",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 9.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                letterSpacing = 1.sp
+                                            ),
+                                            color = colors.textMuted
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Sub-telemetry: Guarded status
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Text(
+                                    text = if (totalRestricted > 0) "$totalRestricted APPS GUARDED" else "NO APPS GUARDED",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.5.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    ),
+                                    color = colors.accentCyan
+                                )
+                                Text(
+                                    text = "•",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 9.sp,
+                                        color = colors.textMuted
+                                    )
+                                )
+                                Text(
+                                    text = "ZERO-ACCESS",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    ),
+                                    color = colors.textSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    // RIGHT PANEL: TOP METRIC 2 (HABITS) - WEEKLY CONSISTENCY SCORE
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        color = panelBg,
+                        border = BorderStroke(1.dp, panelBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 13.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            // Header Row: CONSISTENCY + Pill Badge (Today's progress)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "CONSISTENCY",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        letterSpacing = 0.5.sp
+                                    ),
+                                    color = colors.textPrimary
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isDark) Color(0xFF1E232B) else Color(0xFFE2E8F0)
+                                ) {
+                                    Text(
+                                        text = "$todayCompletedCount/$totalHabitsCount",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp
+                                            fontSize = 9.5.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        ),
+                                        color = colors.textPrimary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Circular Progress Ring: Weekly Consistency Score (86%)
+                            val consistencyRatio = (consistencyPct / 100f).coerceIn(0f, 1f)
+                            Box(
+                                modifier = Modifier.size(66.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(modifier = Modifier.size(66.dp)) {
+                                    val strokeWidth = 5.dp.toPx()
+                                    // Background ring track
+                                    drawCircle(
+                                        color = ringTrackColor,
+                                        style = Stroke(width = strokeWidth)
+                                    )
+                                    // Active progress arc for weekly consistency
+                                    if (consistencyRatio > 0f) {
+                                        drawArc(
+                                            color = ringArcColor,
+                                            startAngle = -90f,
+                                            sweepAngle = 360f * consistencyRatio,
+                                            useCenter = false,
+                                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                        )
+                                    }
+                                }
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "$consistencyPct%",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            fontFamily = FontFamily.Monospace
                                         ),
                                         color = colors.textPrimary
                                     )
                                     Text(
-                                        text = "• Strict",
+                                        text = "7-DAY",
                                         style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Medium
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 7.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            letterSpacing = 0.5.sp
                                         ),
                                         color = colors.textMuted
                                     )
                                 }
                             }
-                        }
-                    } else {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = colors.subCardBg,
-                            border = BorderStroke(1.dp, colors.subCardBorder),
-                            modifier = Modifier.clickable { onManageClick() }
-                        ) {
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Bottom Caption: Percentage of habit targets hit over the last 7 days
                             Text(
-                                text = "None configured (Tap to add)",
+                                text = "Targets hit (7 days)",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Medium
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 8.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    letterSpacing = 0.3.sp
                                 ),
                                 color = colors.textMuted,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ── HABIT CADENCE & CUSTOMIZED 7-DAY GRAPHS (REAL DATA) ──────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "HABIT CADENCE & 7-DAY TELEMETRY",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = 0.5.sp
+                        ),
+                        color = colors.textMuted
+                    )
+
+                    if (totalHabitsCount > 0) {
+                        Text(
+                            text = "$todayCompletedCount/$totalHabitsCount DONE TODAY",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = if (todayCompletedCount == totalHabitsCount && totalHabitsCount > 0) colors.accentGreen else colors.accentCyan
+                        )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Row 2: SOFT LOCKED: Chips
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "SOFT LOCKED:",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = colors.textMuted
-                    )
-
-                    if (softApps.isNotEmpty()) {
-                        softApps.forEach { app ->
-                            val delayStr = if (app.timeLimitMinutes > 0) "${app.timeLimitMinutes}m Delay" else "30s Delay"
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = colors.subCardBg,
-                                border = BorderStroke(1.dp, colors.subCardBorder)
+                if (habitsProgress.isEmpty()) {
+                    // Empty state: invite user to create their first habit protocol
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = panelBg,
+                        border = BorderStroke(1.dp, panelBorder),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onHabitsClick?.invoke() ?: onManageClick() }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(colors.accentCyan.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
                                 ) {
+                                    Text("⚡", fontSize = 16.sp)
+                                }
+                                Column {
                                     Text(
-                                        text = app.appName.ifBlank { app.packageName },
+                                        text = "NO HABITS YET",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            letterSpacing = 0.5.sp
                                         ),
                                         color = colors.textPrimary
                                     )
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "• $delayStr",
+                                        text = "Tap to add your first habit & track real data",
                                         style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Medium
+                                            fontSize = 10.sp
                                         ),
-                                        color = colors.textMuted
+                                        color = colors.textSecondary
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "+ ADD HABIT >",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.5.sp,
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                color = colors.accentCyan
+                            )
+                        }
+                    }
+                } else {
+                    // Per-habit list with individual customized 7-day graphs
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        habitsProgress.take(3).forEach { habitItem ->
+                            val habit = habitItem.habit
+                            val habitColor = remember(habit.colorHex) {
+                                try {
+                                    Color(android.graphics.Color.parseColor(habit.colorHex))
+                                } catch (_: Exception) {
+                                    colors.accentCyan
+                                }
+                            }
+                            val isDone = habitItem.isCompletedToday
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = panelBg,
+                                border = BorderStroke(1.dp, panelBorder),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(13.dp)
+                                ) {
+                                    // Row 1: Icon Orb, Title, Streak & Interactive Log Button
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            // Glowing Squircle Orb for Habit Icon
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .clip(RoundedCornerShape(11.dp))
+                                                    .background(
+                                                        Brush.radialGradient(
+                                                            listOf(
+                                                                habitColor.copy(alpha = 0.32f),
+                                                                habitColor.copy(alpha = 0.08f)
+                                                            )
+                                                        )
+                                                    )
+                                                    .border(1.dp, habitColor.copy(alpha = 0.45f), RoundedCornerShape(11.dp)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(habit.iconEmoji, fontSize = 18.sp)
+                                            }
+
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = habit.title,
+                                                        style = MaterialTheme.typography.titleSmall.copy(
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 13.5.sp
+                                                        ),
+                                                        color = colors.textPrimary,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+
+                                                    if (habitItem.currentStreak > 0) {
+                                                        Surface(
+                                                            shape = CircleShape,
+                                                            color = if (habitItem.streakFrozenToday) colors.accentCyan.copy(alpha = 0.15f) else Color(0xFFF97316).copy(alpha = 0.15f),
+                                                            border = BorderStroke(0.6.dp, if (habitItem.streakFrozenToday) colors.accentCyan.copy(alpha = 0.4f) else Color(0xFFF97316).copy(alpha = 0.4f))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Text(if (habitItem.streakFrozenToday) "🛡️" else "🔥", fontSize = 8.5.sp)
+                                                                Spacer(modifier = Modifier.width(2.dp))
+                                                                Text(
+                                                                    text = "${habitItem.currentStreak}",
+                                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        fontSize = 9.5.sp,
+                                                                        fontFamily = FontFamily.Monospace
+                                                                    ),
+                                                                    color = if (habitItem.streakFrozenToday) colors.accentCyan else Color(0xFFF97316)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.height(1.5.dp))
+
+                                                Text(
+                                                    text = "Target: ${habitItem.targetToday}/day • ${habitItem.totalCompletionsAllTime} total logs",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 10.sp
+                                                    ),
+                                                    color = colors.textMuted,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // Today's Status & Interactive +1 Log Button
+                                        Surface(
+                                            onClick = {
+                                                coroutineScope.launch {
+                                                    try {
+                                                        app.habitRepository.incrementHabitProgress(habit.id)
+                                                    } catch (_: Exception) {}
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(9.dp),
+                                            color = if (isDone) habitColor.copy(alpha = 0.18f) else (if (isDark) Color(0xFF161A22) else Color(0xFFE2E8F0)),
+                                            border = BorderStroke(
+                                                0.9.dp,
+                                                if (isDone) habitColor.copy(alpha = 0.55f) else (if (isDark) Color(0xFF282F3D) else Color(0xFFCBD5E1))
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                if (isDone) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Check,
+                                                        contentDescription = null,
+                                                        tint = habitColor,
+                                                        modifier = Modifier.size(12.dp)
+                                                    )
+                                                    Text(
+                                                        text = "DONE",
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 10.5.sp,
+                                                            fontFamily = FontFamily.Monospace
+                                                        ),
+                                                        color = habitColor
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = "${habitItem.completedToday}/${habitItem.targetToday}",
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 10.5.sp,
+                                                            fontFamily = FontFamily.Monospace
+                                                        ),
+                                                        color = colors.textPrimary
+                                                    )
+                                                    Text(
+                                                        text = "+1",
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 9.5.sp,
+                                                            fontFamily = FontFamily.Monospace
+                                                        ),
+                                                        color = colors.accentCyan
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // THE 7-DAY VECTOR GRAPH FOR THIS HABIT
+                                    Habit7DayVectorGraph(
+                                        weeklyHistory = habitItem.weeklyHistory,
+                                        habitColor = habitColor,
+                                        isDark = isDark,
+                                        colors = colors
                                     )
                                 }
                             }
                         }
-                    } else {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = colors.subCardBg,
-                            border = BorderStroke(1.dp, colors.subCardBorder),
-                            modifier = Modifier.clickable { onManageClick() }
-                        ) {
-                            Text(
-                                text = "None configured (Tap to add)",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                color = colors.textMuted,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+
+                        if (totalHabitsCount > 3) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = panelBg,
+                                border = BorderStroke(1.dp, panelBorder),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onHabitsClick?.invoke() ?: onManageClick() }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "+${totalHabitsCount - 3} MORE HABITS CONFIGURED",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.5.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        ),
+                                        color = colors.textMuted
+                                    )
+                                    Text(
+                                        text = "VIEW ALL >",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.5.sp,
+                                            fontFamily = FontFamily.Monospace
+                                        ),
+                                        color = colors.accentCyan
+                                    )
+                                }
+                            }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Footer: [🛡 ENCLAVE APP SHIELDS] [ACTIVE ENFORCEMENT]
+                // ── FOOTER: STATUS & ACTIONS ──────────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2244,17 +2939,17 @@ private fun EnclaveAppBlockingSection(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.CheckCircle,
-                            contentDescription = null,
-                            tint = colors.accentGreen,
-                            modifier = Modifier.size(13.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(colors.accentGreen)
                         )
                         Text(
-                            text = "ENCLAVE APP SHIELDS",
+                            text = "DISCIPLINE ENGINE ACTIVE",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                                 letterSpacing = 0.5.sp,
                                 fontFamily = FontFamily.Monospace
                             ),
@@ -2262,15 +2957,37 @@ private fun EnclaveAppBlockingSection(
                         )
                     }
 
-                    Text(
-                        text = "ACTIVE ENFORCEMENT",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = colors.accentCyan
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "HABITS >",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = colors.accentCyan,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { onHabitsClick?.invoke() ?: onManageClick() }
+                                .padding(vertical = 2.dp)
+                        )
+                        Text(
+                            text = "SHIELDS >",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = colors.textSecondary,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { onManageClick() }
+                                .padding(vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }

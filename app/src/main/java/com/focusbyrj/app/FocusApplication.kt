@@ -81,6 +81,11 @@ class FocusApplication : Application(), ImageLoaderFactory {
         ioScope.launch {
             com.focusbyrj.app.util.AyvaTalkEngine.warmUp(this@FocusApplication)
             com.focusbyrj.app.util.sync.supabase.AutoSyncManager.init(this@FocusApplication)
+            try {
+                habitRepository.cleanPlaceholderData()
+            } catch (t: Throwable) {
+                android.util.Log.e("FocusApplication", "Failed to clean placeholder habit data", t)
+            }
         }
         AutoBackupScheduler.schedule(this, ioScope)
     }

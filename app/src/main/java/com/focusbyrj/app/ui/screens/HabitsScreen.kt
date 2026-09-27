@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -403,140 +404,297 @@ fun HabitProgressHeroCard(
         label = "heroProgress"
     )
 
+    val cs = MaterialTheme.colorScheme
+    val isDark = cs.surface.luminance() < 0.5f
+
+    // Theme adaptive colors: darker inset panels in dark themes, soft inset in light themes
+    val cardOuterBg = if (isDark) Color(0xFF0F1218) else cs.surface
+    val cardOuterBorder = if (isDark) cs.outlineVariant.copy(alpha = 0.25f) else cs.outline.copy(alpha = 0.22f)
+    val panelBg = if (isDark) Color(0xFF090A0E) else cs.surfaceVariant.copy(alpha = 0.65f)
+    val panelBorder = if (isDark) Color(0xFF1B1E26) else cs.outlineVariant.copy(alpha = 0.28f)
+    val ringTrackColor = if (isDark) Color(0xFF1E222A) else Color(0xFFE2E8F0)
+    val ringArcColor = if (isDark) Color.White else cs.primary
+    val watermarkColor = if (isDark) Color.White.copy(alpha = 0.045f) else Color.Black.copy(alpha = 0.04f)
+
+    val remainingProtocols = (totalCount - completedCount).coerceAtLeast(0)
+    val disciplineRank = when {
+        longestActiveStreak >= 30 -> "Top 1% discipline"
+        longestActiveStreak >= 14 -> "Top 5% cadence"
+        longestActiveStreak >= 7 -> "Top 10% discipline"
+        longestActiveStreak > 0 -> "Building momentum"
+        else -> "Cadence starting"
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
+        shape = RoundedCornerShape(18.dp),
+        color = cardOuterBg,
+        border = BorderStroke(1.dp, cardOuterBorder)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                // Header Category / Capsule
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+            // LEFT PANEL: CURRENT BEST STREAK / CADENCE
+            Surface(
+                modifier = Modifier.weight(1.15f),
+                shape = RoundedCornerShape(16.dp),
+                color = panelBg,
+                border = BorderStroke(1.dp, panelBorder)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 13.dp)
                 ) {
+                    // Dot + Header
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFFE2E8F0) else cs.onSurface)
+                        )
+                        Text(
+                            text = "CURRENT BEST STREAK",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = cs.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
                     Text(
-                        text = "TODAY'S RHYTHM",
+                        text = disciplineRank,
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.1.sp,
+                            fontWeight = FontWeight.Medium,
                             fontSize = 11.sp
                         ),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+                        color = cs.onSurfaceVariant
                     )
 
-                    if (longestActiveStreak > 0) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFF97316).copy(alpha = 0.12f),
-                            border = BorderStroke(0.8.dp, Color(0xFFF97316).copy(alpha = 0.3f))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Large Number with Watermark #01
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.BottomStart
+                    ) {
+                        // Background Watermark
+                        Text(
+                            text = "#01",
+                            style = MaterialTheme.typography.displayMedium.copy(
+                                fontSize = 44.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            ),
+                            color = watermarkColor,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 4.dp, bottom = 2.dp)
+                        )
+
+                        // Foreground Value
+                        Row(
+                            verticalAlignment = Alignment.Bottom
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("🔥", fontSize = 9.sp)
-                                Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "$longestActiveStreak",
+                                style = MaterialTheme.typography.displaySmall.copy(
+                                    fontSize = 36.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = cs.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column(modifier = Modifier.padding(bottom = 4.dp)) {
                                 Text(
-                                    text = "$longestActiveStreak d",
+                                    text = "DAYS",
                                     style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 10.sp
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                                     ),
-                                    color = Color(0xFFEA580C)
+                                    color = cs.onSurface
+                                )
+                                Text(
+                                    text = "CADENCE",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        letterSpacing = 1.sp
+                                    ),
+                                    color = cs.onSurfaceVariant.copy(alpha = 0.7f)
                                 )
                             }
                         }
                     }
 
-                    if (totalCompletionsAllTime > 0) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFF10B981).copy(alpha = 0.12f),
-                            border = BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.3f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("✨", fontSize = 9.sp)
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Text(
-                                    text = "$totalCompletionsAllTime",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 10.sp
-                                    ),
-                                    color = Color(0xFF059669)
-                                )
-                            }
-                        }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Sub-telemetry: All-Time Completions
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Text(
+                            text = "$totalCompletionsAllTime TOTAL",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.5.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            ),
+                            color = Color(0xFF10B981)
+                        )
+                        Text(
+                            text = "•",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.sp,
+                                color = cs.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        )
+                        Text(
+                            text = "ALL-TIME RITUALS",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            ),
+                            color = cs.onSurfaceVariant
+                        )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                val desc = when {
-                    totalCount == 0 -> "Tap + to build daily rituals & micro-habits"
-                    progressRatio >= 1f -> "All daily rituals completed! Outstanding momentum."
-                    completedCount == 0 -> "$totalCount habits scheduled for today."
-                    else -> "$completedCount of $totalCount completed today."
-                }
-                Text(
-                    text = desc,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        letterSpacing = (-0.1).sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 16.sp
-                )
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
-
-            // Minimal Apple Watch-inspired Activity Ring
-            Box(
-                modifier = Modifier.size(52.dp),
-                contentAlignment = Alignment.Center
+            // RIGHT PANEL: DAILY CHARGE & CIRCULAR PROGRESS
+            Surface(
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(16.dp),
+                color = panelBg,
+                border = BorderStroke(1.dp, panelBorder)
             ) {
-                Canvas(modifier = Modifier.size(52.dp)) {
-                    val stroke = 5.5.dp.toPx()
-                    // Soft Track Ring
-                    drawCircle(
-                        color = Color(0xFF0284C7).copy(alpha = 0.12f),
-                        style = Stroke(width = stroke)
-                    )
-                    // Active Gradient Arc
-                    drawArc(
-                        brush = Brush.sweepGradient(
-                            listOf(
-                                Color(0xFF38BDF8),
-                                Color(0xFF0284C7),
-                                Color(0xFF38BDF8)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 13.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Header Row: DAILY CHARGE + Pill Badge
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "DAILY CHARGE",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                letterSpacing = 0.5.sp
+                            ),
+                            color = cs.onSurface
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isDark) Color(0xFF1E232B) else Color(0xFFE2E8F0)
+                        ) {
+                            Text(
+                                text = "$completedCount/$totalCount",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.5.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                ),
+                                color = cs.onSurface,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Circular Progress Ring
+                    Box(
+                        modifier = Modifier.size(66.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.size(66.dp)) {
+                            val strokeWidth = 5.dp.toPx()
+                            // Background ring track
+                            drawCircle(
+                                color = ringTrackColor,
+                                style = Stroke(width = strokeWidth)
+                            )
+                            // Active progress arc
+                            if (animatedProgress > 0f) {
+                                drawArc(
+                                    color = ringArcColor,
+                                    startAngle = -90f,
+                                    sweepAngle = (animatedProgress * 360f).coerceAtLeast(1f),
+                                    useCenter = false,
+                                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                                )
+                            }
+                        }
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${(animatedProgress * 100).toInt()}%",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                ),
+                                color = cs.onSurface
+                            )
+                            Text(
+                                text = if (animatedProgress >= 1f) "SYNCED" else "ACTIVE",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 7.5.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    letterSpacing = 0.5.sp
+                                ),
+                                color = cs.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Bottom Caption
+                    Text(
+                        text = when {
+                            totalCount == 0 -> "NO PROTOCOLS SET"
+                            remainingProtocols == 0 -> "ALL PROTOCOLS SYNCED"
+                            else -> "$remainingProtocols PROTOCOL${if (remainingProtocols == 1) "" else "S"} REMAINING"
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 8.5.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            letterSpacing = 0.5.sp
                         ),
-                        startAngle = -90f,
-                        sweepAngle = (animatedProgress * 360f).coerceAtLeast(1f),
-                        useCenter = false,
-                        style = Stroke(width = stroke, cap = StrokeCap.Round)
+                        color = if (remainingProtocols == 0 && totalCount > 0) Color(0xFF10B981) else cs.onSurfaceVariant.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Text(
-                    text = "${(animatedProgress * 100).toInt()}%",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp,
-                        fontSize = 12.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
             }
         }
     }
