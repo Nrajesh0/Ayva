@@ -36,11 +36,9 @@ object NoteMediaManager {
     fun isAllowedMediaFile(file: File, context: Context? = null): Boolean {
         return try {
             val canonical = file.canonicalFile
-            val parent = canonical.parentFile ?: return false
-            val parentName = parent.name
+            val path = canonical.absolutePath
 
             // Strict blacklist against databases, shared_prefs, or system files
-            val path = canonical.absolutePath
             if (path.contains("/databases") || path.contains("\\databases") ||
                 path.contains("/shared_prefs") || path.contains("\\shared_prefs") ||
                 path.endsWith(".db") || path.endsWith(".db-wal") || path.endsWith(".db-shm") ||
@@ -48,15 +46,23 @@ object NoteMediaManager {
                 return false
             }
 
-            // Must reside in keep_images, keep_audio, or a cache directory
-            if (parentName != "keep_images" && parentName != "keep_audio" && !canonical.path.contains("cache")) {
-                return false
-            }
-
             if (context != null) {
-                val filesDir = context.filesDir.canonicalPath
-                val cacheDir = context.cacheDir.canonicalPath
-                if (!path.startsWith(filesDir) && !path.startsWith(cacheDir)) {
+                val filesCanonical = context.filesDir.canonicalFile
+                val cacheCanonical = context.cacheDir.canonicalFile
+                val keepImagesDir = File(filesCanonical, "keep_images").canonicalPath
+                val keepAudioDir = File(filesCanonical, "keep_audio").canonicalPath
+                val cachePath = cacheCanonical.canonicalPath
+
+                val isUnderImages = path.startsWith(keepImagesDir + File.separator) || path == keepImagesDir
+                val isUnderAudio = path.startsWith(keepAudioDir + File.separator) || path == keepAudioDir
+                val isUnderCache = path.startsWith(cachePath + File.separator) || path == cachePath
+
+                if (!isUnderImages && !isUnderAudio && !isUnderCache) {
+                    return false
+                }
+            } else {
+                val parentName = canonical.parentFile?.name ?: return false
+                if (parentName != "keep_images" && parentName != "keep_audio") {
                     return false
                 }
             }
@@ -170,8 +176,14 @@ object NoteMediaManager {
                 } else {
                     rawNote
                 }
-                note.getImageUris().forEach { validImagePaths.add(it) }
-                note.getAudioUris().forEach { validAudioPaths.add(it) }
+                note.getImageUris().forEach { path ->
+                    validImagePaths.add(path)
+                    try { validImagePaths.add(File(path).canonicalPath) } catch (_: Exception) {}
+                }
+                note.getAudioUris().forEach { path ->
+                    validAudioPaths.add(path)
+                    try { validAudioPaths.add(File(path).canonicalPath) } catch (_: Exception) {}
+                }
 
                 // Collect media referenced inside embedded Notesnook blocks
                 if (note.content.contains(com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.BLOCKS_PREFIX)) {
@@ -180,12 +192,20 @@ object NoteMediaManager {
                         for (b in blocks) {
                             when (b) {
                                 is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Image -> {
-                                    if (b.uri.isNotBlank()) validImagePaths.add(b.uri)
+                                    if (b.uri.isNotBlank()) {
+                                        validImagePaths.add(b.uri)
+                                        try { validImagePaths.add(File(b.uri).canonicalPath) } catch (_: Exception) {}
+                                    }
                                 }
                                 is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Attachment -> {
                                     if (b.uri.isNotBlank()) {
                                         validImagePaths.add(b.uri)
                                         validAudioPaths.add(b.uri)
+                                        try {
+                                            val c = File(b.uri).canonicalPath
+                                            validImagePaths.add(c)
+                                            validAudioPaths.add(c)
+                                        } catch (_: Exception) {}
                                     }
                                 }
                                 else -> {}
@@ -199,7 +219,9 @@ object NoteMediaManager {
             val imagesDir = File(context.filesDir, "keep_images")
             if (imagesDir.exists() && imagesDir.isDirectory) {
                 imagesDir.listFiles()?.forEach { file ->
-                    if (file.isFile && !validImagePaths.contains(file.absolutePath)) {
+                    val abs = file.absolutePath
+                    val can = try { file.canonicalPath } catch (_: Exception) { abs }
+                    if (file.isFile && !validImagePaths.contains(abs) && !validImagePaths.contains(can)) {
                         // Allow 5 minutes grace period for recently captured or drafted images
                         val ageMs = System.currentTimeMillis() - file.lastModified()
                         if (ageMs > 300_000L) {
@@ -215,7 +237,9 @@ object NoteMediaManager {
             val audioDir = File(context.filesDir, "keep_audio")
             if (audioDir.exists() && audioDir.isDirectory) {
                 audioDir.listFiles()?.forEach { file ->
-                    if (file.isFile && !validAudioPaths.contains(file.absolutePath)) {
+                    val abs = file.absolutePath
+                    val can = try { file.canonicalPath } catch (_: Exception) { abs }
+                    if (file.isFile && !validAudioPaths.contains(abs) && !validAudioPaths.contains(can)) {
                         val ageMs = System.currentTimeMillis() - file.lastModified()
                         if (ageMs > 300_000L) {
                             Log.i(TAG, "Removing orphaned audio: ${file.name}")

@@ -6,8 +6,11 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- Exclude databases encrypted with AndroidKeyStore hardware keys -->
+    <exclude domain="database" path="keep_notes_encrypted.db" />
+    <exclude domain="database" path="keep_notes_encrypted.db-wal" />
+    <exclude domain="database" path="keep_notes_encrypted.db-shm" />
+    <!-- Exclude KeyStore-encrypted passphrases and vault credentials -->
+    <exclude domain="sharedpref" path="focus_notes_vault_security_prefs.xml" />
+    <exclude domain="sharedpref" path="focus_notes_archive_vault_security.xml" />
 </full-backup-content>

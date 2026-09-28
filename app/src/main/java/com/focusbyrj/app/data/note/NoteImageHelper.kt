@@ -199,10 +199,14 @@ object NoteImageHelper {
         return try {
             val src = File(originalPath)
             if (!src.exists()) return null
+            if (!NoteMediaManager.isAllowedMediaFile(src, context)) {
+                android.util.Log.w("NoteImageHelper", "Refusing to copy file from unverified or restricted path: $originalPath")
+                return null
+            }
             val imagesDir = File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
             val ext = src.extension.ifEmpty { "jpg" }
             val dest = File(imagesDir, "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext")
-            val rawBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(src) ?: src.readBytes()
+            val rawBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(src) ?: return null
             com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(dest, rawBytes)
             java.util.Arrays.fill(rawBytes, 0.toByte())
             dest.absolutePath
@@ -232,7 +236,7 @@ object NoteImageHelper {
             } else {
                 val file = File(pathOrUri)
                 if (!file.exists()) null
-                else com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file) ?: file.readBytes()
+                else com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
             }
             if (rawBytes == null || rawBytes.isEmpty()) return null
 

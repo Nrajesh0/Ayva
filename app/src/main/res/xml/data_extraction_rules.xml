@@ -1,6 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
-        <!-- Use include and exclude to control what is backed up. -->
+        <!-- Exclude databases encrypted with AndroidKeyStore hardware keys -->
+        <exclude domain="database" path="keep_notes_encrypted.db" />
+        <exclude domain="database" path="keep_notes_encrypted.db-wal" />
+        <exclude domain="database" path="keep_notes_encrypted.db-shm" />
+        <!-- Exclude KeyStore-encrypted passphrases and vault credentials -->
+        <exclude domain="sharedpref" path="focus_notes_vault_security_prefs.xml" />
+        <exclude domain="sharedpref" path="focus_notes_archive_vault_security.xml" />
     </cloud-backup>
+    <device-to-device-transfer>
+        <!-- KeyStore hardware keys cannot transfer across devices -->
+        <exclude domain="database" path="keep_notes_encrypted.db" />
+        <exclude domain="database" path="keep_notes_encrypted.db-wal" />
+        <exclude domain="database" path="keep_notes_encrypted.db-shm" />
+        <exclude domain="sharedpref" path="focus_notes_vault_security_prefs.xml" />
+        <exclude domain="sharedpref" path="focus_notes_archive_vault_security.xml" />
+    </device-to-device-transfer>
 </data-extraction-rules>

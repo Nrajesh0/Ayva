@@ -548,10 +548,14 @@ class AudioMemoManager(private val context: Context) {
             return try {
                 val src = File(originalPath)
                 if (!src.exists()) return null
+                if (!com.focusbyrj.app.data.note.NoteMediaManager.isAllowedMediaFile(src, context)) {
+                    android.util.Log.w("AudioMemoManager", "Refusing to copy audio from unverified or restricted path: $originalPath")
+                    return null
+                }
                 val audioDir = File(context.filesDir, "keep_audio").apply { if (!exists()) mkdirs() }
                 val ext = src.extension.ifEmpty { "m4a" }
                 val dest = File(audioDir, "audio_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext")
-                val rawBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(src) ?: src.readBytes()
+                val rawBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(src) ?: return null
                 com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(dest, rawBytes)
                 java.util.Arrays.fill(rawBytes, 0.toByte())
                 dest.absolutePath

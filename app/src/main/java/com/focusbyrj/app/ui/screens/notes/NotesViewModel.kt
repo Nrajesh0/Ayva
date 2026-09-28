@@ -129,12 +129,24 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun triggerOrphanMediaCleanup() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = NoteDatabase.getInstance(getApplication())
+                NoteMediaManager.cleanOrphanedMedia(getApplication(), db.noteDao())
+            } catch (e: Exception) {
+                Log.e("NotesViewModel", "Failed to run orphaned media cleanup", e)
+            }
+        }
+    }
+
     fun verifyVaultPasscode(pin: String): ArchiveVaultSecurity.VerifyResult {
         val result = ArchiveVaultSecurity.verifyPasscode(getApplication(), pin)
         if (result is ArchiveVaultSecurity.VerifyResult.Success) {
             _isVaultUnlocked.value = true
             _currentFolder.value = NoteFolder.ARCHIVE
             refreshVaultStatus()
+            triggerOrphanMediaCleanup()
         }
         return result
     }
@@ -149,6 +161,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             _isVaultUnlocked.value = true
             _currentFolder.value = NoteFolder.ARCHIVE
             refreshVaultStatus()
+            triggerOrphanMediaCleanup()
         }
         return success
     }
@@ -174,6 +187,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             _isVaultUnlocked.value = true
             _currentFolder.value = NoteFolder.ARCHIVE
             refreshVaultStatus()
+            triggerOrphanMediaCleanup()
         }
         return success
     }
@@ -199,6 +213,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun lockVault() {
         ArchiveVaultSecurity.lockVault()
+        latestNotesCache.clear()
         _isVaultUnlocked.value = false
         if (_currentFolder.value == NoteFolder.ARCHIVE) {
             _currentFolder.value = NoteFolder.NOTES
@@ -1010,10 +1025,15 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 val safeFileName = "att_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext"
                 val destFile = java.io.File(imagesDir, safeFileName)
 
-                context.contentResolver.openInputStream(contentUri)?.use { input ->
-                    val bytes = input.readBytes()
-                    com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(destFile, bytes)
-                    java.util.Arrays.fill(bytes, 0.toByte())
+                try {
+                    context.contentResolver.openInputStream(contentUri)?.use { input ->
+                        com.focusbyrj.app.util.crypto.EncryptedMediaStorage.openEncryptedOutputStream(destFile).use { output ->
+                            input.copyTo(output, bufferSize = 8192)
+                        }
+                    }
+                } catch (t: Throwable) {
+                    destFile.delete()
+                    throw t
                 }
 
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
@@ -1642,16 +1662,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         latestNotesCache.clear()
         viewModelScope.launch(Dispatchers.IO) {
             val trashedNotes = repository.getTrashedNotesSync()
-            // Write pre-op snapshot BEFORE any deletion — if something goes wrong, this
-            // captures the last known good state immediately before empty-trash ran.
-            val noteDao = NoteDatabase.getInstance(getApplication()).noteDao()
-            DataSafetyManager.writePreOpSnapshot(getApplication(), noteDao, "emptyTrash")
             trashedNotes.forEach { note ->
-                com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), note)
-                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", note.id)
-                deleteNoteMediaFiles(note)
+                val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                    com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
+                } else {
+                    note
+                }
+                com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), targetNote)
+                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", targetNote.id)
+                deleteNoteMediaFiles(targetNote)
             }
-            repository.emptyTrash()
+            repository.emptyTrash(getApplication())
             triggerAutoSync()
         }
     }
@@ -1922,6 +1943,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         ArchiveVaultSecurity.lockVault()
+        latestNotesCache.clear()
         audioMemoManager.release()
     }
 }
