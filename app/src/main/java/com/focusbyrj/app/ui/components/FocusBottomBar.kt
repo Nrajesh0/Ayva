@@ -174,13 +174,22 @@ fun FocusBottomBar(
                             ) {
                                 if (!selected) {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    kotlin.runCatching {
+                                    val result = kotlin.runCatching {
                                         navController.navigate(screen.route) {
                                             popUpTo(navController.graph.findStartDestination().id) {
                                                 saveState = true
                                             }
                                             launchSingleTop = true
                                             restoreState = true
+                                        }
+                                    }
+                                    if (result.isFailure) {
+                                        // Fallback direct navigate without restoreState
+                                        kotlin.runCatching {
+                                            navController.navigate(screen.route) {
+                                                popUpTo(navController.graph.findStartDestination().id)
+                                                launchSingleTop = true
+                                            }
                                         }
                                     }
                                 }

@@ -183,6 +183,7 @@ fun NotesScreen(
     onOpenAccount: () -> Unit = {},
     onNavigateToDashboard: () -> Unit = {},
     onNavigateToTodos: () -> Unit = {},
+    onNavigateToRoute: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1621,9 +1622,27 @@ fun NotesScreen(
                             viewModel.addCustomLabel(label)
                             viewModel.addLabelToEditor(label)
                         },
-                        onArchive = { viewModel.archiveCurrentNote() },
-                        onUnarchive = { viewModel.unarchiveCurrentNote() },
-                        onDelete = { viewModel.deleteCurrentNote() },
+                        onArchive = {
+                            viewModel.archiveCurrentNote()
+                            val returnRoute = viewModel.consumeReturnRoute()
+                            if (returnRoute != null) {
+                                onNavigateToRoute?.invoke(returnRoute)
+                            }
+                        },
+                        onUnarchive = {
+                            viewModel.unarchiveCurrentNote()
+                            val returnRoute = viewModel.consumeReturnRoute()
+                            if (returnRoute != null) {
+                                onNavigateToRoute?.invoke(returnRoute)
+                            }
+                        },
+                        onDelete = {
+                            viewModel.deleteCurrentNote()
+                            val returnRoute = viewModel.consumeReturnRoute()
+                            if (returnRoute != null) {
+                                onNavigateToRoute?.invoke(returnRoute)
+                            }
+                        },
                         onUndo = { viewModel.undo() },
                         onRedo = { viewModel.redo() },
                         onDuplicate = { viewModel.duplicateCurrentNote() },
@@ -1642,7 +1661,13 @@ fun NotesScreen(
                         onToggleAudioPlay = { uri -> viewModel.toggleAudioPlayback(uri) },
                         onSeekAudio = { pos -> viewModel.seekAudio(pos) },
                         onRemoveAudio = { uri -> viewModel.removeAudioFromEditor(uri) },
-                        onClose = { viewModel.closeEditor() }
+                        onClose = {
+                            viewModel.closeEditor()
+                            val returnRoute = viewModel.consumeReturnRoute()
+                            if (returnRoute != null) {
+                                onNavigateToRoute?.invoke(returnRoute)
+                            }
+                        }
                     )
                 }
             }

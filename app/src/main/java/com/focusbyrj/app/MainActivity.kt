@@ -176,13 +176,10 @@ class MainActivity : FragmentActivity() {
 
         if (openNoteId != null) {
             viewModel.triggerOpenNote(openNoteId)
-            viewModel.triggerNavigation(Screen.Empty.route)
         } else if (openNewNote) {
             viewModel.triggerOpenNewNote(asChecklist)
-            viewModel.triggerNavigation(Screen.Empty.route)
         } else if (openVoiceNote) {
             viewModel.triggerOpenVoiceNote()
-            viewModel.triggerNavigation(Screen.Empty.route)
         } else if (navigateTo != null) {
             viewModel.triggerNavigation(navigateTo)
         }
@@ -716,6 +713,13 @@ fun MainAppScreen(
                                 launchSingleTop = true
                                 restoreState = true
                             }
+                        },
+                        onNavigateToRoute = { route ->
+                            navController.navigate(route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
                     )
                 }
@@ -736,8 +740,14 @@ fun MainAppScreen(
                     AccountScreen(
                         navController = navController,
                         onOpenNote = { noteId ->
-                            viewModel.triggerOpenNote(noteId)
-                            navController.navigate(Screen.Empty.route) { launchSingleTop = true }
+                            notesViewModel.openNoteById(noteId, returnRoute = Screen.Account.route)
+                            navController.navigate(Screen.Empty.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
                     )
                 }

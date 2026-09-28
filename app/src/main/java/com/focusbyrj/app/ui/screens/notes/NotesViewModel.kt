@@ -87,6 +87,20 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _isVaultUnlocked = MutableStateFlow(false)
     val isVaultUnlocked: StateFlow<Boolean> = _isVaultUnlocked.asStateFlow()
 
+    // Navigation return route when note editor closes (e.g. returning to Profile/Account tab)
+    private val _returnRouteOnClose = MutableStateFlow<String?>(null)
+    val returnRouteOnClose: StateFlow<String?> = _returnRouteOnClose.asStateFlow()
+
+    fun setReturnRouteOnClose(route: String?) {
+        _returnRouteOnClose.value = route
+    }
+
+    fun consumeReturnRoute(): String? {
+        val route = _returnRouteOnClose.value
+        _returnRouteOnClose.value = null
+        return route
+    }
+
     private val _vaultStatus = MutableStateFlow(ArchiveVaultSecurity.getVaultStatus(application))
     val vaultStatus: StateFlow<ArchiveVaultSecurity.VaultStatus> = _vaultStatus.asStateFlow()
 
@@ -777,7 +791,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 current.audioUris != initial.audioUris
     }
 
-    fun openNewNote(asChecklist: Boolean = false) {
+    fun openNewNote(asChecklist: Boolean = false, returnRoute: String? = null) {
+        _returnRouteOnClose.value = returnRoute
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
         autoSaveJob?.cancel()
@@ -902,7 +917,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun openNoteById(noteId: Long) {
+    fun openNoteById(noteId: Long, returnRoute: String? = null) {
+        _returnRouteOnClose.value = returnRoute
         viewModelScope.launch(Dispatchers.IO) {
             val fresh = repository.getNoteByIdSync(noteId)
             val cached = latestNotesCache[noteId]
