@@ -194,12 +194,26 @@ object DataSafetyManager {
                     file.name.contains("SYNC_ANOMALY") -> "Emergency (Sync Anomaly)"
                     else -> "Pre-Op"
                 }
+                // Read JSON once to extract createdAt, noteCount, taskCount — avoids repeated IO per item in the UI list.
+                val (jsonCreatedAt, noteCount, taskCount) = try {
+                    val text = readAtomically(file)
+                    val obj = JSONObject(text)
+                    Triple(
+                        obj.optLong("createdAt", 0L).takeIf { it > 0L } ?: file.lastModified(),
+                        obj.optInt("noteCount", -1),
+                        obj.optInt("taskCount", -1)
+                    )
+                } catch (_: Exception) {
+                    Triple(file.lastModified(), -1, -1)
+                }
                 SnapshotInfo(
                     tag = tag,
                     fileName = file.name,
                     absolutePath = file.absolutePath,
-                    createdAtMs = file.lastModified(),
-                    sizeBytes = file.length()
+                    createdAtMs = jsonCreatedAt,
+                    sizeBytes = file.length(),
+                    noteCount = noteCount,
+                    taskCount = taskCount
                 )
             }
         } catch (e: Exception) {
@@ -530,8 +544,13 @@ object DataSafetyManager {
         val tag: String,
         val fileName: String,
         val absolutePath: String,
+        /** Timestamp from the JSON `createdAt` field (epoch ms). Falls back to file.lastModified(). */
         val createdAtMs: Long,
-        val sizeBytes: Long
+        val sizeBytes: Long,
+        /** Number of notes captured in this snapshot (-1 if unavailable). */
+        val noteCount: Int = -1,
+        /** Number of tasks captured in this snapshot (-1 if unavailable or notes-only snapshot). */
+        val taskCount: Int = -1
     )
 
     // ──────────────────────────────────────────────────────────────────────

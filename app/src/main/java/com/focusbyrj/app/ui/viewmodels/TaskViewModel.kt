@@ -108,7 +108,12 @@ class TaskViewModel(
             try {
                 val app = getApplication<FocusApplication>()
                 val noteDb = NoteDatabase.getInstance(app)
-                DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "emptyTasksTrash", app.database)
+                // CONFLICT-2 fix: take ONE unified multi-table snapshot (notes + tasks + habits
+                // + schedules + restrictions) instead of the previous redundant tasks-only snapshot.
+                // NoteRepository.emptyTrash() would also try to snapshot if given a Context, but
+                // that would create a second fragmented file. By passing null here we let it skip
+                // its own snapshot — the unified one above covers everything.
+                DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "emptyTrash_unified", app.database)
             } catch (_: Exception) {}
             val currentTrashed = repository.getTrashedTasksSync()
             currentTrashed.forEach { t ->

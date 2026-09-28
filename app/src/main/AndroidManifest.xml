@@ -223,7 +223,8 @@
             android:name=".ui.screens.BlockActivity"
             android:exported="false"
             android:launchMode="singleTop"
-            android:excludeFromRecents="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=":blocker"
             android:theme="@style/Theme.FocusByRj" />
         
         <receiver

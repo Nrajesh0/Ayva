@@ -223,6 +223,12 @@ class NoteRepository(
             val ctx = context ?: this.context
             if (ctx != null) {
                 DataSafetyManager.writePreOpSnapshot(ctx, noteDao, "emptyTrash")
+            } else {
+                // BUG-4 fix: log a prominent warning — the pre-op snapshot is skipped
+                // because no Context was available. The permanent delete still proceeds,
+                // but without the safety net. Callers should always pass a Context.
+                Log.w(TAG, "emptyTrash called without Context — pre-op safety snapshot SKIPPED. " +
+                        "Permanent deletion will proceed without a recovery point.")
             }
             noteDao.emptyTrash()
         } catch (e: Exception) {

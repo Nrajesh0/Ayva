@@ -46,6 +46,8 @@ object FocusExitTracker {
     @Volatile
     var exitTimestamp: Long = 0L
     @Volatile
+    var reOpenCount: Int = 0
+    @Volatile
     private var onExitListener: (() -> Unit)? = null
 
     fun setOnExitListener(listener: (() -> Unit)?) {
@@ -53,6 +55,12 @@ object FocusExitTracker {
     }
 
     fun notifyExited(packageName: String?) {
+        if (packageName != null && packageName == lastExitedPackage) {
+            // Same app exiting again after re-open — count it
+            reOpenCount++
+        } else {
+            reOpenCount = 0
+        }
         lastExitedPackage = packageName
         exitTimestamp = System.currentTimeMillis()
         onExitListener?.invoke()
@@ -61,13 +69,16 @@ object FocusExitTracker {
     fun isExitSuppressed(packageName: String?): Boolean {
         if (packageName.isNullOrBlank()) return false
         if (packageName != lastExitedPackage) return false
-        return (System.currentTimeMillis() - exitTimestamp) < 1500L
+        // After 1+ deliberate re-opens, never suppress — treat as bypass attempt
+        if (reOpenCount >= 1) return false
+        return (System.currentTimeMillis() - exitTimestamp) < 700L
     }
 
     fun onNewForegroundAppDetected(packageName: String) {
         if (packageName != lastExitedPackage && packageName.isNotBlank() && packageName != "com.android.systemui") {
             lastExitedPackage = null
             exitTimestamp = 0L
+            reOpenCount = 0
         }
     }
 }
@@ -479,7 +490,7 @@ class FocusBlockerService : Service() {
             val usm = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return null
             val now = System.currentTimeMillis()
 
-            val events = usm.queryEvents(now - 1000 * 10, now) ?: return null
+            val events = usm.queryEvents(now - 3000L, now) ?: return null
             val event = UsageEvents.Event()
             var latestPackage: String? = null
             var latestTime = 0L
@@ -496,8 +507,12 @@ class FocusBlockerService : Service() {
 
             if (latestPackage != null) {
                 if (latestPackage == FocusExitTracker.lastExitedPackage) {
-                    // Ignore ghost resume events that happen exactly when the overlay is removed
-                    if (latestTime <= FocusExitTracker.exitTimestamp + 2000L) {
+                    // Ignore ghost resume events that fire right when the overlay is removed.
+                    // However, if the user has already re-opened this app once (reOpenCount >= 1),
+                    // it's a deliberate bypass attempt — never suppress, block immediately.
+                    val isGhostEvent = latestTime <= FocusExitTracker.exitTimestamp + 700L
+                    val isReopen = FocusExitTracker.reOpenCount >= 1
+                    if (isGhostEvent && !isReopen) {
                         currentForegroundPackage = null
                         return null
                     } else {

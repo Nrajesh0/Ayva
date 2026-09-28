@@ -84,7 +84,8 @@ object BlockOverlayManager {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
                 WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_SECURE,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.FILL
@@ -376,6 +377,7 @@ object BlockOverlayManager {
                                 }
                                 setPadding(32, 22, 32, 22)
                                 setOnClickListener {
+                                    com.focusbyrj.app.util.FocusEconomyManager.applySoftUnlockPenalty()
                                     TemporaryUnlockManager.grantUnlock(context, packageName, unlockMins)
                                     hideOverlay()
                                 }

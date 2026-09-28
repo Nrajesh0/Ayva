@@ -1087,7 +1087,10 @@ fun SafetySnapshotsBottomSheet(
                         isCreatingSnapshot = true
                         coroutineScope.launch {
                             val db = NoteDatabase.getInstance(context)
-                            val ok = DataSafetyManager.writeDailyBackup(context, db.noteDao())
+                            // CONFLICT-4 fix: pass focusDb so tasks, habits, schedules &
+                            // restrictions are included in the manually triggered snapshot.
+                            val focusDb = (context.applicationContext as? com.focusbyrj.app.FocusApplication)?.database
+                            val ok = DataSafetyManager.writeDailyBackup(context, db.noteDao(), focusDb)
                             isCreatingSnapshot = false
                             if (ok) {
                                 snapshots = DataSafetyManager.listAvailableSnapshots(context)
@@ -1145,13 +1148,24 @@ fun SafetySnapshotsBottomSheet(
                         .weight(1f, fill = false)
                 ) {
                     items(snapshots, key = { it.absolutePath }) { snap ->
-                        val noteCount = remember(snap.absolutePath) {
-                            DataSafetyManager.readSnapshotNoteCount(snap.absolutePath)
-                        }
+                        // BUG-2 + BUG-7 fix: note/task counts are now pre-cached in SnapshotInfo
+                        // by listAvailableSnapshots() — no per-item file reads needed here.
                         val formattedDate = remember(snap.createdAtMs) {
                             dateFormat.format(Date(snap.createdAtMs))
                         }
                         val sizeKb = (snap.sizeBytes / 1024L).coerceAtLeast(1L)
+                        // Build a human-readable content summary from pre-cached counts.
+                        val contentSummary = remember(snap.noteCount, snap.taskCount) {
+                            buildString {
+                                if (snap.noteCount >= 0) append("${snap.noteCount} notes")
+                                if (snap.taskCount >= 0) {
+                                    if (isNotEmpty()) append(", ")
+                                    append("${snap.taskCount} tasks")
+                                }
+                                if (isEmpty()) append("Snapshot")
+                                append(" · ${sizeKb} KB")
+                            }
+                        }
 
                         Card(
                             shape = RoundedCornerShape(16.dp),
@@ -1201,7 +1215,7 @@ fun SafetySnapshotsBottomSheet(
                                     Spacer(modifier = Modifier.height(4.dp))
 
                                     Text(
-                                        text = "${if (noteCount >= 0) "$noteCount notes" else "Snapshot"} · ${sizeKb} KB",
+                                        text = contentSummary,
                                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
@@ -1239,8 +1253,13 @@ fun SafetySnapshotsBottomSheet(
             },
             title = { Text("Restore Snapshot?") },
             text = {
+                // Build a content summary from cached counts for the confirm dialog.
+                val parts = mutableListOf<String>()
+                if (snap.noteCount >= 0) parts.add("${snap.noteCount} notes")
+                if (snap.taskCount >= 0) parts.add("${snap.taskCount} tasks")
+                val contentDesc = if (parts.isNotEmpty()) parts.joinToString(", ") else "data"
                 Text(
-                    "This will restore all notes from '${snap.fileName}'. " +
+                    "This will restore $contentDesc from '${snap.fileName}'. " +
                     "A safety snapshot of your current database will be saved first before restoring."
                 )
             },
@@ -1250,13 +1269,16 @@ fun SafetySnapshotsBottomSheet(
                         isRestoring = true
                         coroutineScope.launch {
                             val db = NoteDatabase.getInstance(context)
-                            val result = DataSafetyManager.restoreSnapshot(context, snap.absolutePath, db.noteDao())
+                            // CONFLICT-5 fix: pass focusDb so tasks, habits, schedules &
+                            // restrictions in the snapshot are also restored, not just notes.
+                            val focusDb = (context.applicationContext as? com.focusbyrj.app.FocusApplication)?.database
+                            val result = DataSafetyManager.restoreSnapshot(context, snap.absolutePath, db.noteDao(), focusDb)
                             isRestoring = false
                             selectedSnapshotForRestore = null
                             if (result.isSuccess) {
                                 Toast.makeText(
                                     context,
-                                    "Successfully restored ${result.getOrNull()} notes!",
+                                    "Successfully restored ${result.getOrNull()} items!",
                                     Toast.LENGTH_LONG
                                 ).show()
                                 snapshots = DataSafetyManager.listAvailableSnapshots(context)
