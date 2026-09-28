@@ -19,9 +19,19 @@ package com.focusbyrj.app.util
 
 import android.content.Context
 import android.content.Intent
+import com.focusbyrj.app.data.chat.ActiveDrillStateEntity
+import com.focusbyrj.app.data.chat.AyvaChatDatabase
+import com.focusbyrj.app.data.chat.toEntity
+import com.focusbyrj.app.data.chat.toPersistedChatMessage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -98,16 +108,97 @@ object BubbleChatManager {
     const val ACTION_UNREAD_COUNT_CHANGED = "com.focusbyrj.app.UNREAD_COUNT_CHANGED"
     const val ACTION_MESSAGES_CHANGED = "com.focusbyrj.app.CHAT_MESSAGES_CHANGED"
 
+    private val scope = CoroutineScope(Dispatchers.IO.limitedParallelism(1) + SupervisorJob())
+
     private val _unreadCountFlow = MutableStateFlow(0)
     val unreadCountFlow: StateFlow<Int> = _unreadCountFlow.asStateFlow()
 
     private val _messagesFlow = MutableStateFlow<List<PersistedChatMessage>>(emptyList())
     val messagesFlow: StateFlow<List<PersistedChatMessage>> = _messagesFlow.asStateFlow()
 
+    @Volatile
+    private var isInitialized = false
+
     fun init(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val appContext = context.applicationContext
+        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _unreadCountFlow.value = prefs.getInt(KEY_UNREAD_COUNT, 0)
-        _messagesFlow.value = getMessages(context)
+
+        val database = AyvaChatDatabase.getDatabase(appContext)
+
+        scope.launch {
+            try {
+                val count = database.chatDao().getMessageCount()
+                if (count == 0) {
+                    // Check if legacy messages exist in SharedPreferences
+                    val legacyJson = prefs.getString(KEY_MESSAGES, null)
+                    if (!legacyJson.isNullOrBlank()) {
+                        val legacyList = parseLegacyJson(legacyJson)
+                        if (legacyList.isNotEmpty()) {
+                            database.chatDao().insertMessages(legacyList.map { it.toEntity() })
+                        }
+                        prefs.edit().remove(KEY_MESSAGES).apply()
+                    }
+                }
+
+                // Initial read
+                val initial = database.chatDao().getAllMessagesSync().map { it.toPersistedChatMessage() }
+                if (!isInitialized) {
+                    _messagesFlow.value = initial
+                    isInitialized = true
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("BubbleChatManager", "Error initializing chat DB", e)
+                isInitialized = true
+            }
+        }
+    }
+
+    private fun JSONObject.optNullableString(name: String): String? {
+        return if (has(name) && !isNull(name)) optString(name) else null
+    }
+
+    private fun parseLegacyJson(jsonStr: String): List<PersistedChatMessage> {
+        val list = mutableListOf<PersistedChatMessage>()
+        try {
+            val jsonArray = JSONArray(jsonStr)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    PersistedChatMessage(
+                        id = obj.optString("id", System.currentTimeMillis().toString()),
+                        text = obj.optString("text", ""),
+                        isUser = obj.optBoolean("isUser", false),
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                        firstViewedTimestamp = obj.optLong("firstViewedTimestamp", 0L),
+                        isArithmetic = obj.optBoolean("isArithmetic", false),
+                        arithmeticJson = obj.optNullableString("arithmeticJson"),
+                        isDrillSummary = obj.optBoolean("isDrillSummary", false),
+                        drillSummaryJson = obj.optNullableString("drillSummaryJson"),
+                        isAptitudeProfile = obj.optBoolean("isAptitudeProfile", false),
+                        isStreakPrompt = obj.optBoolean("isStreakPrompt", false),
+                        streakPromptJson = obj.optNullableString("streakPromptJson"),
+                        isTaskSummary = obj.optBoolean("isTaskSummary", false),
+                        taskSummaryJson = obj.optNullableString("taskSummaryJson"),
+                        isTalkAction = obj.optBoolean("isTalkAction", false),
+                        talkActionJson = obj.optNullableString("talkActionJson"),
+                        pendingActionJson = obj.optNullableString("pendingActionJson"),
+                        isDailyQuests = obj.optBoolean("isDailyQuests", false),
+                        isMysteryBox = obj.optBoolean("isMysteryBox", false),
+                        isMorningBrief = obj.optBoolean("isMorningBrief", false) || obj.optString("id", "").startsWith("morning_"),
+                        isEveningBrief = obj.optBoolean("isEveningBrief", false) || obj.optString("id", "").startsWith("evening_"),
+                        isStreakFreezeSkipped = obj.optBoolean("isStreakFreezeSkipped", false) || obj.optString("id", "").startsWith("angry_freeze_"),
+                        isVocabBrief = obj.optBoolean("isVocabBrief", false),
+                        isVocabHub = obj.optBoolean("isVocabHub", false) || obj.optString("id", "").startsWith("vocab_hub_"),
+                        vocabJson = obj.optNullableString("vocabJson"),
+                        isWelcome = obj.optBoolean("isWelcome", false) || obj.optString("id", "").startsWith("welcome_"),
+                        isHabitsSummary = obj.optBoolean("isHabitsSummary", false) || obj.optString("id", "").startsWith("habits_"),
+                        habitsSummaryJson = obj.optNullableString("habitsSummaryJson")
+                    )
+                )
+            }
+        } catch (_: Exception) {}
+        return list
     }
 
     fun getUnreadCount(context: Context): Int {
@@ -221,137 +312,172 @@ object BubbleChatManager {
     }
 
     fun deleteMessage(context: Context, id: String) {
-        val current = getMessages(context).toMutableList()
+        val current = _messagesFlow.value.toMutableList()
         val removed = current.removeAll { it.id == id }
         if (removed) {
-            if (current.isEmpty()) {
-                clearMessages(context)
-            } else {
-                saveMessages(context, current, updateActivityTimestamp = false)
+            _messagesFlow.value = current
+            scope.launch {
+                try {
+                    val db = AyvaChatDatabase.getDatabase(context.applicationContext)
+                    db.chatDao().deleteMessage(id)
+                } catch (_: Exception) {}
             }
+            val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(context.packageName) }
+            context.sendBroadcast(intent)
         }
     }
 
     fun getMessages(context: Context): List<PersistedChatMessage> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val jsonStr = prefs.getString(KEY_MESSAGES, null) ?: return emptyList()
-        val list = mutableListOf<PersistedChatMessage>()
-        try {
-            val jsonArray = JSONArray(jsonStr)
-            for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
-                list.add(
-                    PersistedChatMessage(
-                        id = obj.optString("id", System.currentTimeMillis().toString()),
-                        text = obj.optString("text", ""),
-                        isUser = obj.optBoolean("isUser", false),
-                        timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                        firstViewedTimestamp = obj.optLong("firstViewedTimestamp", 0L),
-                        isArithmetic = obj.optBoolean("isArithmetic", false),
-                        arithmeticJson = if (obj.has("arithmeticJson") && !obj.isNull("arithmeticJson")) obj.optString("arithmeticJson", null) else null,
-                        isDrillSummary = obj.optBoolean("isDrillSummary", false),
-                        drillSummaryJson = if (obj.has("drillSummaryJson") && !obj.isNull("drillSummaryJson")) obj.optString("drillSummaryJson", null) else null,
-                        isAptitudeProfile = obj.optBoolean("isAptitudeProfile", false),
-                        isStreakPrompt = obj.optBoolean("isStreakPrompt", false),
-                        streakPromptJson = if (obj.has("streakPromptJson") && !obj.isNull("streakPromptJson")) obj.optString("streakPromptJson", null) else null,
-                        isTaskSummary = obj.optBoolean("isTaskSummary", false),
-                        taskSummaryJson = if (obj.has("taskSummaryJson") && !obj.isNull("taskSummaryJson")) obj.optString("taskSummaryJson", null) else null,
-                        isTalkAction = obj.optBoolean("isTalkAction", false),
-                        talkActionJson = if (obj.has("talkActionJson") && !obj.isNull("talkActionJson")) obj.optString("talkActionJson", null) else null,
-                        pendingActionJson = if (obj.has("pendingActionJson") && !obj.isNull("pendingActionJson")) obj.optString("pendingActionJson", null) else null,
-                        isDailyQuests = obj.optBoolean("isDailyQuests", false),
-                        isMysteryBox = obj.optBoolean("isMysteryBox", false),
-                        isMorningBrief = obj.optBoolean("isMorningBrief", false) || obj.optString("id", "").startsWith("morning_"),
-                        isEveningBrief = obj.optBoolean("isEveningBrief", false) || obj.optString("id", "").startsWith("evening_"),
-                        isStreakFreezeSkipped = obj.optBoolean("isStreakFreezeSkipped", false) || obj.optString("id", "").startsWith("angry_freeze_"),
-                        isVocabBrief = obj.optBoolean("isVocabBrief", false),
-                        isVocabHub = obj.optBoolean("isVocabHub", false) || obj.optString("id", "").startsWith("vocab_hub_"),
-                        vocabJson = if (obj.has("vocabJson") && !obj.isNull("vocabJson")) obj.optString("vocabJson", null) else null,
-                        isWelcome = obj.optBoolean("isWelcome", false) || obj.optString("id", "").startsWith("welcome_"),
-                        isHabitsSummary = obj.optBoolean("isHabitsSummary", false) || obj.optString("id", "").startsWith("habits_"),
-                        habitsSummaryJson = if (obj.has("habitsSummaryJson") && !obj.isNull("habitsSummaryJson")) obj.optString("habitsSummaryJson", null) else null
-                    )
-                )
+        if (isInitialized) {
+            return _messagesFlow.value
+        }
+        val cached = _messagesFlow.value
+        if (cached.isNotEmpty()) return cached
+        
+        // If not initialized yet, query synchronously once to guarantee callers have messages
+        return try {
+            val db = AyvaChatDatabase.getDatabase(context.applicationContext)
+            runBlocking(Dispatchers.IO) {
+                val list = db.chatDao().getAllMessagesSync().map { it.toPersistedChatMessage() }
+                _messagesFlow.value = list
+                isInitialized = true
+                list
             }
-        } catch (_: Exception) {}
-        _messagesFlow.value = list
-        return list
-    }
-
-    fun saveMessages(context: Context, messages: List<PersistedChatMessage>, updateActivityTimestamp: Boolean = true) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        try {
-            val jsonArray = JSONArray()
-            // Keep last 50 messages to keep storage small and snappy
-            val trimmed = if (messages.size > 50) messages.takeLast(50) else messages
-            trimmed.forEach { msg ->
-                val obj = JSONObject().apply {
-                    put("id", msg.id)
-                    put("text", msg.text)
-                    put("isUser", msg.isUser)
-                    put("timestamp", msg.timestamp)
-                    put("firstViewedTimestamp", msg.firstViewedTimestamp)
-                    put("isArithmetic", msg.isArithmetic)
-                    put("arithmeticJson", msg.arithmeticJson)
-                    put("isDrillSummary", msg.isDrillSummary)
-                    put("drillSummaryJson", msg.drillSummaryJson)
-                    put("isAptitudeProfile", msg.isAptitudeProfile)
-                    put("isStreakPrompt", msg.isStreakPrompt)
-                    put("streakPromptJson", msg.streakPromptJson)
-                    put("isTaskSummary", msg.isTaskSummary)
-                    put("taskSummaryJson", msg.taskSummaryJson)
-                    put("isTalkAction", msg.isTalkAction)
-                    put("talkActionJson", msg.talkActionJson)
-                    put("pendingActionJson", msg.pendingActionJson)
-                    put("isDailyQuests", msg.isDailyQuests)
-                    put("isMysteryBox", msg.isMysteryBox)
-                    put("isMorningBrief", msg.isMorningBrief)
-                    put("isEveningBrief", msg.isEveningBrief)
-                    put("isStreakFreezeSkipped", msg.isStreakFreezeSkipped)
-                    put("isVocabBrief", msg.isVocabBrief)
-                    put("isVocabHub", msg.isVocabHub)
-                    put("vocabJson", msg.vocabJson)
-                    put("isWelcome", msg.isWelcome || msg.id.startsWith("welcome_"))
-                    put("isHabitsSummary", msg.isHabitsSummary)
-                    put("habitsSummaryJson", msg.habitsSummaryJson)
-                }
-                jsonArray.put(obj)
-            }
-            val editor = prefs.edit().putString(KEY_MESSAGES, jsonArray.toString())
-            if (updateActivityTimestamp) {
-                editor.putLong(KEY_LAST_ACTIVITY, System.currentTimeMillis())
-            }
-            editor.apply()
-            _messagesFlow.value = trimmed
-            val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(context.packageName) }
-            context.sendBroadcast(intent)
-        } catch (_: Exception) {}
-    }
-
-    fun addMessage(context: Context, message: PersistedChatMessage, incrementBadge: Boolean = false, updateActivity: Boolean = !incrementBadge) {
-        val current = getMessages(context).toMutableList()
-        current.add(message)
-        saveMessages(context, current, updateActivityTimestamp = updateActivity)
-        if (incrementBadge) {
-            incrementUnread(context)
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 
+    fun saveMessages(context: Context, messages: List<PersistedChatMessage>, updateActivityTimestamp: Boolean = true) {
+        val appContext = context.applicationContext
+        val trimmed = if (messages.size > 50) messages.takeLast(50) else messages
+        _messagesFlow.value = trimmed
+        isInitialized = true
+
+        if (updateActivityTimestamp) {
+            val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putLong(KEY_LAST_ACTIVITY, System.currentTimeMillis()).apply()
+        }
+
+        scope.launch {
+            try {
+                val db = AyvaChatDatabase.getDatabase(appContext)
+                db.chatDao().syncAllMessages(trimmed.map { it.toEntity() })
+            } catch (e: Exception) {
+                android.util.Log.e("BubbleChatManager", "Failed to persist chat messages to Room", e)
+            }
+        }
+
+        val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(appContext.packageName) }
+        appContext.sendBroadcast(intent)
+    }
+
+    fun addMessage(context: Context, message: PersistedChatMessage, incrementBadge: Boolean = false, updateActivity: Boolean = !incrementBadge) {
+        val appContext = context.applicationContext
+        val current = _messagesFlow.value.toMutableList()
+        current.add(message)
+        val trimmed = if (current.size > 50) current.takeLast(50) else current
+        _messagesFlow.value = trimmed
+
+        if (updateActivity) {
+            val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putLong(KEY_LAST_ACTIVITY, System.currentTimeMillis()).apply()
+        }
+
+        scope.launch {
+            try {
+                val db = AyvaChatDatabase.getDatabase(appContext)
+                db.chatDao().insertMessage(message.toEntity())
+                val count = db.chatDao().getMessageCount()
+                if (count > 50) {
+                    db.chatDao().deleteOldestMessages(count - 50)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("BubbleChatManager", "Failed to add chat message to Room", e)
+            }
+        }
+
+        if (incrementBadge) {
+            incrementUnread(appContext)
+        }
+
+        val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(appContext.packageName) }
+        appContext.sendBroadcast(intent)
+    }
+
     fun updateMessage(context: Context, updatedMessage: PersistedChatMessage) {
-        val current = getMessages(context).toMutableList()
+        val appContext = context.applicationContext
+        val current = _messagesFlow.value.toMutableList()
         val index = current.indexOfFirst { it.id == updatedMessage.id }
         if (index != -1) {
             current[index] = updatedMessage
-            saveMessages(context, current)
+            _messagesFlow.value = current
+            scope.launch {
+                try {
+                    val db = AyvaChatDatabase.getDatabase(appContext)
+                    db.chatDao().insertMessage(updatedMessage.toEntity())
+                } catch (e: Exception) {
+                    android.util.Log.e("BubbleChatManager", "Failed to update chat message in Room", e)
+                }
+            }
+            val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(appContext.packageName) }
+            appContext.sendBroadcast(intent)
         }
     }
 
     fun clearMessages(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val appContext = context.applicationContext
+        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().remove(KEY_MESSAGES).putLong(KEY_LAST_ACTIVITY, System.currentTimeMillis()).apply()
         _messagesFlow.value = emptyList()
-        clearUnread(context)
-        val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(context.packageName) }
-        context.sendBroadcast(intent)
+        isInitialized = true
+        clearUnread(appContext)
+
+        scope.launch {
+            try {
+                val db = AyvaChatDatabase.getDatabase(appContext)
+                db.chatDao().clearAllMessages()
+            } catch (e: Exception) {
+                android.util.Log.e("BubbleChatManager", "Failed to clear chat messages from Room", e)
+            }
+        }
+
+        val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(appContext.packageName) }
+        appContext.sendBroadcast(intent)
+    }
+
+    // --- In-Flight Drill State Persistence ---
+
+    fun saveActiveDrill(context: Context, drill: ActiveDrillStateEntity) {
+        val appContext = context.applicationContext
+        scope.launch {
+            try {
+                val db = AyvaChatDatabase.getDatabase(appContext)
+                db.chatDao().saveActiveDrill(drill)
+            } catch (e: Exception) {
+                android.util.Log.e("BubbleChatManager", "Failed to save active drill state", e)
+            }
+        }
+    }
+
+    suspend fun getLatestActiveDrill(context: Context): ActiveDrillStateEntity? = withContext(Dispatchers.IO) {
+        try {
+            val db = AyvaChatDatabase.getDatabase(context.applicationContext)
+            db.chatDao().getLatestActiveDrill()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun clearActiveDrills(context: Context) {
+        val appContext = context.applicationContext
+        scope.launch {
+            try {
+                val db = AyvaChatDatabase.getDatabase(appContext)
+                db.chatDao().clearActiveDrills()
+            } catch (e: Exception) {
+                android.util.Log.e("BubbleChatManager", "Failed to clear active drill states", e)
+            }
+        }
     }
 }

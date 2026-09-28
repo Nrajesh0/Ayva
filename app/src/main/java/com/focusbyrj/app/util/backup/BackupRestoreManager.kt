@@ -26,6 +26,8 @@ import android.os.Build
 import android.util.Log
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.*
+import com.focusbyrj.app.data.chat.AyvaChatDatabase
+import com.focusbyrj.app.data.chat.AyvaChatMessageEntity
 import com.focusbyrj.app.data.drill.DrillDatabase
 import com.focusbyrj.app.data.drill.DrillSessionEntity
 import com.focusbyrj.app.data.note.NoteDatabase
@@ -34,11 +36,14 @@ import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
 import com.focusbyrj.app.ui.screens.notes.NotesViewModel
 import com.focusbyrj.app.widget.NoteWidgetProvider
+import com.focusbyrj.app.widget.TodoWidgetProvider
 import com.focusbyrj.app.util.AptitudeManager
 import com.focusbyrj.app.util.BubbleChatManager
 import com.focusbyrj.app.util.DailyQuestManager
 import com.focusbyrj.app.util.FocusEconomyManager
 import com.focusbyrj.app.util.FocusStatsManager
+import com.focusbyrj.app.util.HabitAlarmScheduler
+import com.focusbyrj.app.util.TaskReminderHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -52,13 +57,21 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+typealias RequiresVaultSetupException = BackupRestoreManager.RequiresVaultSetupException
+
 /**
  * Orchestrates full backup creation and restoration across all app components:
- * - Room Databases (Notes, Restrictions, Schedules, Tasks, Habits & Logs, Drill Sessions, Vocab)
- * - SharedPreferences (Focus Settings, Economy & Avatars, Bubble Chat, Stats & Quests, Categories, Theme)
- * - Media Storage (Keep images, Keep voice memos)
+ * - Room Databases (Notes, Restrictions, Schedules, Tasks, Habits & Logs, Drill Sessions, Vocab, Ayva Chat Messages)
+ * - SharedPreferences (Focus Settings, Economy & Avatars, Bubble Chat, Stats & Quests, Categories, Theme, Identity, Streaks, License, Widgets)
+ * - Media Storage (Keep images, Keep voice memos, Keep drawings)
  */
 object BackupRestoreManager {
+
+    /**
+     * Exception thrown when a backup archive contains private vault notes, but the current
+     * device has no vault configured, prompting the user to establish a 6-digit Vault PIN.
+     */
+    class RequiresVaultSetupException(message: String) : IllegalStateException(message)
 
     private const val TAG = "BackupRestoreManager"
     private const val BACKUP_VERSION = 1
@@ -74,7 +87,13 @@ object BackupRestoreManager {
         "focus_app_prefs",
         "temporary_unlock_prefs",
         "usage_break_tracker_prefs",
-        "summary_quotes_deck"
+        "summary_quotes_deck",
+        "enclave_identity_prefs",
+        "streak_preferences",
+        "focus_license_prefs",
+        "note_widget_prefs",
+        "todo_widget_prefs",
+        "todo_widget_theme_prefs"
     )
 
     private val MEDIA_FOLDERS = listOf(
@@ -92,7 +111,8 @@ object BackupRestoreManager {
         val habitCount: Int,
         val restrictionCount: Int,
         val scheduleCount: Int,
-        val drillCount: Int
+        val drillCount: Int,
+        val chatMessageCount: Int = 0
     )
 
     /**
@@ -168,6 +188,8 @@ object BackupRestoreManager {
             val drillSessions = drillDb.drillSessionDao().getAllSessionsSync()
             val learnedIdioms = vocabDb.vocabDao().getAllLearnedIdioms()
             val learnedOws = vocabDb.vocabDao().getAllLearnedOws()
+            val chatDb = AyvaChatDatabase.getDatabase(app)
+            val chatMessages = chatDb.chatDao().getAllMessagesSync()
 
             val metadata = BackupMetadata(
                 version = BACKUP_VERSION,
@@ -178,7 +200,8 @@ object BackupRestoreManager {
                 habitCount = habits.size,
                 restrictionCount = restrictions.size,
                 scheduleCount = schedules.size,
-                drillCount = drillSessions.size
+                drillCount = drillSessions.size,
+                chatMessageCount = chatMessages.size
             )
 
             // 2. Build JSON Payload
@@ -195,6 +218,7 @@ object BackupRestoreManager {
                     put("restrictions", restrictions.size)
                     put("schedules", schedules.size)
                     put("drillSessions", drillSessions.size)
+                    put("chatMessages", chatMessages.size)
                 }
                 put("meta", metaObj)
 
@@ -364,6 +388,42 @@ object BackupRestoreManager {
                 }
                 put("learnedOws", owsArray)
 
+                // Ayva Chat Messages
+                val chatArray = JSONArray()
+                chatMessages.forEach { msg ->
+                    chatArray.put(JSONObject().apply {
+                        put("id", msg.id)
+                        put("text", msg.text)
+                        put("isUser", msg.isUser)
+                        put("timestamp", msg.timestamp)
+                        put("firstViewedTimestamp", msg.firstViewedTimestamp)
+                        put("isArithmetic", msg.isArithmetic)
+                        if (msg.arithmeticJson != null) put("arithmeticJson", msg.arithmeticJson)
+                        put("isDrillSummary", msg.isDrillSummary)
+                        if (msg.drillSummaryJson != null) put("drillSummaryJson", msg.drillSummaryJson)
+                        put("isAptitudeProfile", msg.isAptitudeProfile)
+                        put("isStreakPrompt", msg.isStreakPrompt)
+                        if (msg.streakPromptJson != null) put("streakPromptJson", msg.streakPromptJson)
+                        put("isTaskSummary", msg.isTaskSummary)
+                        if (msg.taskSummaryJson != null) put("taskSummaryJson", msg.taskSummaryJson)
+                        put("isTalkAction", msg.isTalkAction)
+                        if (msg.talkActionJson != null) put("talkActionJson", msg.talkActionJson)
+                        if (msg.pendingActionJson != null) put("pendingActionJson", msg.pendingActionJson)
+                        put("isDailyQuests", msg.isDailyQuests)
+                        put("isMysteryBox", msg.isMysteryBox)
+                        put("isMorningBrief", msg.isMorningBrief)
+                        put("isEveningBrief", msg.isEveningBrief)
+                        put("isStreakFreezeSkipped", msg.isStreakFreezeSkipped)
+                        put("isVocabBrief", msg.isVocabBrief)
+                        put("isVocabHub", msg.isVocabHub)
+                        if (msg.vocabJson != null) put("vocabJson", msg.vocabJson)
+                        put("isWelcome", msg.isWelcome)
+                        put("isHabitsSummary", msg.isHabitsSummary)
+                        if (msg.habitsSummaryJson != null) put("habitsSummaryJson", msg.habitsSummaryJson)
+                    })
+                }
+                put("chatMessages", chatArray)
+
                 // Preferences
                 val prefsObj = JSONObject()
                 val prefTypesObj = JSONObject()
@@ -464,13 +524,15 @@ object BackupRestoreManager {
         context: Context,
         sourceUri: Uri,
         password: String,
-        cleanRestore: Boolean = false
+        cleanRestore: Boolean = false,
+        vaultPin: String? = null
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
+        val app = context.applicationContext as FocusApplication
+        val stagingDir = File(app.cacheDir, "restore_media_stage_${System.currentTimeMillis()}").apply { mkdirs() }
         try {
             if (password.isBlank()) {
                 throw IllegalArgumentException("Backup password cannot be empty or blank.")
             }
-            val app = context.applicationContext as FocusApplication
             val focusDb = app.database
             val noteDb = NoteDatabase.getInstance(app)
             val drillDb = DrillDatabase.getDatabase(app)
@@ -483,7 +545,11 @@ object BackupRestoreManager {
 
             var jsonDataStr: String? = null
 
-            // 1 & 2. Decrypt & Unpack ZIP directly on-the-fly without heap buffering
+            // 1 & 2. Decrypt & Unpack ZIP into staging directory on-the-fly
+            var totalDecompressedMediaBytes = 0L
+            val maxSingleEntrySize = 50L * 1024L * 1024L // 50MB per media file decompression limit
+            val maxTotalMediaSize = 500L * 1024L * 1024L // 500MB total media archive decompression limit
+
             inStream.use { rawInStream ->
                 CryptoBackupEngine.openDecryptingStream(rawInStream, password.toCharArray()).use { decryptedStream ->
                     ZipInputStream(BufferedInputStream(decryptedStream)).use { zipIn ->
@@ -492,27 +558,36 @@ object BackupRestoreManager {
                         while (entry != null) {
                             if (!entry.isDirectory) {
                                 if (entry.name == "data.json") {
-                                    jsonDataStr = zipIn.bufferedReader(Charsets.UTF_8).readText()
+                                    val baos = ByteArrayOutputStream()
+                                    var read = zipIn.read(buffer)
+                                    while (read != -1) {
+                                        baos.write(buffer, 0, read)
+                                        read = zipIn.read(buffer)
+                                    }
+                                    jsonDataStr = baos.toString(Charsets.UTF_8.name())
                                 } else if (entry.name.startsWith("media/")) {
                                     val normalized = entry.name.removePrefix("media/").replace('\\', '/').trimStart('/')
                                     val topFolder = normalized.substringBefore('/')
                                     if (topFolder !in MEDIA_FOLDERS || normalized.contains("..") || normalized.isEmpty()) {
                                         throw SecurityException("Invalid or disallowed media path in backup archive: $normalized. Must reside in: $MEDIA_FOLDERS")
                                     }
-                                    val targetDir = File(app.filesDir, topFolder).canonicalFile
-                                    val targetFile = File(app.filesDir, normalized).canonicalFile
+                                    val targetDir = File(stagingDir, topFolder).canonicalFile
+                                    val targetFile = File(stagingDir, normalized).canonicalFile
                                     if (!targetFile.toPath().startsWith(targetDir.toPath())) {
                                         throw SecurityException("Zip Slip directory traversal detected in backup media entry: $normalized")
                                     }
                                     targetFile.parentFile?.mkdirs()
-                                    val maxEntrySize = 50L * 1024L * 1024L // 50MB per media file decompression limit
-                                    var totalBytesWritten = 0L
+                                    var fileBytesWritten = 0L
                                     FileOutputStream(targetFile).use { fos ->
                                         var read = zipIn.read(buffer)
                                         while (read != -1) {
-                                            totalBytesWritten += read
-                                            if (totalBytesWritten > maxEntrySize) {
+                                            fileBytesWritten += read
+                                            totalDecompressedMediaBytes += read
+                                            if (fileBytesWritten > maxSingleEntrySize) {
                                                 throw SecurityException("Backup media entry exceeds maximum allowed size (50MB): $normalized")
+                                            }
+                                            if (totalDecompressedMediaBytes > maxTotalMediaSize) {
+                                                throw SecurityException("Backup archive exceeds maximum allowable total media size (500MB).")
                                             }
                                             fos.write(buffer, 0, read)
                                             read = zipIn.read(buffer)
@@ -536,14 +611,37 @@ object BackupRestoreManager {
             val createdAt = rootJson.optLong("createdAt", System.currentTimeMillis())
             val appVersion = rootJson.optString("appVersion", "1.0.0")
 
-            // 4. Build NoteEntities from backup
+            // 4. Validate Secret Vault State and Build NoteEntities
             val notesArray = rootJson.optJSONArray("notes") ?: JSONArray()
             val hasArchivedNotes = (0 until notesArray.length()).any {
                 notesArray.getJSONObject(it).optBoolean("isArchived", false)
             }
-            if (hasArchivedNotes && ArchiveVaultSecurity.isVaultLocked(app)) {
-                throw IllegalStateException("Cannot restore backup: Secret Archive Vault is locked. Please unlock your secret vault first so private notes can be restored securely.")
+            if (hasArchivedNotes) {
+                val vaultStatus = ArchiveVaultSecurity.getVaultStatus(app)
+                if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                    if (ArchiveVaultSecurity.isVaultLocked(app)) {
+                        if (vaultPin != null && vaultPin.length == 6) {
+                            val verifyRes = ArchiveVaultSecurity.verifyPasscode(app, vaultPin)
+                            if (verifyRes !is ArchiveVaultSecurity.VerifyResult.Success) {
+                                throw SecurityException("Incorrect Vault PIN provided for private notes.")
+                            }
+                        } else {
+                            throw IllegalStateException("Cannot restore backup: Secret Archive Vault is locked. Please unlock your secret vault first so private notes can be restored securely.")
+                        }
+                    }
+                } else {
+                    // Vault is NOT configured or disabled on this device!
+                    if (vaultPin != null && vaultPin.length == 6) {
+                        val setSuccess = ArchiveVaultSecurity.setPasscode(app, vaultPin)
+                        if (!setSuccess) {
+                            throw IllegalStateException("Failed to configure Secret Archive Vault with provided PIN.")
+                        }
+                    } else {
+                        throw RequiresVaultSetupException("This backup contains private Secret Archive Vault notes. Please set a 6-digit Vault PIN to encrypt and restore them securely on this device.")
+                    }
+                }
             }
+
             val noteEntities = mutableListOf<NoteEntity>()
             val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
             for (i in 0 until notesArray.length()) {
@@ -567,8 +665,15 @@ object BackupRestoreManager {
                     trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
                     deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null
                 )
-                if (note.isArchived && subKey != null && !VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                    note = VaultPayloadEncryptor.encryptNotePayload(note, subKey)
+                if (note.isArchived) {
+                    if (subKey != null) {
+                        if (!VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                            note = VaultPayloadEncryptor.encryptNotePayload(note, subKey)
+                        }
+                    } else {
+                        // Fail-closed security: NEVER allow an archived note into the database without encryption
+                        throw SecurityException("Security violation: Vault Sub-Key missing. Refusing to store private note in plaintext.")
+                    }
                 }
                 noteEntities.add(note)
             }
@@ -771,7 +876,55 @@ object BackupRestoreManager {
                 }
             }
 
-            // 11. Restore SharedPreferences
+            // 11. Restore Ayva Chat Messages
+            val chatArray = rootJson.optJSONArray("chatMessages") ?: JSONArray()
+            if (chatArray.length() > 0) {
+                val chatDb = AyvaChatDatabase.getDatabase(app)
+                val chatEntities = mutableListOf<AyvaChatMessageEntity>()
+                for (i in 0 until chatArray.length()) {
+                    val obj = chatArray.getJSONObject(i)
+                    chatEntities.add(
+                        AyvaChatMessageEntity(
+                            id = obj.getString("id"),
+                            text = obj.optString("text", ""),
+                            isUser = obj.optBoolean("isUser", false),
+                            timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                            firstViewedTimestamp = obj.optLong("firstViewedTimestamp", 0L),
+                            isArithmetic = obj.optBoolean("isArithmetic", false),
+                            arithmeticJson = if (obj.has("arithmeticJson") && !obj.isNull("arithmeticJson")) obj.optString("arithmeticJson") else null,
+                            isDrillSummary = obj.optBoolean("isDrillSummary", false),
+                            drillSummaryJson = if (obj.has("drillSummaryJson") && !obj.isNull("drillSummaryJson")) obj.optString("drillSummaryJson") else null,
+                            isAptitudeProfile = obj.optBoolean("isAptitudeProfile", false),
+                            isStreakPrompt = obj.optBoolean("isStreakPrompt", false),
+                            streakPromptJson = if (obj.has("streakPromptJson") && !obj.isNull("streakPromptJson")) obj.optString("streakPromptJson") else null,
+                            isTaskSummary = obj.optBoolean("isTaskSummary", false),
+                            taskSummaryJson = if (obj.has("taskSummaryJson") && !obj.isNull("taskSummaryJson")) obj.optString("taskSummaryJson") else null,
+                            isTalkAction = obj.optBoolean("isTalkAction", false),
+                            talkActionJson = if (obj.has("talkActionJson") && !obj.isNull("talkActionJson")) obj.optString("talkActionJson") else null,
+                            pendingActionJson = if (obj.has("pendingActionJson") && !obj.isNull("pendingActionJson")) obj.optString("pendingActionJson") else null,
+                            isDailyQuests = obj.optBoolean("isDailyQuests", false),
+                            isMysteryBox = obj.optBoolean("isMysteryBox", false),
+                            isMorningBrief = obj.optBoolean("isMorningBrief", false),
+                            isEveningBrief = obj.optBoolean("isEveningBrief", false),
+                            isStreakFreezeSkipped = obj.optBoolean("isStreakFreezeSkipped", false),
+                            isVocabBrief = obj.optBoolean("isVocabBrief", false),
+                            isVocabHub = obj.optBoolean("isVocabHub", false),
+                            vocabJson = if (obj.has("vocabJson") && !obj.isNull("vocabJson")) obj.optString("vocabJson") else null,
+                            isWelcome = obj.optBoolean("isWelcome", false),
+                            isHabitsSummary = obj.optBoolean("isHabitsSummary", false),
+                            habitsSummaryJson = if (obj.has("habitsSummaryJson") && !obj.isNull("habitsSummaryJson")) obj.optString("habitsSummaryJson") else null
+                        )
+                    )
+                }
+                chatDb.withTransaction {
+                    if (cleanRestore) {
+                        chatDb.chatDao().clearAllMessages()
+                    }
+                    chatDb.chatDao().insertMessages(chatEntities)
+                }
+            }
+
+            // 12. Restore SharedPreferences
             val prefsObj = rootJson.optJSONObject("preferences")
             val prefTypesObj = rootJson.optJSONObject("preferenceTypes")
             if (prefsObj != null) {
@@ -838,12 +991,51 @@ object BackupRestoreManager {
                 }
             }
 
+            // 13. Commit Staged Media Files Atomically to Internal Storage
+            if (stagingDir.exists() && stagingDir.isDirectory) {
+                MEDIA_FOLDERS.forEach { folderName ->
+                    val stagedFolder = File(stagingDir, folderName)
+                    if (stagedFolder.exists() && stagedFolder.isDirectory) {
+                        val liveFolder = File(app.filesDir, folderName).apply { mkdirs() }
+                        stagedFolder.listFiles()?.forEach { stagedFile ->
+                            if (stagedFile.isFile && stagedFile.length() > 0) {
+                                val destFile = File(liveFolder, stagedFile.name)
+                                stagedFile.copyTo(destFile, overwrite = true)
+                            }
+                        }
+                    }
+                }
+            }
+
             // Reload In-Memory Managers
             try { FocusEconomyManager.init(app) } catch (_: Exception) {}
             try { FocusStatsManager.init(app) } catch (_: Exception) {}
             try { BubbleChatManager.init(app) } catch (_: Exception) {}
             try { AptitudeManager.init(app) } catch (_: Exception) {}
             try { DailyQuestManager.init(app) } catch (_: Exception) {}
+
+            // 14. Reschedule Alarms & Update Widgets
+            try {
+                HabitAlarmScheduler.rescheduleAllHabits(app)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to reschedule habit reminders post-restore", e)
+            }
+
+            try {
+                val now = System.currentTimeMillis()
+                val activeTasks = focusDb.taskDao().getAllTasksList()
+                activeTasks.filter { !it.isCompleted && !it.isTrashed && it.dueDate != null && it.dueDate > now }
+                    .forEach { TaskReminderHelper.scheduleReminder(app, it) }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to reschedule task reminders post-restore", e)
+            }
+
+            try {
+                NoteWidgetProvider.updateAllWidgets(app)
+            } catch (_: Exception) {}
+            try {
+                TodoWidgetProvider.updateAllWidgets(app)
+            } catch (_: Exception) {}
 
             val metadata = BackupMetadata(
                 version = version,
@@ -854,14 +1046,26 @@ object BackupRestoreManager {
                 habitCount = habitArray.length(),
                 restrictionCount = restrArray.length(),
                 scheduleCount = schedArray.length(),
-                drillCount = drillArray.length()
+                drillCount = drillArray.length(),
+                chatMessageCount = chatArray.length()
             )
 
             Log.i(TAG, "Encrypted backup restored successfully.")
             Result.success(metadata)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to restore encrypted backup", e)
-            Result.failure(e)
+            val friendlyException = when {
+                e is RequiresVaultSetupException -> e
+                e is SecurityException -> e
+                e is java.util.zip.ZipException -> SecurityException("Failed to restore backup: Incorrect password or corrupted backup file.", e)
+                e is IllegalArgumentException && e.message?.contains("data.json") == true -> SecurityException("Failed to restore backup: Incorrect password or corrupted backup file.", e)
+                else -> e
+            }
+            Result.failure(friendlyException)
+        } finally {
+            try {
+                stagingDir.deleteRecursively()
+            } catch (_: Exception) {}
         }
     }
 

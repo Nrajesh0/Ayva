@@ -74,6 +74,16 @@ object OfflineNluEngine {
         return false
     }
 
+    // 2.5 Question Detection
+    fun isQuestion(query: String): Boolean {
+        val lower = query.lowercase().trim()
+        return lower.startsWith("how") || lower.startsWith("why") ||
+                lower.startsWith("what") || lower.startsWith("where") ||
+                lower.startsWith("who") || lower.startsWith("can") ||
+                lower.startsWith("could") || lower.startsWith("explain") ||
+                lower.startsWith("tell me about") || lower.contains("?")
+    }
+
     // 3. Explicit Task Creation Detection
     fun isExplicitCreation(query: String): Boolean {
         val lower = query.lowercase().trim()
@@ -120,22 +130,28 @@ object OfflineNluEngine {
         val lower = query.lowercase().trim()
         val normalized = lower.replace("_", " ")
         val tokens = normalized.split(Regex("\\s+"))
+        val queryIsQuestion = isQuestion(query)
 
         // Tier 1: Explicit creation prefix recognition ALWAYS takes precedence
         if (isExplicitCreation(query)) {
             return NluIntent.CREATE_TASK
         }
 
-        val isClearChat = matchesAnyFuzzy(tokens, listOf("clear", "clean", "reset", "wipe")) && matchesAnyFuzzy(tokens, listOf("chat", "messages", "screen", "history", "all"))
+        // Conflict 2 fix: Chat wipe requires explicit chat target and MUST NOT contain task/todo/overdue indicators
+        val hasClearVerb = matchesAnyFuzzy(tokens, listOf("clear", "clean", "reset", "wipe"))
+        val hasChatTarget = matchesAnyFuzzy(tokens, listOf("chat", "messages", "screen", "conversation"))
+        val hasTaskIndicators = lower.contains("task") || lower.contains("todo") || lower.contains("overdue") || lower.contains("habit") || lower.contains("routine")
+        val isClearChat = !queryIsQuestion && hasClearVerb && hasChatTarget && !hasTaskIndicators
         if (isClearChat) return NluIntent.CLEAR_CHAT
 
-        val isStartDrill = matchesAnyFuzzy(tokens, listOf("drill", "arithmetic", "calculate", "quiz")) || lower.contains("practice math")
+        // Conflict 3 fix: Keyword triggers MUST NOT swallow questions (e.g. "how does arithmetic drill work?" or "how do I earn XP?")
+        val isStartDrill = !queryIsQuestion && (matchesAnyFuzzy(tokens, listOf("drill", "arithmetic", "calculate", "quiz")) || lower.contains("practice math"))
         if (isStartDrill) return NluIntent.START_DRILL
 
-        val isShowProfile = matchesAnyFuzzy(tokens, listOf("profile", "level", "aptitude", "streak", "stats", "statistics", "points", "xp"))
+        val isShowProfile = !queryIsQuestion && matchesAnyFuzzy(tokens, listOf("profile", "level", "aptitude", "streak", "stats", "statistics", "points", "xp"))
         if (isShowProfile) return NluIntent.SHOW_PROFILE
 
-        val isShowSummary = (matchesAnyFuzzy(tokens, listOf("summary", "briefing", "recap", "dashboard")) || lower.contains("my day") || lower == "today") && !lower.contains("task")
+        val isShowSummary = !queryIsQuestion && ((matchesAnyFuzzy(tokens, listOf("summary", "briefing", "recap", "dashboard")) || lower.contains("my day") || lower == "today") && !lower.contains("task"))
         if (isShowSummary) return NluIntent.SHOW_SUMMARY
 
         val isRoutineKeyword = matchesAnyFuzzy(tokens, listOf("routine", "routines", "schedule", "schedules"))
@@ -924,12 +940,8 @@ object OfflineNluEngine {
 
         // Fallback for strict single-word or direct command phrases only
         if (intent == NluIntent.UNKNOWN) {
-            val isQuestion = lower.startsWith("how") || lower.startsWith("why") ||
-                             lower.startsWith("what") || lower.startsWith("where") ||
-                             lower.startsWith("who") || lower.startsWith("can") ||
-                             lower.startsWith("could") || lower.startsWith("explain") ||
-                             lower.contains("?")
-            if (!isQuestion && targetInfo.targetTask != null && timeMs == null) {
+            val isQuestionQuery = isQuestion(query)
+            if (!isQuestionQuery && targetInfo.targetTask != null && timeMs == null) {
                 val options = listOf(
                     ConflictOption(
                         label = "Mark Done: '${targetInfo.targetTask.title.take(32)}'",
@@ -956,7 +968,9 @@ object OfflineNluEngine {
                     conflictOptions = options
                 )
             }
-            if (!isQuestion && timeMs != null) {
+            val conversationalPrefixes = listOf("i am ", "i'm ", "i feel ", "feeling ", "today is ", "it is ", "it's ", "how is ", "what is ")
+            val isConversational = conversationalPrefixes.any { lower.startsWith(it) }
+            if (!isQuestionQuery && !isConversational && timeMs != null) {
                 if (targetInfo.candidateTasks.size > 1) {
                     val dateStr = " ${SmartDateParser.formatDueDate(timeMs)}"
                     val options = targetInfo.candidateTasks.take(3).map { t ->

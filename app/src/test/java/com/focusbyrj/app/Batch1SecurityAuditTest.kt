@@ -59,13 +59,35 @@ class Batch1SecurityAuditTest {
         assertArrayEquals("B1-F-001: openDecryptingStream mutated caller passwordChars", snapshot, password)
     }
 
-    // B1-F-002: New backups must write version byte 0x03 (V3)
+    // Upgraded from V3 to V4 (0x04) with Instant Canary Verifier & AAD header binding
     @Test
-    fun newBackupMustUseV3FormatHeader() {
+    fun newBackupMustUseV4FormatHeader() {
         val out = ByteArrayOutputStream()
         CryptoBackupEngine.encrypt("test".toByteArray(), "password".toCharArray(), out)
         val versionByte = out.toByteArray()[4]
-        assertEquals("B1-F-002: New backups must write V3 (0x03), got 0x", 0x03.toByte(), versionByte)
+        assertEquals("New backups must write V4 (0x04)", 0x04.toByte(), versionByte)
+    }
+
+    // Legacy V3 backups must still decrypt (backward compat)
+    @Test
+    fun legacyV3BackupStillDecrypts() {
+        val password = "legacyV3Pw".toCharArray()
+        val plaintext = "legacy v3 content".toByteArray()
+        val salt = ByteArray(16) { it.toByte() }
+        val iv = ByteArray(12) { (it + 5).toByte() }
+        val key = Argon2idKdf.deriveKey(password.copyOf(), salt, Argon2idKdf.Parameters.BACKUP)
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE,
+            javax.crypto.spec.SecretKeySpec(key, "AES"),
+            javax.crypto.spec.GCMParameterSpec(128, iv))
+        val ct = cipher.doFinal(plaintext)
+        val v3Frame = ByteArrayOutputStream().apply {
+            write(byteArrayOf('F'.code.toByte(),'B'.code.toByte(),'C'.code.toByte(),'K'.code.toByte()))
+            write(byteArrayOf(0x03))
+            write(salt); write(iv); write(ct)
+        }.toByteArray()
+        val decrypted = CryptoBackupEngine.decrypt(ByteArrayInputStream(v3Frame), password.copyOf())
+        assertArrayEquals("Legacy V3 backup must still decrypt", plaintext, decrypted)
     }
 
     // B1-F-002: Legacy V2 backups must still decrypt (backward compat)

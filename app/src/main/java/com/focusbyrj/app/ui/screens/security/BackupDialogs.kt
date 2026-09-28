@@ -92,6 +92,18 @@ fun ExportBackupPasswordDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                if (password.isNotEmpty()) {
+                    val strengthHint = when {
+                        password.length < 8 -> "Too short (min 8 characters required)"
+                        password.length >= 12 && password.any { it.isDigit() } && password.any { !it.isLetterOrDigit() } -> "Strong password 🔥"
+                        password.length >= 8 && password.any { it.isDigit() } -> "Good password 👍"
+                        else -> "Moderate (add numbers & symbols for higher security)"
+                    }
+                    val hintColor = if (password.length < 8) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(strengthHint, style = MaterialTheme.typography.labelSmall, color = hintColor)
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 OutlinedTextField(
@@ -134,8 +146,8 @@ fun ExportBackupPasswordDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (password.length < 4) {
-                        errorMessage = "Password must be at least 4 characters long."
+                    if (password.length < 8) {
+                        errorMessage = "Password must be at least 8 characters long."
                     } else if (password != confirmPassword) {
                         errorMessage = "Passwords do not match."
                     } else {
@@ -271,6 +283,135 @@ fun RestoreBackupPasswordDialog(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text("Decrypt & Restore")
+            }
+        },
+        dismissButton = {
+            if (!isRestoring) {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        }
+    )
+}
+
+@Composable
+fun ConfigureRestoredVaultPinDialog(
+    isRestoring: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (pin: String) -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var pinVisible by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!isRestoring) onDismiss() },
+        shape = RoundedCornerShape(24.dp),
+        icon = {
+            Icon(
+                Icons.Filled.Shield,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = {
+            Text(
+                "Secure Restored Vault Notes",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "This backup contains private notes from the Secret Archive Vault. Set a 6-digit PIN to securely encrypt and initialize the vault on this device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = pin,
+                    onValueChange = {
+                        if (it.length <= 6 && it.all { char -> char.isDigit() }) {
+                            pin = it
+                            errorMessage = null
+                        }
+                    },
+                    label = { Text("6-Digit Vault PIN") },
+                    singleLine = true,
+                    enabled = !isRestoring,
+                    visualTransformation = if (pinVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    trailingIcon = {
+                        IconButton(onClick = { pinVisible = !pinVisible }) {
+                            Icon(
+                                if (pinVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = "Toggle visibility"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = confirmPin,
+                    onValueChange = {
+                        if (it.length <= 6 && it.all { char -> char.isDigit() }) {
+                            confirmPin = it
+                            errorMessage = null
+                        }
+                    },
+                    label = { Text("Confirm 6-Digit PIN") },
+                    singleLine = true,
+                    enabled = !isRestoring,
+                    visualTransformation = if (pinVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        errorMessage!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                if (isRestoring) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Configuring vault & importing private notes...", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (pin.length != 6) {
+                        errorMessage = "PIN must be exactly 6 digits."
+                    } else if (pin != confirmPin) {
+                        errorMessage = "PINs do not match."
+                    } else {
+                        onConfirm(pin)
+                    }
+                },
+                enabled = !isRestoring,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Set PIN & Restore")
             }
         },
         dismissButton = {

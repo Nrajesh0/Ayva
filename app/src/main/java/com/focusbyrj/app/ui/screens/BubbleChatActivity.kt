@@ -1,5 +1,6 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.screens.chat.*
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -128,10 +129,11 @@ data class DrillSession(
     val preGeneratedQuestions: MutableList<String> = mutableListOf(),
     val attemptedIndices: MutableSet<Int> = mutableSetOf(),
     val markedForReview: MutableSet<Int> = mutableSetOf(),
-    var highestSeenIndex: Int = 0
+    var highestSeenIndex: Int = 0,
+    val isSettled: java.util.concurrent.atomic.AtomicBoolean = java.util.concurrent.atomic.AtomicBoolean(false)
 )
 
-data class QuickActionCommand(val label: String, val commandText: String)
+data class AppInfo(val name: String, val packageName: String, val category: AppCategory = AppCategory.OTHERS)
 
 data class ChatMessage(
     val id: String, 
@@ -621,10 +623,6 @@ fun ChatInterface() {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(0)
         }
-    }
-    
-    LaunchedEffect(messages) {
-        BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
     }
     
     val focusApp = remember { context.applicationContext as com.focusbyrj.app.FocusApplication }
@@ -1184,8 +1182,8 @@ fun ChatInterface() {
                                     builder.append("\n")
                                 }
                                 
-                                val isMorningBriefQuery = (isSummaryCommand && (subArg == "morning" || (subArg != "evening" && !isAll && hour < 12))) || sentText.contains("morning", ignoreCase = true)
-                                val isEveningBriefQuery = (isSummaryCommand && (subArg == "evening" || (subArg != "morning" && !isAll && hour >= 17))) || sentText.contains("evening", ignoreCase = true) || sentText.contains("night", ignoreCase = true)
+                                val isMorningBriefQuery = (isSummaryCommand && subArg == "morning") || sentText.equals("morning brief", ignoreCase = true) || sentText.equals("morning briefing", ignoreCase = true)
+                                val isEveningBriefQuery = (isSummaryCommand && subArg == "evening") || sentText.equals("evening brief", ignoreCase = true) || sentText.equals("evening briefing", ignoreCase = true) || sentText.equals("night brief", ignoreCase = true)
                                 
                                 if (isMorningBriefQuery || isEveningBriefQuery) {
                                     val vocabRepo = (context.applicationContext as com.focusbyrj.app.FocusApplication).vocabRepository
@@ -2055,524 +2053,218 @@ fun ChatInterface() {
                 }
             }
 
-            if (messages.isEmpty()) {
-                val emptyChatText = remember(messages.isEmpty()) {
-                    com.focusbyrj.app.util.AyvaDialogueEngine.getClearChatIntro(context)
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = parseRichFormattedText(emptyChatText),
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = chatFontSizeSp.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            lineHeight = (chatFontSizeSp * 1.45f).sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                }
-            } else {
-                val reversedMessages = remember(messages) { messages.asReversed() }
-                val catSpacerHeight by androidx.compose.animation.core.animateDpAsState(
-                    targetValue = if (isCatActionPlaying) 175.dp else 56.dp,
-                    animationSpec = androidx.compose.animation.core.spring(
-                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow
-                    ),
-                    label = "cat_spacer_height"
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                ) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 16.dp),
-                        reverseLayout = true
-                    ) {
-                        val isScrolling = listState.isScrollInProgress
-                        item(key = "cat_bottom_spacer") {
-                            Spacer(modifier = Modifier.height(catSpacerHeight))
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                AyvaChatTimeline(
+                    messages = messages,
+                    listState = listState,
+                    chatFontSizeSp = chatFontSizeSp,
+                    activeDrillSession = activeDrillSession,
+                    isCatActionPlaying = isCatActionPlaying,
+                    onQueryClick = { query ->
+                        if (query.startsWith("/")) {
+                            sendMessage(query)
+                        } else {
+                            sendMessage("/talk $query")
                         }
-                        items(
-                            count = reversedMessages.size,
-                            key = { index -> reversedMessages[index].id },
-                            contentType = { index ->
-                                val m = reversedMessages[index]
-                                when {
-                                    m.isUser -> "user_msg"
-                                    m.isMorningBrief || m.id.startsWith("morning_") -> "morning_brief"
-                                    m.isEveningBrief || m.id.startsWith("evening_") -> "evening_brief"
-                                    m.isVocabBrief -> "vocab_brief"
-                                    m.isArithmetic -> "arithmetic_msg"
-                                    m.isHabitsSummary -> "habits_msg"
-                                    m.isTaskSummary -> "task_msg"
-                                    else -> "text_msg"
-                                }
+                    },
+                    onMessageUpdate = { updatedMsg ->
+                        val idx = messages.indexOfFirst { it.id == updatedMsg.id }
+                        if (idx != -1) {
+                            val newList = messages.toMutableList()
+                            newList[idx] = updatedMsg
+                            messages = newList
+                            BubbleChatManager.updateMessage(context, updatedMsg.toPersistedChatMessage())
+                        }
+                    },
+                    onViewSolutions = { json ->
+                        showSolutionsJson = json
+                    },
+                    onDismissMessage = { msgToDismiss ->
+                        val updatedList = messages.filter { it.id != msgToDismiss.id }
+                        if (updatedList.isEmpty()) {
+                            val welcome = ChatMessage(
+                                id = "welcome_${System.currentTimeMillis()}",
+                                text = com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context),
+                                isUser = false,
+                                timestamp = System.currentTimeMillis()
+                            )
+                            messages = listOf(welcome)
+                            BubbleChatManager.saveMessages(context, listOf(welcome.toPersistedChatMessage()), updateActivityTimestamp = false)
+                        } else {
+                            messages = updatedList
+                            BubbleChatManager.saveMessages(context, updatedList.map { it.toPersistedChatMessage() }, updateActivityTimestamp = false)
+                        }
+                    },
+                    onStartStreakDrill = {
+                        if (activeDrillSession == null) {
+                            val aptProfile = com.focusbyrj.app.util.AptitudeManager.profileFlow.value
+                            val diffStr = when {
+                                aptProfile.titleTier >= 5 -> "hard"
+                                aptProfile.titleTier >= 3 -> "medium"
+                                else -> "easy"
                             }
-                        ) { index ->
-                            val msg = reversedMessages[index]
-                            val isLatest = index == 0
-                            val currentDrill = activeDrillSession
-                            val isActiveDrill = isLatest && currentDrill != null && msg.isArithmetic
-                            val currentCombo = if (isActiveDrill) currentDrill?.combo ?: 0 else 0
-                            val drillProgress = if (isActiveDrill && currentDrill != null && currentDrill.targetQuestions > 0) {
-                                Pair(currentDrill.total + 1, currentDrill.targetQuestions)
-                            } else null
-                            val isBlitzMode = currentDrill?.isBlitz ?: false
-                            
-                            ChatBubble(
-                                message = msg, 
-                                fontSizeSp = chatFontSizeSp,
-                                isScrolling = isScrolling,
-                                isActiveDrill = isActiveDrill,
-                                isActiveDrillRunning = activeDrillSession != null,
-                                currentCombo = currentCombo,
-                                drillProgress = drillProgress,
-                                isBlitzMode = isBlitzMode,
-                                onQueryClick = { query ->
-                                    if (query.startsWith("/")) {
-                                        sendMessage(query)
-                                    } else {
-                                        sendMessage("/talk $query")
-                                    }
-                                },
-                                onMessageUpdate = { updatedMsg ->
-                                    val idx = messages.indexOfFirst { it.id == updatedMsg.id }
-                                    if (idx != -1) {
-                                        val newList = messages.toMutableList()
-                                        newList[idx] = updatedMsg
-                                        messages = newList
-                                    }
-                                },
-                                onViewSolutions = { json ->
-                                    showSolutionsJson = json
-                                },
-                                onDismiss = {
-                                    val updatedList = messages.filter { it.id != msg.id }
-                                    if (updatedList.isEmpty()) {
-                                        val welcome = ChatMessage(
-                                            id = "welcome_${System.currentTimeMillis()}",
-                                            text = com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context),
-                                            isUser = false,
-                                            timestamp = System.currentTimeMillis()
-                                        )
-                                        messages = listOf(welcome)
-                                        BubbleChatManager.saveMessages(context, listOf(welcome.toPersistedChatMessage()), updateActivityTimestamp = false)
-                                    } else {
-                                        messages = updatedList
-                                        BubbleChatManager.saveMessages(context, updatedList.map { it.toPersistedChatMessage() }, updateActivityTimestamp = false)
-                                    }
-                                },
-                                onStartStreakDrill = {
-                                    if (activeDrillSession == null) {
-                                        val aptProfile = com.focusbyrj.app.util.AptitudeManager.profileFlow.value
-                                        val diffStr = when {
-                                            aptProfile.titleTier >= 5 -> "hard"
-                                            aptProfile.titleTier >= 3 -> "medium"
-                                            else -> "easy"
-                                        }
-                                        val newSession = createDrillSessionWithQuestions(diffStr, 10)
-                                        activeDrillSession = newSession
-                                    }
-                                },
-                                onSkipDayWithFreeze = { promptMsg ->
-                                    val success = com.focusbyrj.app.util.AptitudeManager.useStreakFreezeToSkipDay(1000)
-                                    if (success) {
-                                        messages = messages.filter { it.id != promptMsg.id }
-                                        val angryMsg = ChatMessage(
-                                            id = "angry_freeze_${System.currentTimeMillis()}",
-                                            text = "😾 *Day Skipped with Streak Freeze!* (-1,000 🪙)\n\nAyva is grumpy that you skipped today's practice drill, but your streak is protected with a Freeze Shield! 🧊🔥",
-                                            isUser = false,
-                                            timestamp = System.currentTimeMillis(),
-                                            isStreakFreezeSkipped = true
-                                        )
-                                        messages = messages + angryMsg
-                                        currentCatActionAsset = "cat_angry.lottie"
-                                        isCatActionPlaying = true
-                                        android.widget.Toast.makeText(context, "🧊 Streak Freeze applied! 1,000 Gold spent.", android.widget.Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        val currentGold = com.focusbyrj.app.util.FocusEconomyManager.profileFlow.value.gold
-                                        android.widget.Toast.makeText(context, "⚠️ Need 1,000 Gold Coins to freeze streak! (You have $currentGold 🪙)", android.widget.Toast.LENGTH_LONG).show()
-                                    }
-                                },
-                                onDrillAnswer = handleDrillAnswer,
-                                onDrillEnd = handleDrillEnd,
-                                onOpenMysteryChest = { showMysteryChestDialog = true },
-                            onRescheduleClick = {
-                                val rep = "/reschedule "
-                                inputTextFieldValue = TextFieldValue(
-                                    text = rep,
-                                    selection = TextRange(rep.length)
-                                )
-                            },
-                            onTaskToggle = { taskId ->
-                                coroutineScope.launch(Dispatchers.IO) {
-                                    val app = context.applicationContext as com.focusbyrj.app.FocusApplication
-                                    val repo = app.taskRepository
-                                    val task = repo.getTaskById(taskId)
-                                    if (task != null) {
-                                        val completedAt = System.currentTimeMillis()
-                                        com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, task, completedAt)
-                                        val updated = task.copy(
-                                            isCompleted = true,
-                                            completedAt = completedAt,
-                                            updatedAt = completedAt
-                                        )
-                                        repo.updateTask(updated)
-                                        TaskReminderHelper.cancelReminderById(context, taskId)
-                                        FocusEconomyManager.completeTaskReward(task.title, task.isPriority, task.type)
-                                        if (task.recurrence != com.focusbyrj.app.data.RecurrencePattern.NONE) {
-                                            val nextTask = TaskReminderHelper.generateNextRecurringTask(task.copy(isCompleted = true, completedAt = completedAt))
-                                            val newId = app.database.taskDao().insertTask(nextTask)
-                                            TaskReminderHelper.scheduleReminder(context, nextTask.copy(id = newId))
-                                        }
-                                        TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
-                                        
-                                        withContext(Dispatchers.Main) {
-                                            messages = messages.map { m ->
-                                                if (m.taskSummaryJson != null) {
-                                                    try {
-                                                        val arr = org.json.JSONArray(m.taskSummaryJson)
-                                                        val newArr = org.json.JSONArray()
-                                                        for (i in 0 until arr.length()) {
-                                                            val item = arr.getJSONObject(i)
-                                                            if (item.optLong("id") == taskId) {
-                                                                item.put("isCompleted", true)
-                                                            }
-                                                            newArr.put(item)
-                                                        }
-                                                        m.copy(taskSummaryJson = newArr.toString())
-                                                    } catch (e: Exception) { m }
-                                                } else m
-                                            }
-                                            val ackMsg = ChatMessage(
-                                                id = "done_${System.currentTimeMillis()}",
-                                                text = "Checked off: *${task.title}* 🎉",
-                                                isUser = false
-                                            )
-                                            messages = messages + ackMsg
-                                        }
-                                    }
-                                }
-                            },
-                            onFilterChange = { cmd ->
-                                sendMessage(cmd)
-                            },
-                            onHabitLog = { habitId ->
-                                // Habit progress already incremented and rewards awarded in HabitsChatCard
-                                com.focusbyrj.app.util.GamificationHaptics.playLight(context)
-                            }
+                            val newSession = createDrillSessionWithQuestions(diffStr, 10)
+                            activeDrillSession = newSession
+                        }
+                    },
+                    onSkipDayWithFreeze = { promptMsg ->
+                        val success = com.focusbyrj.app.util.AptitudeManager.useStreakFreezeToSkipDay(1000)
+                        if (success) {
+                            val filtered = messages.filter { it.id != promptMsg.id }
+                            val angryMsg = ChatMessage(
+                                id = "angry_freeze_${System.currentTimeMillis()}",
+                                text = "😾 *Day Skipped with Streak Freeze!* (-1,000 🪙)\n\nAyva is grumpy that you skipped today's practice drill, but your streak is protected with a Freeze Shield! 🧊🔥",
+                                isUser = false,
+                                timestamp = System.currentTimeMillis(),
+                                isStreakFreezeSkipped = true
+                            )
+                            val updated = filtered + angryMsg
+                            messages = updated
+                            BubbleChatManager.saveMessages(context, updated.map { it.toPersistedChatMessage() }, updateActivityTimestamp = true)
+                            currentCatActionAsset = "cat_angry.lottie"
+                            isCatActionPlaying = true
+                            android.widget.Toast.makeText(context, "🧊 Streak Freeze applied! 1,000 Gold spent.", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            val currentGold = com.focusbyrj.app.util.FocusEconomyManager.profileFlow.value.gold
+                            android.widget.Toast.makeText(context, "⚠️ Need 1,000 Gold Coins to freeze streak! (You have $currentGold 🪙)", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    onDrillAnswer = handleDrillAnswer,
+                    onDrillEnd = handleDrillEnd,
+                    onOpenMysteryChest = { showMysteryChestDialog = true },
+                    onRescheduleClick = {
+                        val rep = "/reschedule "
+                        inputTextFieldValue = TextFieldValue(
+                            text = rep,
+                            selection = TextRange(rep.length)
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                }
+                    },
+                    onTaskToggle = { taskId ->
+                        coroutineScope.launch(Dispatchers.IO) {
+                            val app = context.applicationContext as com.focusbyrj.app.FocusApplication
+                            val repo = app.taskRepository
+                            val task = repo.getTaskById(taskId)
+                            if (task != null) {
+                                val completedAt = System.currentTimeMillis()
+                                com.focusbyrj.app.util.CompletedTaskHistoryManager.recordCompletedTask(context, task, completedAt)
+                                val updated = task.copy(
+                                    isCompleted = true,
+                                    completedAt = completedAt,
+                                    updatedAt = completedAt
+                                )
+                                repo.updateTask(updated)
+                                TaskReminderHelper.cancelReminderById(context, taskId)
+                                FocusEconomyManager.completeTaskReward(task.title, task.isPriority, task.type)
+                                if (task.recurrence != com.focusbyrj.app.data.RecurrencePattern.NONE) {
+                                    val nextTask = TaskReminderHelper.generateNextRecurringTask(task.copy(isCompleted = true, completedAt = completedAt))
+                                    val newId = app.database.taskDao().insertTask(nextTask)
+                                    TaskReminderHelper.scheduleReminder(context, nextTask.copy(id = newId))
+                                }
+                                TodoWidgetProvider.updateAllWidgets(context)
+                                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
+                                
+                                withContext(Dispatchers.Main) {
+                                    val newMessages = messages.map { m ->
+                                        if (m.taskSummaryJson != null) {
+                                            try {
+                                                val arr = org.json.JSONArray(m.taskSummaryJson)
+                                                val newArr = org.json.JSONArray()
+                                                for (i in 0 until arr.length()) {
+                                                    val item = arr.getJSONObject(i)
+                                                    if (item.optLong("id") == taskId) {
+                                                        item.put("isCompleted", true)
+                                                    }
+                                                    newArr.put(item)
+                                                }
+                                                m.copy(taskSummaryJson = newArr.toString())
+                                            } catch (e: Exception) { m }
+                                        } else m
+                                    }
+                                    val ackMsg = ChatMessage(
+                                        id = "done_${System.currentTimeMillis()}",
+                                        text = "Checked off: *${task.title}* 🎉",
+                                        isUser = false
+                                    )
+                                    val updatedList = newMessages + ackMsg
+                                    messages = updatedList
+                                    BubbleChatManager.saveMessages(context, updatedList.map { it.toPersistedChatMessage() }, updateActivityTimestamp = true)
+                                }
+                            }
+                        }
+                    },
+                    onFilterChange = { cmd -> sendMessage(cmd) },
+                    onHabitLog = {
+                        com.focusbyrj.app.util.GamificationHaptics.playLight(context)
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
 
-                // Animated Peeking Cat / Expanded Action Cat Lottie View
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isCatVisible,
-                    enter = fadeIn(tween(400)) + slideInVertically(initialOffsetY = { it }, animationSpec = tween(500)),
-                    exit = fadeOut(tween(300)) + slideOutVertically(targetOffsetY = { it }, animationSpec = tween(400)),
+                // Cat floating overlay
+                AyvaCatFloatingView(
+                    isVisible = isCatVisible,
+                    isActionPlaying = isCatActionPlaying,
+                    currentActionAsset = currentCatActionAsset,
+                    onDismissAction = {
+                        isCatActionPlaying = false
+                        catTapCount = 0
+                    },
+                    onCatTap = {
+                        val now = System.currentTimeMillis()
+                        if (now - lastCatTapTime > 1500L) {
+                            catTapCount = 1
+                        } else {
+                            catTapCount += 1
+                        }
+                        lastCatTapTime = now
+                        if (catTapCount >= 3) {
+                            catTapCount = 0
+                            catActionInvocationCount += 1
+                            val isError = kotlin.random.Random.nextInt(100) == 0
+                            currentCatActionAsset = if (isError) {
+                                "cat_error.lottie"
+                            } else {
+                                val actionPool = listOf("cat_action.lottie", "cat_dance.lottie", "cat_dancing.lottie")
+                                actionPool.random()
+                            }
+                            isCatActionPlaying = true
+                        }
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(end = 12.dp, bottom = 0.dp)
-                ) {
-                    androidx.compose.animation.AnimatedContent(
-                        targetState = isCatActionPlaying,
-                        transitionSpec = {
-                            (fadeIn(tween(350)) + scaleIn(initialScale = 0.7f, animationSpec = tween(350)))
-                                .togetherWith(fadeOut(tween(250)) + scaleOut(targetScale = 0.7f, animationSpec = tween(250)))
-                        },
-                        label = "cat_view_transition"
-                    ) { playingAction ->
-                        if (playingAction) {
-                            CatActionLottieView(
-                                assetName = currentCatActionAsset,
-                                onDismiss = {
-                                    isCatActionPlaying = false
-                                    catTapCount = 0
-                                }
-                            )
-                        } else {
-                            CatLottiePeekingView(
-                                onTap = {
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastCatTapTime > 1500L) {
-                                        catTapCount = 1
-                                    } else {
-                                        catTapCount += 1
-                                    }
-                                    lastCatTapTime = now
-                                    if (catTapCount >= 3) {
-                                        catTapCount = 0
-                                        catActionInvocationCount += 1
-                                        // 1 out of 100 times (1% chance) show error cat, remaining times randomly pick between cat action and cat dance
-                                        val isError = kotlin.random.Random.nextInt(100) == 0
-                                        currentCatActionAsset = if (isError) {
-                                            "cat_error.lottie"
-                                        } else {
-                                            val actionPool = listOf("cat_action.lottie", "cat_dance.lottie", "cat_dancing.lottie")
-                                            actionPool.random()
-                                        }
-                                        isCatActionPlaying = true
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Input Area
-        AnimatedVisibility(
-            visible = activeDrillSession == null,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-            // Horizontal scrollable quick action commands floating above icons
-            androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                items(quickActionCommands) { action ->
-                    androidx.compose.material3.Surface(
-                        onClick = { onFillCommand(action.commandText) },
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
-                    ) {
-                        Text(
-                            text = action.label,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 11.5.sp,
-                                letterSpacing = 0.2.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
-                        )
-                    }
-                }
-            }
-
-            AnimatedVisibility(visible = suggestions.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 200.dp)
-                        .padding(bottom = 8.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=0.5f), RoundedCornerShape(12.dp)),
-                    reverseLayout = true
-                ) {
-                    items(suggestions) { suggestion ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    val rep = suggestion.replacementText
-                                    inputTextFieldValue = TextFieldValue(
-                                        text = rep,
-                                        selection = TextRange(rep.length)
-                                    )
-                                }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(suggestion.displayText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                        }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha=0.2f))
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Toggles Row
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Ayva Talk Quick Action
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface)
-                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=0.5f), CircleShape)
-                            .clickable {
-                                inputTextFieldValue = TextFieldValue(
-                                    text = "/talk ",
-                                    selection = TextRange(6)
-                                )
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = com.focusbyrj.app.ui.components.AyvaIcon,
-                            contentDescription = "Talk to Ayva",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Math Drill Quick Action
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface)
-                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha=0.5f), CircleShape)
-                            .clickable {
-                                inputTextFieldValue = TextFieldValue(
-                                    text = "/drill ",
-                                    selection = TextRange(7)
-                                )
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Bolt,
-                            contentDescription = "Drill",
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    
-                    // Priority Toggle
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(if (isHighPriority) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface)
-                            .border(1.dp, if (isHighPriority) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha=0.5f), CircleShape)
-                            .clickable { isHighPriority = !isHighPriority },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Whatshot,
-                            contentDescription = "Priority",
-                            tint = if (isHighPriority) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Persistent Toggle
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(if (isPersistent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
-                            .border(1.dp, if (isPersistent) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha=0.5f), CircleShape)
-                            .clickable { isPersistent = !isPersistent },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.NotificationsActive,
-                            contentDescription = "Persistent",
-                            tint = if (isPersistent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.weight(1f))
-                
-                AnimatedVisibility(visible = parsedResult?.timestamp != null) {
-                    Text(
-                        text = "Setting due: ${parsedResult?.timestamp?.let { SmartDateParser.formatDueDate(it) }}",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                OutlinedTextField(
-                    value = inputTextFieldValue,
-                    onValueChange = { inputTextFieldValue = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text(if (inputText.startsWith("/")) "Enter command..." else "Add a new task...") },
-                    shape = RoundedCornerShape(24.dp),
-                    visualTransformation = CommandVisualTransformation(),
-                    trailingIcon = {
-                        Box(
-                            modifier = Modifier
-                                .padding(end = 8.dp)
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                                .clickable { 
-                                    val cur = inputTextFieldValue.text
-                                    if (!cur.startsWith("/")) {
-                                        val newText = "/$cur"
-                                        inputTextFieldValue = TextFieldValue(
-                                            text = newText,
-                                            selection = TextRange(newText.length)
-                                        )
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("/", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                    ),
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { sendMessage() })
                 )
+            }
 
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable(enabled = inputText.isNotBlank()) { sendMessage() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Send,
-                        contentDescription = "Send",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+            // Bottom Composer Bar
+            AnimatedVisibility(
+                visible = activeDrillSession == null,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                AyvaComposerBar(
+                    inputTextFieldValue = inputTextFieldValue,
+                    onInputChange = { inputTextFieldValue = it },
+                    quickActionCommands = quickActionCommands,
+                    onFillCommand = onFillCommand,
+                    suggestions = suggestions,
+                    onSuggestionClick = { suggestion ->
+                        val rep = suggestion.replacementText
+                        inputTextFieldValue = TextFieldValue(
+                            text = rep,
+                            selection = TextRange(rep.length)
+                        )
+                    },
+                    isHighPriority = isHighPriority,
+                    onToggleHighPriority = { isHighPriority = !isHighPriority },
+                    isPersistent = isPersistent,
+                    onTogglePersistent = { isPersistent = !isPersistent },
+                    parsedDueDateText = parsedResult?.timestamp?.let { SmartDateParser.formatDueDate(it) },
+                    onSend = { sendMessage() }
+                )
             }
             // Navigation Bar padding
             Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
@@ -2608,1538 +2300,5 @@ fun ChatInterface() {
                     com.focusbyrj.app.util.DailyQuestManager.refreshState()
                 }
             )
-        }
-    }
-}
-}
-
-@Composable
-fun ChatTextSizeDialog(
-    fontSizeSp: Float,
-    onFontSizeChange: (Float) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.FormatSize,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Chat Text Size", style = MaterialTheme.typography.titleLarge)
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "Adjust text size for the assistant chat window only.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Live Preview Bubble
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "Preview",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "🌅 Good Morning!\nHere is your daily update:\n🎉 All clear for today!",
-                            fontSize = fontSizeSp.sp,
-                            lineHeight = (fontSizeSp * 1.45f).sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
-                // Stepper Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    FilledTonalIconButton(
-                        onClick = { onFontSizeChange(fontSizeSp - 1f) },
-                        enabled = fontSizeSp > 12f,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(Icons.Filled.Remove, contentDescription = "Decrease size")
-                    }
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${fontSizeSp.toInt()} sp",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = when {
-                                fontSizeSp <= 13f -> "Small"
-                                fontSizeSp <= 15f -> "Default"
-                                fontSizeSp <= 18f -> "Medium"
-                                fontSizeSp <= 21f -> "Large"
-                                else -> "Extra Large"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    FilledTonalIconButton(
-                        onClick = { onFontSizeChange(fontSizeSp + 1f) },
-                        enabled = fontSizeSp < 24f,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(Icons.Filled.Add, contentDescription = "Increase size")
-                    }
-                }
-
-                // Classic professional slider
-                ProfessionalSlider(
-                    value = fontSizeSp,
-                    onValueChange = { onFontSizeChange(kotlin.math.round(it)) },
-                    valueRange = 12f..24f,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Quick preset buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    listOf(
-                        "Small" to 13f,
-                        "Default" to 15f,
-                        "Large" to 18f,
-                        "Huge" to 21f
-                    ).forEach { (label, size) ->
-                        val isSelected = (fontSizeSp == size)
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { onFontSizeChange(size) },
-                            label = { Text(label, fontSize = 10.sp) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Done")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = { onFontSizeChange(15f) }) {
-                Text("Reset")
-            }
-        }
-    )
-}
-
-@Composable
-fun ChatBubble(
-    message: ChatMessage, 
-    fontSizeSp: Float = 15f,
-    isScrolling: Boolean = false,
-    isActiveDrill: Boolean = false,
-    isActiveDrillRunning: Boolean = false,
-    currentCombo: Int = 0,
-    drillProgress: Pair<Int, Int>? = null,
-    isBlitzMode: Boolean = false,
-    onDrillAnswer: ((Boolean, QuestionRecord) -> Unit)? = null,
-    onDrillEnd: (() -> Unit)? = null,
-    onStartStreakDrill: (() -> Unit)? = null,
-    onSkipDayWithFreeze: ((ChatMessage) -> Unit)? = null,
-    onRescheduleClick: (() -> Unit)? = null,
-    onTaskToggle: ((Long) -> Unit)? = null,
-    onFilterChange: ((String) -> Unit)? = null,
-    onNavigateSummary: (() -> Unit)? = null,
-    onQueryClick: ((String) -> Unit)? = null,
-    onMessageUpdate: (ChatMessage) -> Unit = {},
-    onViewSolutions: ((String) -> Unit)? = null,
-    onOpenMysteryChest: (() -> Unit)? = null,
-    onDismiss: (() -> Unit)? = null,
-    onHabitLog: ((Long) -> Unit)? = null,
-    onHabitCreated: ((com.focusbyrj.app.data.Habit) -> Unit)? = null
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    if (message.isStreakPrompt) {
-        StreakPromptCard(
-            message = message,
-            fontSizeSp = fontSizeSp,
-            isActiveDrillRunning = isActiveDrillRunning,
-            onStartDrill = { onStartStreakDrill?.invoke() },
-            onSkipWithFreeze = { onSkipDayWithFreeze?.invoke(message) }
-        )
-        return
-    }
-    if (message.isMysteryBox) {
-        val questState by com.focusbyrj.app.util.DailyQuestManager.stateFlow.collectAsState()
-        val isChestAvailable = questState.isEarlyBirdAvailable || questState.isNightOwlAvailable
-        com.focusbyrj.app.ui.components.MysteryBoxChatCard(
-            isAvailable = isChestAvailable,
-            onOpenBox = {
-                if (isChestAvailable) {
-                    onOpenMysteryChest?.invoke()
-                }
-            }
-        )
-        return
-    }
-    if (message.isDrillSummary) {
-        DrillSummaryCard(
-            message = message, 
-            fontSizeSp = fontSizeSp,
-            onMessageUpdate = onMessageUpdate,
-            onViewSolutions = onViewSolutions,
-            onDismiss = onDismiss
-        )
-        return
-    }
-    if (message.isAptitudeProfile) {
-        com.focusbyrj.app.ui.screens.AptitudeProfileCard()
-        return
-    }
-    if (message.isDailyQuests) {
-        DailyQuestsCard()
-        return
-    }
-    if (message.isVocabHub) {
-        var vocabStats by remember { mutableStateOf<com.focusbyrj.app.data.VocabStats?>(null) }
-        val context = androidx.compose.ui.platform.LocalContext.current
-        LaunchedEffect(message.id) {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val repo = (context.applicationContext as? com.focusbyrj.app.FocusApplication)?.vocabRepository
-                vocabStats = repo?.getStats()
-            }
-        }
-        com.focusbyrj.app.ui.components.VocabRetentionHubChatCard(
-            stats = vocabStats,
-            onLaunchQuiz = { onQueryClick?.invoke("/vocab_quiz") },
-            onLearnMore = { onQueryClick?.invoke("/vocab learn_more") }
-        )
-        return
-    }
-
-    val isMorning = message.isMorningBrief || message.id.startsWith("morning_")
-    val isEvening = message.isEveningBrief || message.id.startsWith("evening_")
-    val isWelcome = !message.isUser && (
-        message.isWelcome || 
-        message.id.startsWith("welcome_") ||
-        message.text.contains("Hey! Ayva is on deck", ignoreCase = true) ||
-        message.text.contains("ready for action", ignoreCase = true) ||
-        message.text.contains("Ayva here!", ignoreCase = true) ||
-        message.text.contains("I'm Ayva", ignoreCase = true) ||
-        message.text.contains("Hey there! I'm Ayva", ignoreCase = true) ||
-        message.text.contains("anti-procrastination", ignoreCase = true) ||
-        message.text.contains("cognitive mastery", ignoreCase = true) ||
-        message.text.contains("focus & learning companion", ignoreCase = true)
-    )
-
-    if (message.isHabitsSummary && !message.isUser) {
-        HabitsChatCard(
-            message = message,
-            fontSizeSp = fontSizeSp,
-            onHabitLog = onHabitLog,
-            onHabitCreated = onHabitCreated,
-            onOpenFullTracker = {
-                val intent = Intent(context, com.focusbyrj.app.MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    putExtra("navigate_to", "habits")
-                    putExtra("NAV_DESTINATION", "habits")
-                }
-                context.startActivity(intent)
-            }
-        )
-        return
-    }
-
-    if (message.isTaskSummary && !message.isUser && !isMorning && !isEvening) {
-        TaskSummaryCard(
-            message = message,
-            fontSizeSp = fontSizeSp,
-            onTaskToggle = onTaskToggle,
-            onRescheduleClick = onRescheduleClick,
-            onFilterChange = onFilterChange
-        )
-        return
-    }
-
-    val df = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
-    val timeString = df.format(Date(message.timestamp))
-
-    val category = remember(message.text, message.isMorningBrief, message.isEveningBrief, message.isArithmetic, message.isStreakPrompt, message.id) {
-        com.focusbyrj.app.util.AyvaAlertCategory.infer(
-            text = message.text,
-            isMorning = isMorning,
-            isEvening = isEvening,
-            isDrill = message.isArithmetic || message.isDrillSummary,
-            isStreakPrompt = message.isStreakPrompt,
-            messageId = message.id
-        )
-    }
-
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
-    ) {
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
-        ) {
-            if (!message.isUser) {
-                androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(id = com.focusbyrj.app.R.drawable.app_icon),
-                    contentDescription = "Ayva",
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .border(1.5.dp, category.getComposeNotificationAccent(context).copy(alpha = 0.85f), CircleShape)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-            }
-            
-            val maxBubbleWidth = if (isWelcome) (330 + (fontSizeSp - 15f) * 10f).coerceIn(330f, 380f).dp
-                else if (isMorning || isEvening) (310 + (fontSizeSp - 15f) * 10f).coerceIn(310f, 360f).dp 
-                else (280 + (fontSizeSp - 15f) * 10f).coerceIn(280f, 350f).dp
-            androidx.compose.material3.Surface(
-                modifier = Modifier.widthIn(max = maxBubbleWidth),
-                shape = RoundedCornerShape(
-                    topStart = 24.dp,
-                    topEnd = 24.dp,
-                    bottomStart = if (message.isUser) 24.dp else 4.dp,
-                    bottomEnd = if (message.isUser) 4.dp else 24.dp
-                ),
-                color = if (message.isUser) androidx.compose.material3.MaterialTheme.colorScheme.primary else androidx.compose.material3.MaterialTheme.colorScheme.surface,
-                contentColor = if (message.isUser) androidx.compose.material3.MaterialTheme.colorScheme.onPrimary else androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                border = if (message.isUser) null else androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.material3.MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-                shadowElevation = if (message.isUser) 0.dp else 4.dp
-            ) {
-                if (message.isArithmetic && message.arithmeticJson != null) {
-                    ArithmeticCard(
-                        message = message, 
-                        fontSizeSp = fontSizeSp,
-                        isActiveDrill = isActiveDrill,
-                        currentCombo = currentCombo,
-                        drillProgress = drillProgress,
-                        isBlitzMode = isBlitzMode,
-                        onAnswered = onDrillAnswer,
-                        onEndDrill = onDrillEnd
-                    )
-                } else {
-                    Column(
-                        modifier = Modifier.padding(
-                            horizontal = (14 + (fontSizeSp - 15f) * 0.5f).coerceIn(12f, 20f).dp,
-                            vertical = (10 + (fontSizeSp - 15f) * 0.5f).coerceIn(8f, 16f).dp
-                        )
-                    ) {
-                        if (isMorning && !message.isUser) {
-                            MorningBriefLottieHeader(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(135.dp)
-                                    .padding(bottom = 10.dp),
-                                isScrolling = isScrolling
-                            )
-                        } else if (isEvening && !message.isUser) {
-                            EveningBriefHeader(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(135.dp)
-                                    .padding(bottom = 10.dp),
-                                messageId = message.id,
-                                isScrolling = isScrolling
-                            )
-                        } else if (message.isStreakFreezeSkipped && !message.isUser) {
-                            CatAngryLottieHeader(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(140.dp)
-                                    .padding(bottom = 10.dp),
-                                isScrolling = isScrolling
-                            )
-                        }
-
-                        val parsedFormattedText = remember(message.text) {
-                            parseRichFormattedText(message.text)
-                        }
-                        Text(
-                            text = parsedFormattedText,
-                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = fontSizeSp.sp,
-                                lineHeight = (fontSizeSp * 1.45f).sp,
-                                letterSpacing = 0.2.sp
-                            )
-                        )
-
-                        if (isWelcome) {
-                            Spacer(modifier = Modifier.height(14.dp))
-                            androidx.compose.material3.Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(295.dp),
-                                shape = RoundedCornerShape(18.dp),
-                                color = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    androidx.compose.material3.MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
-                                )
-                            ) {
-                                com.focusbyrj.app.ui.components.CatMagicRiveView(
-                                    modifier = Modifier.fillMaxSize(),
-                                    messageId = message.id
-                                )
-                            }
-                        }
-                        
-                        if (message.isVocabBrief && message.vocabJson != null) {
-                            val isLearnMoreSession = !message.isMorningBrief && !message.isEveningBrief
-                            com.focusbyrj.app.ui.components.VocabBriefContent(
-                                vocabJson = message.vocabJson,
-                                fontSizeSp = fontSizeSp,
-                                isLearnMoreSession = isLearnMoreSession,
-                                messageId = message.id,
-                                onLearnMoreClick = {
-                                    onQueryClick?.invoke("/vocab learn_more")
-                                },
-                                onQuizClick = {
-                                    if (!isLearnMoreSession) {
-                                        onQueryClick?.invoke("/vocab_quiz")
-                                    }
-                                }
-                            )
-                        }
-
-                        if (message.isTalkAction && !message.talkActionJson.isNullOrBlank()) {
-                            com.focusbyrj.app.ui.components.TalkActionChips(
-                                talkActionJson = message.talkActionJson,
-                                fontSizeSp = fontSizeSp,
-                                onQueryClick = onQueryClick
-                            )
-                        }
-                        
-                        if (!message.pendingActionJson.isNullOrBlank()) {
-                            PendingActionCard(
-                                message = message,
-                                fontSizeSp = fontSizeSp,
-                                onMessageUpdate = onMessageUpdate
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        Text(
-            text = timeString,
-            style = androidx.compose.material3.MaterialTheme.typography.labelSmall.copy(
-                fontSize = (fontSizeSp * 0.72f).coerceIn(10f, 14f).sp,
-                fontWeight = FontWeight.Medium
-            ),
-            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-            modifier = Modifier.padding(
-                top = 4.dp, 
-                start = if (message.isUser) 0.dp else 40.dp, 
-                end = if (message.isUser) 4.dp else 0.dp
-            )
-        )
-    }
-}
-
-data class TaskItemData(
-    val id: Long,
-    val title: String,
-    val isPriority: Boolean,
-    val dueDate: Long,
-    val isCompleted: Boolean,
-    val isPersistent: Boolean = false,
-    val filterMode: String = "today"
-)
-
-@Composable
-fun TaskSummaryCard(
-    message: ChatMessage,
-    fontSizeSp: Float = 15f,
-    onTaskToggle: ((Long) -> Unit)? = null,
-    onRescheduleClick: (() -> Unit)? = null,
-    onFilterChange: ((String) -> Unit)? = null
-) {
-    val isDark = isSystemInDarkTheme()
-    val df = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
-    val timeString = df.format(Date(message.timestamp))
-    val maxBubbleWidth = (300 + (fontSizeSp - 15f) * 12f).coerceIn(300f, 380f).dp
-
-    var showFilterDropdown by remember { mutableStateOf(false) }
-
-    val taskItems = remember(message.taskSummaryJson) {
-        val list = mutableListOf<TaskItemData>()
-        if (!message.taskSummaryJson.isNullOrBlank()) {
-            try {
-                val arr = org.json.JSONArray(message.taskSummaryJson)
-                for (i in 0 until arr.length()) {
-                    val obj = arr.getJSONObject(i)
-                    list.add(
-                        TaskItemData(
-                            id = obj.optLong("id"),
-                            title = obj.optString("title", ""),
-                            isPriority = obj.optBoolean("isPriority", false),
-                            dueDate = obj.optLong("dueDate", 0L),
-                            isCompleted = obj.optBoolean("isCompleted", false),
-                            isPersistent = obj.optBoolean("isPersistent", false),
-                            filterMode = obj.optString("filterMode", "today")
-                        )
-                    )
-                }
-            } catch (_: Exception) {}
-        }
-        list
-    }
-
-    val isAllMode = taskItems.firstOrNull()?.filterMode == "all"
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.Start
-    ) {
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.Start
-        ) {
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(id = com.focusbyrj.app.R.drawable.app_icon),
-                contentDescription = "Ayva",
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .border(1.dp, Color(0x33FFFFFF), CircleShape)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Surface(
-                modifier = Modifier.widthIn(max = maxBubbleWidth),
-                shape = RoundedCornerShape(
-                    topStart = 20.dp,
-                    topEnd = 20.dp,
-                    bottomStart = 4.dp,
-                    bottomEnd = 20.dp
-                ),
-                color = if (isDark) Color(0xFF131316) else Color(0xFFF8FAFC),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (isDark) 0.1f else 0.25f)),
-                shadowElevation = 4.dp
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    // Header Bar with Filter Dropdown
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = if (isAllMode) "All Tasks" else "Today's Tasks",
-                                style = MaterialTheme.typography.titleSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = (fontSizeSp * 0.95f).sp
-                                ),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            if (taskItems.isNotEmpty()) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                ) {
-                                    val leftCount = taskItems.count { !it.isCompleted }
-                                    Text(
-                                        text = "$leftCount left",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold
-                                        ),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Dropdown Selector Button
-                        Box {
-                            Surface(
-                                onClick = { showFilterDropdown = true },
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isDark) Color(0xFF1C1C20) else MaterialTheme.colorScheme.surface,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = if (isAllMode) "All" else "Today",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Icon(
-                                        imageVector = Icons.Filled.ArrowDropDown,
-                                        contentDescription = "Select task view",
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            DropdownMenu(
-                                expanded = showFilterDropdown,
-                                onDismissRequest = { showFilterDropdown = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Today's Tasks") },
-                                    onClick = {
-                                        showFilterDropdown = false
-                                        onFilterChange?.invoke("/tasks")
-                                    },
-                                    leadingIcon = {
-                                        Icon(Icons.Filled.Today, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("All Tasks") },
-                                    onClick = {
-                                        showFilterDropdown = false
-                                        onFilterChange?.invoke("/tasks all")
-                                    },
-                                    leadingIcon = {
-                                        Icon(Icons.Filled.FormatListBulleted, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Clean Task Items List or Empty State
-                    if (taskItems.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (isAllMode) "No tasks found" else "No tasks scheduled for today",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = (fontSizeSp * 0.95f).sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                )
-                            )
-                        }
-                    } else {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            taskItems.forEach { task ->
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isDark) Color(0xFF131B26) else Color.White,
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        1.dp,
-                                        if (task.isPriority && !task.isCompleted) Color(0xFFEF4444).copy(alpha = 0.3f) else MaterialTheme.colorScheme.outline.copy(alpha = if(isDark) 0.1f else 0.18f)
-                                    ),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { onTaskToggle?.invoke(task.id) }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // Clickable Circle Checkbox
-                                        Box(
-                                            modifier = Modifier
-                                                .size(22.dp)
-                                                .clip(CircleShape)
-                                                .background(
-                                                    if (task.isCompleted) MaterialTheme.colorScheme.primary else Color.Transparent
-                                                )
-                                                .border(
-                                                    width = 2.dp,
-                                                    color = when {
-                                                        task.isCompleted -> MaterialTheme.colorScheme.primary
-                                                        task.isPriority -> Color(0xFFEF4444).copy(alpha = 0.7f)
-                                                        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                                                    },
-                                                    shape = CircleShape
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (task.isCompleted) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Check,
-                                                    contentDescription = "Completed",
-                                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.width(12.dp))
-
-                                        // Task details
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = task.title,
-                                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                                        fontSize = (fontSizeSp * 0.95f).sp,
-                                                        fontWeight = if (task.isPriority && !task.isCompleted) FontWeight.Bold else FontWeight.SemiBold,
-                                                        textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
-                                                    ),
-                                                    color = if (task.isCompleted) {
-                                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                                    } else if (task.isPriority) {
-                                                        Color(0xFFEF4444)
-                                                    } else {
-                                                        MaterialTheme.colorScheme.onSurface
-                                                    }
-                                                )
-                                            }
-
-                                            if (task.dueDate > 0L) {
-                                                val now = System.currentTimeMillis()
-                                                val isOverdue = task.dueDate < now && !task.isCompleted
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.AccessTime,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(11.dp),
-                                                        tint = if (isOverdue) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text(
-                                                        text = if (isOverdue) "Overdue: ${SmartDateParser.formatDueDate(task.dueDate)}" else SmartDateParser.formatDueDate(task.dueDate),
-                                                        style = MaterialTheme.typography.labelSmall.copy(
-                                                            fontSize = 11.sp,
-                                                            fontWeight = if (isOverdue) FontWeight.Bold else FontWeight.Medium
-                                                        ),
-                                                        color = if (isOverdue) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Bottom action row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            onClick = { onRescheduleClick?.invoke() },
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = if(isDark) 0.1f else 0.08f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = if(isDark) 0.3f else 0.25f)),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.AccessTime,
-                                    contentDescription = "Reschedule",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Reschedule",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = (fontSizeSp * 0.8f).sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-
-                        Surface(
-                            onClick = { onFilterChange?.invoke(if (isAllMode) "/tasks" else "/tasks all") },
-                            shape = RoundedCornerShape(10.dp),
-                            color = if(isDark) Color(0xFF1C1C20) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if(isDark) 0.2f else 0.2f)),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (isAllMode) Icons.Filled.Today else Icons.Filled.FormatListBulleted,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (isAllMode) "Show Today" else "Show All",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = (fontSizeSp * 0.8f).sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Text(
-            text = timeString,
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = (fontSizeSp * 0.72f).coerceIn(10f, 14f).sp,
-                fontWeight = FontWeight.Medium
-            ),
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-            modifier = Modifier.padding(top = 4.dp, start = 40.dp)
-        )
-    }
-}
-
-@Composable
-fun StreakPromptCard(
-    message: ChatMessage,
-    fontSizeSp: Float = 15f,
-    isActiveDrillRunning: Boolean = false,
-    onStartDrill: () -> Unit,
-    onSkipWithFreeze: () -> Unit
-) {
-    val isDark = isSystemInDarkTheme()
-    val economyProfile by com.focusbyrj.app.util.FocusEconomyManager.profileFlow.collectAsState()
-    val canAffordFreeze = economyProfile.gold >= 1000
-    val json = remember(message.streakPromptJson) {
-        try {
-            if (message.streakPromptJson != null) org.json.JSONObject(message.streakPromptJson) else null
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    val streak = json?.optInt("streak", 0) ?: 0
-    val bonusPercent = json?.optInt("bonusPercent", 0) ?: 0
-
-    val df = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
-    val timeString = df.format(Date(message.timestamp))
-    val maxBubbleWidth = (290 + (fontSizeSp - 15f) * 10f).coerceIn(290f, 360f).dp
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.Start
-    ) {
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.Start
-        ) {
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(id = com.focusbyrj.app.R.drawable.app_icon),
-                contentDescription = "Ayva",
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .border(1.dp, Color(0x33FFFFFF), CircleShape)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Surface(
-                modifier = Modifier.widthIn(max = maxBubbleWidth),
-                shape = RoundedCornerShape(
-                    topStart = 20.dp,
-                    topEnd = 20.dp,
-                    bottomStart = 4.dp,
-                    bottomEnd = 20.dp
-                ),
-                color = if (isDark) Color(0xFF1E140A) else Color(0xFFFFF7ED),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFF97316).copy(alpha = 0.7f)),
-                shadowElevation = 4.dp
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    // Header Tag
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFFF97316).copy(alpha = 0.15f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF97316).copy(alpha = 0.4f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (streak > 0) "🔥 $streak-DAY STREAK" else "⚡ DAILY STREAK",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFEA580C)
-                                )
-                            }
-                        }
-
-                        if (bonusPercent > 0) {
-                            Text(
-                                text = "+$bonusPercent% XP Bonus",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF16A34A)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = parseRichFormattedText(message.text),
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = fontSizeSp.sp,
-                            lineHeight = (fontSizeSp * 1.4f).sp,
-                            letterSpacing = 0.2.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Button(
-                        onClick = onStartDrill,
-                        enabled = !isActiveDrillRunning,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFEA580C),
-                            contentColor = Color.White,
-                            disabledContainerColor = Color(0xFFEA580C).copy(alpha = 0.4f),
-                            disabledContentColor = Color.White.copy(alpha = 0.7f)
-                        )
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = if (isActiveDrillRunning) Icons.Filled.CheckCircle else Icons.Filled.Bolt,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isActiveDrillRunning) "Drill in Progress" else "Start 10-Question Drill",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = (fontSizeSp * 0.95f).sp
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    DuolingoFreezeButton(
-                        canAfford = canAffordFreeze,
-                        enabled = !isActiveDrillRunning,
-                        fontSizeSp = fontSizeSp,
-                        onClick = onSkipWithFreeze
-                    )
-                }
-            }
-        }
-
-        Text(
-            text = timeString,
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = (fontSizeSp * 0.72f).coerceIn(10f, 14f).sp,
-                fontWeight = FontWeight.Medium
-            ),
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-            modifier = Modifier.padding(top = 4.dp, start = 40.dp)
-        )
-    }
-}
-
-@Composable
-fun DuolingoFreezeButton(
-    canAfford: Boolean,
-    enabled: Boolean,
-    fontSizeSp: Float,
-    onClick: () -> Unit
-) {
-    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val isDark = isSystemInDarkTheme()
-
-    val topOffset by androidx.compose.animation.core.animateDpAsState(
-        targetValue = if (isPressed && enabled) 4.dp else 0.dp,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 60),
-        label = "duo_btn_press"
-    )
-
-    val baseColor = when {
-        !enabled -> if (isDark) Color(0xFF1E293B) else Color(0xFF94A3B8)
-        canAfford -> Color(0xFF0284C7)
-        else -> if (isDark) Color(0xFF1E293B) else Color(0xFF94A3B8)
-    }
-
-    val topFaceColor = when {
-        !enabled -> if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
-        canAfford -> Color(0xFF0EA5E9)
-        else -> if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
-    }
-
-    val textColor = when {
-        !enabled -> Color.Gray
-        canAfford -> Color.White
-        else -> if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        // 3D Shadow Base
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .align(Alignment.BottomCenter)
-                .clip(RoundedCornerShape(16.dp))
-                .background(baseColor)
-        )
-
-        // Top Tactile Face (displaces downward on press)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = topOffset)
-                .height(48.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(topFaceColor)
-                .border(
-                    width = 1.dp,
-                    color = if (canAfford && enabled) Color(0xFF7DD3FC).copy(alpha = 0.6f) else Color.Transparent,
-                    shape = RoundedCornerShape(16.dp)
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            ) {
-                Text(
-                    text = "🧊",
-                    fontSize = 17.sp,
-                    modifier = Modifier.padding(end = 6.dp)
-                )
-                Text(
-                    text = if (canAfford) "FREEZE STREAK • 1,000 🪙" else "FREEZE STREAK (1,000 🪙)",
-                    fontWeight = FontWeight.Black,
-                    fontSize = (fontSizeSp * 0.85f).coerceIn(12f, 15f).sp,
-                    letterSpacing = 0.5.sp,
-                    color = textColor
-                )
-            }
-        }
-    }
-}
-
-data class AppInfo(val name: String, val packageName: String, val category: AppCategory = AppCategory.OTHERS)
-data class Suggestion(val displayText: String, val replacementText: String)
-
-fun parseRichFormattedText(rawText: String): AnnotatedString {
-    val builder = AnnotatedString.Builder()
-    var i = 0
-    val n = rawText.length
-
-    while (i < n) {
-        if (i + 1 < n && rawText[i] == '*' && rawText[i + 1] == '*') {
-            // Bold: **text**
-            val closeIdx = rawText.indexOf("**", i + 2)
-            if (closeIdx != -1 && closeIdx > i + 1) {
-                val content = rawText.substring(i + 2, closeIdx)
-                builder.withStyle(SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)) {
-                    append(content)
-                }
-                i = closeIdx + 2
-                continue
-            }
-        } else if (i + 2 < n && rawText[i] == '*' && rawText[i + 1] == '_' && rawText[i + 2] == '_') {
-            // Bold + Underline: *__text__*
-            val closeIdx = rawText.indexOf("__*", i + 3)
-            if (closeIdx != -1) {
-                val content = rawText.substring(i + 3, closeIdx)
-                builder.withStyle(
-                    SpanStyle(
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        textDecoration = TextDecoration.Underline
-                    )
-                ) {
-                    append(content)
-                }
-                i = closeIdx + 3
-                continue
-            }
-        } else if (i + 1 < n && rawText[i] == '_' && rawText[i + 1] == '_') {
-            // Underline: __text__
-            val closeIdx = rawText.indexOf("__", i + 2)
-            if (closeIdx != -1) {
-                val content = rawText.substring(i + 2, closeIdx)
-                builder.withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) {
-                    append(content)
-                }
-                i = closeIdx + 2
-                continue
-            }
-        } else if (rawText[i] == '*') {
-            // Bold: *text*
-            val closeIdx = rawText.indexOf('*', i + 1)
-            if (closeIdx != -1 && closeIdx > i + 1) {
-                val content = rawText.substring(i + 1, closeIdx)
-                builder.withStyle(SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)) {
-                    append(content)
-                }
-                i = closeIdx + 1
-                continue
-            }
-        } else if (rawText[i] == '_') {
-            // Italic: _text_
-            val closeIdx = rawText.indexOf('_', i + 1)
-            if (closeIdx != -1 && closeIdx > i + 1) {
-                val content = rawText.substring(i + 1, closeIdx)
-                builder.withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
-                    append(content)
-                }
-                i = closeIdx + 1
-                continue
-            }
-        } else if (rawText[i] == '`') {
-            // Code/Monospace: `text`
-            val closeIdx = rawText.indexOf('`', i + 1)
-            if (closeIdx != -1 && closeIdx > i + 1) {
-                val content = rawText.substring(i + 1, closeIdx)
-                builder.withStyle(
-                    SpanStyle(
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
-                    )
-                ) {
-                    append(content)
-                }
-                i = closeIdx + 1
-                continue
-            }
-        }
-
-        builder.append(rawText[i])
-        i++
-    }
-
-    return builder.toAnnotatedString()
-}
-
-class CommandVisualTransformation : VisualTransformation {
-    override fun filter(text: AnnotatedString): TransformedText {
-        val input = text.text
-        val builder = AnnotatedString.Builder()
-        if (input.startsWith("/")) {
-            val parts = input.split(" ", limit = 3)
-            val cmd = parts[0]
-            builder.withStyle(SpanStyle(color = androidx.compose.ui.graphics.Color(0xFF3B82F6), fontWeight = FontWeight.Bold)) {
-                append(cmd)
-            }
-            if (parts.size > 1) {
-                builder.append(" ")
-                builder.append(parts.drop(1).joinToString(" "))
-            }
-        } else {
-            builder.append(input)
-        }
-        return TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
-    }
-}
-
-@Composable
-fun PendingActionCard(message: ChatMessage, fontSizeSp: Float, onMessageUpdate: (ChatMessage) -> Unit) {
-    val context = LocalContext.current
-    val json = remember(message.pendingActionJson) { org.json.JSONObject(message.pendingActionJson) }
-    val status = json.optString("status", "pending")
-    val title = json.optString("title", "")
-    val displayVal = json.optString("displayVal", "")
-    
-    Spacer(modifier = Modifier.height(8.dp))
-    
-    if (status == "pending") {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            androidx.compose.material3.Button(
-                onClick = {
-                    val prefKey = json.optString("prefKey")
-                    val prefType = json.optString("prefType")
-                    val value = json.optString("value")
-                    
-                    val prefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE).edit()
-                    val bubblePrefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE).edit()
-                    
-                    if (prefType == "int") {
-                        prefs.putInt(prefKey, value.toIntOrNull() ?: 0)
-                        bubblePrefs.putInt(prefKey, value.toIntOrNull() ?: 0)
-                    } else if (prefType == "boolean") {
-                        prefs.putBoolean(prefKey, value == "true")
-                        bubblePrefs.putBoolean(prefKey, value == "true")
-                    } else if (prefType == "string") {
-                        prefs.putString(prefKey, value)
-                        bubblePrefs.putString(prefKey, value)
-                    }
-                    prefs.apply()
-                    bubblePrefs.apply()
-                    
-                    if (prefKey == "streak_notification_time" || prefKey == "streak_notification_enabled") {
-                        com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(context)
-                    } else if (prefKey == "morning_brief_time" || prefKey == "evening_brief_time") {
-                        com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(context)
-                    } else if (prefKey == "vacation_mode") {
-                        com.focusbyrj.app.util.AptitudeManager.setVacationMode(context, value == "true")
-                    }
-                    
-                    json.put("status", "executed")
-                    val updatedMessage = message.copy(pendingActionJson = json.toString())
-                    
-                    onMessageUpdate(updatedMessage)
-                },
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.weight(1f).height(32.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF10B981)),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-            ) {
-                Text("Confirm", fontSize = (fontSizeSp * 0.78f).coerceIn(11f, 13f).sp, fontWeight = FontWeight.SemiBold)
-            }
-            
-            androidx.compose.material3.OutlinedButton(
-                onClick = {
-                    json.put("status", "cancelled")
-                    val updatedMessage = message.copy(pendingActionJson = json.toString())
-                    
-                    onMessageUpdate(updatedMessage)
-                },
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.weight(1f).height(32.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-            ) {
-                Text("Cancel", fontSize = (fontSizeSp * 0.78f).coerceIn(11f, 13f).sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    } else if (status == "executed") {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color(0xFF10B981).copy(alpha = 0.1f), RoundedCornerShape(8.dp)).padding(8.dp)) {
-            Icon(Icons.Rounded.CheckCircle, contentDescription = "Done", tint = androidx.compose.ui.graphics.Color(0xFF10B981), modifier = Modifier.size(15.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Changed successfully.", color = androidx.compose.ui.graphics.Color(0xFF10B981), fontSize = (fontSizeSp * 0.78f).coerceIn(11f, 13f).sp, fontWeight = FontWeight.Medium)
-        }
-    } else {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(8.dp)) {
-            Icon(Icons.Rounded.Close, contentDescription = "Cancelled", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Action cancelled.", color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant, fontSize = (fontSizeSp * 0.78f).coerceIn(11f, 13f).sp, fontWeight = FontWeight.Medium)
-        }
-    }
-}
-
-@Composable
-fun CatLottiePeekingView(
-    onTap: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val composition by rememberLottieComposition(
-        LottieCompositionSpec.RawRes(com.focusbyrj.app.R.raw.cat_animation)
-    )
-    val animProgress = remember { androidx.compose.animation.core.Animatable(0f) }
-
-    LaunchedEffect(composition) {
-        val comp = composition ?: return@LaunchedEffect
-        val dur = comp.duration.toLong().coerceIn(1500L, 4000L)
-        while (true) {
-            // 1. Cat rises up slowly and looks around with cute eyes
-            animProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = dur.toInt(),
-                    easing = androidx.compose.animation.core.LinearEasing
-                )
-            )
-            // 2. Pause at peak so cat stays visible and looks around
-            kotlinx.coroutines.delay(1200L)
-            // 3. Cat goes down slowly and smoothly back into hiding instead of abruptly disappearing
-            animProgress.animateTo(
-                targetValue = 0f,
-                animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = (dur * 0.75f).toInt().coerceAtLeast(1000),
-                    easing = androidx.compose.animation.core.FastOutSlowInEasing
-                )
-            )
-            // 4. Short rest before coming up again
-            kotlinx.coroutines.delay(800L)
-        }
-    }
-
-    val coroutineScope = rememberCoroutineScope()
-    val scaleAnim = remember { androidx.compose.animation.core.Animatable(1f) }
-
-    Box(
-        modifier = modifier
-            .scale(scaleAnim.value)
-            .width(96.dp)
-            .height(55.dp)
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null
-            ) {
-                coroutineScope.launch {
-                    scaleAnim.animateTo(
-                        targetValue = 1.15f,
-                        animationSpec = androidx.compose.animation.core.spring(
-                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
-                        )
-                    )
-                    scaleAnim.animateTo(
-                        targetValue = 1f,
-                        animationSpec = androidx.compose.animation.core.spring(
-                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
-                        )
-                    )
-                }
-                onTap()
-            },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        LottieAnimation(
-            composition = composition,
-            progress = { animProgress.value },
-            modifier = Modifier.fillMaxSize()
-        )
-    }
-}
-
-@Composable
-fun CatActionLottieView(
-    assetName: String = "cat_action.lottie",
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val composition by rememberLottieComposition(
-        LottieCompositionSpec.Asset(assetName)
-    )
-    val progress by animateLottieCompositionAsState(
-        composition = composition,
-        iterations = LottieConstants.IterateForever
-    )
-
-    val startTime = remember { System.currentTimeMillis() }
-
-    val targetSize = when (assetName) {
-        "cat_error.lottie" -> 250.dp
-        "cat_angry.lottie" -> 195.dp
-        "cat_dance.lottie", "cat_dancing.lottie" -> 185.dp
-        else -> 175.dp
-    }
-    val contentScale = if (assetName == "cat_error.lottie") 1.3f else 1.0f
-
-    Box(
-        modifier = modifier
-            .size(targetSize)
-            .scale(contentScale)
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null
-            ) {
-                // Ignore taps within the first 2 seconds (2000ms) to prevent accidental muscle-memory cancels
-                if (System.currentTimeMillis() - startTime >= 2000L) {
-                    onDismiss()
-                }
-            },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        LottieAnimation(
-            composition = composition,
-            progress = { progress },
-            modifier = Modifier.fillMaxSize()
-        )
-    }
-}
-
-@Composable
-fun MorningBriefLottieHeader(
-    modifier: Modifier = Modifier,
-    isScrolling: Boolean = false
-) {
-    val composition by rememberLottieComposition(
-        LottieCompositionSpec.Asset("cat_morning.lottie")
-    )
-    val progress by animateLottieCompositionAsState(
-        composition = composition,
-        isPlaying = !isScrolling,
-        iterations = LottieConstants.IterateForever,
-        restartOnPlay = false
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 10.dp, bottomEnd = 10.dp))
-            .background(
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    colors = listOf(
-                        androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                        androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                    )
-                )
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        LottieAnimation(
-            composition = composition,
-            progress = { progress },
-            modifier = Modifier.fillMaxSize(),
-            renderMode = RenderMode.HARDWARE
-        )
-    }
-}
-
-@Composable
-fun EveningBriefHeader(
-    modifier: Modifier = Modifier,
-    messageId: String? = null,
-    isScrolling: Boolean = false
-) {
-    EveningBriefLottieHeader(modifier = modifier, isScrolling = isScrolling)
-}
-
-@Composable
-fun EveningBriefLottieHeader(
-    modifier: Modifier = Modifier,
-    isScrolling: Boolean = false
-) {
-    val composition by rememberLottieComposition(
-        LottieCompositionSpec.Asset("cat_evening.lottie")
-    )
-    val progress by animateLottieCompositionAsState(
-        composition = composition,
-        isPlaying = !isScrolling,
-        iterations = LottieConstants.IterateForever,
-        restartOnPlay = false
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 10.dp, bottomEnd = 10.dp))
-            .background(
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    colors = listOf(
-                        androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
-                        androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                    )
-                )
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        LottieAnimation(
-            composition = composition,
-            progress = { progress },
-            modifier = Modifier.fillMaxSize(),
-            renderMode = RenderMode.HARDWARE
-        )
-    }
-}
-
-@Composable
-fun CatAngryLottieHeader(
-    modifier: Modifier = Modifier,
-    isScrolling: Boolean = false
-) {
-    val composition by rememberLottieComposition(
-        LottieCompositionSpec.Asset("cat_angry.lottie")
-    )
-    val progress by animateLottieCompositionAsState(
-        composition = composition,
-        isPlaying = !isScrolling,
-        iterations = LottieConstants.IterateForever,
-        restartOnPlay = false
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 10.dp, bottomEnd = 10.dp))
-            .background(
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFFEF4444).copy(alpha = 0.25f),
-                        androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                    )
-                )
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        LottieAnimation(
-            composition = composition,
-            progress = { progress },
-            modifier = Modifier.fillMaxSize(),
-            renderMode = RenderMode.HARDWARE
-        )
     }
 }

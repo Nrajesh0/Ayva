@@ -789,6 +789,22 @@ object AyvaTalkEngine {
                         )
                     }
 
+                    // --- SPECIFIC APP TELEMETRY QUERY ---
+                    val appUsageResp = com.focusbyrj.app.util.command.AyvaCompoundCommandHandler.queryAppUsageTelemetry(context, cleanQuery)
+                    if (appUsageResp != null) {
+                        recordTurn(cleanQuery, "screentime")
+                        val actions = listOf(
+                            TalkAction.AskQuery("/screentime", "📊 All Screen Time"),
+                            TalkAction.AskQuery("/advice", "💡 Focus Advice")
+                        )
+                        return TalkResponse(
+                            formattedText = appUsageResp,
+                            actions = actions,
+                            topicId = "screentime",
+                            jsonPayload = serializeActionsJson("screentime", actions)
+                        )
+                    }
+
                     // --- SCREEN TIME & APP USAGE TELEMETRY QUERY ---
                     val isScreenTimeQuery = cleanQuery in listOf(
                         "screentime", "/screentime", "screen time", "my screen time", "usage", "app usage",

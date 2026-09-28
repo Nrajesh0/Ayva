@@ -44,21 +44,24 @@ object DrillSummaryHelper {
             xpEarned = (xpEarned * boostMultiplier).roundToInt()
         }
 
-        // Sync gold directly to user wallet
-        if (session.gold > 0) {
-            FocusEconomyManager.addDirectGold(session.gold)
-        }
-
         val profileBefore = AptitudeManager.profileFlow.value
-        AptitudeManager.recordDrillResult(xpEarned, session.total, session.correct)
-        val profileNow = AptitudeManager.profileFlow.value
+        val wasAlreadySettled = session.isSettled.getAndSet(true)
+        if (!wasAlreadySettled) {
+            // Sync gold directly to user wallet
+            if (session.gold > 0) {
+                FocusEconomyManager.addDirectGold(session.gold)
+            }
 
-        // Check if daily quest was progressed by combo
-        if (session.maxCombo >= 4) {
-            DailyQuestManager.recordCombo(session.maxCombo)
+            AptitudeManager.recordDrillResult(xpEarned, session.total, session.correct)
+
+            // Check if daily quest was progressed by combo
+            if (session.maxCombo >= 4) {
+                DailyQuestManager.recordCombo(session.maxCombo)
+            }
+            
+            DailyQuestManager.recordDrillCompleted()
         }
-        
-        DailyQuestManager.recordDrillCompleted()
+        val profileNow = AptitudeManager.profileFlow.value
 
         val elapsedSeconds = if (session.isBlitz) {
             (60 - session.blitzSecondsRemaining).coerceIn(1, 60)

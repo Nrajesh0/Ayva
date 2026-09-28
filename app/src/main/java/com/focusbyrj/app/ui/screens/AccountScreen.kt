@@ -87,6 +87,8 @@ import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.data.note.NoteEntity
 import com.focusbyrj.app.ui.navigation.Screen
 import com.focusbyrj.app.ui.screens.security.ExportBackupPasswordDialog
+import com.focusbyrj.app.ui.screens.security.RestoreBackupPasswordDialog
+import com.focusbyrj.app.ui.screens.security.ConfigureRestoredVaultPinDialog
 import com.focusbyrj.app.util.*
 import com.focusbyrj.app.util.backup.BackupRestoreManager
 import com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager
@@ -218,6 +220,20 @@ fun AccountScreen(
         } else {
             pendingExportPassword = null
             isExporting = false
+        }
+    }
+
+    var showRestorePasswordDialog by remember { mutableStateOf(false) }
+    var showConfigureVaultPinDialog by remember { mutableStateOf(false) }
+    var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pendingRestorePassword by remember { mutableStateOf<String?>(null) }
+    var pendingRestoreCleanRestore by remember { mutableStateOf(false) }
+    var isRestoring by remember { mutableStateOf(false) }
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            pendingRestoreUri = uri
+            showRestorePasswordDialog = true
         }
     }
 
@@ -373,6 +389,9 @@ fun AccountScreen(
                                     showExportPasswordDialog = true
                                 }
                             }
+                        },
+                        onRestoreBackup = {
+                            importLauncher.launch(arrayOf("*/*"))
                         },
                         onLockAppImmediately = {
                             ArchiveVaultSecurity.lockVault()
@@ -628,6 +647,96 @@ fun AccountScreen(
             confirmButton = {
                 Button(onClick = { exportErrorAlert = null }) {
                     Text("OK")
+                }
+            }
+        )
+    }
+
+    // 13. Restore Backup Password Dialog
+    if (showRestorePasswordDialog && pendingRestoreUri != null) {
+        val uri = pendingRestoreUri!!
+        RestoreBackupPasswordDialog(
+            isRestoring = isRestoring,
+            onDismiss = {
+                showRestorePasswordDialog = false
+                pendingRestoreUri = null
+                pendingRestorePassword = null
+            },
+            onConfirm = { password, cleanRestore ->
+                isRestoring = true
+                pendingRestorePassword = password
+                pendingRestoreCleanRestore = cleanRestore
+                coroutineScope.launch {
+                    val result = BackupRestoreManager.restoreEncryptedBackup(context, uri, password, cleanRestore)
+                    isRestoring = false
+                    val ex = result.exceptionOrNull()
+                    if (ex is BackupRestoreManager.RequiresVaultSetupException) {
+                        showRestorePasswordDialog = false
+                        showConfigureVaultPinDialog = true
+                    } else {
+                        showRestorePasswordDialog = false
+                        pendingRestoreUri = null
+                        pendingRestorePassword = null
+                        if (result.isSuccess) {
+                            val meta = result.getOrNull()
+                            Toast.makeText(
+                                context,
+                                "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "Restore failed: ${ex?.message ?: "Unknown error"}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    // 14. Configure Vault PIN for Restored Vault Notes
+    if (showConfigureVaultPinDialog && pendingRestoreUri != null && pendingRestorePassword != null) {
+        val uri = pendingRestoreUri!!
+        val password = pendingRestorePassword!!
+        val cleanRestore = pendingRestoreCleanRestore
+        ConfigureRestoredVaultPinDialog(
+            isRestoring = isRestoring,
+            onDismiss = {
+                showConfigureVaultPinDialog = false
+                pendingRestoreUri = null
+                pendingRestorePassword = null
+            },
+            onConfirm = { pin ->
+                isRestoring = true
+                coroutineScope.launch {
+                    val result = BackupRestoreManager.restoreEncryptedBackup(
+                        context = context,
+                        sourceUri = uri,
+                        password = password,
+                        cleanRestore = cleanRestore,
+                        vaultPin = pin
+                    )
+                    isRestoring = false
+                    showConfigureVaultPinDialog = false
+                    pendingRestoreUri = null
+                    pendingRestorePassword = null
+                    if (result.isSuccess) {
+                        val meta = result.getOrNull()
+                        Toast.makeText(
+                            context,
+                            "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "Restore failed: ${result.exceptionOrNull()?.message ?: "Unknown error"}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
             }
         )
@@ -1328,6 +1437,7 @@ private fun OverviewTabContent(
     onThemeModeSelected: (ThemeMode) -> Unit,
     onBiometricClick: () -> Unit,
     onManualExport: () -> Unit,
+    onRestoreBackup: () -> Unit,
     onLockAppImmediately: () -> Unit,
     onOpenNote: (Long) -> Unit,
     onChoosePinnedNotesClick: () -> Unit,
@@ -1471,6 +1581,41 @@ private fun OverviewTabContent(
                         fontSize = 15.sp
                     ),
                     color = colors.bg
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        OutlinedButton(
+            onClick = onRestoreBackup,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            shape = RoundedCornerShape(25.dp),
+            border = BorderStroke(1.dp, colors.cardBorder),
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = colors.textPrimary
+            )
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CloudDownload,
+                    contentDescription = null,
+                    tint = colors.textPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Restore from Encrypted Backup",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    ),
+                    color = colors.textPrimary
                 )
             }
         }

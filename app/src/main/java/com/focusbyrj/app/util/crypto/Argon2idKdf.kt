@@ -70,6 +70,17 @@ object Argon2idKdf {
         }
     }
 
+    fun isNativeAvailable(): Boolean = argon2Kt != null
+
+    private val isUnitTestEnvironment: Boolean by lazy {
+        try {
+            android.os.Build.FINGERPRINT.startsWith("robolectric") ||
+            Class.forName("org.robolectric.Robolectric") != null
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     private fun deriveKeyJvmFallback(password: CharArray, salt: ByteArray, outputLengthBytes: Int): ByteArray {
         val keySpec = javax.crypto.spec.PBEKeySpec(password, salt, 100_000, outputLengthBytes * 8)
         return try {
@@ -100,6 +111,9 @@ object Argon2idKdf {
 
         val runner = argon2Kt
         if (runner == null) {
+            if (!isUnitTestEnvironment && params == Parameters.BACKUP) {
+                throw IllegalStateException("Native Argon2id cryptography library failed to load on this Android device. Cannot securely generate encrypted backup.")
+            }
             return deriveKeyJvmFallback(password, salt, params.outputLengthBytes)
         }
 
@@ -147,6 +161,9 @@ object Argon2idKdf {
 
         val runner = argon2Kt
         if (runner == null) {
+            if (!isUnitTestEnvironment && params == Parameters.BACKUP) {
+                throw IllegalStateException("Native Argon2id cryptography library failed to load on this Android device. Cannot securely generate encrypted backup.")
+            }
             val decoded = StandardCharsets.UTF_8.decode(java.nio.ByteBuffer.wrap(passwordBytes))
             val chars = CharArray(decoded.remaining())
             decoded.get(chars)

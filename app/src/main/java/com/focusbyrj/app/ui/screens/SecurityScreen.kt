@@ -52,6 +52,7 @@ import com.focusbyrj.app.ui.screens.notes.ArchiveVaultUnlockDialog
 import com.focusbyrj.app.ui.screens.notes.ArchiveVaultExportPhraseDialog
 import com.focusbyrj.app.ui.screens.security.ExportBackupPasswordDialog
 import com.focusbyrj.app.ui.screens.security.RestoreBackupPasswordDialog
+import com.focusbyrj.app.ui.screens.security.ConfigureRestoredVaultPinDialog
 import com.focusbyrj.app.ui.theme.*
 import com.focusbyrj.app.util.PermissionUtils
 import com.focusbyrj.app.util.backup.BackupRestoreManager
@@ -95,6 +96,9 @@ fun SecurityScreen(navController: NavController) {
     var isRestoring by remember { mutableStateOf(false) }
     var pendingExportPassword by remember { mutableStateOf<String?>(null) }
     var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pendingRestorePassword by remember { mutableStateOf<String?>(null) }
+    var pendingRestoreCleanRestore by remember { mutableStateOf(false) }
+    var showConfigureVaultPinDialog by remember { mutableStateOf(false) }
     var exportErrorAlert by remember { mutableStateOf<String?>(null) }
     var exportSuccessMetadata by remember { mutableStateOf<BackupRestoreManager.BackupMetadata?>(null) }
     val coroutineScope = rememberCoroutineScope()
@@ -690,16 +694,74 @@ fun SecurityScreen(navController: NavController) {
             onDismiss = {
                 showRestorePasswordDialog = false
                 pendingRestoreUri = null
+                pendingRestorePassword = null
             },
             onConfirm = { password, cleanRestore ->
                 isRestoring = true
+                pendingRestorePassword = password
+                pendingRestoreCleanRestore = cleanRestore
                 coroutineScope.launch {
                     val result = BackupRestoreManager.restoreEncryptedBackup(context, uri, password, cleanRestore)
                     isRestoring = false
-                    showRestorePasswordDialog = false
+                    val ex = result.exceptionOrNull()
+                    if (ex is BackupRestoreManager.RequiresVaultSetupException) {
+                        showRestorePasswordDialog = false
+                        showConfigureVaultPinDialog = true
+                    } else {
+                        showRestorePasswordDialog = false
+                        pendingRestoreUri = null
+                        pendingRestorePassword = null
+                        if (result.isSuccess) {
+                            val meta = result.getOrNull()
+                            vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
+                            isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
+                            Toast.makeText(
+                                context,
+                                "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "Restore failed: ${ex?.message ?: "Unknown error"}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    if (showConfigureVaultPinDialog && pendingRestoreUri != null && pendingRestorePassword != null) {
+        val uri = pendingRestoreUri!!
+        val password = pendingRestorePassword!!
+        val cleanRestore = pendingRestoreCleanRestore
+        ConfigureRestoredVaultPinDialog(
+            isRestoring = isRestoring,
+            onDismiss = {
+                showConfigureVaultPinDialog = false
+                pendingRestoreUri = null
+                pendingRestorePassword = null
+            },
+            onConfirm = { pin ->
+                isRestoring = true
+                coroutineScope.launch {
+                    val result = BackupRestoreManager.restoreEncryptedBackup(
+                        context = context,
+                        sourceUri = uri,
+                        password = password,
+                        cleanRestore = cleanRestore,
+                        vaultPin = pin
+                    )
+                    isRestoring = false
+                    showConfigureVaultPinDialog = false
                     pendingRestoreUri = null
+                    pendingRestorePassword = null
                     if (result.isSuccess) {
                         val meta = result.getOrNull()
+                        vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
+                        isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
                         Toast.makeText(
                             context,
                             "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits.",
@@ -708,7 +770,7 @@ fun SecurityScreen(navController: NavController) {
                     } else {
                         Toast.makeText(
                             context,
-                            "Restore failed: ${result.exceptionOrNull()?.message}",
+                            "Restore failed: ${result.exceptionOrNull()?.message ?: "Unknown error"}",
                             Toast.LENGTH_LONG
                         ).show()
                     }
