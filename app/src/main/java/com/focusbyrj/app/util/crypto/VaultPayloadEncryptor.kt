@@ -155,6 +155,8 @@ object VaultPayloadEncryptor {
                 put("labelsJson", note.labelsJson)
                 put("imageUrisJson", note.imageUrisJson)
                 put("audioUrisJson", note.audioUrisJson)
+                put("colorKey", note.colorKey)
+                put("fontKey", note.fontKey)
             }.toString().toByteArray(StandardCharsets.UTF_8)
 
             val iv = ByteArray(GCM_IV_LENGTH)
@@ -175,7 +177,7 @@ object VaultPayloadEncryptor {
                     "${Base64.encodeToString(iv, Base64.NO_WRAP)}:" +
                     Base64.encodeToString(ciphertext, Base64.NO_WRAP)
 
-            // B1-F-007 FIX: Zero ciphertext bytes from heap after Base64 encoding is complete.
+            // Zero ciphertext bytes from heap after Base64 encoding is complete.
             Arrays.fill(ciphertext, 0.toByte())
 
             note.copy(
@@ -183,6 +185,8 @@ object VaultPayloadEncryptor {
                 content = envelope,
                 isChecklist = false,
                 checklistJson = "[]",
+                colorKey = "default",
+                fontKey = "default",
                 labelsJson = "[]",
                 imageUrisJson = "[]",
                 audioUrisJson = "[]"
@@ -266,6 +270,8 @@ object VaultPayloadEncryptor {
                     content = obj.optString("content", ""),
                     isChecklist = obj.optBoolean("isChecklist", false),
                     checklistJson = obj.optString("checklistJson", "[]"),
+                    colorKey = obj.optString("colorKey", note.colorKey),
+                    fontKey = obj.optString("fontKey", note.fontKey),
                     labelsJson = obj.optString("labelsJson", "[]"),
                     imageUrisJson = obj.optString("imageUrisJson", "[]"),
                     audioUrisJson = obj.optString("audioUrisJson", "[]")

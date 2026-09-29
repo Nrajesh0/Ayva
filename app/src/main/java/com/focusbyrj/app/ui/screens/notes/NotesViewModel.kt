@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -400,7 +400,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 val newAudios = note.getAudioUris().mapNotNull { path ->
                     AudioMemoManager.copyAudioFile(context, path) ?: path
                 }
-                // BATCH-6-023: Isolate embedded NotesnookBlock.Image and NotesnookBlock.Attachment files in note.content
+                // Isolate embedded NotesnookBlock.Image and NotesnookBlock.Attachment files in note.content
                 val newContent = if (note.content.contains(NotesnookBlockManager.BLOCKS_PREFIX)) {
                     try {
                         val blocks = NotesnookBlockManager.parse(note.content)
@@ -892,7 +892,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     latestNotesCache[freshDecrypted.id] = freshDecrypted
                     withContext(Dispatchers.Main) {
                         val curr = _editingState.value
-                        // BATCH-6-021 FIX: Only refresh from DB if the user has NOT yet made
+                        // Only refresh from DB if the user has NOT yet made
                         // any edits. If the user started typing in the narrow window between
                         // openExistingNote() and the completion of this IO fetch, their edits
                         // would be silently overwritten. Guard with isNoteModified() check.
@@ -996,7 +996,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // BATCH-6-020 FIX: Reject attachments exceeding 50 MB before any heap allocation.
+                // Reject attachments exceeding 50 MB before any heap allocation.
                 // readBytes() with no limit causes OOM on low-memory devices.
                 val maxAttachmentBytes = 50L * 1024 * 1024
                 if (sizeBytes > maxAttachmentBytes) {
@@ -1633,7 +1633,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePermanently(note: NoteEntity) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
-            // B1-F-026 FIX: Decrypt vault-encrypted note if possible so media cleanup and cloud deletion
+            // Decrypt vault-encrypted note if possible so media cleanup and cloud deletion
             // receive real attachment URIs instead of empty [] lists.
             val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
                 com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)

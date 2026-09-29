@@ -1,6 +1,7 @@
 package com.focusbyrj.app
 
 import com.focusbyrj.app.util.backup.CryptoBackupEngine
+import com.focusbyrj.app.util.backup.BackupRestoreManager
 import com.focusbyrj.app.util.sync.VaultCryptoEngine
 import com.focusbyrj.app.util.crypto.Argon2idKdf
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
@@ -15,6 +16,7 @@ import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -684,6 +686,217 @@ class Batch1SecurityAuditTest {
 
         // Clean up
         imageFile.delete()
+    }
+
+    // B1-F-033: VaultPayloadEncryptor masks and restores colorKey and fontKey
+    @Test
+    fun b1_033_vaultPayloadEncryptorMasksAndRestoresColorAndFontKeys() {
+        val dummyKey = ByteArray(32) { 0x42.toByte() }
+        val note = NoteEntity(
+            title = "Colored Note",
+            content = "Payload",
+            colorKey = "coral",
+            fontKey = "serif",
+            isArchived = true
+        )
+        val encrypted = VaultPayloadEncryptor.encryptNotePayload(note, dummyKey)
+        // Verify colorKey and fontKey are masked to "default" in encrypted entity
+        assertEquals("colorKey must be default in ciphertext entity", "default", encrypted.colorKey)
+        assertEquals("fontKey must be default in ciphertext entity", "default", encrypted.fontKey)
+
+        // Decrypt and verify original colorKey and fontKey are restored
+        val result = VaultPayloadEncryptor.tryDecryptNotePayload(encrypted, dummyKey)
+        assertTrue("Decryption must succeed", result is VaultPayloadEncryptor.DecryptionResult.Success)
+        val decrypted = (result as VaultPayloadEncryptor.DecryptionResult.Success).note
+        assertEquals("coral", decrypted.colorKey)
+        assertEquals("serif", decrypted.fontKey)
+    }
+
+    // B1-F-034: disablePasscode restores encrypted notes even if isArchived is false
+    @Test
+    fun b1_034_disablePasscodeAndSetPasscodeCapturesEncryptedNotesWithArchivedFalse() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val noteDb = NoteDatabase.getInstance(context)
+        runBlocking { noteDb.noteDao().deleteAllNotes() }
+
+        ArchiveVaultSecurity.setPasscode(context, "123456")
+        val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
+        assertNotNull("Vault subkey must be loaded", subKey)
+
+        val note = NoteEntity(
+            title = "Secret Note",
+            content = "Classified text",
+            isArchived = true
+        )
+        val encryptedNote = VaultPayloadEncryptor.encryptNotePayload(note, subKey)
+        // Simulate note having isArchived = false while still encrypted
+        val unarchivedEncryptedNote = encryptedNote.copy(isArchived = false)
+        val noteId = runBlocking { noteDb.noteDao().insertNote(unarchivedEncryptedNote) }
+
+        // Disable passcode
+        val disabled = ArchiveVaultSecurity.disablePasscode(context)
+        assertTrue("disablePasscode must succeed", disabled)
+
+        val restoredNotes = runBlocking { noteDb.noteDao().getAllNotesList() }
+        val restored = restoredNotes.find { it.id == noteId }
+        assertNotNull("Restored note must exist", restored)
+        assertFalse("Note must not be vault encrypted", VaultPayloadEncryptor.isVaultEncrypted(restored!!))
+        assertEquals("Secret Note", restored.title)
+        assertEquals("Classified text", restored.content)
+
+        // Clean up
+        runBlocking { noteDb.noteDao().deleteAllNotes() }
+    }
+
+    // B1-F-035: Lockout duration is clamped to maximum 300 seconds under device clock skew
+    @Test
+    fun b1_035_lockoutDurationClampedToMax300SecondsUnderClockSkew() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = context.getSharedPreferences("focus_notes_archive_vault_security", android.content.Context.MODE_PRIVATE)
+
+        // Set lockout timestamp far into the future (simulating backwards clock adjustment)
+        val farFuture = System.currentTimeMillis() + 100_000_000L
+        prefs.edit().putLong("lockout_until_epoch_ms", farFuture).commit()
+
+        val remainingSec = ArchiveVaultSecurity.getRemainingLockoutSeconds(context)
+        assertTrue("Remaining lockout seconds must be clamped to <= 300s, got $remainingSec", remainingSec in 1..300)
+
+        val verifyResult = ArchiveVaultSecurity.verifyPasscode(context, "123456")
+        assertTrue("VerifyResult must be LockedOut", verifyResult is ArchiveVaultSecurity.VerifyResult.LockedOut)
+        val lockedOutSec = (verifyResult as ArchiveVaultSecurity.VerifyResult.LockedOut).remainingSeconds
+        assertTrue("Locked out seconds must be clamped to <= 300s, got $lockedOutSec", lockedOutSec in 1..300)
+
+        // Clean up
+        prefs.edit().clear().commit()
+    }
+
+    // B1-F-036: isEncrypted returns false for truncated files lacking full IV + GCM tag
+    @Test
+    fun b1_036_isEncryptedRejectsTruncatedFilesShorterThanHeaderPlusIvPlusTag() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tempFile = File(context.cacheDir, "truncated_test.bin")
+        try {
+            // Write magic header ("FOC_ENC_V1:") + 5 extra bytes (total 16 bytes < 39 bytes minimum)
+            tempFile.writeBytes("FOC_ENC_V1:12345".toByteArray(Charsets.UTF_8))
+            assertFalse(
+                "isEncrypted must return false for truncated files shorter than header + IV + tag",
+                EncryptedMediaStorage.isEncrypted(tempFile)
+            )
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+    // B1-F-037: EncryptedMediaStorage streaming decryption and upper bound limit
+    @Test
+    fun b1_037_encryptedMediaStorageStreamingDecryptionAndSizeLimit() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testFile = File(context.cacheDir, "stream_test.bin")
+        try {
+            val originalData = "Focus by Rj Encrypted Streaming Content 2026".toByteArray(Charsets.UTF_8)
+            EncryptedMediaStorage.writeEncryptedBytes(testFile, originalData)
+
+            val inStream = EncryptedMediaStorage.openDecryptedInputStream(testFile)
+            assertNotNull("Decrypted input stream must not be null", inStream)
+            val readBytes = inStream!!.use { it.readBytes() }
+            assertArrayEquals("Streamed decrypted bytes must match original", originalData, readBytes)
+
+            // Test legacy plaintext fallback stream
+            val plainFile = File(context.cacheDir, "plain_stream_test.txt")
+            plainFile.writeBytes("Plain text fallback stream".toByteArray(Charsets.UTF_8))
+            val plainStream = EncryptedMediaStorage.openDecryptedInputStream(plainFile)
+            assertNotNull("Plain stream must not be null", plainStream)
+            val plainRead = plainStream!!.use { it.readBytes() }
+            assertArrayEquals("Plain stream must match original plaintext", "Plain text fallback stream".toByteArray(Charsets.UTF_8), plainRead)
+            plainFile.delete()
+        } finally {
+            testFile.delete()
+        }
+    }
+
+    // B1-F-038: CryptoBackupEngine rejects identical verifier and payload IVs
+    @Test
+    fun b1_038_cryptoBackupEngineRejectsIdenticalVerifierAndPayloadIv() {
+        // Construct a synthetic V4 header with identical verifierIv and payloadIv
+        val magic = byteArrayOf('F'.code.toByte(), 'B'.code.toByte(), 'C'.code.toByte(), 'K'.code.toByte())
+        val version = byteArrayOf(0x04)
+        val salt = ByteArray(16) { 0x01 }
+        val iv = ByteArray(12) { 0x02 }
+        val verifierBlock = ByteArray(33) { 0x03 }
+
+        val badHeaderStream = ByteArrayOutputStream().apply {
+            write(magic)
+            write(version)
+            write(salt)
+            write(iv) // verifierIv
+            write(verifierBlock)
+            write(iv) // payloadIv == verifierIv (identical!)
+        }
+
+        try {
+            CryptoBackupEngine.openDecryptingStream(ByteArrayInputStream(badHeaderStream.toByteArray()), "testPassword".toCharArray())
+            fail("Expected SecurityException or IllegalArgumentException for identical IVs")
+        } catch (e: Exception) {
+            assertTrue(
+                "Exception must reject identical IVs",
+                e is SecurityException || e is IllegalArgumentException
+            )
+        }
+    }
+
+    // B1-F-039: decryptBytesWithRawKey rejects sub-block truncation without unhandled cipher crash
+    @Test
+    fun b1_039_decryptBytesWithRawKeyRejectsSubBlockTruncationAndZeroizes() {
+        val rawKey = ByteArray(32) { 0x55.toByte() }
+        val validEncrypted = VaultCryptoEngine.encryptBytesWithRawKey("Hello World".toByteArray(), rawKey)
+
+        // Valid length is 12 (IV) + 11 (plaintext) + 16 (tag) = 39 bytes
+        // Truncate to 18 bytes (IV + 6 bytes of ciphertext, less than IV + 16 tag length)
+        val truncated = validEncrypted.copyOf(18)
+        val result = VaultCryptoEngine.decryptBytesWithRawKey(truncated, rawKey)
+
+        assertTrue("Decryption of truncated payload must fail", result.isFailure)
+        assertTrue(
+            "Expected IllegalArgumentException for sub-block truncated payload",
+            result.exceptionOrNull() is IllegalArgumentException
+        )
+    }
+
+    // B1-F-040: BackupRestoreManager decrypts media into backup archive and re-encrypts on restore
+    @Test
+    fun b1_040_backupRestoreManagerDecodesAndReEncodesMediaForCrossDevicePortability() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val mediaDir = File(context.filesDir, "keep_images").apply { mkdirs() }
+        val testImage = File(mediaDir, "portability_test.jpg")
+        val imagePayload = "Cross-Device Media Attachment Content".toByteArray(Charsets.UTF_8)
+        EncryptedMediaStorage.writeEncryptedBytes(testImage, imagePayload)
+
+        val backupFile = File(context.cacheDir, "media_portability_backup.focusbackup")
+        val backupUri = android.net.Uri.fromFile(backupFile)
+
+        val backupResult = runBlocking {
+            BackupRestoreManager.createEncryptedBackup(context, backupUri, "PortablePass123!")
+        }
+        assertTrue("Backup creation must succeed", backupResult.isSuccess)
+
+        // Delete local media file to simulate restoring on a clean/new device
+        testImage.delete()
+        assertFalse("Local image must be deleted", testImage.exists())
+
+        val restoreResult = runBlocking {
+            BackupRestoreManager.restoreEncryptedBackup(context, backupUri, "PortablePass123!")
+        }
+        assertTrue("Backup restore must succeed", restoreResult.isSuccess)
+
+        assertTrue("Restored image must exist in live storage", testImage.exists())
+        assertTrue("Restored image must be encrypted under EncryptedMediaStorage", EncryptedMediaStorage.isEncrypted(testImage))
+        val decryptedBytes = EncryptedMediaStorage.readDecryptedBytes(testImage)
+        assertNotNull("Decrypted bytes must not be null", decryptedBytes)
+        assertArrayEquals("Restored decrypted bytes must match original", imagePayload, decryptedBytes)
+
+        // Clean up
+        testImage.delete()
+        backupFile.delete()
     }
 }
 

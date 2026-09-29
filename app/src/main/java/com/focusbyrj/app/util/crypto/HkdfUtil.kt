@@ -13,19 +13,10 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * HKDF (HMAC-based Extract-and-Expand Key Derivation Function) — RFC 5869.
- *
- * Used to derive multiple cryptographically independent subkeys from a single master key.
- * This is the key-separation layer that prevents a leak of one derived key from
- * compromising any other derived key.
- *
- * Domain separation is enforced by distinct [info] strings per derived key:
- * - "ayva_auth_v1"  → Auth token sent to Supabase (never used for decryption)
- * - "ayva_vault_v1" → Data Encryption Key (never sent to server)
- * - "ayva_hmac_v1"  → HMAC signing key (never sent to server)
- *
- * Even if an attacker brute-forces the Supabase auth password hash and recovers the
- * authToken, they cannot reverse HKDF to obtain the userKey or hmacKey.
+ * RFC 5869 HKDF for deriving independent domain-separated subkeys:
+ * - "ayva_auth_v1"  -> Supabase auth token (never used for decryption)
+ * - "ayva_vault_v1" -> Local data encryption key (never sent to server)
+ * - "ayva_hmac_v1"  -> Integrity signing key (never sent to server)
  */
 object HkdfUtil {
 
@@ -43,8 +34,7 @@ object HkdfUtil {
      * @return PRK — 32 bytes of pseudorandom key material.
      */
     fun extract(salt: ByteArray?, ikm: ByteArray): ByteArray {
-        // B1-F-016 FIX: RFC 5869 §2.2 specifies if salt is not provided (null or empty),
-        // it must be set to a string of HashLen zeros.
+        // RFC 5869 §2.2: If salt is null or empty, default to a string of HashLen zeros.
         val effectiveSalt = if (salt == null || salt.isEmpty()) ByteArray(HASH_LEN) else salt
         return hmacSha256(effectiveSalt, ikm)
     }

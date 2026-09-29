@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -115,7 +115,7 @@ object DatabaseKeyProvider {
 
     /**
      * Clears and wipes the cached database passphrase from heap memory.
-     * B1-F-011: Enables callers to purge sensitive key material after DB connection is open.
+     * Enables callers to purge sensitive key material after DB connection is open.
      */
     @Synchronized
     fun clearCachedPassphrase() {
@@ -133,7 +133,7 @@ object DatabaseKeyProvider {
                 if (entry != null) {
                     return entry.secretKey
                 }
-                // B1-F-013 FIX: Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
+                // Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
                 throw SecurityException("Database master key exists in AndroidKeyStore but could not be loaded as SecretKeyEntry. Refusing to overwrite key to prevent permanent data loss.")
             }
 
@@ -170,7 +170,7 @@ object DatabaseKeyProvider {
             val encryptedBytes = cipher.doFinal(passphrase)
             return Pair(encryptedBytes, iv)
         }
-        // B1-F-010 FIX: If cipher.iv is null, re-initialize cipher with explicit IV so ciphertext matches returned IV
+        // If cipher.iv is null, re-initialize cipher with explicit IV so ciphertext matches returned IV
         val iv = cipher.iv ?: run {
             val generatedIv = ByteArray(12).also { SecureRandom().nextBytes(it) }
             cipher.init(Cipher.ENCRYPT_MODE, masterKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))

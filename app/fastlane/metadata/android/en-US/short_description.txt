@@ -1,1 +1,0 @@
-A fully offline App Locker & Focus Tracker app.

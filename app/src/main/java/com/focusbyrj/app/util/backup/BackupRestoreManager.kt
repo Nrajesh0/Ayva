@@ -24,6 +24,7 @@ import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.data.note.NoteEntity
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
+import com.focusbyrj.app.util.crypto.EncryptedMediaStorage
 import com.focusbyrj.app.ui.screens.notes.NotesViewModel
 import com.focusbyrj.app.widget.NoteWidgetProvider
 import com.focusbyrj.app.widget.TodoWidgetProvider
@@ -470,7 +471,8 @@ object BackupRestoreManager {
                             zipOut.write(rootJson.toString().toByteArray(Charsets.UTF_8))
                             zipOut.closeEntry()
 
-                            // Package media files directly with buffered stream
+                            // Package media files: stream decrypted bytes from EncryptedMediaStorage
+                            // so that media is encrypted by the backup password and portable across devices.
                             val buffer = ByteArray(32 * 1024)
                             MEDIA_FOLDERS.forEach { folderName ->
                                 val mediaDir = File(app.filesDir, folderName)
@@ -478,7 +480,8 @@ object BackupRestoreManager {
                                     mediaDir.listFiles()?.forEach { file ->
                                         if (file.isFile && file.length() > 0) {
                                             zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
-                                            FileInputStream(file).use { input ->
+                                            val mediaStream = EncryptedMediaStorage.openDecryptedInputStream(file) ?: FileInputStream(file)
+                                            mediaStream.use { input ->
                                                 var read = input.read(buffer)
                                                 while (read != -1) {
                                                     zipOut.write(buffer, 0, read)
@@ -981,8 +984,9 @@ object BackupRestoreManager {
                 }
             }
 
-            // 13. Commit Staged Media Files Atomically to Internal Storage
+            // 13. Commit Staged Media Files to Internal Storage (re-encrypting with this device's hardware KeyStore key)
             if (stagingDir.exists() && stagingDir.isDirectory) {
+                val mediaBuffer = ByteArray(32 * 1024)
                 MEDIA_FOLDERS.forEach { folderName ->
                     val stagedFolder = File(stagingDir, folderName)
                     if (stagedFolder.exists() && stagedFolder.isDirectory) {
@@ -990,7 +994,20 @@ object BackupRestoreManager {
                         stagedFolder.listFiles()?.forEach { stagedFile ->
                             if (stagedFile.isFile && stagedFile.length() > 0) {
                                 val destFile = File(liveFolder, stagedFile.name)
-                                stagedFile.copyTo(destFile, overwrite = true)
+                                if (EncryptedMediaStorage.isEncrypted(stagedFile)) {
+                                    stagedFile.copyTo(destFile, overwrite = true)
+                                } else {
+                                    FileInputStream(stagedFile).use { fis ->
+                                        EncryptedMediaStorage.openEncryptedOutputStream(destFile).use { eos ->
+                                            var read = fis.read(mediaBuffer)
+                                            while (read != -1) {
+                                                eos.write(mediaBuffer, 0, read)
+                                                read = fis.read(mediaBuffer)
+                                            }
+                                            eos.flush()
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

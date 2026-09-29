@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -78,7 +78,7 @@ object ArchiveVaultSecurity {
 
     /**
      * Retrieves the active in-memory Vault Sub-Key if vault is unlocked, or null if locked.
-     * B1-F-020 FIX: Returns a defensive copy to prevent external callers zeroing the master subkey in-place.
+     * Returns a defensive copy to prevent external callers zeroing the master subkey in-place.
      */
     @Synchronized
     fun getActiveVaultSubKey(): ByteArray? = ephemeralVaultSubKey?.copyOf()
@@ -178,11 +178,13 @@ object ArchiveVaultSecurity {
                 kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                     val noteDb = NoteDatabase.getInstance(appContext)
                     noteDb.withTransaction {
-                        val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
-                        for (note in archivedNotes) {
+                        val targetNotes = noteDb.noteDao().getAllNotesList().filter {
+                            it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
+                        }
+                        for (note in targetNotes) {
                             if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
                                 if (isChangingPasscode) {
-                                    // B1-F-008 FIX: Use tryDecryptNotePayload and throw if decryption fails,
+                                    // Use tryDecryptNotePayload and throw if decryption fails,
                                     // aborting the transaction so notes are not permanently orphaned under old key.
                                     val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, oldSubKey)) {
                                         is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
@@ -191,7 +193,7 @@ object ArchiveVaultSecurity {
                                     val reEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(decrypted, derivedHash)
                                     noteDb.noteDao().updateNote(reEncrypted)
                                 }
-                            } else {
+                            } else if (note.isArchived) {
                                 // Plaintext archived note being secured under the newly set vault passcode
                                 val encrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(note, derivedHash)
                                 noteDb.noteDao().updateNote(encrypted)
@@ -205,7 +207,7 @@ object ArchiveVaultSecurity {
             }
 
             // Cache active subkey in memory ONLY after credentials are safely committed to disk.
-            // B1-F-003 FIX: previously set before editor.commit(), creating a crash window where
+            // previously set before editor.commit(), creating a crash window where
             // notes could be re-encrypted with the new key while prefs still held the old credentials,
             // causing permanent vault lockout on process death between re-encryption and commit.
             // The ephemeralVaultSubKey is now set inside the committed=true branch (see below).
@@ -274,7 +276,7 @@ object ArchiveVaultSecurity {
             }
 
             val committed = editor.commit()
-            // B1-F-003 FIX: Set ephemeralVaultSubKey only after prefs are safely on disk.
+            // Set ephemeralVaultSubKey only after prefs are safely on disk.
             // derivedHash is still valid here (not yet zeroed — that happens in the finally block).
             if (committed) {
                 ephemeralVaultSubKey = derivedHash.copyOf()
@@ -303,20 +305,20 @@ object ArchiveVaultSecurity {
 
         // 1. Check brute-force lockout status (immune to device clock manipulation)
         if (elapsed < inMemoryLockoutElapsed) {
-            val remainingSec = max(1L, (inMemoryLockoutElapsed - elapsed + 999L) / 1000L)
+            val remainingSec = minOf(300L, max(1L, (inMemoryLockoutElapsed - elapsed + 999L) / 1000L))
             return VerifyResult.LockedOut(remainingSec)
         }
 
         val lockoutUntil = prefs.getLong(KEY_LOCKOUT_UNTIL, 0L)
         if (now < lockoutUntil) {
-            val remainingSec = max(1L, (lockoutUntil - now + 999L) / 1000L)
+            val remainingSec = minOf(300L, max(1L, (lockoutUntil - now + 999L) / 1000L))
             inMemoryLockoutElapsed = elapsed + (remainingSec * 1000L)
             return VerifyResult.LockedOut(remainingSec)
         }
 
         // 2. Validate input format
         if (inputPin.length != 6 || !inputPin.all { it.isDigit() }) {
-            // B1-F-025 FIX: Accurately report remaining attempts based on actual failed attempts, not hardcoded 5
+            // Accurately report remaining attempts based on actual failed attempts, not hardcoded 5
             val currentAttempts = prefs.getInt(KEY_FAILED_ATTEMPTS, 0)
             return VerifyResult.Incorrect(remainingAttempts = maxOf(0, 5 - currentAttempts))
         }
@@ -350,7 +352,7 @@ object ArchiveVaultSecurity {
                 }
             }
             if (decrypted == null) {
-                // B1-F-025 FIX: Refuse to fall back to raw ciphertext on KeyStore failure.
+                // Refuse to fall back to raw ciphertext on KeyStore failure.
                 // Comparing against ciphertext guarantees false PIN failure and unfair user lockout.
                 Log.e(TAG, "KeyStore hardware security failure: unable to decrypt vault hash.", lastEx)
                 return VerifyResult.Error("Hardware security error: unable to securely retrieve vault credentials. Please try again.")
@@ -386,10 +388,12 @@ object ArchiveVaultSecurity {
                         kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                             val noteDb = NoteDatabase.getInstance(appContext)
                             noteDb.withTransaction {
-                                val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
-                                for (note in archivedNotes) {
+                                val targetNotes = noteDb.noteDao().getAllNotesList().filter {
+                                    it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
+                                }
+                                for (note in targetNotes) {
                                     if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                                        // B1-F-008 FIX: Use tryDecryptNotePayload to ensure auto-upgrade aborts on failure
+                                        // Use tryDecryptNotePayload to ensure auto-upgrade aborts on failure
                                         val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, pbkdf2Hash)) {
                                             is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
                                             else -> throw IllegalStateException("Note ${note.id} failed decryption during auto-upgrade ($res)")
@@ -406,7 +410,7 @@ object ArchiveVaultSecurity {
                     }
 
                     if (autoUpgradeSuccess) {
-                        // B1-F-027 FIX: Re-wrap recovery envelope under realArgon2idHash so mnemonic recovery remains valid
+                        // Re-wrap recovery envelope under realArgon2idHash so mnemonic recovery remains valid
                         val existingWords = getStoredRecoveryPhraseInternal(prefs, pbkdf2Hash)
                         val recoveryEnvelope = if (existingWords != null && existingWords.size == 12) {
                             try {
@@ -466,10 +470,12 @@ object ArchiveVaultSecurity {
                     kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                         val noteDb = NoteDatabase.getInstance(appContext)
                         noteDb.withTransaction {
-                            val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
-                            for (note in archivedNotes) {
+                            val targetNotes = noteDb.noteDao().getAllNotesList().filter {
+                                it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
+                            }
+                            for (note in targetNotes) {
                                 if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                                    // B1-F-008 FIX: Use tryDecryptNotePayload to ensure auto-upgrade aborts on failure
+                                    // Use tryDecryptNotePayload to ensure auto-upgrade aborts on failure
                                     val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, computedHash)) {
                                         is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
                                         else -> throw IllegalStateException("Note ${note.id} failed decryption during auto-upgrade ($res)")
@@ -486,7 +492,7 @@ object ArchiveVaultSecurity {
                 }
 
                 if (autoUpgradeSuccess) {
-                    // B1-F-027 FIX: Re-wrap recovery envelope under realArgon2idHash so mnemonic recovery remains valid
+                    // Re-wrap recovery envelope under realArgon2idHash so mnemonic recovery remains valid
                     val existingWords = computedHash?.let { getStoredRecoveryPhraseInternal(prefs, it) }
                     val recoveryEnvelope = if (existingWords != null && existingWords.size == 12) {
                         try {
@@ -543,7 +549,7 @@ object ArchiveVaultSecurity {
                 ephemeralVaultSubKey = computedHash?.copyOf()
                 inMemoryLockoutElapsed = 0L
 
-                // B1-F-018 FIX: Auto-encrypt any plaintext notes found in the vault upon successful unlock
+                // Auto-encrypt any plaintext notes found in the vault upon successful unlock
                 try {
                     val subKey = ephemeralVaultSubKey
                     if (subKey != null) {
@@ -588,7 +594,7 @@ object ArchiveVaultSecurity {
                     VerifyResult.LockedOut(lockoutDurationSec)
                 } else {
                     editor.commit()
-                    // B1-F-004 FIX: clamp to 0 to prevent negative "remaining attempts" display
+                    // clamp to 0 to prevent negative "remaining attempts" display
                     VerifyResult.Incorrect(remainingAttempts = maxOf(0, 5 - currentAttempts))
                 }
             }
@@ -608,13 +614,13 @@ object ArchiveVaultSecurity {
     fun getRemainingLockoutSeconds(context: Context): Long {
         val elapsed = android.os.SystemClock.elapsedRealtime()
         if (elapsed < inMemoryLockoutElapsed) {
-            return max(1L, (inMemoryLockoutElapsed - elapsed + 999L) / 1000L)
+            return minOf(300L, max(1L, (inMemoryLockoutElapsed - elapsed + 999L) / 1000L))
         }
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lockoutUntil = prefs.getLong(KEY_LOCKOUT_UNTIL, 0L)
         val now = System.currentTimeMillis()
         if (now < lockoutUntil) {
-            val remainingSec = max(1L, (lockoutUntil - now + 999L) / 1000L)
+            val remainingSec = minOf(300L, max(1L, (lockoutUntil - now + 999L) / 1000L))
             inMemoryLockoutElapsed = elapsed + (remainingSec * 1000L)
             return remainingSec
         }
@@ -640,8 +646,10 @@ object ArchiveVaultSecurity {
                 kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                     val noteDb = NoteDatabase.getInstance(appContext)
                     noteDb.withTransaction {
-                        val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
-                        for (note in archivedNotes) {
+                        val targetNotes = noteDb.noteDao().getAllNotesList().filter {
+                            it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
+                        }
+                        for (note in targetNotes) {
                             if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
                                 when (val result = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, activeSubKey)) {
                                     is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> {
@@ -747,17 +755,19 @@ object ArchiveVaultSecurity {
             kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                 val noteDb = NoteDatabase.getInstance(appContext)
                 noteDb.withTransaction {
-                    val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
-                    for (note in archivedNotes) {
+                    val targetNotes = noteDb.noteDao().getAllNotesList().filter {
+                        it.isArchived || VaultPayloadEncryptor.isVaultEncrypted(it)
+                    }
+                    for (note in targetNotes) {
                         if (VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                            // B1-F-008 FIX: Abort recovery if any archived note cannot be decrypted
+                            // Abort recovery if any archived note cannot be decrypted
                             val decrypted = when (val res = VaultPayloadEncryptor.tryDecryptNotePayload(note, recoveredSubKey)) {
                                 is VaultPayloadEncryptor.DecryptionResult.Success -> res.note
                                 else -> throw IllegalStateException("Cannot recover vault: archived note ${note.id} failed decryption ($res). Aborting to prevent data loss.")
                             }
                             val reEncrypted = VaultPayloadEncryptor.encryptNotePayload(decrypted, newDerivedHash)
                             noteDb.noteDao().updateNote(reEncrypted)
-                        } else {
+                        } else if (note.isArchived) {
                             val encrypted = VaultPayloadEncryptor.encryptNotePayload(note, newDerivedHash)
                             noteDb.noteDao().updateNote(encrypted)
                         }
@@ -958,7 +968,7 @@ object ArchiveVaultSecurity {
      */
     @Synchronized
     fun skipPasscodeSetup(context: Context): Boolean {
-        // B1-F-015 FIX: Refuse to skip if vault is already enabled; must call disablePasscode() to decrypt notes
+        // Refuse to skip if vault is already enabled; must call disablePasscode() to decrypt notes
         if (getVaultStatus(context) == VaultStatus.ENABLED) {
             Log.w(TAG, "Cannot skip passcode setup: vault is already ENABLED. Use disablePasscode() to safely restore notes.")
             return false
@@ -1012,7 +1022,7 @@ object ArchiveVaultSecurity {
                 if (entry != null) {
                     return entry.secretKey
                 }
-                // B1-F-013 FIX: Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
+                // Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
                 throw SecurityException("Archive vault master key exists in AndroidKeyStore but could not be loaded as SecretKeyEntry. Refusing to overwrite key to prevent permanent data loss.")
             }
 
@@ -1030,7 +1040,7 @@ object ArchiveVaultSecurity {
             keyGenerator.init(keyGenSpec)
             keyGenerator.generateKey()
         } catch (e: Exception) {
-            // B1-F-029 FIX: Rethrow SecurityException so alias collisions fail closed instead of falling back to software seed
+            // Rethrow SecurityException so alias collisions fail closed instead of falling back to software seed
             if (e is SecurityException) throw e
             Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey for archive vault.", e)
             val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
@@ -1044,7 +1054,7 @@ object ArchiveVaultSecurity {
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         val iv = try {
             cipher.init(Cipher.ENCRYPT_MODE, masterKey)
-            // B1-F-010 FIX: Re-init cipher if cipher.iv is null so ciphertext matches returned IV
+            // Re-init cipher if cipher.iv is null so ciphertext matches returned IV
             cipher.iv ?: run {
                 val generatedIv = ByteArray(12).also { SecureRandom().nextBytes(it) }
                 cipher.init(Cipher.ENCRYPT_MODE, masterKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))

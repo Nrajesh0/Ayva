@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -263,15 +263,16 @@ object VaultCryptoEngine {
      * Decrypts binary data previously encrypted with encryptBytesWithRawKey.
      */
     fun decryptBytesWithRawKey(encryptedData: ByteArray, rawKey: ByteArray): Result<ByteArray> {
-        return try {
-            if (encryptedData.size < IV_BYTES) {
-                return Result.failure(IllegalArgumentException("Encrypted media data is too short"))
-            }
-            val iv = ByteArray(IV_BYTES)
-            System.arraycopy(encryptedData, 0, iv, 0, IV_BYTES)
-            val ciphertext = ByteArray(encryptedData.size - IV_BYTES)
-            System.arraycopy(encryptedData, IV_BYTES, ciphertext, 0, ciphertext.size)
+        val minLen = IV_BYTES + (GCM_TAG_LENGTH / 8)
+        if (encryptedData.size < minLen) {
+            return Result.failure(IllegalArgumentException("Encrypted media data is too short: expected at least $minLen bytes, got ${encryptedData.size}"))
+        }
+        val iv = ByteArray(IV_BYTES)
+        System.arraycopy(encryptedData, 0, iv, 0, IV_BYTES)
+        val ciphertext = ByteArray(encryptedData.size - IV_BYTES)
+        System.arraycopy(encryptedData, IV_BYTES, ciphertext, 0, ciphertext.size)
 
+        return try {
             val keySpec = SecretKeySpec(rawKey, "AES")
             val cipher = Cipher.getInstance(AES_GCM)
             val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
@@ -281,6 +282,8 @@ object VaultCryptoEngine {
         } catch (e: Exception) {
             Log.e(TAG, "Binary media decryption error", e)
             Result.failure(e)
+        } finally {
+            Arrays.fill(ciphertext, 0.toByte())
         }
     }
 
@@ -576,7 +579,7 @@ object VaultCryptoEngine {
 
         return try {
             // Resolve indices
-            // B1-F-014 FIX: Normalize words (trim and lowercase) to handle mobile keyboard auto-capitalization and trailing spaces
+            // Normalize words (trim and lowercase) to handle mobile keyboard auto-capitalization and trailing spaces
             val indices = words.map { word ->
                 val normalized = word.trim().lowercase()
                 BIP39_WORDLIST.indexOf(normalized).also { if (it < 0) return false }
@@ -644,7 +647,7 @@ object VaultCryptoEngine {
             spec = PBEKeySpec(chars, salt, 2048, 256)
             return keyFactory.generateSecret(spec).encoded
         } finally {
-            // B1-F-005 FIX: PBEKeySpec holds an internal char[] copy of the mnemonic.
+            // PBEKeySpec holds an internal char[] copy of the mnemonic.
             // clearPassword() zeroes that internal copy so it doesn't linger in heap memory.
             spec?.clearPassword()
             Arrays.fill(chars, '0')

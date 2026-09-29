@@ -19,8 +19,6 @@ import javax.crypto.spec.SecretKeySpec
 /**
  * AES-256-GCM encryption engine for backup files.
  *
- * PATTERN 1 UPDATE: Replaced PBKDF2-100K KDF with Argon2id (m=32MB, t=3, p=1).
- *
  * Format v2 (new backups):
  *   [Magic: 4 bytes]  "FBCK"
  *   [Version: 1 byte] 0x02
@@ -34,15 +32,6 @@ import javax.crypto.spec.SecretKeySpec
  *   [PBKDF2 Salt: 16 bytes]
  *   [GCM IV / Nonce: 12 bytes]
  *   [AES-256-GCM Ciphertext + 128-bit Authentication Tag]
- *
- * REMOVED:
- *   - PBKDF2-100K key derivation in encrypt()
- *   - FORMAT_VERSION 0x01 used for new backups
- *
- * ADDED:
- *   - Argon2id (real native library via argon2kt:1.4.0) for new backup encryption
- *   - Format version 0x02 written for all new backups
- *   - Format version 0x01 backward-compatible decryption path (for restoring old backups)
  */
 object CryptoBackupEngine {
 
@@ -88,6 +77,9 @@ object CryptoBackupEngine {
         val salt = ByteArray(SALT_LENGTH).also { SecureRandom().nextBytes(it) }
         val verifierIv = ByteArray(IV_LENGTH).also { SecureRandom().nextBytes(it) }
         val payloadIv = ByteArray(IV_LENGTH).also { SecureRandom().nextBytes(it) }
+        while (verifierIv.contentEquals(payloadIv)) {
+            SecureRandom().nextBytes(payloadIv)
+        }
         val internalChars = passwordChars.clone()
         var derivedKeyBytes: ByteArray? = null
         try {
@@ -185,6 +177,10 @@ object CryptoBackupEngine {
                     throw IllegalArgumentException("Corrupted backup header: incomplete payload IV.")
                 }
 
+                if (verifierIv.contentEquals(payloadIv)) {
+                    throw SecurityException("Corrupted backup header: verifier and payload IVs cannot be identical.")
+                }
+
                 derivedKeyBytes = Argon2idKdf.deriveKey(
                     password = internalChars,
                     salt = salt,
@@ -279,7 +275,7 @@ object CryptoBackupEngine {
                 cipherOut.flush()
             }
         } finally {
-            // B1-F-012 FIX: Zero only internal clone; caller manages their own CharArray lifecycle
+            // Zero only internal clone; caller manages their own CharArray lifecycle
             Arrays.fill(passwordCopy, '\u0000')
         }
     }
@@ -302,7 +298,7 @@ object CryptoBackupEngine {
             if (e is SecurityException) throw e
             throw SecurityException("Incorrect password or corrupted backup file.", e)
         } finally {
-            // B1-F-012 FIX: Zero only internal clone; caller manages their own CharArray lifecycle
+            // Zero only internal clone; caller manages their own CharArray lifecycle
             Arrays.fill(passwordCopy, '\u0000')
         }
     }

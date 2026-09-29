@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -40,6 +40,7 @@ object EncryptedMediaStorage {
     private const val GCM_TAG_LENGTH = 128
     private const val GCM_IV_LENGTH = 12
     private const val MAGIC_HEADER = "FOC_ENC_V1:"
+    const val MAX_DECRYPT_BYTES_LIMIT = 50 * 1024 * 1024L // 50MB upper limit for heap ByteArray loading
 
     private fun getOrCreateKey(): SecretKey {
         return try {
@@ -49,7 +50,7 @@ object EncryptedMediaStorage {
                 if (entry != null) {
                     return entry.secretKey
                 }
-                // B1-F-013 FIX: Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
+                // Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
                 throw SecurityException("Media storage master key exists in AndroidKeyStore but could not be loaded as SecretKeyEntry. Refusing to overwrite key to prevent permanent data loss.")
             }
 
@@ -67,7 +68,7 @@ object EncryptedMediaStorage {
             keyGenerator.init(spec)
             keyGenerator.generateKey()
         } catch (e: Exception) {
-            // B1-F-029 FIX: Rethrow SecurityException so alias collisions fail closed instead of falling back to software seed
+            // Rethrow SecurityException so alias collisions fail closed instead of falling back to software seed
             if (e is SecurityException) throw e
             Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey for media storage.", e)
             val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
@@ -81,7 +82,7 @@ object EncryptedMediaStorage {
      * Nonce/IV is generated in hardware (TEE/StrongBox) via Android KeyStore.
      */
     fun writeEncryptedBytes(file: File, plaintextBytes: ByteArray) {
-        // B1-F-031 FIX: Ensure parent directory exists before attempting to write temp file
+        // Ensure parent directory exists before attempting to write temp file
         file.parentFile?.mkdirs()
         val tempFile = File(file.parentFile, "${file.name}.tmp")
         val secretKey = getOrCreateKey()
@@ -89,7 +90,7 @@ object EncryptedMediaStorage {
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         val iv = try {
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            // B1-F-010 FIX: Re-init cipher if cipher.iv is null so ciphertext matches returned IV
+            // Re-init cipher if cipher.iv is null so ciphertext matches returned IV
             cipher.iv ?: run {
                 val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
                 cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
@@ -101,7 +102,7 @@ object EncryptedMediaStorage {
             generatedIv
         }
 
-        // B1-F-006 FIX: Wrap all writes in try/catch so tempFile is always cleaned up on failure.
+        // Wrap all writes in try/catch so tempFile is always cleaned up on failure.
         // Previously, a disk-full or OOM during write would leave an orphaned .tmp file on disk.
         try {
             val encryptedBytes = cipher.doFinal(plaintextBytes)
@@ -133,7 +134,7 @@ object EncryptedMediaStorage {
      * Uses streaming header extraction to minimize heap allocations.
      */
     fun readDecryptedBytes(file: File): ByteArray? {
-        if (!file.exists()) return null
+        if (!file.exists() || file.length() > MAX_DECRYPT_BYTES_LIMIT) return null
         return try {
             val magicBytes = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
             val fileLen = file.length()
@@ -150,7 +151,7 @@ object EncryptedMediaStorage {
 
                 if (bytesRead == magicBytes.size && headerBuf.contentEquals(magicBytes)) {
                     // File claims to be encrypted via MAGIC_HEADER.
-                    // B1-F-009 FIX: If file is shorter than minimum encrypted length, it is corrupted/truncated.
+                    // If file is shorter than minimum encrypted length, it is corrupted/truncated.
                     // Must return null, never fall back to plaintext.
                     if (fileLen < minEncryptedLen) return null
 
@@ -203,6 +204,57 @@ object EncryptedMediaStorage {
     }
 
     /**
+     * Opens a streaming [InputStream] that decrypts media on-the-fly via [CipherInputStream].
+     * If the file is legacy plaintext, returns a direct [FileInputStream].
+     * Returns null if file does not exist or has a corrupted header.
+     */
+    fun openDecryptedInputStream(file: File): InputStream? {
+        if (!file.exists()) return null
+        val magicBytes = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
+        val minEncryptedLen = magicBytes.size + GCM_IV_LENGTH + 16
+        val fileLen = file.length()
+
+        val fis = FileInputStream(file)
+        try {
+            if (fileLen >= minEncryptedLen) {
+                val headerBuf = ByteArray(magicBytes.size)
+                var bytesRead = 0
+                while (bytesRead < magicBytes.size) {
+                    val r = fis.read(headerBuf, bytesRead, magicBytes.size - bytesRead)
+                    if (r == -1) break
+                    bytesRead += r
+                }
+
+                if (bytesRead == magicBytes.size && headerBuf.contentEquals(magicBytes)) {
+                    val iv = ByteArray(GCM_IV_LENGTH)
+                    var ivRead = 0
+                    while (ivRead < GCM_IV_LENGTH) {
+                        val r = fis.read(iv, ivRead, GCM_IV_LENGTH - ivRead)
+                        if (r == -1) break
+                        ivRead += r
+                    }
+                    if (ivRead != GCM_IV_LENGTH) {
+                        fis.close()
+                        return null
+                    }
+
+                    val secretKey = getOrCreateKey()
+                    val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+                    cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+                    return CipherInputStream(fis, cipher)
+                }
+            }
+            // Legacy plaintext fallback: reopen fresh stream at byte 0
+            fis.close()
+            return FileInputStream(file)
+        } catch (e: Exception) {
+            try { fis.close() } catch (_: Exception) {}
+            Log.e(TAG, "Failed to open decrypted stream: ${file.absolutePath}", e)
+            return null
+        }
+    }
+
+    /**
      * Opens a stream for writing encrypted data using hardware-generated IV.
      */
     fun openEncryptedOutputStream(file: File): OutputStream {
@@ -210,7 +262,7 @@ object EncryptedMediaStorage {
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         val iv = try {
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            // B1-F-010 FIX: Re-init cipher if cipher.iv is null so ciphertext matches returned IV
+            // Re-init cipher if cipher.iv is null so ciphertext matches returned IV
             cipher.iv ?: run {
                 val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
                 cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
@@ -222,7 +274,7 @@ object EncryptedMediaStorage {
             generatedIv
         }
 
-        // B1-F-031 FIX: Ensure parent directory exists before creating output stream
+        // Ensure parent directory exists before creating output stream
         file.parentFile?.mkdirs()
         val fos = FileOutputStream(file)
         fos.write(MAGIC_HEADER.toByteArray(Charsets.UTF_8))
@@ -235,7 +287,8 @@ object EncryptedMediaStorage {
      */
     fun isEncrypted(file: File): Boolean {
         val magicBytes = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
-        if (!file.exists() || file.length() < magicBytes.size) return false
+        val minEncryptedLen = magicBytes.size + GCM_IV_LENGTH + 16
+        if (!file.exists() || file.length() < minEncryptedLen) return false
         return try {
             FileInputStream(file).use { fis ->
                 val header = ByteArray(magicBytes.size)

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -145,7 +145,7 @@ class NoteRepository(
                     val encrypted = VaultPayloadEncryptor.encryptNotePayload(existing.copy(isArchived = true))
                     noteDao.updateNote(encrypted)
                 } else if (!isArchived && VaultPayloadEncryptor.isVaultEncrypted(existing)) {
-                    // B1-F-019 FIX: Only unarchive if decryption succeeds. Never leak ciphertext to active notes.
+                    // Only unarchive if decryption succeeds. Never leak ciphertext to active notes.
                     val res = VaultPayloadEncryptor.tryDecryptNotePayload(existing)
                     if (res is VaultPayloadEncryptor.DecryptionResult.Success) {
                         noteDao.updateNote(res.note.copy(isArchived = false))

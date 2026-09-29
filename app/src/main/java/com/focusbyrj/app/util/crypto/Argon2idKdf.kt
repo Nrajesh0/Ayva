@@ -13,17 +13,11 @@ import java.nio.charset.StandardCharsets
 import java.util.Arrays
 
 /**
- * Real native Argon2id Key Derivation Function backed by argon2kt JNI bindings.
+ * Native Argon2id Key Derivation Function backed by argon2kt JNI bindings with JVM fallback.
  *
- * Argon2id is the winner of the Password Hashing Competition (PHC) and is the recommended
- * KDF for password-based key derivation. It is resistant to GPU, FPGA, and ASIC attacks
- * via its memory-hard structure.
- *
- * Login parameters (m=32MB, t=3, p=1): ~120-180ms on modern ARM64 devices.
- * Backup parameters (m=64MB, t=3, p=1): ~250-350ms — acceptable for a one-time operation.
- *
- * PREVIOUS IMPLEMENTATION: Was a PBKDF2-HMAC-SHA256 stub incorrectly named "Argon2idKdf".
- * REPLACED WITH: Real Argon2id via native JNI bindings (argon2kt:1.4.0).
+ * Parameters:
+ * - Login (m=32MB, t=3, p=1): Standard login / vault unlock
+ * - Backup (m=64MB, t=3, p=1): Password-based backup encryption
  */
 object Argon2idKdf {
 
@@ -96,7 +90,7 @@ object Argon2idKdf {
         salt: ByteArray,
         params: Parameters = Parameters.LOGIN
     ): ByteArray {
-        // B1-F-017 FIX: Argon2 requires minimum 8-byte salt (ARGON2_MIN_SALT = 8).
+        // Argon2 requires minimum 8-byte salt (ARGON2_MIN_SALT = 8).
         require(salt.size >= 8) { "Argon2id salt must be at least 8 bytes, got ${salt.size}" }
 
         val runner = argon2Kt
@@ -146,7 +140,7 @@ object Argon2idKdf {
         salt: ByteArray,
         params: Parameters = Parameters.LOGIN
     ): ByteArray {
-        // B1-F-017 FIX: Argon2 requires minimum 8-byte salt (ARGON2_MIN_SALT = 8).
+        // Argon2 requires minimum 8-byte salt (ARGON2_MIN_SALT = 8).
         require(salt.size >= 8) { "Argon2id salt must be at least 8 bytes, got ${salt.size}" }
 
         val runner = argon2Kt
