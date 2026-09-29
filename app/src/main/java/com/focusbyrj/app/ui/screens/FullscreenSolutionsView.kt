@@ -56,9 +56,9 @@ fun FullscreenSolutionsView(
     val context = LocalContext.current
 
     DisposableEffect(Unit) {
-        context.sendBroadcast(android.content.Intent("com.focusbyrj.app.HIDE_BUBBLE"))
+        context.sendBroadcast(android.content.Intent("com.focusbyrj.app.HIDE_BUBBLE").setPackage(context.packageName))
         onDispose {
-            context.sendBroadcast(android.content.Intent("com.focusbyrj.app.SHOW_BUBBLE"))
+            context.sendBroadcast(android.content.Intent("com.focusbyrj.app.SHOW_BUBBLE").setPackage(context.packageName))
         }
     }
 

@@ -76,9 +76,7 @@ fun DrillTopBar(
 
             // Glossy Progress Bar
             val progressFraction = if (activeSession.isBlitz) {
-                val totalTime = 300f
-                val elapsedSeconds = (300 - activeSession.blitzSecondsRemaining).coerceAtLeast(0)
-                (elapsedSeconds.toFloat() / totalTime).coerceIn(0.03f, 1f)
+                DrillTopBarHelper.calculateBlitzProgress(activeSession.blitzSecondsRemaining)
             } else {
                 val target = if (activeSession.targetQuestions > 0) activeSession.targetQuestions else 10
                 (activeSession.total.toFloat() / target.toFloat()).coerceIn(0.03f, 1f)
@@ -127,9 +125,7 @@ fun DrillTopBar(
 
             // Right HUD: Blitz Timer or Question Number Pill
             if (activeSession.isBlitz) {
-                val mins = activeSession.blitzSecondsRemaining / 60
-                val secs = activeSession.blitzSecondsRemaining % 60
-                val timerText = if (mins > 0) String.format("%d:%02d", mins, secs) else "${secs}s"
+                val timerText = DrillTopBarHelper.formatBlitzTimer(activeSession.blitzSecondsRemaining)
                 val isUrgent = activeSession.blitzSecondsRemaining <= 30
 
                 Surface(

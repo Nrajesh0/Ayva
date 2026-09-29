@@ -70,6 +70,7 @@ fun DrillQuestionPaletteModal(
                 modifier = Modifier.padding(bottom = 14.dp)
             )
 
+            val safeCount = DrillPaletteHelper.getSafeCount(totalQuestions)
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(48.dp),
                 modifier = Modifier
@@ -78,7 +79,7 @@ fun DrillQuestionPaletteModal(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(totalQuestions) { index ->
+                items(safeCount) { index ->
                     val isAttempted = attemptedIndices.contains(index)
                     val isUnseen = index > highestSeenIndex
                     val isUnattempted = !isAttempted && !isUnseen

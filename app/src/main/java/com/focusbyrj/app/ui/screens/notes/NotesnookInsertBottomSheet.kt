@@ -114,6 +114,31 @@ import androidx.compose.ui.window.DialogProperties
 
 private val NotesnookGreen = Color(0xFF22C55E)
 
+object NotesnookUrlValidator {
+    private val ALLOWED_SCHEMES = setOf("http", "https", "content", "android.resource")
+
+    fun isValidMediaUrl(url: String?): Boolean {
+        if (url.isNullOrBlank()) return false
+        val trimmed = url.trim()
+        val lower = trimmed.lowercase()
+        if (lower.startsWith("javascript:") || lower.startsWith("data:text/html") || lower.startsWith("file:///data/") || lower.startsWith("file:/data/")) {
+            return false
+        }
+        val uri = try {
+            android.net.Uri.parse(trimmed)
+        } catch (_: Throwable) {
+            null
+        } ?: return false
+
+        val scheme = uri.scheme?.lowercase()
+        return if (scheme != null) {
+            scheme in ALLOWED_SCHEMES
+        } else {
+            !trimmed.contains("://") && !trimmed.contains("javascript:")
+        }
+    }
+}
+
 /**
  * Authentic Notesnook Insert Sheet matching Screenshot 2.
  * Offers: Outline list, Horizontal rule, Code block, Math & formulas, Callout,
@@ -859,14 +884,15 @@ fun NotesnookEmbedDialog(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("Cancel", color = textSecondary) }
                     Spacer(modifier = Modifier.width(8.dp))
+                    val isUrlValid = NotesnookUrlValidator.isValidMediaUrl(url)
                     Button(
                         onClick = {
-                            if (url.isNotBlank()) {
-                                onInsertEmbed(embedType, url, title)
+                            if (isUrlValid) {
+                                onInsertEmbed(embedType, url.trim(), title.trim())
+                                onDismiss()
                             }
-                            onDismiss()
                         },
-                        enabled = url.isNotBlank(),
+                        enabled = isUrlValid,
                         colors = ButtonDefaults.buttonColors(containerColor = NotesnookGreen)
                     ) {
                         Text("Embed", color = Color.White, fontWeight = FontWeight.Bold)
@@ -924,15 +950,16 @@ fun NotesnookImageOptionsSheet(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = { showUrlDialog = false }) { Text("Cancel", color = textSecondary) }
                         Spacer(modifier = Modifier.width(8.dp))
+                        val isImageValid = NotesnookUrlValidator.isValidMediaUrl(imageUrl)
                         Button(
                             onClick = {
-                                if (imageUrl.isNotBlank()) {
-                                    onInsertUrl(imageUrl, altCaption.ifBlank { "Image" })
+                                if (isImageValid) {
+                                    onInsertUrl(imageUrl.trim(), altCaption.ifBlank { "Image" }.trim())
                                     showUrlDialog = false
                                     onDismiss()
                                 }
                             },
-                            enabled = imageUrl.isNotBlank(),
+                            enabled = isImageValid,
                             colors = ButtonDefaults.buttonColors(containerColor = NotesnookGreen)
                         ) {
                             Text("Insert", color = Color.White, fontWeight = FontWeight.Bold)

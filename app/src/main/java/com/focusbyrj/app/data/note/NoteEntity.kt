@@ -145,13 +145,22 @@ data class NoteEntity(
             val suffixIdx = content.indexOf(":BLOCKS_END-->", prefixIdx + blockPrefix.length).takeIf { it != -1 }
                 ?: content.indexOf("-->", prefixIdx + blockPrefix.length)
             if (suffixIdx != -1) {
+                val textBefore = content.substring(0, prefixIdx).trim()
+                val endDelimLength = if (content.startsWith(":BLOCKS_END-->", suffixIdx)) 14 else 3
+                val textAfter = if (suffixIdx + endDelimLength < content.length) {
+                    content.substring(suffixIdx + endDelimLength).trim()
+                } else ""
+                if (textBefore.isNotBlank() || textAfter.isNotBlank()) {
+                    return false
+                }
+
                 return try {
                     var jsonStr = content.substring(prefixIdx + blockPrefix.length, suffixIdx).trim()
                     if (jsonStr.endsWith(":BLOCKS_END")) {
                         jsonStr = jsonStr.removeSuffix(":BLOCKS_END").trim()
                     }
                     val root = JSONObject(jsonStr)
-                    val blocks = root.optJSONArray("blocks") ?: return true
+                    val blocks = root.optJSONArray("blocks") ?: return false
                     var allTextEmpty = true
                     for (i in 0 until blocks.length()) {
                         val block = blocks.getJSONObject(i)

@@ -35,6 +35,8 @@ import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
+import com.focusbyrj.app.ui.screens.drill.DrillStreakHelper
+import com.focusbyrj.app.ui.screens.drill.DrillSummaryMathHelper
 
 @Composable
 fun FullscreenDrillSummaryView(
@@ -58,7 +60,7 @@ fun FullscreenDrillSummaryView(
     val level = jsonObj.optInt("level", 1)
     val total = jsonObj.optInt("total", 0)
     val correct = jsonObj.optInt("correct", 0)
-    val accPct = if (total > 0) (correct * 100) / total else 0
+    val accPct = DrillSummaryMathHelper.calculateAccuracy(correct, total)
     val time = jsonObj.optString("timeFormatted", "0:00")
     val xp = jsonObj.optInt("xpEarned", 0)
     val gold = jsonObj.optInt("goldEarned", 0)
@@ -370,6 +372,8 @@ fun FullscreenDrillSummaryView(
                                 .padding(vertical = 20.dp, horizontal = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
+                            val currentCycleDay = DrillStreakHelper.calculateCycleDay(currentStreak)
+
                             // Top Row: Current vs Longest
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -440,7 +444,6 @@ fun FullscreenDrillSummaryView(
                                     color = Color.White
                                 )
                                 
-                                val currentCycleDay = if (currentStreak == 0) 1 else ((currentStreak - 1) % 7) + 1
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = Color(0xFF3B2000), 
@@ -460,7 +463,6 @@ fun FullscreenDrillSummaryView(
                                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                val currentCycleDay = if (currentStreak == 0) 1 else ((currentStreak - 1) % 7) + 1
                                 for (i in 1..7) {
                                     val isActive = i <= currentCycleDay
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

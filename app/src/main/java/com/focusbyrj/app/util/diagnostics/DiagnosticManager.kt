@@ -106,6 +106,26 @@ object DiagnosticManager {
     }
 
     /**
+     * Retains only the most recent [maxKeep] diagnostic export ZIP files, deleting older ones.
+     */
+    fun rotateExports(context: Context, maxKeep: Int = 3) {
+        try {
+            val exportDir = getExportsDirectory(context)
+            val zips = exportDir.listFiles { _, name ->
+                name.startsWith("FocusByRJ_Diagnostics_") && name.endsWith(".zip")
+            }?.sortedByDescending { it.lastModified() } ?: return
+
+            if (zips.size > maxKeep) {
+                zips.drop(maxKeep).forEach { oldZip ->
+                    try { oldZip.delete() } catch (_: Throwable) {}
+                }
+            }
+        } catch (_: Throwable) {
+            // Never crash on export cleanup
+        }
+    }
+
+    /**
      * Builds complete environment and device state snapshot.
      */
     fun captureEnvironmentInfo(context: Context): String {
@@ -254,6 +274,7 @@ object DiagnosticManager {
                 }
             }
 
+            rotateExports(context)
             Result.success(zipFile)
         } catch (t: Throwable) {
             AppLogger.e("DiagnosticManager", "Failed to create diagnostic zip", t)

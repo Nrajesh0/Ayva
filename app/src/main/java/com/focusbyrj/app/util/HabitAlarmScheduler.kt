@@ -51,7 +51,8 @@ object HabitAlarmScheduler {
      * Habit request codes use the 500,000 range.
      */
     fun getRequestCode(habitId: Long): Int {
-        return (500_000L + (habitId % 400_000L)).toInt()
+        val positiveMod = kotlin.math.abs(habitId % 400_000L)
+        return (500_000L + positiveMod).toInt()
     }
 
     fun scheduleHabitReminder(

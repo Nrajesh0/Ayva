@@ -60,16 +60,17 @@ class VocabRepository(val vocabDao: VocabDao) {
     // Quiz feedback loop: updates mastery and sets review priority
     suspend fun recordQuizResult(type: String, id: Int, isCorrect: Boolean) {
         val now = System.currentTimeMillis()
+        val isIdiom = type.trim().equals("idiom", ignoreCase = true)
         if (isCorrect) {
             // Mastered on quiz success, refresh review timestamp
-            if (type == "idiom") {
+            if (isIdiom) {
                 vocabDao.setIdiomMastery(id, 1, now)
             } else {
                 vocabDao.setOwsMastery(id, 1, now)
             }
         } else {
             // Mistake demotes mastery and sets timestamp to 1 so it's top priority for next morning revision!
-            if (type == "idiom") {
+            if (isIdiom) {
                 vocabDao.setIdiomMastery(id, 0, 1L)
             } else {
                 vocabDao.setOwsMastery(id, 0, 1L)

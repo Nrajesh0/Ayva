@@ -296,7 +296,7 @@ fun AudioPlayerEditorItem(
                     dragProgressFraction = frac
                 },
                 onValueChangeFinished = {
-                    val targetMs = (dragProgressFraction * actualDuration).toInt()
+                    val targetMs = AudioPlayerWidgetHelper.calculateSeekPosition(dragProgressFraction, actualDuration)
                     onSeek(targetMs)
                     isDraggingSlider = false
                 },
@@ -403,5 +403,17 @@ fun AudioPlayerEditorItem(
                 )
             }
         }
+    }
+}
+
+object AudioPlayerWidgetHelper {
+    /**
+     * Safely calculate seek position in milliseconds from slider drag progress fraction and duration.
+     * Prevents NaN, negative numbers, and out-of-bounds positions from crashing MediaPlayer.
+     */
+    fun calculateSeekPosition(progressFraction: Float, durationMs: Long): Int {
+        if (progressFraction.isNaN() || durationMs <= 0L) return 0
+        val clampedFrac = progressFraction.coerceIn(0f, 1f)
+        return (clampedFrac * durationMs).toLong().coerceIn(0L, durationMs).toInt()
     }
 }

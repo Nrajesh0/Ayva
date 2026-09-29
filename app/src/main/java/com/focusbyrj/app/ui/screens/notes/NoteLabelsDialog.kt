@@ -67,13 +67,17 @@ fun NoteLabelsDialog(
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
-    val filteredLabels = remember(allLabels, searchQuery) {
-        if (searchQuery.isBlank()) allLabels
-        else allLabels.filter { it.contains(searchQuery.trim(), ignoreCase = true) }
+    val sanitizedAllLabels = remember(allLabels) {
+        LabelDialogHelper.sanitizeLabelsForDisplay(allLabels)
     }
 
-    val exactMatchExists = remember(allLabels, searchQuery) {
-        allLabels.any { it.equals(searchQuery.trim(), ignoreCase = true) }
+    val filteredLabels = remember(sanitizedAllLabels, searchQuery) {
+        if (searchQuery.isBlank()) sanitizedAllLabels
+        else sanitizedAllLabels.filter { it.contains(searchQuery.trim(), ignoreCase = true) }
+    }
+
+    val exactMatchExists = remember(sanitizedAllLabels, searchQuery) {
+        sanitizedAllLabels.any { it.equals(searchQuery.trim(), ignoreCase = true) }
     }
 
     Dialog(onDismissRequest = onDismiss) {

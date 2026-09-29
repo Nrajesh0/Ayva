@@ -12,6 +12,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 object ImageUtils {
     private val iconCache = LruCache<String, ImageBitmap>(250)
 
+    fun clearCache() {
+        iconCache.evictAll()
+    }
+
     fun getAppIcon(pm: PackageManager, packageName: String): ImageBitmap? {
         if (packageName.isBlank()) return null
         iconCache.get(packageName)?.let { return it }
@@ -31,17 +35,38 @@ object ImageUtils {
     fun drawableToImageBitmap(drawable: Drawable?): ImageBitmap? {
         if (drawable == null) return null
         try {
+            val targetWidth = (if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96).coerceIn(1, 96)
+            val targetHeight = (if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96).coerceIn(1, 96)
+
             if (drawable is BitmapDrawable && drawable.bitmap != null) {
                 val b = drawable.bitmap
-                if (b.config != Bitmap.Config.HARDWARE && !b.isRecycled) {
-                    b.prepareToDraw()
-                    return b.asImageBitmap()
+                if (!b.isRecycled) {
+                    if (b.config == Bitmap.Config.HARDWARE) {
+                        val softwareCopy = try {
+                            b.copy(Bitmap.Config.ARGB_8888, false)
+                        } catch (_: Throwable) {
+                            null
+                        }
+                        if (softwareCopy != null) {
+                            val scaled = if (softwareCopy.width > 96 || softwareCopy.height > 96) {
+                                Bitmap.createScaledBitmap(softwareCopy, targetWidth, targetHeight, true)
+                            } else {
+                                softwareCopy
+                            }
+                            scaled.prepareToDraw()
+                            return scaled.asImageBitmap()
+                        }
+                    } else if (b.width <= 96 && b.height <= 96) {
+                        b.prepareToDraw()
+                        return b.asImageBitmap()
+                    } else {
+                        val scaled = Bitmap.createScaledBitmap(b, targetWidth, targetHeight, true)
+                        scaled.prepareToDraw()
+                        return scaled.asImageBitmap()
+                    }
                 }
             }
 
-            val targetWidth = (if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96).coerceAtMost(96)
-            val targetHeight = (if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96).coerceAtMost(96)
-            
             val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
             drawable.setBounds(0, 0, targetWidth, targetHeight)

@@ -67,8 +67,15 @@ abstract class DrillDatabase : RoomDatabase() {
 }
 
 object DrillSessionRepository {
-    // In-memory hot cache for instantaneous 0ms session lookups without JSON parsing
-    private val memoryCache = ConcurrentHashMap<String, DrillSummary>()
+    private const val MAX_CACHE_ENTRIES = 50
+    // In-memory bounded LRU cache for instantaneous 0ms session lookups without JSON parsing
+    private val memoryCache = java.util.Collections.synchronizedMap(
+        object : java.util.LinkedHashMap<String, DrillSummary>(MAX_CACHE_ENTRIES, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DrillSummary>?): Boolean {
+                return size > MAX_CACHE_ENTRIES
+            }
+        }
+    )
     private var database: DrillDatabase? = null
 
     fun init(context: Context) {

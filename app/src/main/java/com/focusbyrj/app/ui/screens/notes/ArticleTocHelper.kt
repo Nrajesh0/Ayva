@@ -59,6 +59,8 @@ data class TocItem(
 
 object ArticleTocHelper {
 
+    private val HEADING_LINE_REGEX = Regex("""^(#{1,6})[ \t]+(.+)$""")
+
     fun extractToc(
         title: String,
         blocks: List<NotesnookBlock>,
@@ -104,9 +106,10 @@ object ArticleTocHelper {
                 val lines = text.split("\n")
                 lines.forEachIndexed { lineIdx, line ->
                     val trimmed = line.trim()
-                    if (trimmed.startsWith("#")) {
-                        val hashCount = trimmed.takeWhile { it == '#' }.length
-                        val headerText = trimmed.removePrefix("#".repeat(hashCount)).trim()
+                    val match = HEADING_LINE_REGEX.matchEntire(trimmed)
+                    if (match != null) {
+                        val hashCount = match.groupValues[1].length
+                        val headerText = match.groupValues[2].trim()
                         if (headerText.isNotBlank()) {
                             list.add(TocItem(id = "line_$lineIdx", title = headerText, level = hashCount.coerceIn(1, 6), blockIndex = 0))
                         }
@@ -136,18 +139,21 @@ object ArticleTocHelper {
                             else -> 6
                         }
                         list.add(TocItem(id = block.id, title = block.text, level = lvl, blockIndex = index))
-                    } else if (block.text.trim().startsWith("#")) {
+                    } else {
                         val trimmed = block.text.trim()
-                        val hashCount = trimmed.takeWhile { it == '#' }.length
-                        val headerText = trimmed.removePrefix("#".repeat(hashCount)).trim()
-                        if (headerText.isNotBlank()) {
-                            list.add(TocItem(id = block.id, title = headerText, level = hashCount.coerceIn(1, 6), blockIndex = index))
+                        val match = HEADING_LINE_REGEX.matchEntire(trimmed)
+                        if (match != null) {
+                            val hashCount = match.groupValues[1].length
+                            val headerText = match.groupValues[2].trim()
+                            if (headerText.isNotBlank()) {
+                                list.add(TocItem(id = block.id, title = headerText, level = hashCount.coerceIn(1, 6), blockIndex = index))
+                            }
                         }
                     }
                 }
                 is NotesnookBlock.OutlineItem -> {
                     if (block.text.isNotBlank()) {
-                        list.add(TocItem(id = block.id, title = block.text, level = block.level + 2, blockIndex = index))
+                        list.add(TocItem(id = block.id, title = block.text, level = (block.level + 2).coerceIn(1, 6), blockIndex = index))
                     }
                 }
                 else -> {}

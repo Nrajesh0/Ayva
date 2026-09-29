@@ -55,8 +55,13 @@ interface AyvaChatDao {
         }
     }
 
-    @Query("DELETE FROM ayva_chat_messages WHERE id IN (SELECT id FROM ayva_chat_messages ORDER BY timestamp ASC LIMIT :count)")
-    suspend fun deleteOldestMessages(count: Int)
+    @Query("DELETE FROM ayva_chat_messages WHERE id IN (SELECT id FROM ayva_chat_messages ORDER BY timestamp ASC LIMIT MAX(0, :count))")
+    suspend fun deleteOldestMessagesInternal(count: Int)
+
+    suspend fun deleteOldestMessages(count: Int) {
+        if (count <= 0) return
+        deleteOldestMessagesInternal(count)
+    }
 
     @Query("SELECT COUNT(*) FROM ayva_chat_messages")
     suspend fun getMessageCount(): Int

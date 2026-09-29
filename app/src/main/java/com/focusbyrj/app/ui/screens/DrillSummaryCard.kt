@@ -136,8 +136,9 @@ fun DrillSummaryCard(
             maxCombo = obj.optInt("maxCombo", 0)
             comboBonusXp = obj.optInt("comboBonusXp", 0)
             isBlitz = obj.optBoolean("isBlitz", false)
-            elapsedSeconds = obj.optInt("elapsedSeconds", 45)
-            timeFormatted = obj.optString("timeFormatted", "${elapsedSeconds / 60}:${(elapsedSeconds % 60).toString().padStart(2, '0')}")
+            elapsedSeconds = obj.optInt("elapsedSeconds", 45).coerceAtLeast(0)
+            val safeSecs = elapsedSeconds % 60
+            timeFormatted = obj.optString("timeFormatted", "${elapsedSeconds / 60}:${safeSecs.toString().padStart(2, '0')}")
             weeklyXp = obj.optInt("weeklyXp", 0)
             freezeNotice = obj.optString("freezeNotice", "")
         } catch (_: Exception) {}
@@ -145,7 +146,7 @@ fun DrillSummaryCard(
 
     val isDark = isSystemInDarkTheme()
     val accuracyPct = if (totalQuestions > 0) {
-        ((correctQuestions.toFloat() / totalQuestions) * 100).roundToInt()
+        ((correctQuestions.toFloat() / totalQuestions) * 100).roundToInt().coerceIn(0, 100)
     } else {
         100
     }

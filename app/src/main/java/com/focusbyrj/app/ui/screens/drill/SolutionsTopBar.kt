@@ -200,13 +200,15 @@ fun FilterTabPill(
 }
 
 fun formatSecondsToMinutesSec(seconds: Int): String {
-    val mins = seconds / 60
-    val secs = seconds % 60
+    val safeSec = seconds.coerceAtLeast(0)
+    val mins = safeSec / 60
+    val secs = safeSec % 60
     return if (mins > 0) "${mins}min ${secs}sec" else "${secs}sec"
 }
 
 fun formatSecondsToMmSs(seconds: Int): String {
-    val mins = seconds / 60
-    val secs = seconds % 60
+    val safeSec = seconds.coerceAtLeast(0)
+    val mins = safeSec / 60
+    val secs = safeSec % 60
     return "${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}"
 }

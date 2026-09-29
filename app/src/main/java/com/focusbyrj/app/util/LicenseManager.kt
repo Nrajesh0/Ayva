@@ -25,11 +25,15 @@ object LicenseManager {
     private var prefs: SharedPreferences? = null
 
     fun init(context: Context) {
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val app = context.applicationContext
+        prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _isProFlow.value = prefs?.getBoolean(KEY_IS_PRO, false) ?: false
     }
 
-    fun verifyAndActivateLicense(licenseKey: String): Boolean {
+    fun verifyAndActivateLicense(licenseKey: String, context: Context? = null): Boolean {
+        if (prefs == null && context != null) {
+            init(context)
+        }
         val parts = licenseKey.trim().split(".")
         if (parts.size != 2) return false
 
@@ -48,7 +52,7 @@ object LicenseManager {
             if (verifier.verify(signatureBytes)) {
                 val payload = String(payloadBytes, Charsets.UTF_8)
                 if (payload == "PRO_LIFETIME") {
-                    activatePro()
+                    activatePro(context)
                     true
                 } else {
                     false
@@ -62,8 +66,11 @@ object LicenseManager {
         }
     }
 
-    private fun activatePro() {
-        prefs?.edit()?.putBoolean(KEY_IS_PRO, true)?.apply()
+    private fun activatePro(context: Context? = null) {
+        if (prefs == null && context != null) {
+            init(context)
+        }
+        prefs?.edit()?.putBoolean(KEY_IS_PRO, true)?.commit()
         _isProFlow.value = true
         FocusEconomyManager.unlockProMax()
     }

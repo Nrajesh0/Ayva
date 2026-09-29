@@ -376,31 +376,36 @@ fun KeepNoteCard(
                         }
                     }
                 }
-            } else if (note.content.isNotBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                val primaryColor = MaterialTheme.colorScheme.primary
-                val formattedContent = remember(note.content, textColor, primaryColor, isDark) {
-                    val parsed = RichTextEngine.parse(note.content)
-                    RichTextEngine.toAnnotatedString(
-                        plainText = parsed.first,
-                        spans = parsed.second,
-                        textColor = textColor.copy(alpha = 0.85f),
-                        accentColor = primaryColor,
-                        isDark = isDark,
-                        baseFontSizeSp = 14f
+            } else {
+                val previewContent = remember(note.content) {
+                    KeepNoteCardHelper.getCleanPreviewContent(note.content)
+                }
+                if (previewContent.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    val primaryColor = MaterialTheme.colorScheme.primary
+                    val formattedContent = remember(previewContent, textColor, primaryColor, isDark) {
+                        val parsed = RichTextEngine.parse(previewContent)
+                        RichTextEngine.toAnnotatedString(
+                            plainText = parsed.first,
+                            spans = parsed.second,
+                            textColor = textColor.copy(alpha = 0.85f),
+                            accentColor = primaryColor,
+                            isDark = isDark,
+                            baseFontSizeSp = 14f
+                        )
+                    }
+                    Text(
+                        text = formattedContent,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            fontFamily = fontStyle.fontFamily
+                        ),
+                        color = textColor.copy(alpha = 0.85f),
+                        maxLines = 8,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Text(
-                    text = formattedContent,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        fontFamily = fontStyle.fontFamily
-                    ),
-                    color = textColor.copy(alpha = 0.85f),
-                    maxLines = 8,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
 
             // Audio Memos
@@ -501,4 +506,17 @@ fun KeepNoteCard(
         }
     }
 }
+}
+
+object KeepNoteCardHelper {
+    fun getCleanPreviewContent(rawContent: String): String {
+        if (rawContent.isBlank()) return ""
+        val clean = if (rawContent.contains("<!--NOTESNOOK_BLOCKS:") || rawContent.contains("<!--BLOCKS_START-->") || rawContent.contains("<!--TABLE_START:")) {
+            NotesnookBlockManager.toPlainText(rawContent)
+        } else {
+            rawContent
+        }
+        // Defense in depth: Strip any remaining raw XML/HTML comment blocks so markers never leak to UI
+        return clean.replace(Regex("""<!--.*?-->""", RegexOption.DOT_MATCHES_ALL), "").trim()
+    }
 }

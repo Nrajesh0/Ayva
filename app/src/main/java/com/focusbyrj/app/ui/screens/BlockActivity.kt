@@ -72,7 +72,8 @@ class BlockActivity : ComponentActivity() {
     private val closeReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             if (intent?.action == "com.focusbyrj.app.CLOSE_BLOCK_SCREEN") {
-                if (intent.getPackage() == null || intent.getPackage() == context?.packageName) {
+                val targetPkg = intent.getPackage() ?: intent.component?.packageName
+                if (targetPkg == context?.packageName) {
                     finish()
                 }
             }

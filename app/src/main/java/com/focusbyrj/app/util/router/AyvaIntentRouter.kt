@@ -326,8 +326,13 @@ object AyvaIntentRouter {
             "/task", "/create" -> {
                 val rest = parts.drop(1).joinToString(" ").trim()
                 if (rest.isNotBlank()) {
-                    val parsed = SmartDateParser.parse(rest)
-                    RouterDestination.TaskCreation(title = parsed.cleanText.ifBlank { rest }, dueDate = parsed.timestamp)
+                    val (title, dueDate) = if (OfflineNluEngine.isExplicitCreation(rest)) {
+                        OfflineNluEngine.extractTaskCreationDetails(rest)
+                    } else {
+                        val parsed = SmartDateParser.parse(rest)
+                        Pair(parsed.cleanText.ifBlank { rest }, parsed.timestamp)
+                    }
+                    RouterDestination.TaskCreation(title = title, dueDate = dueDate)
                 } else {
                     RouterDestination.DirectCommand("/task")
                 }

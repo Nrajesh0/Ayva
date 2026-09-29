@@ -73,7 +73,7 @@ object CompletedTaskHistoryManager {
             val currentList = loadAllRecords(prefs).toMutableList()
 
             // Remove if duplicate id exists to avoid multiple records
-            currentList.removeAll { it.id == task.id && it.title == task.title }
+            currentList.removeAll { (task.id != 0L && it.id == task.id) || (task.id == 0L && it.title == task.title) }
 
             val record = CompletedTaskRecord(
                 id = task.id,
@@ -186,6 +186,6 @@ object CompletedTaskHistoryManager {
             }
             array.put(obj)
         }
-        prefs.edit().putString(KEY_HISTORY, array.toString()).apply()
+        prefs.edit().putString(KEY_HISTORY, array.toString()).commit()
     }
 }

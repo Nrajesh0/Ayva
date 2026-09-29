@@ -201,8 +201,15 @@ object KeepNoteShareParser {
         }
 
         // Check if remaining lines form a checklist
-        val checklistCount = remainingLines.count { isChecklistLine(it) }
-        val hasCheckboxes = checklistCount > 0
+        val remainingNonEmpty = remainingLines.filter { it.isNotBlank() }
+        val checklistCount = remainingNonEmpty.count { isChecklistLine(it) }
+        val hasCheckboxes = if (remainingNonEmpty.size == 1) {
+            checklistCount == 1
+        } else if (remainingNonEmpty.size > 1) {
+            checklistCount >= 2 && checklistCount >= (remainingNonEmpty.size + 1) / 2
+        } else {
+            false
+        }
 
         if (hasCheckboxes) {
             val items = mutableListOf<ChecklistItem>()

@@ -2372,7 +2372,7 @@ private fun EnclaveAppBlockingSection(
 
     LaunchedEffect(Unit) {
         try {
-            app.habitRepository.cleanPlaceholderData()
+            app.habitRepository.cleanPlaceholderData(context)
         } catch (_: Exception) {}
     }
 

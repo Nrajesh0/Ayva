@@ -207,7 +207,9 @@ object FocusStatsManager {
         val dailyMap = mutableMapOf<Int, Long>()
         val cal = Calendar.getInstance()
 
-        for (i in 0 downTo -30) {
+        // Load at least 18 weeks (126 days) of history for the account screen heatmap
+        val historyDays = 130
+        for (i in 0 downTo -historyDays) {
             val dayCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, i) }
             val dayOfYear = dayCal.get(Calendar.DAY_OF_YEAR)
 
@@ -237,7 +239,7 @@ object FocusStatsManager {
         }
 
         if (startIndex != -999) {
-            for (i in startIndex downTo -30) {
+            for (i in startIndex downTo -historyDays) {
                 val checkCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, i) }
                 if (checkCal.before(installCal) && !isSameDay(checkCal, installCal)) {
                     break
@@ -253,7 +255,7 @@ object FocusStatsManager {
 
         var maxStreak = prefs.getSafeInt(KEY_LONGEST_STREAK, 0)
         var runningStreak = 0
-        for (i in -30..0) {
+        for (i in -historyDays..0) {
             val checkCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, i) }
             if (checkCal.before(installCal) && !isSameDay(checkCal, installCal)) {
                 runningStreak = 0

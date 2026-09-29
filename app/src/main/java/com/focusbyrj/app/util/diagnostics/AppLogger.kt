@@ -159,7 +159,7 @@ object AppLogger {
         ) {
             clean = PIN_OR_SECRET_REGEX.replace(clean) { mr -> "${mr.groupValues[1]}[REDACTED]" }
         }
-        if (clean.split(" ").size >= 12) {
+        if (clean.split(Regex("\\s+")).filter { it.isNotBlank() }.size >= 12) {
             clean = BIP39_MNEMONIC_REGEX.replace(clean, "[REDACTED_MNEMONIC]")
         }
         return clean

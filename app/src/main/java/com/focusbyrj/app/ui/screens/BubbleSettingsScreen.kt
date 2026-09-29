@@ -85,7 +85,7 @@ fun BubbleSettingsScreen(navController: NavController) {
 
     fun notifyService() {
         try {
-            context.sendBroadcast(Intent(BubbleService.ACTION_SETTINGS_CHANGED))
+            context.sendBroadcast(Intent(BubbleService.ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
         } catch (_: Exception) {}
     }
 

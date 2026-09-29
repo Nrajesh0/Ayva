@@ -87,10 +87,10 @@ object McqTextParser {
     // -------------------------------------------------------------------------
 
     private val ANSWER_REGEX = Regex(
-        """(?im)(?:^|[\n\r])[ \t]*(?:ans(?:wer)?|correct(?:\s+(?:option|answer|ans))?|key|sol(?:ution)?|right(?:\s+(?:option|answer))?)[ \t]*[:=\-\u2013\u2014][ \t]*(.+?)[ \t]*$"""
+        """(?im)(?:^|[\n\r]|[ \t]+)(?:ans(?:wer)?|correct(?:\s+(?:option|answer|ans))?|key|sol(?:ution)?|right(?:\s+(?:option|answer))?)[ \t]*[:=\-\u2013\u2014][ \t]*(.+?)[ \t]*$"""
     )
     private val EXPLANATION_REGEX = Regex(
-        """(?im)(?:^|[\n\r])[ \t]*(?:exp(?:lanation)?|rationale|reason|note)[ \t]*[:=\-\u2013\u2014][ \t]*(.+)$""",
+        """(?im)(?:^|[\n\r]|[ \t]+)(?:exp(?:lanation)?|rationale|reason|note)[ \t]*[:=\-\u2013\u2014][ \t]*(.+)$""",
         RegexOption.DOT_MATCHES_ALL
     )
 

@@ -62,6 +62,18 @@ fun CameraQrScannerDialog(
         hasCameraPermission = isGranted
     }
 
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+
+    DisposableEffect(lifecycleOwner) {
+        onDispose {
+            try {
+                cameraProviderRef?.unbindAll()
+                analysisExecutor.shutdown()
+            } catch (_: Exception) {}
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
@@ -93,6 +105,7 @@ fun CameraQrScannerDialog(
 
                             cameraProviderFuture.addListener({
                                 val cameraProvider = cameraProviderFuture.get()
+                                cameraProviderRef = cameraProvider
                                 val preview = Preview.Builder().build().also {
                                     it.setSurfaceProvider(previewView.surfaceProvider)
                                 }
@@ -103,7 +116,7 @@ fun CameraQrScannerDialog(
 
                                 val reader = MultiFormatReader()
 
-                                imageAnalysis.setAnalyzer(Executors.newSingleThreadExecutor()) { imageProxy ->
+                                imageAnalysis.setAnalyzer(analysisExecutor) { imageProxy ->
                                     val buffer: ByteBuffer = imageProxy.planes[0].buffer
                                     val data = ByteArray(buffer.remaining())
                                     buffer.get(data)
@@ -124,7 +137,9 @@ fun CameraQrScannerDialog(
                                         val result = reader.decode(bitmap)
                                         if (result != null && result.text.isNotBlank()) {
                                             cameraProvider.unbindAll()
-                                            onQrScanned(result.text)
+                                            executor.execute {
+                                                onQrScanned(result.text)
+                                            }
                                         }
                                     } catch (_: NotFoundException) {
                                     } finally {

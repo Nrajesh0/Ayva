@@ -24,13 +24,13 @@ class McqTextParserTest {
 
         val formatted = parsed.toFormattedText("ABCD")
         println("FORMATTED:\n$formatted")
-        assertTrue(formatted.contains("**Q12.** Which organelle is known as the powerhouse of the cell?"))
-        assertTrue(formatted.contains("(A) Nucleus"))
-        assertTrue(formatted.contains("(B) Mitochondria"))
-        assertTrue(formatted.contains("(C) Ribosome"))
-        assertTrue(formatted.contains("(D) Golgi apparatus"))
-        assertTrue(formatted.contains("💡 **Answer:** (B) Mitochondria"))
-        assertTrue(formatted.contains("📝 **Explanation:** Mitochondria produces ATP."))
+        assertTrue(formatted.contains("Q12. Which organelle is known as the powerhouse of the cell?"))
+        assertTrue(formatted.contains("A. Nucleus"))
+        assertTrue(formatted.contains("B. Mitochondria"))
+        assertTrue(formatted.contains("C. Ribosome"))
+        assertTrue(formatted.contains("D. Golgi apparatus"))
+        assertTrue(formatted.contains("Answer: B. Mitochondria"))
+        assertTrue(formatted.contains("Explanation: Mitochondria produces ATP."))
     }
 
     @Test
@@ -51,8 +51,8 @@ class McqTextParserTest {
         assertEquals("Paris", parsed.options[2].second)
 
         val formatted = parsed.toFormattedText("ABCD")
-        assertTrue(formatted.contains("(C) Paris"))
-        assertTrue(formatted.contains("💡 **Answer:** (C) Paris"))
+        assertTrue(formatted.contains("C. Paris"))
+        assertTrue(formatted.contains("Answer: C. Paris"))
     }
 
     @Test

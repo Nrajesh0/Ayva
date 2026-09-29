@@ -52,9 +52,14 @@ fun SharedPreferences.getSafeInt(key: String, defValue: Int): Int {
     } catch (_: ClassCastException) {
         try {
             val longVal = this.getLong(key, defValue.toLong())
-            // Self-heal: repair the preference type in-place
-            this.edit().putInt(key, longVal.toInt()).apply()
-            longVal.toInt()
+            if (longVal in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+                val intVal = longVal.toInt()
+                // Self-heal: repair the preference type in-place
+                this.edit().putInt(key, intVal).apply()
+                intVal
+            } else {
+                defValue
+            }
         } catch (_: Exception) {
             try {
                 val strVal = this.getString(key, null)
@@ -101,12 +106,30 @@ fun SharedPreferences.getSafeBoolean(key: String, defValue: Boolean): Boolean {
         this.getBoolean(key, defValue)
     } catch (_: ClassCastException) {
         try {
-            val strVal = this.getString(key, null)
-            val parsed = strVal?.toBooleanStrictOrNull() ?: defValue
+            val intVal = this.getInt(key, if (defValue) 1 else 0)
+            val parsed = intVal != 0
             this.edit().putBoolean(key, parsed).apply()
             parsed
         } catch (_: Exception) {
-            defValue
+            try {
+                val longVal = this.getLong(key, if (defValue) 1L else 0L)
+                val parsed = longVal != 0L
+                this.edit().putBoolean(key, parsed).apply()
+                parsed
+            } catch (_: Exception) {
+                try {
+                    val strVal = this.getString(key, null)?.trim()?.lowercase()
+                    val parsed = when (strVal) {
+                        "true", "1", "yes", "on" -> true
+                        "false", "0", "no", "off" -> false
+                        else -> defValue
+                    }
+                    this.edit().putBoolean(key, parsed).apply()
+                    parsed
+                } catch (_: Exception) {
+                    defValue
+                }
+            }
         }
     }
 }

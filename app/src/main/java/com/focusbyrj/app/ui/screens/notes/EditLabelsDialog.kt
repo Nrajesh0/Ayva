@@ -62,6 +62,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 
+object LabelDialogHelper {
+    fun sanitizeLabelsForDisplay(labels: List<String>): List<String> {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<String>()
+        for (label in labels) {
+            val trimmed = label.trim()
+            if (trimmed.isNotBlank() && seen.add(trimmed)) {
+                result.add(trimmed)
+            }
+        }
+        return result
+    }
+
+    fun canAddLabel(newLabel: String, existingLabels: List<String>): Boolean {
+        val trimmed = newLabel.trim()
+        if (trimmed.isBlank()) return false
+        return !existingLabels.any { it.equals(trimmed, ignoreCase = true) }
+    }
+}
+
 @Composable
 fun EditLabelsDialog(
     allLabels: List<String>,
@@ -73,6 +93,10 @@ fun EditLabelsDialog(
     var newLabelInput by remember { mutableStateOf("") }
     var editingLabelName by remember { mutableStateOf<String?>(null) }
     var editTextInput by remember { mutableStateOf("") }
+
+    val displayLabels = remember(allLabels) {
+        LabelDialogHelper.sanitizeLabelsForDisplay(allLabels)
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -118,7 +142,7 @@ fun EditLabelsDialog(
                 ) {
                     IconButton(
                         onClick = {
-                            if (newLabelInput.isNotBlank()) {
+                            if (LabelDialogHelper.canAddLabel(newLabelInput, displayLabels)) {
                                 onAddLabel(newLabelInput.trim())
                                 newLabelInput = ""
                             }
@@ -164,8 +188,10 @@ fun EditLabelsDialog(
                     if (newLabelInput.isNotEmpty()) {
                         IconButton(
                             onClick = {
-                                onAddLabel(newLabelInput.trim())
-                                newLabelInput = ""
+                                if (LabelDialogHelper.canAddLabel(newLabelInput, displayLabels)) {
+                                    onAddLabel(newLabelInput.trim())
+                                    newLabelInput = ""
+                                }
                             },
                             modifier = Modifier.size(32.dp)
                         ) {
@@ -184,7 +210,7 @@ fun EditLabelsDialog(
                 )
 
                 // Existing labels list
-                if (allLabels.isEmpty()) {
+                if (displayLabels.isEmpty()) {
                     Text(
                         text = "No labels yet",
                         style = MaterialTheme.typography.bodyMedium,
@@ -197,7 +223,7 @@ fun EditLabelsDialog(
                             .fillMaxWidth()
                             .heightIn(max = 280.dp)
                     ) {
-                        items(allLabels, key = { it }) { label ->
+                        items(displayLabels, key = { it }) { label ->
                             val isEditingThis = editingLabelName == label
 
                             Row(

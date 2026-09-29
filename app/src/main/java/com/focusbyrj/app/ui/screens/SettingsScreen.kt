@@ -394,12 +394,7 @@ fun SettingsScreen(navController: NavController) {
                     title = "Home Screen Widget",
                     subtitle = "Themes, accent colors & opacity",
                     onClick = {
-                        val intent = android.content.Intent(context, com.focusbyrj.app.widget.TodoWidgetConfigureActivity::class.java).apply {
-                            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-                            val ids = appWidgetManager.getAppWidgetIds(android.content.ComponentName(context, com.focusbyrj.app.widget.TodoWidgetProvider::class.java))
-                            val id = if (ids.isNotEmpty()) ids[0] else 0
-                            putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                        }
+                        val intent = SettingsScreenHelper.createWidgetConfigureIntent(context)
                         context.startActivity(intent)
                     },
                     trailing = {

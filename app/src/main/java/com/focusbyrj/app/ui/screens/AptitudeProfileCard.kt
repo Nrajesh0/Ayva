@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.focusbyrj.app.util.AptitudeManager
 import com.focusbyrj.app.util.GamificationHaptics
 import com.focusbyrj.app.ui.components.DuolingoBoltIcon
+import com.focusbyrj.app.ui.screens.drill.DrillStreakHelper
 import kotlin.math.roundToInt
 
 @Composable
@@ -169,6 +170,8 @@ fun AptitudeProfileCard() {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
+                val currentCycleDay = DrillStreakHelper.calculateCycleDay(profile.currentStreak)
+
                 // Streak Header Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -196,7 +199,6 @@ fun AptitudeProfileCard() {
                         )
                     }
 
-                    val currentCycleDay = if (profile.currentStreak == 0) 1 else ((profile.currentStreak - 1) % 7) + 1
                     val bonusText = if (profile.currentStreak == 0) "Daily Drill" else "+${profile.streakBonusPercent}% XP"
                     Surface(
                         shape = RoundedCornerShape(6.dp),
@@ -219,7 +221,6 @@ fun AptitudeProfileCard() {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val currentCycleDay = if (profile.currentStreak == 0) 1 else ((profile.currentStreak - 1) % 7) + 1
                     for (i in 1..7) {
                         val isActive = i <= currentCycleDay
                         val circleColor = if (isActive) Color(0xFFFF9600) else borderColor

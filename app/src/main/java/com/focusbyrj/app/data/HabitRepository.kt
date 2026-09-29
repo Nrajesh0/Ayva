@@ -17,6 +17,7 @@
 
 package com.focusbyrj.app.data
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
@@ -305,9 +306,10 @@ class HabitRepository(private val habitDao: HabitDao) {
         val existingLog = habitDao.getLogForHabitAndDate(habitId, date)
         val now = System.currentTimeMillis()
         val target = habit.targetPerDay
+        val safeCount = count.coerceAtLeast(0)
         val updatedLog = if (existingLog != null) {
             existingLog.copy(
-                completedCount = count,
+                completedCount = safeCount,
                 targetCount = target,
                 lastCompletedTimestamp = now
             )
@@ -315,7 +317,7 @@ class HabitRepository(private val habitDao: HabitDao) {
             HabitLog(
                 habitId = habitId,
                 date = date,
-                completedCount = count,
+                completedCount = safeCount,
                 targetCount = target,
                 lastCompletedTimestamp = now
             )
@@ -325,13 +327,25 @@ class HabitRepository(private val habitDao: HabitDao) {
 
     /**
      * Removes mock / placeholder starter habits so users only see their own real data.
+     * Guarded by a persistent preference flag so newly created user habits matching
+     * starter titles are never deleted on subsequent launches.
      */
-    suspend fun cleanPlaceholderData() = withContext(Dispatchers.IO) {
+    suspend fun cleanPlaceholderData(context: Context? = null) = withContext(Dispatchers.IO) {
+        if (context != null) {
+            val prefs = context.getSharedPreferences("habit_prefs", Context.MODE_PRIVATE)
+            if (prefs.getBoolean("cleaned_placeholder_habits_v1", false)) {
+                return@withContext
+            }
+        }
         val placeholderTitles = setOf("Hydration Protocol", "Deep Reading", "Mindful Focus")
         val allHabits = habitDao.getAllHabitsSync()
         allHabits.filter { it.title in placeholderTitles }.forEach { habit ->
             habitDao.deleteLogsForHabit(habit.id)
             habitDao.deleteHabit(habit)
+        }
+        if (context != null) {
+            val prefs = context.getSharedPreferences("habit_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("cleaned_placeholder_habits_v1", true).apply()
         }
     }
 

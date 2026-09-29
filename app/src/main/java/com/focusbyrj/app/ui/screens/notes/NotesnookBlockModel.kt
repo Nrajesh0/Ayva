@@ -236,9 +236,15 @@ object NotesnookBlockManager {
      */
     fun isArticleMode(raw: String): Boolean {
         val prefixIdx = raw.indexOf(BLOCKS_PREFIX)
-        val suffixIdx = if (prefixIdx != -1) raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length) else -1
+        val suffixIdx = if (prefixIdx != -1) {
+            val endTagged = raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length)
+            if (endTagged != -1) endTagged else raw.indexOf("-->", startIndex = prefixIdx + BLOCKS_PREFIX.length)
+        } else -1
         if (prefixIdx != -1 && suffixIdx != -1) {
-            val jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
+            var jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
+            if (jsonStr.endsWith(":BLOCKS_END")) {
+                jsonStr = jsonStr.removeSuffix(":BLOCKS_END").trim()
+            }
             return try {
                 val root = JSONObject(jsonStr)
                 root.optBoolean("isArticle", false)
@@ -254,9 +260,15 @@ object NotesnookBlockManager {
      */
     fun getSubtitle(raw: String): String {
         val prefixIdx = raw.indexOf(BLOCKS_PREFIX)
-        val suffixIdx = if (prefixIdx != -1) raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length) else -1
+        val suffixIdx = if (prefixIdx != -1) {
+            val endTagged = raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length)
+            if (endTagged != -1) endTagged else raw.indexOf("-->", startIndex = prefixIdx + BLOCKS_PREFIX.length)
+        } else -1
         if (prefixIdx != -1 && suffixIdx != -1) {
-            val jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
+            var jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
+            if (jsonStr.endsWith(":BLOCKS_END")) {
+                jsonStr = jsonStr.removeSuffix(":BLOCKS_END").trim()
+            }
             return try {
                 val root = JSONObject(jsonStr)
                 root.optString("subtitle", "")
@@ -305,11 +317,18 @@ object NotesnookBlockManager {
 
         // 1. Check for native Notesnook Blocks JSON
         val prefixIdx = raw.indexOf(BLOCKS_PREFIX)
-        val suffixIdx = if (prefixIdx != -1) raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length) else -1
+        val suffixIdx = if (prefixIdx != -1) {
+            val endTagged = raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length)
+            if (endTagged != -1) endTagged else raw.indexOf("-->", startIndex = prefixIdx + BLOCKS_PREFIX.length)
+        } else -1
         if (prefixIdx != -1 && suffixIdx != -1) {
+            val endMarkerLen = if (raw.startsWith(BLOCKS_SUFFIX, suffixIdx)) BLOCKS_SUFFIX.length else "-->".length
             val textBefore = raw.substring(0, prefixIdx).trim()
-            val textAfter = raw.substring(suffixIdx + BLOCKS_SUFFIX.length).trim()
-            val jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
+            val textAfter = raw.substring(suffixIdx + endMarkerLen).trim()
+            var jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
+            if (jsonStr.endsWith(":BLOCKS_END")) {
+                jsonStr = jsonStr.removeSuffix(":BLOCKS_END").trim()
+            }
             val blocks = mutableListOf<NotesnookBlock>()
 
             if (textBefore.isNotEmpty()) {
@@ -318,8 +337,12 @@ object NotesnookBlockManager {
             }
 
             try {
-                val root = JSONObject(jsonStr)
-                val array = root.optJSONArray("blocks")
+                val array = if (jsonStr.startsWith("[")) {
+                    JSONArray(jsonStr)
+                } else {
+                    val root = JSONObject(jsonStr)
+                    root.optJSONArray("blocks") ?: JSONArray().apply { put(root) }
+                }
                 if (array != null && array.length() > 0) {
                     for (i in 0 until array.length()) {
                         val obj = array.getJSONObject(i)

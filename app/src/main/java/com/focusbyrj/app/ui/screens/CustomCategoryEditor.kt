@@ -43,15 +43,7 @@ fun CustomCategoryEditor(
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredApps = remember(installedApps, selectedCategory, searchQuery) {
-        var list = if (selectedCategory == AppCategory.ALL) {
-            installedApps
-        } else {
-            installedApps.filter { it.category == selectedCategory }
-        }
-        if (searchQuery.isNotBlank()) {
-            list = list.filter { it.appName.contains(searchQuery, ignoreCase = true) }
-        }
-        list
+        CategoryEditorHelper.filterAndDeduplicateApps(installedApps, selectedCategory, searchQuery)
     }
 
     Dialog(
@@ -97,7 +89,7 @@ fun CustomCategoryEditor(
                         Button(
                             onClick = {
                                 if (name.isNotBlank()) {
-                                    onSave(name, selectedPackages)
+                                    onSave(name.trim(), selectedPackages)
                                 }
                             },
                             enabled = name.isNotBlank(),

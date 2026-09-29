@@ -46,6 +46,7 @@ class AutoBackupWorker(
                 Log.i(TAG, "WorkManager daily auto-backup completed successfully")
             } else {
                 Log.w(TAG, "WorkManager daily auto-backup returned false")
+                return@withContext Result.retry()
             }
 
             // 30-day trash auto-purge: permanently deletes notes & tasks that have been in trash > 30 days

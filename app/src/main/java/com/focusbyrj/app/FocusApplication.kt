@@ -53,6 +53,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
             android.util.Log.e("FocusApplication", "Failed to load SQLCipher libs early", t)
         }
         com.focusbyrj.app.util.AppThemeManager.init(this)
+        com.focusbyrj.app.util.LicenseManager.init(this)
         com.focusbyrj.app.util.FocusStatsManager.init(this)
         com.focusbyrj.app.util.FocusEconomyManager.init(this)
         com.focusbyrj.app.util.AptitudeManager.init(this)
@@ -82,7 +83,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
             com.focusbyrj.app.util.AyvaTalkEngine.warmUp(this@FocusApplication)
             com.focusbyrj.app.util.sync.supabase.AutoSyncManager.init(this@FocusApplication)
             try {
-                habitRepository.cleanPlaceholderData()
+                habitRepository.cleanPlaceholderData(this@FocusApplication)
             } catch (t: Throwable) {
                 android.util.Log.e("FocusApplication", "Failed to clean placeholder habit data", t)
             }

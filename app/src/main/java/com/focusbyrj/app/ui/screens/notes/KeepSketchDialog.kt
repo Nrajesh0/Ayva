@@ -182,6 +182,16 @@ data class DrawingPath(
     val endPoint: Offset? = null
 )
 
+object KeepSketchHelper {
+    fun calculateLineStep(baseStep: Float, scale: Float): Float {
+        return (baseStep * scale).coerceAtLeast(1f)
+    }
+
+    fun coerceColorComponent(component: Float): Int {
+        return (component * 255f).toInt().coerceIn(0, 255)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun KeepSketchDialog(
@@ -463,31 +473,34 @@ fun KeepSketchDialog(
                                                     strokeWidth = 2f * scale
                                                 }
                                                 if (paperStyle == PaperStyle.LINES) {
-                                                    var y = 60f * scale
+                                                    val step = KeepSketchHelper.calculateLineStep(60f, scale)
+                                                    var y = step
                                                     while (y < h) {
                                                         canvas.drawLine(0f, y, w.toFloat(), y, linePaint)
-                                                        y += 60f * scale
+                                                        y += step
                                                     }
                                                 } else if (paperStyle == PaperStyle.GRID) {
-                                                    var x = 50f * scale
+                                                    val step = KeepSketchHelper.calculateLineStep(50f, scale)
+                                                    var x = step
                                                     while (x < w) {
                                                         canvas.drawLine(x, 0f, x, h.toFloat(), linePaint)
-                                                        x += 50f * scale
+                                                        x += step
                                                     }
-                                                    var y = 50f * scale
+                                                    var y = step
                                                     while (y < h) {
                                                         canvas.drawLine(0f, y, w.toFloat(), y, linePaint)
-                                                        y += 50f * scale
+                                                        y += step
                                                     }
                                                 } else if (paperStyle == PaperStyle.DOTS) {
-                                                    var x = 40f * scale
+                                                    val step = KeepSketchHelper.calculateLineStep(40f, scale)
+                                                    var x = step
                                                     while (x < w) {
-                                                        var y = 40f * scale
+                                                        var y = step
                                                         while (y < h) {
-                                                            canvas.drawCircle(x, y, 3f * scale, linePaint)
-                                                            y += 40f * scale
+                                                            canvas.drawCircle(x, y, (3f * scale).coerceAtLeast(1f), linePaint)
+                                                            y += step
                                                         }
-                                                        x += 40f * scale
+                                                        x += step
                                                     }
                                                 }
                                             }
@@ -502,12 +515,12 @@ fun KeepSketchDialog(
                                         }
 
                                         for (item in paths) {
-                                            val alphaInt = (item.color.alpha * item.opacity * 255).toInt().coerceIn(0, 255)
+                                            val alphaInt = KeepSketchHelper.coerceColorComponent(item.color.alpha * item.opacity)
                                             val argb = android.graphics.Color.argb(
                                                 alphaInt,
-                                                (item.color.red * 255).toInt(),
-                                                (item.color.green * 255).toInt(),
-                                                (item.color.blue * 255).toInt()
+                                                KeepSketchHelper.coerceColorComponent(item.color.red),
+                                                KeepSketchHelper.coerceColorComponent(item.color.green),
+                                                KeepSketchHelper.coerceColorComponent(item.color.blue)
                                             )
                                             strokePaint.color = argb
                                             strokePaint.strokeWidth = item.strokeWidth * scale
