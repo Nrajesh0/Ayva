@@ -10,12 +10,13 @@ import android.graphics.RectF
 object WidgetDrawableGenerator {
 
     /**
-     * Small, fast bitmap (160x160) stretched with fitXY.
-     * Keeps IPC parcel size minimal (< 100KB) while rendering crisp rounded corners and stroke.
+     * Renders a crisp, borderless rounded rectangle background for the task widget.
+     * Generates a smooth, anti-aliased fill without blurry borders.
      */
     fun createWidgetBackground(context: Context, config: WidgetConfig): Bitmap {
-        val size = 160
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val width = 360
+        val height = 240
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -23,20 +24,8 @@ object WidgetDrawableGenerator {
             style = Paint.Style.FILL
         }
 
-        // Clean, solid thin line border (crisp and polished, not thick or transparent)
-        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (config.theme.isDark) {
-                if (config.theme == WidgetTheme.OLED) Color.parseColor("#26292B") else Color.parseColor("#2E3338")
-            } else {
-                Color.parseColor("#D6D9DC")
-            }
-            style = Paint.Style.STROKE
-            strokeWidth = 1.2f
-        }
-
-        // Scale dp to bitmap dimensions (160px canvas representing ~360dp widget)
-        val radius = (config.cornerRadiusDp.toFloat() * 0.45f).coerceIn(0f, 24f)
-        val rect = RectF(0.6f, 0.6f, size - 0.6f, size - 0.6f)
+        val radius = config.cornerRadiusDp.toFloat().coerceAtLeast(0f)
+        val rect = RectF(0f, 0f, width.toFloat(), height.toFloat())
 
         if (radius <= 0f) {
             canvas.drawRect(rect, paint)

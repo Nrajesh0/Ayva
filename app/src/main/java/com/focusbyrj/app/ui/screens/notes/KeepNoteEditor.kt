@@ -130,6 +130,12 @@ import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.CopyAll
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.ChromeReaderMode
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.foundation.layout.widthIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.focusbyrj.app.data.note.NoteImageHelper
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.ripple
 import androidx.compose.foundation.verticalScroll
@@ -291,16 +297,26 @@ fun KeepNoteEditor(
     var showAttachmentOptionsSheet by remember { mutableStateOf(false) }
 
     var isZenMode by remember { mutableStateOf(false) }
+    var isReaderMode by remember { mutableStateOf(false) }
     var showTocSheet by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
     var showEditorialSheet by remember { mutableStateOf(false) }
-    var lineSpacingPreset by remember { mutableStateOf(LineSpacingPreset.COMFORTABLE) }
+
+    val initialIsArticle = remember(state.sessionId) { NotesnookBlockManager.isArticleMode(state.content) }
+    var isArticleMode by remember(state.sessionId) { mutableStateOf(initialIsArticle) }
+    val initialSubtitle = remember(state.sessionId) { NotesnookBlockManager.getSubtitle(state.content) }
+    var subtitleTfv by remember(state.sessionId) { mutableStateOf(TextFieldValue(initialSubtitle, TextRange(initialSubtitle.length))) }
+
+    var lineSpacingPreset by remember(state.sessionId) {
+        mutableStateOf(if (initialIsArticle) LineSpacingPreset.COMFORTABLE else LineSpacingPreset.COMFORTABLE)
+    }
 
     val initialParsed = remember(state.sessionId) { RichTextEngine.parse(state.content) }
     var richSpans by remember(state.sessionId) { mutableStateOf(initialParsed.second) }
     var pendingTypingStyles by remember { mutableStateOf(setOf<RichSpanType>()) }
     var selectedFontColorHex by remember { mutableStateOf<String?>(null) }
     var textAlignment by remember { mutableStateOf(TextAlign.Start) }
+    var lastCursorPosition by remember { mutableIntStateOf(-1) }
 
     val contentFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -337,9 +353,13 @@ fun KeepNoteEditor(
     var activeBlockIndex by remember(state.sessionId) { mutableIntStateOf(0) }
     val textBlockStates = remember(state.sessionId) { mutableStateMapOf<String, TextFieldValue>() }
 
-    fun syncAndCommitBlocks(newBlocks: List<NotesnookBlock>) {
+    fun syncAndCommitBlocks(
+        newBlocks: List<NotesnookBlock>,
+        isArticle: Boolean = isArticleMode,
+        subtitleText: String = subtitleTfv.text
+    ) {
         blocks = newBlocks
-        val serialized = NotesnookBlockManager.serialize(newBlocks)
+        val serialized = NotesnookBlockManager.serialize(newBlocks, isArticle = isArticle, subtitle = subtitleText)
         onContentChange(serialized)
     }
 
@@ -373,7 +393,7 @@ fun KeepNoteEditor(
             val id = blocks.firstOrNull()?.id ?: java.util.UUID.randomUUID().toString()
             val updatedBlock = NotesnookBlock.Text(id = id, text = newTfv.text, spans = newSpans)
             blocks = listOf(updatedBlock)
-            onContentChange(NotesnookBlockManager.serialize(blocks))
+            onContentChange(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
         } else {
             val block = blocks.getOrNull(blockIdx)
             if (block is NotesnookBlock.Text) {
@@ -427,35 +447,64 @@ fun KeepNoteEditor(
     fun insertBlockItem(blockToInsert: NotesnookBlock) {
         val newBlocks = blocks.toMutableList()
         // In single-block mode, capture the current text and spans
-        if (newBlocks.size == 1 && newBlocks[0] is NotesnookBlock.Text) {
+        if (newBlocks.size <= 1 && (newBlocks.isEmpty() || newBlocks[0] is NotesnookBlock.Text)) {
             if (contentTfv.text.isBlank()) {
                 newBlocks.clear()
             } else {
-                newBlocks[0] = NotesnookBlock.Text(text = contentTfv.text, spans = richSpans)
+                newBlocks.clear()
+                newBlocks.add(NotesnookBlock.Text(text = contentTfv.text, spans = richSpans))
             }
         }
 
-        val currentIdx = activeBlockIndex.coerceIn(0, newBlocks.size)
-
-        // If currently focused block is an empty Text block, replace it with the new widget!
-        if (currentIdx < newBlocks.size && newBlocks[currentIdx] is NotesnookBlock.Text && (newBlocks[currentIdx] as NotesnookBlock.Text).text.isBlank()) {
-            newBlocks[currentIdx] = blockToInsert
-            val nextIdx = currentIdx + 1
-            val hasTrailingText = nextIdx < newBlocks.size && newBlocks[nextIdx] is NotesnookBlock.Text
-            if (!hasTrailingText) {
-                newBlocks.add(nextIdx, NotesnookBlock.Text())
-            }
-            activeBlockIndex = nextIdx
+        if (newBlocks.isEmpty()) {
+            newBlocks.add(blockToInsert)
+            newBlocks.add(NotesnookBlock.Text())
+            activeBlockIndex = 1
         } else {
-            // Otherwise insert after the active block (or at beginning if empty)
-            val insertAt = if (newBlocks.isEmpty()) 0 else (currentIdx + 1).coerceAtMost(newBlocks.size)
-            newBlocks.add(insertAt, blockToInsert)
-            val nextIdx = insertAt + 1
-            val hasTrailingText = nextIdx < newBlocks.size && newBlocks[nextIdx] is NotesnookBlock.Text
-            if (!hasTrailingText) {
-                newBlocks.add(nextIdx, NotesnookBlock.Text())
+            val currentIdx = activeBlockIndex.coerceIn(0, newBlocks.size - 1)
+            val currentBlock = newBlocks[currentIdx]
+
+            if (currentBlock is NotesnookBlock.Text) {
+                val curTfv = if (blocks.size <= 1) contentTfv else (textBlockStates[currentBlock.id] ?: TextFieldValue(currentBlock.text, TextRange(currentBlock.text.length)))
+                if (curTfv.text.isBlank()) {
+                    newBlocks[currentIdx] = blockToInsert
+                    val nextIdx = currentIdx + 1
+                    if (nextIdx >= newBlocks.size || newBlocks[nextIdx] !is NotesnookBlock.Text) {
+                        newBlocks.add(nextIdx, NotesnookBlock.Text())
+                    }
+                    activeBlockIndex = nextIdx
+                } else {
+                    val cursor = curTfv.selection.start.coerceIn(0, curTfv.text.length)
+                    if (cursor == 0) {
+                        newBlocks.add(currentIdx, blockToInsert)
+                        activeBlockIndex = currentIdx + 1
+                    } else if (cursor >= curTfv.text.length) {
+                        newBlocks.add(currentIdx + 1, blockToInsert)
+                        val nextIdx = currentIdx + 2
+                        if (nextIdx > newBlocks.size || (nextIdx < newBlocks.size && newBlocks[nextIdx] !is NotesnookBlock.Text)) {
+                            newBlocks.add(nextIdx, NotesnookBlock.Text())
+                        }
+                        activeBlockIndex = nextIdx
+                    } else {
+                        // Split paragraph & spans at cursor!
+                        val beforeText = curTfv.text.substring(0, cursor)
+                        val afterText = curTfv.text.substring(cursor)
+                        val (spansBefore, spansAfter) = RichTextEngine.splitSpansAt(currentBlock.spans, cursor)
+                        newBlocks[currentIdx] = NotesnookBlock.Text(text = beforeText, spans = spansBefore)
+                        newBlocks.add(currentIdx + 1, blockToInsert)
+                        newBlocks.add(currentIdx + 2, NotesnookBlock.Text(text = afterText, spans = spansAfter))
+                        activeBlockIndex = currentIdx + 2
+                    }
+                }
+            } else {
+                val insertAt = (currentIdx + 1).coerceAtMost(newBlocks.size)
+                newBlocks.add(insertAt, blockToInsert)
+                val nextIdx = insertAt + 1
+                if (nextIdx >= newBlocks.size || newBlocks[nextIdx] !is NotesnookBlock.Text) {
+                    newBlocks.add(nextIdx, NotesnookBlock.Text())
+                }
+                activeBlockIndex = nextIdx
             }
-            activeBlockIndex = nextIdx
         }
 
         // Deduplicate consecutive blank Text blocks so spacers never accumulate
@@ -499,7 +548,7 @@ fun KeepNoteEditor(
             richSpans = updatedSpans
             val updatedBlock = NotesnookBlock.Text(text = newText, spans = updatedSpans)
             blocks = listOf(updatedBlock)
-            onContentChange(NotesnookBlockManager.serialize(blocks))
+            onContentChange(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
             contentTfv = newTfv
         }
         showFontPicker = true
@@ -543,7 +592,7 @@ fun KeepNoteEditor(
         val updatedSpans = RichTextEngine.updateSpansOnTextChange(contentTfv.text, newText, richSpans)
         richSpans = updatedSpans
         blocks = listOf(NotesnookBlock.Text(text = newText, spans = updatedSpans))
-        onContentChange(NotesnookBlockManager.serialize(blocks))
+        onContentChange(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
         contentTfv = newTfv
         showFontPicker = true
         coroutineScope.launch {
@@ -558,6 +607,7 @@ fun KeepNoteEditor(
 
     BackHandler {
         when {
+            isReaderMode -> isReaderMode = false
             isZenMode -> isZenMode = false
             showTocSheet -> showTocSheet = false
             showExportSheet -> showExportSheet = false
@@ -584,8 +634,19 @@ fun KeepNoteEditor(
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(),
         onResult = { uris ->
-            uris.forEach { uri ->
-                onAddImageUri(uri)
+            if (isArticleMode) {
+                coroutineScope.launch(Dispatchers.IO) {
+                    uris.forEach { uri ->
+                        val localPath = NoteImageHelper.processAndSaveImage(context, uri) ?: uri.toString()
+                        withContext(Dispatchers.Main) {
+                            insertBlockItem(NotesnookBlock.Image(uri = localPath, caption = ""))
+                        }
+                    }
+                }
+            } else {
+                uris.forEach { uri ->
+                    onAddImageUri(uri)
+                }
             }
         }
     )
@@ -596,7 +657,16 @@ fun KeepNoteEditor(
             uris.forEach { uri ->
                 val mimeType = context.contentResolver.getType(uri)
                 if (mimeType?.startsWith("image/") == true) {
-                    onAddImageUri(uri)
+                    if (isArticleMode) {
+                        coroutineScope.launch(Dispatchers.IO) {
+                            val localPath = NoteImageHelper.processAndSaveImage(context, uri) ?: uri.toString()
+                            withContext(Dispatchers.Main) {
+                                insertBlockItem(NotesnookBlock.Image(uri = localPath, caption = ""))
+                            }
+                        }
+                    } else {
+                        onAddImageUri(uri)
+                    }
                 } else {
                     onAddAttachmentUri(uri)
                 }
@@ -608,7 +678,18 @@ fun KeepNoteEditor(
         contract = ActivityResultContracts.TakePicturePreview(),
         onResult = { bitmap ->
             if (bitmap != null) {
-                onPhotoTaken(bitmap)
+                if (isArticleMode) {
+                    coroutineScope.launch(Dispatchers.IO) {
+                        val localPath = NoteImageHelper.processAndSaveBitmap(context, bitmap, "photo")
+                        if (localPath != null) {
+                            withContext(Dispatchers.Main) {
+                                insertBlockItem(NotesnookBlock.Image(uri = localPath, caption = ""))
+                            }
+                        }
+                    }
+                } else {
+                    onPhotoTaken(bitmap)
+                }
             }
         }
     )
@@ -669,7 +750,58 @@ fun KeepNoteEditor(
             // ==========================================
             // TOP ACTION BAR (Google Keep & Article Style)
             // ==========================================
-            if (isZenMode) {
+            if (isReaderMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { isReaderMode = false },
+                            modifier = Modifier.testTag("exit_reader_mode_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back to Editor",
+                                tint = textColor
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Reader View",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = textColor
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { showTocSheet = true },
+                            modifier = Modifier.testTag("reader_toc_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.FormatListNumbered,
+                                contentDescription = "Table of contents",
+                                tint = textColor.copy(alpha = 0.85f)
+                            )
+                        }
+                        IconButton(
+                            onClick = { isReaderMode = false },
+                            modifier = Modifier.testTag("reader_edit_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Edit,
+                                contentDescription = "Edit Article",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            } else if (isZenMode) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -715,6 +847,20 @@ fun KeepNoteEditor(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Reader View button if in Article Mode
+                        if (isArticleMode) {
+                            IconButton(
+                                onClick = { isReaderMode = true },
+                                modifier = Modifier.testTag("editor_reader_mode_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.ChromeReaderMode,
+                                    contentDescription = "Reader View",
+                                    tint = textColor.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
                         // Table of Contents
                         IconButton(
                             onClick = { showTocSheet = true },
@@ -769,142 +915,385 @@ fun KeepNoteEditor(
             // ==========================================
             // SCROLLABLE NOTE BODY
             // ==========================================
-            Column(
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.TopCenter
             ) {
-                // ATTACHED IMAGES (Google Keep style image collage)
-                if (state.imageUris.isNotEmpty()) {
-                    KeepEditorImageCollage(
-                        imageUris = state.imageUris,
-                        onImageClick = { uri -> viewingImageUri = uri },
-                        onRemoveImage = onRemoveImage
-                    )
-                }
-
-                // AUDIO ATTACHMENTS
-                if (state.audioUris.isNotEmpty()) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 14.dp)
-                    ) {
-                        state.audioUris.forEach { audioUri ->
-                            val isPlaying = isAudioPlaying && activePlayingAudioPath == audioUri
-                            val curPos = if (isPlaying) audioPositionMs else 0
-                            val dur = if (isPlaying) audioDurationMs else 0
-                            AudioPlayerEditorItem(
-                                audioUri = audioUri,
-                                isPlaying = isPlaying,
-                                currentPositionMs = curPos,
-                                durationMs = dur,
-                                playbackSpeed = audioPlaybackSpeed,
-                                onTogglePlay = { onToggleAudioPlay(audioUri) },
-                                onSeek = onSeekAudio,
-                                onSpeedChange = onSetAudioPlaybackSpeed,
-                                onSkip = onSkipAudio,
-                                onDelete = { onRemoveAudio(audioUri) },
-                                textColor = textColor
-                            )
-                        }
-                    }
-                }
-
-                // TITLE INPUT
-                BasicTextField(
-                    value = state.title,
-                    onValueChange = onTitleChange,
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("editor_title_input"),
-                    textStyle = TextStyle(
-                        color = textColor,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = fontStyle.fontFamily
-                    ),
-                    cursorBrush = SolidColor(textColor),
-                    decorationBox = { innerTextField ->
-                        if (state.title.isEmpty()) {
-                            Text(
-                                text = "Title",
-                                style = TextStyle(
-                                    color = textColor.copy(alpha = 0.40f),
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontFamily = fontStyle.fontFamily
-                                )
-                            )
-                        }
-                        innerTextField()
+                        .then(if (isArticleMode) Modifier.widthIn(max = 720.dp) else Modifier.fillMaxWidth())
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = if (isArticleMode) 24.dp else 20.dp, vertical = 8.dp)
+                ) {
+                    // ATTACHED IMAGES (Google Keep style image collage)
+                    if (state.imageUris.isNotEmpty()) {
+                        KeepEditorImageCollage(
+                            imageUris = state.imageUris,
+                            onImageClick = { uri -> viewingImageUri = uri },
+                            onRemoveImage = onRemoveImage
+                        )
                     }
-                )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    // AUDIO ATTACHMENTS
+                    if (state.audioUris.isNotEmpty()) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 14.dp)
+                        ) {
+                            state.audioUris.forEach { audioUri ->
+                                val isPlaying = isAudioPlaying && activePlayingAudioPath == audioUri
+                                val curPos = if (isPlaying) audioPositionMs else 0
+                                val dur = if (isPlaying) audioDurationMs else 0
+                                AudioPlayerEditorItem(
+                                    audioUri = audioUri,
+                                    isPlaying = isPlaying,
+                                    currentPositionMs = curPos,
+                                    durationMs = dur,
+                                    playbackSpeed = audioPlaybackSpeed,
+                                    onTogglePlay = { onToggleAudioPlay(audioUri) },
+                                    onSeek = onSeekAudio,
+                                    onSpeedChange = onSetAudioPlaybackSpeed,
+                                    onSkip = onSkipAudio,
+                                    onDelete = { onRemoveAudio(audioUri) },
+                                    textColor = textColor
+                                )
+                            }
+                        }
+                    }
 
-                // NOTE CONTENT OR CHECKLIST
-                if (!state.isChecklist) {
-                    val primaryColor = MaterialTheme.colorScheme.primary
-
-                    if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
-                        // Standard WYSIWYG Single Text Note
-                        val richVisualTransformation = remember(richSpans, textColor, primaryColor, isDark, fontSizeSp) {
-                            RichTextEngine.createVisualTransformation(
-                                spans = richSpans,
-                                textColor = textColor,
-                                accentColor = primaryColor,
-                                isDark = isDark,
-                                baseFontSizeSp = fontSizeSp
+                    // TITLE
+                    if (isReaderMode) {
+                        if (state.title.isNotBlank()) {
+                            Text(
+                                text = state.title,
+                                style = TextStyle(
+                                    color = textColor,
+                                    fontSize = 28.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = fontStyle.fontFamily
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("reader_title")
                             )
                         }
-
+                    } else {
                         BasicTextField(
-                            value = contentTfv,
-                            onValueChange = { newTfv ->
-                                val enterHandled = NotesnookFormattingHelper.handleEnterKey(contentTfv, newTfv)
-                                val effectiveTfv = enterHandled ?: newTfv
-
-                                val oldText = contentTfv.text
-                                val newText = effectiveTfv.text
-                                if (enterHandled != null || (newText.length == oldText.length + 1 && newText.getOrNull(effectiveTfv.selection.start - 1) == '\n')) {
-                                    val headingTypes = setOf(
-                                        RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
-                                        RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
+                            value = state.title,
+                            onValueChange = onTitleChange,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("editor_title_input"),
+                            textStyle = TextStyle(
+                                color = textColor,
+                                fontSize = if (isArticleMode) 26.sp else 22.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = fontStyle.fontFamily
+                            ),
+                            cursorBrush = SolidColor(textColor),
+                            decorationBox = { innerTextField ->
+                                if (state.title.isEmpty()) {
+                                    Text(
+                                        text = "Title",
+                                        style = TextStyle(
+                                            color = textColor.copy(alpha = 0.40f),
+                                            fontSize = if (isArticleMode) 26.sp else 22.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontFamily = fontStyle.fontFamily
+                                        )
                                     )
-                                    pendingTypingStyles = pendingTypingStyles - headingTypes
                                 }
+                                innerTextField()
+                            }
+                        )
+                    }
 
-                                if (oldText != newText) {
-                                    val diff = newText.length - oldText.length
-                                    if (diff >= 10) {
-                                        val changeStart = oldText.zip(newText).indexOfFirst { (o, n) -> o != n }.let { if (it == -1) 0 else it }
-                                        val changeEnd = changeStart + diff
-                                        val inserted = newText.substring(changeStart, minOf(changeEnd, newText.length))
-                                        if (McqTextParser.isLikelyMcq(inserted)) {
-                                            detectedMcqRaw = inserted
-                                            showMcqFormatPill = true
-                                            mcqPillDismissJob?.cancel()
-                                            mcqPillDismissJob = coroutineScope.launch {
-                                                delay(6000)
-                                                showMcqFormatPill = false
+                    // SUBTITLE (Article Mode)
+                    if (isArticleMode) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (isReaderMode) {
+                            if (subtitleTfv.text.isNotBlank()) {
+                                Text(
+                                    text = subtitleTfv.text,
+                                    style = TextStyle(
+                                        color = textColor.copy(alpha = 0.65f),
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        fontFamily = fontStyle.fontFamily
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("reader_subtitle")
+                                )
+                            }
+                        } else {
+                            BasicTextField(
+                                value = subtitleTfv,
+                                onValueChange = { newSub ->
+                                    subtitleTfv = newSub
+                                    syncAndCommitBlocks(blocks, isArticle = true, subtitleText = newSub.text)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("editor_subtitle_input"),
+                                textStyle = TextStyle(
+                                    color = textColor.copy(alpha = 0.70f),
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    fontFamily = fontStyle.fontFamily
+                                ),
+                                cursorBrush = SolidColor(textColor),
+                                decorationBox = { innerTextField ->
+                                    if (subtitleTfv.text.isEmpty()) {
+                                        Text(
+                                            text = "Write a subtitle...",
+                                            style = TextStyle(
+                                                color = textColor.copy(alpha = 0.35f),
+                                                fontSize = 17.sp,
+                                                fontWeight = FontWeight.Normal,
+                                                fontFamily = fontStyle.fontFamily
+                                            )
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            )
+                        }
+                    }
+
+                    if (isReaderMode && (state.title.isNotBlank() || (isArticleMode && subtitleTfv.text.isNotBlank()))) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        HorizontalDivider(color = textColor.copy(alpha = 0.12f))
+                        Spacer(modifier = Modifier.height(14.dp))
+                    } else {
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // NOTE CONTENT OR CHECKLIST
+                    if (!state.isChecklist) {
+                        val primaryColor = MaterialTheme.colorScheme.primary
+
+                        if (isReaderMode) {
+                            // Reader View Mode: Clean read-only rendering without carets or input fields
+                            if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
+                                val displayText = contentTfv.text
+                                if (displayText.isNotEmpty()) {
+                                    val annotated = remember(displayText, richSpans, textColor, primaryColor, isDark, fontSizeSp) {
+                                        RichTextEngine.toAnnotatedString(
+                                            plainText = displayText,
+                                            spans = richSpans,
+                                            textColor = textColor,
+                                            accentColor = primaryColor,
+                                            isDark = isDark,
+                                            baseFontSizeSp = fontSizeSp
+                                        )
+                                    }
+                                    Text(
+                                        text = annotated,
+                                        style = TextStyle(
+                                            color = textColor,
+                                            fontSize = fontSizeSp.sp,
+                                            lineHeight = lineHeightSp.sp,
+                                            fontFamily = fontStyle.fontFamily,
+                                            textAlign = textAlignment
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("reader_content_text")
+                                    )
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    blocks.forEach { block ->
+                                        when (block) {
+                                            is NotesnookBlock.Text -> {
+                                                if (block.text.isNotEmpty()) {
+                                                    val textVisual = remember(block.text, block.spans, textColor, primaryColor, isDark, fontSizeSp) {
+                                                        RichTextEngine.toAnnotatedString(
+                                                            plainText = block.text,
+                                                            spans = block.spans,
+                                                            textColor = textColor,
+                                                            accentColor = primaryColor,
+                                                            isDark = isDark,
+                                                            baseFontSizeSp = fontSizeSp
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = textVisual,
+                                                        style = TextStyle(
+                                                            color = textColor,
+                                                            fontSize = fontSizeSp.sp,
+                                                            lineHeight = lineHeightSp.sp,
+                                                            fontFamily = fontStyle.fontFamily,
+                                                            textAlign = textAlignment
+                                                        ),
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                            is NotesnookBlock.Image -> {
+                                                NotesnookImageBlockWidget(
+                                                    block = block,
+                                                    onUpdate = {},
+                                                    onDelete = {},
+                                                    onClick = { viewingImageUri = block.uri },
+                                                    isDark = isDark,
+                                                    noteTextColor = textColor,
+                                                    isReadOnly = true
+                                                )
+                                            }
+                                            is NotesnookBlock.Table -> {
+                                                NotesnookTableWidget(
+                                                    table = block,
+                                                    onUpdate = {},
+                                                    onDelete = {},
+                                                    isDark = isDark,
+                                                    textColor = textColor
+                                                )
+                                            }
+                                            is NotesnookBlock.Code -> {
+                                                NotesnookCodeBlockWidget(
+                                                    block = block,
+                                                    onUpdate = {},
+                                                    onDelete = {},
+                                                    isDark = isDark
+                                                )
+                                            }
+                                            is NotesnookBlock.Callout -> {
+                                                NotesnookCalloutWidget(
+                                                    block = block,
+                                                    onUpdate = {},
+                                                    onDelete = {},
+                                                    isDark = isDark,
+                                                    noteTextColor = textColor
+                                                )
+                                            }
+                                            is NotesnookBlock.MathFormula -> {
+                                                NotesnookMathWidget(
+                                                    block = block,
+                                                    onUpdate = {},
+                                                    onDelete = {},
+                                                    isDark = isDark,
+                                                    noteTextColor = textColor
+                                                )
+                                            }
+                                            is NotesnookBlock.HorizontalRule -> {
+                                                NotesnookHorizontalRuleWidget(
+                                                    block = block,
+                                                    onDelete = {},
+                                                    isDark = isDark
+                                                )
+                                            }
+                                            is NotesnookBlock.Quote -> {
+                                                NotesnookQuoteWidget(
+                                                    block = block,
+                                                    onUpdate = {},
+                                                    onDelete = {},
+                                                    isDark = isDark,
+                                                    noteTextColor = textColor
+                                                )
+                                            }
+                                            is NotesnookBlock.OutlineItem -> {
+                                                NotesnookOutlineWidget(
+                                                    block = block,
+                                                    onUpdate = {},
+                                                    onDelete = {},
+                                                    isDark = isDark,
+                                                    noteTextColor = textColor
+                                                )
+                                            }
+                                            is NotesnookBlock.Embed -> {
+                                                NotesnookEmbedWidget(
+                                                    block = block,
+                                                    onDelete = {},
+                                                    isDark = isDark,
+                                                    noteTextColor = textColor
+                                                )
+                                            }
+                                            is NotesnookBlock.Attachment -> {
+                                                NotesnookAttachmentWidget(
+                                                    block = block,
+                                                    onDelete = {},
+                                                    isDark = isDark,
+                                                    noteTextColor = textColor
+                                                )
                                             }
                                         }
                                     }
-                                    val updatedSpans = RichTextEngine.updateSpansOnTextChange(
-                                        oldText = oldText,
-                                        newText = newText,
-                                        spans = richSpans,
-                                        pendingTypes = pendingTypingStyles,
-                                        pendingTextColor = selectedFontColorHex
-                                    )
-                                    richSpans = updatedSpans
-                                    val updatedBlock = NotesnookBlock.Text(text = newText, spans = updatedSpans)
-                                    blocks = listOf(updatedBlock)
-                                    onContentChange(NotesnookBlockManager.serialize(blocks))
+                                }
+                            }
+                        } else if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
+                            // Standard WYSIWYG Single Text Note
+                            val richVisualTransformation = remember(richSpans, textColor, primaryColor, isDark, fontSizeSp) {
+                                RichTextEngine.createVisualTransformation(
+                                    spans = richSpans,
+                                    textColor = textColor,
+                                    accentColor = primaryColor,
+                                    isDark = isDark,
+                                    baseFontSizeSp = fontSizeSp
+                                )
+                            }
+
+                            BasicTextField(
+                                value = contentTfv,
+                                onValueChange = { newTfv ->
+                                    val enterHandled = NotesnookFormattingHelper.handleEnterKey(contentTfv, newTfv)
+                                    val effectiveTfv = enterHandled ?: newTfv
+
+                                    val oldText = contentTfv.text
+                                    val newText = effectiveTfv.text
+                                    if (enterHandled != null || (newText.length == oldText.length + 1 && newText.getOrNull(effectiveTfv.selection.start - 1) == '\n')) {
+                                        val headingTypes = setOf(
+                                            RichSpanType.HEADING_1, RichSpanType.HEADING_2, RichSpanType.HEADING_3,
+                                            RichSpanType.HEADING_4, RichSpanType.HEADING_5, RichSpanType.HEADING_6
+                                        )
+                                        pendingTypingStyles = pendingTypingStyles - headingTypes
+                                    }
+
+                                    if (oldText != newText) {
+                                        val diff = newText.length - oldText.length
+                                        if (diff >= 10) {
+                                            val changeStart = oldText.zip(newText).indexOfFirst { (o, n) -> o != n }.let { if (it == -1) 0 else it }
+                                            val changeEnd = changeStart + diff
+                                            val inserted = newText.substring(changeStart, minOf(changeEnd, newText.length))
+                                            if (McqTextParser.isLikelyMcq(inserted)) {
+                                                detectedMcqRaw = inserted
+                                                showMcqFormatPill = true
+                                                mcqPillDismissJob?.cancel()
+                                                mcqPillDismissJob = coroutineScope.launch {
+                                                    delay(6000)
+                                                    showMcqFormatPill = false
+                                                }
+                                            }
+                                        }
+                                        val updatedSpans = RichTextEngine.updateSpansOnTextChange(
+                                            oldText = oldText,
+                                            newText = newText,
+                                            spans = richSpans,
+                                            pendingTypes = pendingTypingStyles,
+                                            pendingTextColor = selectedFontColorHex
+                                        )
+                                        richSpans = updatedSpans
+                                        val updatedBlock = NotesnookBlock.Text(text = newText, spans = updatedSpans)
+                                        blocks = listOf(updatedBlock)
+                                        onContentChange(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
+                                        lastCursorPosition = effectiveTfv.selection.start
+                                } else if (effectiveTfv.selection.collapsed) {
+                                    val cur = effectiveTfv.selection.start
+                                    if (cur != lastCursorPosition) {
+                                        lastCursorPosition = cur
+                                        pendingTypingStyles = RichTextEngine.getInlineStylesAt(richSpans, cur)
+                                        selectedFontColorHex = RichTextEngine.getTextColorAt(richSpans, cur)
+                                    }
                                 }
                                 contentTfv = effectiveTfv
                             },
@@ -988,7 +1377,7 @@ fun KeepNoteEditor(
                                                     pendingTypingStyles = pendingTypingStyles - headingTypes
                                                 }
 
-                                                if (oldT != newT) {
+                                                 if (oldT != newT) {
                                                     val updatedS = RichTextEngine.updateSpansOnTextChange(
                                                         oldText = oldT,
                                                         newText = newT,
@@ -1000,6 +1389,14 @@ fun KeepNoteEditor(
                                                     val newBlocks = blocks.toMutableList()
                                                     newBlocks[index] = updatedBlock
                                                     syncAndCommitBlocks(newBlocks)
+                                                    lastCursorPosition = eff.selection.start
+                                                } else if (eff.selection.collapsed) {
+                                                    val cur = eff.selection.start
+                                                    if (cur != lastCursorPosition) {
+                                                        lastCursorPosition = cur
+                                                        pendingTypingStyles = RichTextEngine.getInlineStylesAt(block.spans, cur)
+                                                        selectedFontColorHex = RichTextEngine.getTextColorAt(block.spans, cur)
+                                                    }
                                                 }
                                             },
                                             modifier = Modifier
@@ -1008,6 +1405,10 @@ fun KeepNoteEditor(
                                                 .onFocusChanged {
                                                     if (it.isFocused) {
                                                         activeBlockIndex = index
+                                                        val cur = textVal.selection.start
+                                                        lastCursorPosition = cur
+                                                        pendingTypingStyles = RichTextEngine.getInlineStylesAt(block.spans, cur)
+                                                        selectedFontColorHex = RichTextEngine.getTextColorAt(block.spans, cur)
                                                     }
                                                 }
                                                 .onKeyEvent { keyEvent ->
@@ -1271,32 +1672,34 @@ fun KeepNoteEditor(
                             }
                         }
 
-                        // Add new list item button row
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    val newId = java.util.UUID.randomUUID().toString()
-                                    targetFocusItemId = newId
-                                    val lastUncompletedGlobalIndex = uncompletedItems.lastOrNull()?.first
-                                    onAddChecklistItem(lastUncompletedGlobalIndex, "", newId)
-                                }
-                                .padding(vertical = 8.dp, horizontal = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Add,
-                                contentDescription = "Add item",
-                                tint = textColor.copy(alpha = 0.55f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = "List item",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
-                                color = textColor.copy(alpha = 0.55f)
-                            )
+                        // Add new list item button row (Google Keep style)
+                        if (!isReaderMode) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        val newId = java.util.UUID.randomUUID().toString()
+                                        targetFocusItemId = newId
+                                        val lastUncompletedGlobalIndex = uncompletedItems.lastOrNull()?.first
+                                        onAddChecklistItem(lastUncompletedGlobalIndex, "", newId)
+                                    }
+                                    .padding(vertical = 8.dp, horizontal = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = "Add item",
+                                    tint = textColor.copy(alpha = 0.55f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "List item",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
+                                    color = textColor.copy(alpha = 0.55f)
+                                )
+                            }
                         }
 
                         // Collapsible Completed Items Section
@@ -1391,23 +1794,25 @@ fun KeepNoteEditor(
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(start = 10.dp, top = 4.dp, end = 6.dp, bottom = 4.dp)
+                                    modifier = Modifier.padding(start = 10.dp, top = 4.dp, end = if (isReaderMode) 10.dp else 6.dp, bottom = 4.dp)
                                 ) {
                                     Text(
                                         text = label,
                                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
                                         color = textColor
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "Remove label",
-                                        tint = textColor.copy(alpha = 0.6f),
-                                        modifier = Modifier
-                                            .size(16.dp)
-                                            .clip(CircleShape)
-                                            .clickable { onRemoveLabel(label) }
-                                    )
+                                    if (!isReaderMode) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.Filled.Close,
+                                            contentDescription = "Remove label",
+                                            tint = textColor.copy(alpha = 0.6f),
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .clip(CircleShape)
+                                                .clickable { onRemoveLabel(label) }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1416,12 +1821,13 @@ fun KeepNoteEditor(
 
                 Spacer(modifier = Modifier.height(120.dp))
             }
+        }
 
             // ==========================================
             // COLOR PALETTE DRAWER (IF OPEN)
             // ==========================================
             AnimatedVisibility(
-                visible = showColorPicker,
+                visible = showColorPicker && !isReaderMode,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
@@ -1626,7 +2032,7 @@ fun KeepNoteEditor(
             // NOTESNOOK EDITING & TYPOGRAPHY DRAWER (IF OPEN)
             // ==========================================
             AnimatedVisibility(
-                visible = showFontPicker,
+                visible = showFontPicker && !isReaderMode,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
@@ -1646,11 +2052,20 @@ fun KeepNoteEditor(
                             val newSpans = RichTextEngine.toggleSpan(curSpans, type, sel, curTfv.text.length)
                             updateActiveTextState(idx, curTfv, newSpans)
                         } else {
-                            pendingTypingStyles = if (pendingTypingStyles.contains(type)) {
+                            val isCurrentlyOn = pendingTypingStyles.contains(type)
+                            var newStyles = if (isCurrentlyOn) {
                                 pendingTypingStyles - type
                             } else {
                                 pendingTypingStyles + type
                             }
+                            // Enforce mutual exclusivity for subscript & superscript
+                            if (type == RichSpanType.SUBSCRIPT && !isCurrentlyOn) {
+                                newStyles = newStyles - RichSpanType.SUPERSCRIPT
+                            } else if (type == RichSpanType.SUPERSCRIPT && !isCurrentlyOn) {
+                                newStyles = newStyles - RichSpanType.SUBSCRIPT
+                            }
+                            pendingTypingStyles = newStyles
+                            lastCursorPosition = sel.start
                         }
                     }
                     keepFocus()
@@ -1670,7 +2085,10 @@ fun KeepNoteEditor(
                         val active = getActiveTextState()
                         if (active != null) {
                             val (idx, curTfv, curSpans) = active
-                            val cursor = curTfv.selection.start
+                            val sel = curTfv.selection
+                            val s = minOf(sel.start, sel.end)
+                            val e = maxOf(sel.start, sel.end)
+                            val cursor = s
                             val lineStart = curTfv.text.lastIndexOf('\n', startIndex = maxOf(0, cursor - 1)).let { if (it == -1) 0 else it + 1 }
                             val lineEnd = curTfv.text.indexOf('\n', startIndex = cursor).let { if (it == -1) curTfv.text.length else it }
 
@@ -1687,21 +2105,41 @@ fun KeepNoteEditor(
                                 6 -> RichSpanType.HEADING_6
                                 else -> null
                             }
-                            pendingTypingStyles = (pendingTypingStyles - headingTypes) + (selectedHeadingType?.let { setOf(it) } ?: emptySet())
 
-                            val newSpans = if (level == 0) {
-                                curSpans.filterNot {
-                                    it.start >= lineStart && it.end <= lineEnd && headingTypes.contains(it.type)
-                                }
-                            } else {
-                                val type = selectedHeadingType!!
-                                if (lineEnd > lineStart) {
-                                    RichTextEngine.toggleLineStyle(curSpans, type, cursor, curTfv.text)
+                            if (s != e) {
+                                val newSpans = if (level == 0) {
+                                    curSpans.filterNot { it.start >= lineStart && it.end <= lineEnd && headingTypes.contains(it.type) }
                                 } else {
-                                    curSpans
+                                    RichTextEngine.toggleLineStyle(curSpans, selectedHeadingType!!, cursor, curTfv.text)
+                                }
+                                updateActiveTextState(idx, curTfv, newSpans)
+                            } else {
+                                val isAtEndOfNonEmptyLine = cursor == lineEnd && lineStart < lineEnd
+                                if (isAtEndOfNonEmptyLine && level > 0) {
+                                    // User finished paragraph, wants to write header next: insert newline so existing paragraph is preserved!
+                                    val textWithNewline = curTfv.text.substring(0, lineEnd) + "\n" + curTfv.text.substring(lineEnd)
+                                    val newCursor = lineEnd + 1
+                                    val newTfv = curTfv.copy(text = textWithNewline, selection = TextRange(newCursor))
+                                    val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, textWithNewline, curSpans)
+                                    pendingTypingStyles = (pendingTypingStyles - headingTypes) + setOf(selectedHeadingType!!)
+                                    lastCursorPosition = newCursor
+                                    updateActiveTextState(idx, newTfv, updatedSpans)
+                                } else {
+                                    val newSpans = if (level == 0) {
+                                        curSpans.filterNot { it.start >= lineStart && it.end <= lineEnd && headingTypes.contains(it.type) }
+                                    } else {
+                                        val type = selectedHeadingType!!
+                                        if (lineEnd > lineStart) {
+                                            RichTextEngine.toggleLineStyle(curSpans, type, cursor, curTfv.text)
+                                        } else {
+                                            curSpans
+                                        }
+                                    }
+                                    pendingTypingStyles = (pendingTypingStyles - headingTypes) + (selectedHeadingType?.let { setOf(it) } ?: emptySet())
+                                    lastCursorPosition = cursor
+                                    updateActiveTextState(idx, curTfv, newSpans)
                                 }
                             }
-                            updateActiveTextState(idx, curTfv, newSpans)
                         }
                         keepFocus()
                     },
@@ -1709,9 +2147,24 @@ fun KeepNoteEditor(
                         val active = getActiveTextState()
                         if (active != null) {
                             val (idx, curTfv, curSpans) = active
-                            val newTfv = NotesnookFormattingHelper.applyLinePrefix(curTfv, "- ")
-                            val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newTfv.text, curSpans)
-                            updateActiveTextState(idx, newTfv, updatedSpans)
+                            val cursor = curTfv.selection.start
+                            val lineStart = curTfv.text.lastIndexOf('\n', startIndex = maxOf(0, cursor - 1)).let { if (it == -1) 0 else it + 1 }
+                            val lineEnd = curTfv.text.indexOf('\n', startIndex = cursor).let { if (it == -1) curTfv.text.length else it }
+                            val isAtEndOfNonEmptyLine = cursor == lineEnd && lineStart < lineEnd && curTfv.selection.collapsed
+                            if (isAtEndOfNonEmptyLine) {
+                                val prefix = "\n- "
+                                val newText = curTfv.text.substring(0, lineEnd) + prefix + curTfv.text.substring(lineEnd)
+                                val newCursor = lineEnd + prefix.length
+                                val newTfv = curTfv.copy(text = newText, selection = TextRange(newCursor))
+                                val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newText, curSpans)
+                                lastCursorPosition = newCursor
+                                updateActiveTextState(idx, newTfv, updatedSpans)
+                            } else {
+                                val newTfv = NotesnookFormattingHelper.applyLinePrefix(curTfv, "- ")
+                                val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newTfv.text, curSpans)
+                                lastCursorPosition = newTfv.selection.start
+                                updateActiveTextState(idx, newTfv, updatedSpans)
+                            }
                         }
                         keepFocus()
                     },
@@ -1719,9 +2172,24 @@ fun KeepNoteEditor(
                         val active = getActiveTextState()
                         if (active != null) {
                             val (idx, curTfv, curSpans) = active
-                            val newTfv = NotesnookFormattingHelper.applyLinePrefix(curTfv, prefix)
-                            val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newTfv.text, curSpans)
-                            updateActiveTextState(idx, newTfv, updatedSpans)
+                            val cursor = curTfv.selection.start
+                            val lineStart = curTfv.text.lastIndexOf('\n', startIndex = maxOf(0, cursor - 1)).let { if (it == -1) 0 else it + 1 }
+                            val lineEnd = curTfv.text.indexOf('\n', startIndex = cursor).let { if (it == -1) curTfv.text.length else it }
+                            val isAtEndOfNonEmptyLine = cursor == lineEnd && lineStart < lineEnd && curTfv.selection.collapsed
+                            if (isAtEndOfNonEmptyLine) {
+                                val fullPrefix = "\n$prefix"
+                                val newText = curTfv.text.substring(0, lineEnd) + fullPrefix + curTfv.text.substring(lineEnd)
+                                val newCursor = lineEnd + fullPrefix.length
+                                val newTfv = curTfv.copy(text = newText, selection = TextRange(newCursor))
+                                val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newText, curSpans)
+                                lastCursorPosition = newCursor
+                                updateActiveTextState(idx, newTfv, updatedSpans)
+                            } else {
+                                val newTfv = NotesnookFormattingHelper.applyLinePrefix(curTfv, prefix)
+                                val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newTfv.text, curSpans)
+                                lastCursorPosition = newTfv.selection.start
+                                updateActiveTextState(idx, newTfv, updatedSpans)
+                            }
                         }
                         keepFocus()
                     },
@@ -1781,16 +2249,19 @@ fun KeepNoteEditor(
                             val sel = curTfv.selection
                             val s = minOf(sel.start, sel.end)
                             val e = maxOf(sel.start, sel.end)
-                            val newSpans = if (s != e) {
-                                curSpans.filterNot { it.start < e && it.end > s }
-                            } else {
-                                val lineStart = curTfv.text.lastIndexOf('\n', startIndex = maxOf(0, s - 1)).let { if (it == -1) 0 else it + 1 }
-                                val lineEnd = curTfv.text.indexOf('\n', startIndex = s).let { if (it == -1) contentTfv.text.length else it }
-                                curSpans.filterNot { it.start >= lineStart && it.end <= lineEnd }
+                            if (s != e) {
+                                val inlineTypes = setOf(
+                                    RichSpanType.BOLD, RichSpanType.ITALIC, RichSpanType.UNDERLINE,
+                                    RichSpanType.STRIKETHROUGH, RichSpanType.HIGHLIGHT, RichSpanType.CODE,
+                                    RichSpanType.SUBSCRIPT, RichSpanType.SUPERSCRIPT, RichSpanType.TEXT_COLOR
+                                )
+                                val newSpans = curSpans.filterNot { it.type in inlineTypes && it.start < e && it.end > s }
+                                updateActiveTextState(idx, curTfv, newSpans)
                             }
+                            // Reset active typing attributes for text typed from now on without mutating existing line
                             pendingTypingStyles = emptySet()
                             selectedFontColorHex = null
-                            updateActiveTextState(idx, curTfv, newSpans)
+                            lastCursorPosition = sel.start
                         }
                         keepFocus()
                     },
@@ -1812,6 +2283,7 @@ fun KeepNoteEditor(
                                 }
                                 updateActiveTextState(idx, curTfv, filtered.sortedBy { it.start })
                             }
+                            lastCursorPosition = sel.start
                         }
                         keepFocus()
                     },
@@ -1840,12 +2312,12 @@ fun KeepNoteEditor(
         // SMART MCQ FORMAT FLOATING PILL (FLOATS OVER NOTE BODY ABOVE TOOLBAR)
         // ==========================================
         AnimatedVisibility(
-            visible = showMcqFormatPill,
+            visible = showMcqFormatPill && !isReaderMode,
             enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = if (showFontPicker) 58.dp else 16.dp, start = 16.dp, end = 16.dp)
+                .padding(bottom = if (showFontPicker && !isReaderMode) 58.dp else 16.dp, start = 16.dp, end = 16.dp)
         ) {
             Surface(
                 shape = RoundedCornerShape(20.dp),
@@ -2385,8 +2857,44 @@ fun KeepNoteEditor(
                             }
                         )
 
-                        // 5. Empty spacer to align 4 items symmetrically in 5-column grid
-                        Spacer(modifier = Modifier.weight(1f))
+                        // 5. Article Mode
+                        KeepOverflowGridItem(
+                            icon = Icons.AutoMirrored.Outlined.Article,
+                            label = "Article\nmode",
+                            isDark = isDark,
+                            isActive = isArticleMode,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                showMoreMenu = false
+                                val nextMode = !isArticleMode
+                                isArticleMode = nextMode
+                                if (nextMode) {
+                                    lineSpacingPreset = LineSpacingPreset.COMFORTABLE
+                                    lineHeightSp = LineSpacingPreset.COMFORTABLE.lineHeightSp
+                                    // If any images exist in top collage, migrate them to inline blocks!
+                                    if (state.imageUris.isNotEmpty()) {
+                                        val newBlocks = blocks.toMutableList()
+                                        if (newBlocks.size == 1 && newBlocks[0] is NotesnookBlock.Text && (newBlocks[0] as NotesnookBlock.Text).text.isBlank()) {
+                                            newBlocks.clear()
+                                        }
+                                        val existingUris = newBlocks.filterIsInstance<NotesnookBlock.Image>().map { it.uri }.toSet()
+                                        val toAdd = state.imageUris.filter { !existingUris.contains(it) }
+                                        toAdd.forEach { uri ->
+                                            newBlocks.add(NotesnookBlock.Image(uri = uri, caption = ""))
+                                        }
+                                        if (newBlocks.none { it is NotesnookBlock.Text }) {
+                                            newBlocks.add(NotesnookBlock.Text())
+                                        }
+                                        syncAndCommitBlocks(newBlocks, isArticle = true, subtitleText = subtitleTfv.text)
+                                        state.imageUris.forEach { onRemoveImage(it) }
+                                    } else {
+                                        syncAndCommitBlocks(blocks, isArticle = true, subtitleText = subtitleTfv.text)
+                                    }
+                                } else {
+                                    syncAndCommitBlocks(blocks, isArticle = false, subtitleText = subtitleTfv.text)
+                                }
+                            }
+                        )
                     }
                 }
             }
@@ -2736,8 +3244,9 @@ fun KeepNoteEditor(
         // ==========================================
         if (viewingImageUri != null) {
             val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val allImageUris = (state.imageUris + blocks.filterIsInstance<NotesnookBlock.Image>().map { it.uri }).distinct()
             ZoomableImagePager(
-                imageUris = state.imageUris,
+                imageUris = if (allImageUris.isNotEmpty()) allImageUris else listOf(viewingImageUri!!),
                 initialUri = viewingImageUri!!,
                 onDismiss = { viewingImageUri = null },
                 bottomInset = navBarBottom

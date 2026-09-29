@@ -2,8 +2,13 @@ package com.focusbyrj.app.ui.screens.chat
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -24,6 +29,7 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
@@ -32,6 +38,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -882,6 +889,499 @@ fun StreakPromptCard(
     }
 }
 
+data class TaskAddedDetails(
+    val title: String,
+    val dueText: String? = null
+)
+
+fun parseTaskAddedDetails(rawText: String): TaskAddedDetails {
+    val lines = rawText.lines()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+
+    var title = ""
+    var dueText: String? = null
+
+    val contentLines = lines.dropWhile { it.contains("radar", ignoreCase = true) }
+
+    if (contentLines.isNotEmpty()) {
+        val firstLine = contentLines[0]
+            .removePrefix("•")
+            .removePrefix("-")
+            .removePrefix("*")
+            .trim()
+            .replace("**", "")
+
+        if (firstLine.contains("(Due:", ignoreCase = true)) {
+            val parts = firstLine.split(Regex("(?i)\\(Due:"), limit = 2)
+            title = parts[0].trim()
+            val rawDue = parts.getOrNull(1)?.removeSuffix(")")?.trim()
+            if (!rawDue.isNullOrBlank()) {
+                dueText = "Due: $rawDue"
+            }
+        } else {
+            title = firstLine
+        }
+
+        if (contentLines.size > 1 && dueText == null) {
+            val secondLine = contentLines[1]
+                .removePrefix("•")
+                .removePrefix("-")
+                .removePrefix("*")
+                .trim()
+                .replace("**", "")
+
+            if (secondLine.isNotBlank()) {
+                dueText = secondLine.replace("(", "• ").replace(")", "").replace("  ", " ").trim()
+            }
+        }
+    }
+
+    if (title.isBlank()) {
+        title = rawText
+            .replace("✅", "")
+            .replace(Regex("(?i)\\*\\*Added to your radar:\\*\\*"), "")
+            .replace(Regex("(?i)Added to your radar:"), "")
+            .replace("•", "")
+            .replace("**", "")
+            .trim()
+    }
+
+    return TaskAddedDetails(title = title, dueText = dueText)
+}
+
+fun parseConflictPrompt(rawText: String): String {
+    return rawText
+        .replace("🤔", "")
+        .replace(Regex("(?i)^\\s*\\*\\*Conflict Detected:\\*\\*\\s*"), "")
+        .replace(Regex("(?i)^\\s*Conflict Detected:\\s*"), "")
+        .trim()
+}
+
+@Composable
+fun TaskAddedCard(
+    message: ChatMessage,
+    fontSizeSp: Float = 15f,
+    onQueryClick: ((String) -> Unit)? = null
+) {
+    val isDark = isSystemInDarkTheme()
+    val df = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
+    val timeString = df.format(Date(message.timestamp))
+    val maxBubbleWidth = (300 + (fontSizeSp - 15f) * 10f).coerceIn(300f, 380f).dp
+
+    val taskInfo = remember(message.text) { parseTaskAddedDetails(message.text) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "radar_beacon_transition")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "radar_scale"
+    )
+    val haloAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "radar_halo_alpha"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.Start
+        ) {
+            androidx.compose.foundation.Image(
+                painter = painterResource(id = R.drawable.app_icon),
+                contentDescription = "Ayva",
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .border(2.dp, Color(0xFF10B981), CircleShape)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Surface(
+                modifier = Modifier.widthIn(max = maxBubbleWidth),
+                shape = RoundedCornerShape(
+                    topStart = 22.dp,
+                    topEnd = 22.dp,
+                    bottomStart = 4.dp,
+                    bottomEnd = 22.dp
+                ),
+                color = if (isDark) Color(0xFF091C14) else Color(0xFFF0FDF4),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.2.dp,
+                    if (isDark) Color(0xFF10B981).copy(alpha = 0.45f) else Color(0xFF86EFAC)
+                ),
+                shadowElevation = if (isDark) 2.dp else 4.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = 14.dp,
+                        vertical = 12.dp
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .scale(pulseScale)
+                                    .background(Color(0xFF10B981).copy(alpha = haloAlpha), CircleShape)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFF10B981).copy(alpha = if (isDark) 0.22f else 0.15f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = "ADDED TO YOUR RADAR",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 10.sp,
+                                        letterSpacing = 0.8.sp
+                                    ),
+                                    color = if (isDark) Color(0xFF34D399) else Color(0xFF059669),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Tracking in your schedule",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isDark) Color(0xFF132B20) else Color.White,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isDark) Color(0xFF10B981).copy(alpha = 0.25f) else Color(0xFFDCFCE7)
+                        ),
+                        shadowElevation = if (isDark) 0.dp else 1.5.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF10B981).copy(alpha = if (isDark) 0.25f else 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Text(
+                                    text = taskInfo.title,
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = (fontSizeSp * 1.05f).coerceIn(15f, 19f).sp,
+                                        letterSpacing = 0.2.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            if (!taskInfo.dueText.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isDark) Color(0xFF064E3B).copy(alpha = 0.4f) else Color(0xFFDEF7EC),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        0.8.dp,
+                                        Color(0xFF10B981).copy(alpha = 0.35f)
+                                    )
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.AccessTime,
+                                            contentDescription = null,
+                                            tint = if (isDark) Color(0xFF34D399) else Color(0xFF047857),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = taskInfo.dueText,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = (fontSizeSp * 0.78f).coerceIn(11f, 13f).sp
+                                            ),
+                                            color = if (isDark) Color(0xFF34D399) else Color(0xFF047857)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (message.isTalkAction && !message.talkActionJson.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TalkActionChips(
+                            talkActionJson = message.talkActionJson,
+                            fontSizeSp = fontSizeSp,
+                            onQueryClick = onQueryClick
+                        )
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = timeString,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = (fontSizeSp * 0.72f).coerceIn(10f, 14f).sp,
+                fontWeight = FontWeight.Medium
+            ),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            modifier = Modifier.padding(top = 4.dp, start = 40.dp)
+        )
+    }
+}
+
+@Composable
+fun ConflictDetectedCard(
+    message: ChatMessage,
+    fontSizeSp: Float = 15f,
+    onQueryClick: ((String) -> Unit)? = null
+) {
+    val isDark = isSystemInDarkTheme()
+    val df = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
+    val timeString = df.format(Date(message.timestamp))
+    val maxBubbleWidth = (300 + (fontSizeSp - 15f) * 10f).coerceIn(300f, 380f).dp
+
+    val cleanPrompt = remember(message.text) { parseConflictPrompt(message.text) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "conflict_beacon_transition")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "conflict_scale"
+    )
+    val haloAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 0.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "conflict_halo_alpha"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.Start
+        ) {
+            androidx.compose.foundation.Image(
+                painter = painterResource(id = R.drawable.app_icon),
+                contentDescription = "Ayva",
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .border(2.dp, Color(0xFFF59E0B), CircleShape)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Surface(
+                modifier = Modifier.widthIn(max = maxBubbleWidth),
+                shape = RoundedCornerShape(
+                    topStart = 22.dp,
+                    topEnd = 22.dp,
+                    bottomStart = 4.dp,
+                    bottomEnd = 22.dp
+                ),
+                color = if (isDark) Color(0xFF231606) else Color(0xFFFFFBEB),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.4.dp,
+                    if (isDark) Color(0xFFF59E0B).copy(alpha = 0.55f) else Color(0xFFFCD34D)
+                ),
+                shadowElevation = if (isDark) 2.dp else 4.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = 14.dp,
+                        vertical = 12.dp
+                    )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .scale(pulseScale)
+                                    .background(Color(0xFFF59E0B).copy(alpha = haloAlpha), CircleShape)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFF59E0B)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Warning,
+                                    contentDescription = null,
+                                    tint = Color(0xFF1E140A),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFF59E0B).copy(alpha = if (isDark) 0.25f else 0.15f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.45f))
+                            ) {
+                                Text(
+                                    text = "CONFLICT DETECTED",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 10.sp,
+                                        letterSpacing = 0.8.sp
+                                    ),
+                                    color = if (isDark) Color(0xFFFBBF24) else Color(0xFFB45309),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Action needed to resolve",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isDark) Color(0xFF33200A) else Color.White,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isDark) Color(0xFFF59E0B).copy(alpha = 0.25f) else Color(0xFFFEF3C7)
+                        ),
+                        shadowElevation = if (isDark) 0.dp else 1.5.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp)
+                        ) {
+                            Text(
+                                text = parseRichFormattedText(cleanPrompt),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = fontSizeSp.sp,
+                                    lineHeight = (fontSizeSp * 1.45f).sp,
+                                    letterSpacing = 0.2.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    if (message.isTalkAction && !message.talkActionJson.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TalkActionChips(
+                            talkActionJson = message.talkActionJson,
+                            fontSizeSp = fontSizeSp,
+                            onQueryClick = onQueryClick
+                        )
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = timeString,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = (fontSizeSp * 0.72f).coerceIn(10f, 14f).sp,
+                fontWeight = FontWeight.Medium
+            ),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            modifier = Modifier.padding(top = 4.dp, start = 40.dp)
+        )
+    }
+}
+
 @Composable
 fun ChatBubble(
     message: ChatMessage,
@@ -1006,6 +1506,32 @@ fun ChatBubble(
             onTaskToggle = onTaskToggle,
             onRescheduleClick = onRescheduleClick,
             onFilterChange = onFilterChange
+        )
+        return
+    }
+
+    val isTaskAdded = !message.isUser && (
+        message.text.contains("Added to your radar", ignoreCase = true) ||
+        message.id.startsWith("create_")
+    )
+    if (isTaskAdded) {
+        TaskAddedCard(
+            message = message,
+            fontSizeSp = fontSizeSp,
+            onQueryClick = onQueryClick
+        )
+        return
+    }
+
+    val isConflict = !message.isUser && (
+        message.text.contains("Conflict Detected", ignoreCase = true) ||
+        message.id.startsWith("conflict_")
+    )
+    if (isConflict) {
+        ConflictDetectedCard(
+            message = message,
+            fontSizeSp = fontSizeSp,
+            onQueryClick = onQueryClick
         )
         return
     }
@@ -1272,6 +1798,8 @@ fun AyvaChatTimeline(
                             m.isArithmetic -> "arithmetic_msg"
                             m.isHabitsSummary -> "habits_msg"
                             m.isTaskSummary -> "task_msg"
+                            !m.isUser && (m.text.contains("Added to your radar", ignoreCase = true) || m.id.startsWith("create_")) -> "task_added_msg"
+                            !m.isUser && (m.text.contains("Conflict Detected", ignoreCase = true) || m.id.startsWith("conflict_")) -> "conflict_msg"
                             else -> "text_msg"
                         }
                     }

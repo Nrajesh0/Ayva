@@ -19,10 +19,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ColorLens
 import androidx.compose.material.icons.outlined.FormatPaint
+import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Opacity
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Refresh
@@ -114,13 +116,16 @@ fun WidgetConfigScreen(
     var selectedAccent by remember { mutableStateOf(initialConfig.accent) }
     var opacity by remember { mutableStateOf(initialConfig.opacityPercent.toFloat()) }
     var cornerRadius by remember { mutableStateOf(initialConfig.cornerRadiusDp.toFloat()) }
+    var textSize by remember { mutableStateOf(initialConfig.textSize) }
+    var fontSizeDropdownExpanded by remember { mutableStateOf(false) }
 
-    val currentConfig = remember(selectedTheme, selectedAccent, opacity, cornerRadius) {
+    val currentConfig = remember(selectedTheme, selectedAccent, opacity, cornerRadius, textSize) {
         WidgetConfig(
             theme = selectedTheme,
             accent = selectedAccent,
             opacityPercent = opacity.toInt(),
-            cornerRadiusDp = cornerRadius.toInt()
+            cornerRadiusDp = cornerRadius.toInt(),
+            textSize = textSize
         )
     }
 
@@ -386,6 +391,94 @@ fun WidgetConfigScreen(
                 )
             }
 
+            // Font Size Selector
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.FormatSize,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Font Size",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                        Text(
+                            text = "Task title & item text scale",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Box {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                        modifier = Modifier.clickable { fontSizeDropdownExpanded = true }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = textSize.displayName,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Select Font Size",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = fontSizeDropdownExpanded,
+                        onDismissRequest = { fontSizeDropdownExpanded = false }
+                    ) {
+                        WidgetTextSize.values().forEach { size ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = size.displayName,
+                                        fontWeight = if (size == textSize) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (size == textSize) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                onClick = {
+                                    textSize = size
+                                    fontSizeDropdownExpanded = false
+                                },
+                                leadingIcon = if (size == textSize) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null
+                            )
+                        }
+                    }
+                }
+            }
+
             // Corner Radius Slider
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
@@ -445,14 +538,6 @@ fun WidgetLivePreview(config: WidgetConfig) {
     Surface(
         shape = RoundedCornerShape(config.cornerRadiusDp.dp),
         color = bgColor,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (config.theme.isDark) {
-                if (config.theme == WidgetTheme.OLED) Color(0xFF26292B) else Color(0xFF2E3338)
-            } else {
-                Color(0xFFD6D9DC)
-            }
-        ),
         modifier = Modifier
             .fillMaxWidth()
             .shadow(2.dp, RoundedCornerShape(config.cornerRadiusDp.dp))
@@ -570,6 +655,7 @@ fun WidgetLivePreview(config: WidgetConfig) {
                     accentColor = accentColor,
                     secondaryText = secondaryText,
                     isDone = false,
+                    titleSizeSp = config.textSize.spValue,
                     showDivider = true
                 )
                 PreviewTaskRow(
@@ -580,6 +666,7 @@ fun WidgetLivePreview(config: WidgetConfig) {
                     accentColor = accentColor,
                     secondaryText = secondaryText,
                     isDone = false,
+                    titleSizeSp = config.textSize.spValue,
                     showDivider = true
                 )
                 PreviewTaskRow(
@@ -590,6 +677,7 @@ fun WidgetLivePreview(config: WidgetConfig) {
                     accentColor = accentColor,
                     secondaryText = secondaryText,
                     isDone = true,
+                    titleSizeSp = config.textSize.spValue,
                     showDivider = false
                 )
             }
@@ -691,8 +779,13 @@ fun PreviewTaskRow(
     accentColor: Color,
     secondaryText: Color,
     isDone: Boolean,
+    titleSizeSp: Float = 14f,
     showDivider: Boolean = true
 ) {
+    val titleSp = titleSizeSp.sp
+    val subtitleSp = (titleSizeSp * 0.8f).coerceAtLeast(10f).sp
+    val badgeSp = (titleSizeSp * 0.72f).coerceAtLeast(9f).sp
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -728,7 +821,7 @@ fun PreviewTaskRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 13.5.sp,
+                        fontSize = titleSp,
                         fontWeight = FontWeight.Normal
                     ),
                     color = if (isDone) primaryText.copy(alpha = 0.45f) else primaryText
@@ -740,13 +833,13 @@ fun PreviewTaskRow(
                 ) {
                     Text(
                         text = due,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = subtitleSp),
                         color = if (isDone) secondaryText.copy(alpha = 0.45f) else accentColor
                     )
                     if (badge.isNotBlank()) {
                         Text(
                             text = badge,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = badgeSp),
                             color = secondaryText.copy(alpha = 0.6f)
                         )
                     }

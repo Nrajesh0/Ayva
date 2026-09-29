@@ -1089,77 +1089,96 @@ fun NotesnookImageBlockWidget(
     onDelete: () -> Unit,
     onClick: () -> Unit,
     isDark: Boolean,
-    noteTextColor: Color
+    noteTextColor: Color,
+    isReadOnly: Boolean = false
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 10.dp)
             .testTag("image_block_${block.id}")
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
         ) {
             AsyncImage(
                 model = block.uri,
-                contentDescription = block.caption.ifBlank { "Image" },
+                contentDescription = block.caption.ifBlank { "Article image" },
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onClick),
                 contentScale = ContentScale.FillWidth
             )
 
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(6.dp)
-                    .size(28.dp)
-                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    .testTag("delete_image_${block.id}")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Delete image",
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
-                )
+            if (!isReadOnly) {
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(30.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                        .testTag("delete_image_${block.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Delete image",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
 
-        // Caption
-        BasicTextField(
-            value = block.caption,
-            onValueChange = {
-                block.caption = it
-                onUpdate()
-            },
-            textStyle = TextStyle(
-                color = noteTextColor.copy(alpha = 0.7f),
-                fontSize = 12.5.sp,
-                fontStyle = FontStyle.Italic,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-            decorationBox = { innerTextField ->
-                if (block.caption.isEmpty()) {
-                    Text(
-                        text = "Add caption...",
-                        style = TextStyle(
-                            color = noteTextColor.copy(alpha = 0.35f),
-                            fontSize = 12.5.sp,
-                            fontStyle = FontStyle.Italic,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+        // Caption (Medium Style)
+        if (!isReadOnly) {
+            BasicTextField(
+                value = block.caption,
+                onValueChange = {
+                    block.caption = it
+                    onUpdate()
+                },
+                textStyle = TextStyle(
+                    color = noteTextColor.copy(alpha = 0.7f),
+                    fontSize = 13.sp,
+                    fontStyle = FontStyle.Italic,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp)
+                    .testTag("caption_input_${block.id}"),
+                decorationBox = { innerTextField ->
+                    if (block.caption.isEmpty()) {
+                        Text(
+                            text = "Type caption for image (optional)",
+                            style = TextStyle(
+                                color = noteTextColor.copy(alpha = 0.35f),
+                                fontSize = 13.sp,
+                                fontStyle = FontStyle.Italic,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    innerTextField()
                 }
-                innerTextField()
-            }
-        )
+            )
+        } else if (block.caption.isNotBlank()) {
+            Text(
+                text = block.caption,
+                style = TextStyle(
+                    color = noteTextColor.copy(alpha = 0.65f),
+                    fontSize = 13.sp,
+                    fontStyle = FontStyle.Italic,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp)
+            )
+        }
     }
 }

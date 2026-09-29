@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import com.focusbyrj.app.FocusApplication
@@ -75,6 +76,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
 
                 // Colors
                 views.setTextColor(R.id.widget_title, config.primaryTextColorInt)
+                views.setTextViewTextSize(R.id.widget_title, TypedValue.COMPLEX_UNIT_SP, config.textSize.spValue.coerceAtLeast(14f))
                 views.setInt(R.id.widget_btn_refresh, "setColorFilter", config.secondaryTextColorInt)
                 views.setInt(R.id.widget_btn_settings, "setColorFilter", config.secondaryTextColorInt)
                 views.setInt(R.id.widget_app_icon, "setColorFilter", config.accentColorInt)
@@ -101,7 +103,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                     }
                     val tabPendingIntent = PendingIntent.getBroadcast(
                         context,
-                        appWidgetId * 10 + i,
+                        100_000 + appWidgetId * 10 + i,
                         tabIntent,
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
@@ -132,7 +134,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 }
                 val addPendingIntent = PendingIntent.getActivity(
                     context,
-                    appWidgetId * 100 + 1,
+                    200_000 + appWidgetId,
                     addIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
@@ -145,7 +147,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 }
                 val openAppPendingIntent = PendingIntent.getActivity(
                     context,
-                    appWidgetId * 100 + 2,
+                    300_000 + appWidgetId,
                     openAppIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
@@ -159,7 +161,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 }
                 val refreshPendingIntent = PendingIntent.getBroadcast(
                     context,
-                    appWidgetId * 100 + 3,
+                    400_000 + appWidgetId,
                     refreshIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
@@ -172,7 +174,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 }
                 val settingsPendingIntent = PendingIntent.getActivity(
                     context,
-                    appWidgetId * 100 + 4,
+                    500_000 + appWidgetId,
                     settingsIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
@@ -195,7 +197,7 @@ class TodoWidgetProvider : AppWidgetProvider() {
                 }
                 val listClickPendingIntent = PendingIntent.getBroadcast(
                     context,
-                    appWidgetId * 1000,
+                    600_000 + appWidgetId,
                     listClickIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
                 )

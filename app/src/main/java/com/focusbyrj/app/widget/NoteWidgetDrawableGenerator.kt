@@ -115,10 +115,9 @@ object NoteWidgetDrawableGenerator {
     ): BackgroundColors {
         val colors = getWidgetColors(context, config, noteColorKey, isSystemDark)
 
-        // Small, fast bitmap (180x180) stretched with fitXY.
-        // Keeps IPC parcel size minimal (< 100KB) while rendering crisp rounded corners and stroke.
-        val w = 180
-        val h = 180
+        // Crisp, borderless background bitmap with anti-aliasing
+        val w = targetWidthDp.coerceIn(240, 480)
+        val h = targetHeightDp.coerceIn(160, 360)
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
@@ -127,21 +126,13 @@ object NoteWidgetDrawableGenerator {
             style = Paint.Style.FILL
         }
 
-        val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (config.opacityPercent <= 5) Color.TRANSPARENT else colors.borderColor
-            style = Paint.Style.STROKE
-            strokeWidth = 1.5f
-        }
-
-        val cornerRadiusPx = (config.cornerRadiusDp * 0.5f).coerceIn(0f, 24f)
-        val rect = RectF(0.8f, 0.8f, w - 0.8f, h - 0.8f)
+        val cornerRadiusPx = config.cornerRadiusDp.toFloat().coerceAtLeast(0f)
+        val rect = RectF(0f, 0f, w.toFloat(), h.toFloat())
 
         if (cornerRadiusPx <= 0f) {
             canvas.drawRect(rect, fillPaint)
-            if (config.opacityPercent > 5) canvas.drawRect(rect, strokePaint)
         } else {
             canvas.drawRoundRect(rect, cornerRadiusPx, cornerRadiusPx, fillPaint)
-            if (config.opacityPercent > 5) canvas.drawRoundRect(rect, cornerRadiusPx, cornerRadiusPx, strokePaint)
         }
 
         return colors.copy(bitmap = bitmap)

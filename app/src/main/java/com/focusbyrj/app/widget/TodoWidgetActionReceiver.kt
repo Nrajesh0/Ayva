@@ -70,7 +70,14 @@ class TodoWidgetActionReceiver : BroadcastReceiver() {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         putExtra("navigate_to", "todos")
                     }
-                    context.startActivity(mainIntent)
+                    val options = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        android.app.ActivityOptions.makeBasic().setPendingIntentBackgroundActivityStartMode(
+                            android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                        )
+                    } else {
+                        null
+                    }
+                    context.startActivity(mainIntent, options?.toBundle())
                     return
                 }
 

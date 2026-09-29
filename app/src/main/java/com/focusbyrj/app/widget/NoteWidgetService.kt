@@ -24,6 +24,9 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Paint
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.TypefaceSpan
 import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
@@ -53,13 +56,10 @@ class NoteWidgetRemoteViewsFactory(
         if (idFromExtra != AppWidgetManager.INVALID_APPWIDGET_ID && idFromExtra > 0) {
             idFromExtra
         } else {
-            intent.data?.host?.toIntOrNull()
-                ?: intent.data?.pathSegments?.firstOrNull()?.toIntOrNull()
-                ?: run {
-                    val mgr = AppWidgetManager.getInstance(context)
-                    val ids = mgr.getAppWidgetIds(ComponentName(context, NoteWidgetProvider::class.java))
-                    ids?.firstOrNull() ?: AppWidgetManager.INVALID_APPWIDGET_ID
-                }
+            // "widget://note/$appWidgetId" -> pathSegments[0] is "$appWidgetId"
+            intent.data?.pathSegments?.getOrNull(0)?.toIntOrNull()
+                ?: intent.data?.host?.toIntOrNull()
+                ?: AppWidgetManager.INVALID_APPWIDGET_ID
         }
     }
 
@@ -178,6 +178,24 @@ class NoteWidgetRemoteViewsFactory(
         return if (note.isChecklist) checklistItems.size else textParagraphs.size
     }
 
+    private fun applyNoteTypeface(text: CharSequence, fontKey: String?): CharSequence {
+        val family = when (fontKey?.lowercase()) {
+            "serif", "slab" -> "serif"
+            "mono" -> "monospace"
+            "casual" -> "sans-serif-medium"
+            "script" -> "cursive"
+            else -> null
+        } ?: return text
+        val spannable = SpannableString(text)
+        spannable.setSpan(
+            TypefaceSpan(family),
+            0,
+            text.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        return spannable
+    }
+
     override fun getViewAt(position: Int): RemoteViews? {
         val note = currentNote ?: return null
 
@@ -213,7 +231,8 @@ class NoteWidgetRemoteViewsFactory(
             views.setImageViewBitmap(R.id.widget_note_item_checkbox, checkBitmap)
 
             // Render Text & Strike-through
-            views.setTextViewText(R.id.widget_note_item_text, item.text)
+            val formattedItemText = applyNoteTypeface(item.text, note.fontKey)
+            views.setTextViewText(R.id.widget_note_item_text, formattedItemText)
             views.setTextViewTextSize(R.id.widget_note_item_text, TypedValue.COMPLEX_UNIT_SP, widgetConfig.textSize.spValue)
             if (item.isChecked) {
                 views.setTextColor(R.id.widget_note_item_text, bgColors.secondaryTextColor)
@@ -279,7 +298,8 @@ class NoteWidgetRemoteViewsFactory(
             val views = RemoteViews(context.packageName, R.layout.widget_note_text_item)
 
             // Text Body
-            val displayText = if (paragraph.isEmpty()) " " else paragraph
+            val rawDisplayText = if (paragraph.isEmpty()) " " else paragraph
+            val displayText = applyNoteTypeface(rawDisplayText, note.fontKey)
             views.setTextViewText(R.id.widget_note_text_item_body, displayText)
             views.setTextColor(R.id.widget_note_text_item_body, bgColors.primaryTextColor)
             views.setTextViewTextSize(

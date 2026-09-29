@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
@@ -30,10 +31,19 @@ class TodoWidgetRemoteViewsFactory(
     private val intent: Intent
 ) : RemoteViewsService.RemoteViewsFactory {
 
-    private val appWidgetId: Int = intent.getIntExtra(
-        AppWidgetManager.EXTRA_APPWIDGET_ID,
-        AppWidgetManager.INVALID_APPWIDGET_ID
-    )
+    private val appWidgetId: Int = run {
+        val idFromExtra = intent.getIntExtra(
+            AppWidgetManager.EXTRA_APPWIDGET_ID,
+            AppWidgetManager.INVALID_APPWIDGET_ID
+        )
+        if (idFromExtra != AppWidgetManager.INVALID_APPWIDGET_ID && idFromExtra > 0) {
+            idFromExtra
+        } else {
+            intent.data?.pathSegments?.getOrNull(0)?.toIntOrNull()
+                ?: intent.data?.host?.toIntOrNull()
+                ?: AppWidgetManager.INVALID_APPWIDGET_ID
+        }
+    }
     private var tasksList: List<Task> = emptyList()
     private var widgetConfig: WidgetConfig = WidgetConfig()
 
@@ -100,10 +110,15 @@ class TodoWidgetRemoteViewsFactory(
 
         views.setTextViewText(R.id.widget_item_title, task.title)
         views.setTextColor(R.id.widget_item_title, widgetConfig.primaryTextColorInt)
+        views.setTextViewTextSize(R.id.widget_item_title, TypedValue.COMPLEX_UNIT_SP, widgetConfig.textSize.spValue)
+
+        val subtitleSizeSp = (widgetConfig.textSize.spValue * 0.8f).coerceAtLeast(10f)
+        val badgeSizeSp = (widgetConfig.textSize.spValue * 0.72f).coerceAtLeast(9f)
 
         // Format due date / badge
         if (task.dueDate != null) {
             views.setViewVisibility(R.id.widget_item_due, View.VISIBLE)
+            views.setTextViewTextSize(R.id.widget_item_due, TypedValue.COMPLEX_UNIT_SP, subtitleSizeSp)
             val dueCalendar = Calendar.getInstance().apply { timeInMillis = task.dueDate }
             val now = Calendar.getInstance()
 
@@ -136,6 +151,7 @@ class TodoWidgetRemoteViewsFactory(
         } else {
             if (task.type != TaskType.TASK) {
                 views.setViewVisibility(R.id.widget_item_due, View.VISIBLE)
+                views.setTextViewTextSize(R.id.widget_item_due, TypedValue.COMPLEX_UNIT_SP, subtitleSizeSp)
                 views.setTextViewText(R.id.widget_item_due, task.type.name.lowercase().replaceFirstChar { it.uppercase() })
                 views.setTextColor(R.id.widget_item_due, widgetConfig.accentColorInt)
             } else {
@@ -146,10 +162,12 @@ class TodoWidgetRemoteViewsFactory(
         // Recurrence badge
         if (task.recurrence != RecurrencePattern.NONE) {
             views.setViewVisibility(R.id.widget_item_badge, View.VISIBLE)
+            views.setTextViewTextSize(R.id.widget_item_badge, TypedValue.COMPLEX_UNIT_SP, badgeSizeSp)
             views.setTextViewText(R.id.widget_item_badge, "↻ ${task.recurrence.name.lowercase()}")
             views.setTextColor(R.id.widget_item_badge, widgetConfig.secondaryTextColorInt)
         } else if (task.isPersistent) {
             views.setViewVisibility(R.id.widget_item_badge, View.VISIBLE)
+            views.setTextViewTextSize(R.id.widget_item_badge, TypedValue.COMPLEX_UNIT_SP, badgeSizeSp)
             views.setTextViewText(R.id.widget_item_badge, "● persistent")
             views.setTextColor(R.id.widget_item_badge, widgetConfig.secondaryTextColorInt)
         } else {

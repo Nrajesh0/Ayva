@@ -25,10 +25,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -38,11 +37,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Brush
@@ -54,7 +53,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -65,8 +63,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +82,7 @@ fun NotesSpeedDialFab(
     modifier: Modifier = Modifier
 ) {
     var isExpanded by remember { mutableStateOf(false) }
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
     // Close on system back when speed dial is open
     BackHandler(enabled = isExpanded) {
@@ -101,52 +100,58 @@ fun NotesSpeedDialFab(
     )
 
     Box(modifier = modifier) {
-        // Scrim background when expanded
-        if (isExpanded) {
+        // Immersive modal Scrim background when expanded (Google Keep style)
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = fadeIn(tween(220)),
+            exit = fadeOut(tween(180)),
+            modifier = Modifier.zIndex(10f)
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.32f))
+                    .background(Color.Black.copy(alpha = 0.65f))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) {
                         isExpanded = false
                     }
-                    .zIndex(10f)
             )
         }
 
-        // Floating Action Buttons (Aligned to bottom-end)
+        // Floating Action Buttons (Aligned to bottom-end, elevated above scrim)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 12.dp)
+                .navigationBarsPadding()
+                .padding(end = 16.dp, bottom = 16.dp)
                 .zIndex(20f),
             horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Speed Dial Options
+            // Speed Dial Options (Google Keep Pill Menu)
             AnimatedVisibility(
                 visible = isExpanded,
                 enter = fadeIn(tween(180)) + slideInVertically(
-                    initialOffsetY = { it / 2 },
+                    initialOffsetY = { it / 3 },
                     animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium)
                 ),
                 exit = fadeOut(tween(140)) + slideOutVertically(
-                    targetOffsetY = { it / 2 },
+                    targetOffsetY = { it / 3 },
                     animationSpec = tween(140)
                 )
             ) {
                 Column(
                     horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // Drawing
                     SpeedDialOption(
                         icon = Icons.Outlined.Brush,
                         label = "Drawing",
                         testTag = "notes_fab_drawing",
+                        isDark = isDark,
                         onClick = {
                             isExpanded = false
                             onNewDrawing()
@@ -158,17 +163,19 @@ fun NotesSpeedDialFab(
                         icon = Icons.Outlined.Image,
                         label = "Image",
                         testTag = "notes_fab_image",
+                        isDark = isDark,
                         onClick = {
                             isExpanded = false
                             onNewImage()
                         }
                     )
 
-                    // Audio
+                    // Live transcription (renamed from Audio as requested)
                     SpeedDialOption(
                         icon = Icons.Outlined.Mic,
-                        label = "Audio",
+                        label = "Live transcription",
                         testTag = "notes_fab_audio",
+                        isDark = isDark,
                         onClick = {
                             isExpanded = false
                             onNewAudio()
@@ -180,6 +187,7 @@ fun NotesSpeedDialFab(
                         icon = Icons.Outlined.CheckBox,
                         label = "Checklist",
                         testTag = "notes_fab_checklist",
+                        isDark = isDark,
                         onClick = {
                             isExpanded = false
                             onNewChecklist()
@@ -191,6 +199,7 @@ fun NotesSpeedDialFab(
                         icon = Icons.Outlined.Description,
                         label = "Note",
                         testTag = "notes_fab_text_note",
+                        isDark = isDark,
                         onClick = {
                             isExpanded = false
                             onNewTextNote()
@@ -199,15 +208,15 @@ fun NotesSpeedDialFab(
                 }
             }
 
-            // Main Primary FAB Button (matches active app theme)
+            // Main Primary FAB Button (matches active app theme, Google Keep style)
             FloatingActionButton(
                 onClick = { isExpanded = !isExpanded },
                 shape = CircleShape,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 4.dp,
-                    pressedElevation = 8.dp
+                    defaultElevation = 6.dp,
+                    pressedElevation = 10.dp
                 ),
                 modifier = Modifier
                     .size(56.dp)
@@ -230,52 +239,43 @@ private fun SpeedDialOption(
     icon: ImageVector,
     label: String,
     testTag: String,
+    isDark: Boolean,
     onClick: () -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.End,
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (isDark) Color(0xFF25262A) else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isDark) Color(0xFF3E4046) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        ),
         modifier = Modifier
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick
-            )
+            .testTag(testTag)
             .padding(vertical = 2.dp)
     ) {
-        // Label pill
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            shadowElevation = 2.dp,
-            modifier = Modifier.padding(end = 10.dp)
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp
-                ),
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-            )
-        }
-
-        // Mini FAB Action Button
-        SmallFloatingActionButton(
-            onClick = onClick,
-            shape = CircleShape,
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.primary,
-            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 2.dp),
-            modifier = Modifier
-                .size(44.dp)
-                .testTag(testTag)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Start,
+            modifier = Modifier.padding(start = 14.dp, end = 18.dp, top = 10.dp, bottom = 10.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                modifier = Modifier.size(20.dp)
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                ),
+                color = if (isDark) Color.White.copy(alpha = 0.95f) else MaterialTheme.colorScheme.onSurface
             )
         }
     }

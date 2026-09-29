@@ -215,7 +215,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 // Common Remote Adapter & PendingIntent template setup for ListView
                 val serviceIntent = Intent(context, NoteWidgetService::class.java).apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                    data = Uri.parse("widget://$appWidgetId")
+                    data = Uri.parse("widget://note/$appWidgetId")
                 }
                 views.setRemoteAdapter(R.id.widget_note_list_view, serviceIntent)
                 views.setEmptyView(R.id.widget_note_list_view, R.id.widget_note_empty_view)
@@ -227,7 +227,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 }
                 val itemTogglePendingIntent = PendingIntent.getBroadcast(
                     context,
-                    appWidgetId,
+                    95_000_000 + appWidgetId,
                     itemToggleIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
                 )
@@ -289,41 +289,44 @@ class NoteWidgetProvider : AppWidgetProvider() {
                     }
                     views.setOnClickPendingIntent(
                         R.id.widget_note_empty_view,
-                        PendingIntent.getActivity(context, 5600 + appWidgetId, emptyClickIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                        PendingIntent.getActivity(context, 56_000_000 + appWidgetId, emptyClickIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                     )
                 }
 
                 // Prev note button
                 val prevIntent = Intent(context, NoteWidgetActionReceiver::class.java).apply {
                     action = ACTION_PREV_NOTE
+                    setPackage(context.packageName)
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     data = Uri.parse("widget://$appWidgetId/prev")
                 }
                 views.setOnClickPendingIntent(
                     R.id.widget_note_btn_prev,
-                    PendingIntent.getBroadcast(context, 1000 + appWidgetId, prevIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.getBroadcast(context, 10_000_000 + appWidgetId, prevIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 )
 
                 // Next note button
                 val nextIntent = Intent(context, NoteWidgetActionReceiver::class.java).apply {
                     action = ACTION_NEXT_NOTE
+                    setPackage(context.packageName)
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     data = Uri.parse("widget://$appWidgetId/next")
                 }
                 views.setOnClickPendingIntent(
                     R.id.widget_note_btn_next,
-                    PendingIntent.getBroadcast(context, 2000 + appWidgetId, nextIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.getBroadcast(context, 20_000_000 + appWidgetId, nextIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 )
 
                 // Filter mode cycle button
                 val modeIntent = Intent(context, NoteWidgetActionReceiver::class.java).apply {
                     action = ACTION_CYCLE_FILTER
+                    setPackage(context.packageName)
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     data = Uri.parse("widget://$appWidgetId/mode")
                 }
                 views.setOnClickPendingIntent(
                     R.id.widget_note_btn_filter_mode,
-                    PendingIntent.getBroadcast(context, 3000 + appWidgetId, modeIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.getBroadcast(context, 30_000_000 + appWidgetId, modeIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 )
 
                 // Settings button (opens NoteWidgetConfigureActivity)
@@ -334,7 +337,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 }
                 views.setOnClickPendingIntent(
                     R.id.widget_note_btn_settings,
-                    PendingIntent.getActivity(context, 4000 + appWidgetId, settingsIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.getActivity(context, 40_000_000 + appWidgetId, settingsIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 )
 
                 // Header click -> open note editor floating dialog directly on home screen
@@ -346,7 +349,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 }
                 views.setOnClickPendingIntent(
                     R.id.widget_note_type_icon,
-                    PendingIntent.getActivity(context, 7000 + appWidgetId, openNotesTabIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.getActivity(context, 70_000_000 + appWidgetId, openNotesTabIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 )
 
                 val openNoteIntent = Intent(context, QuickEditNoteActivity::class.java).apply {
@@ -361,7 +364,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 }
                 val openNotePendingIntent = PendingIntent.getActivity(
                     context,
-                    5000 + appWidgetId,
+                    50_000_000 + appWidgetId,
                     openNoteIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
@@ -383,7 +386,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 }
                 views.setOnClickPendingIntent(
                     R.id.widget_note_btn_add_item,
-                    PendingIntent.getActivity(context, 6000 + appWidgetId, editNoteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.getActivity(context, 60_000_000 + appWidgetId, editNoteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 )
 
                 // Voice note button -> opens QuickEditNoteActivity with voice recording directly on home screen
@@ -400,7 +403,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 }
                 views.setOnClickPendingIntent(
                     R.id.widget_note_btn_voice,
-                    PendingIntent.getActivity(context, 8500 + appWidgetId, voiceIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.getActivity(context, 85_000_000 + appWidgetId, voiceIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 )
 
                 // New note button -> opens QuickEditNoteActivity for a fresh note directly on home screen
@@ -412,7 +415,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 }
                 views.setOnClickPendingIntent(
                     R.id.widget_note_btn_new_note,
-                    PendingIntent.getActivity(context, 9000 + appWidgetId, newNoteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.getActivity(context, 90_000_000 + appWidgetId, newNoteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 )
 
                 appWidgetManager.updateAppWidget(appWidgetId, views)

@@ -465,10 +465,53 @@ object RichTextEngine {
                 }
             }
             otherSpans.removeAll(toRemove)
+
+            // Enforce mutual exclusivity for subscript & superscript
+            if (type == RichSpanType.SUBSCRIPT) {
+                val conflicting = otherSpans.filter { it.type == RichSpanType.SUPERSCRIPT && it.start < newEnd && it.end > newStart }
+                for (c in conflicting) {
+                    otherSpans.remove(c)
+                    if (c.start < newStart) otherSpans.add(c.copy(end = newStart))
+                    if (c.end > newEnd) otherSpans.add(c.copy(start = newEnd))
+                }
+            } else if (type == RichSpanType.SUPERSCRIPT) {
+                val conflicting = otherSpans.filter { it.type == RichSpanType.SUBSCRIPT && it.start < newEnd && it.end > newStart }
+                for (c in conflicting) {
+                    otherSpans.remove(c)
+                    if (c.start < newStart) otherSpans.add(c.copy(end = newStart))
+                    if (c.end > newEnd) otherSpans.add(c.copy(start = newEnd))
+                }
+            }
+
             otherSpans.add(RichSpan(type, newStart, newEnd))
         }
 
         return otherSpans.sortedBy { it.start }
+    }
+
+    /**
+     * Samples active inline styles at the given cursor position.
+     */
+    fun getInlineStylesAt(spans: List<RichSpan>, cursor: Int): Set<RichSpanType> {
+        if (cursor <= 0) return emptySet()
+        val charIndex = cursor - 1
+        val inlineTypes = setOf(
+            RichSpanType.BOLD, RichSpanType.ITALIC, RichSpanType.UNDERLINE,
+            RichSpanType.STRIKETHROUGH, RichSpanType.HIGHLIGHT, RichSpanType.CODE,
+            RichSpanType.SUBSCRIPT, RichSpanType.SUPERSCRIPT
+        )
+        return spans.filter { it.type in inlineTypes && it.start <= charIndex && it.end > charIndex }
+            .map { it.type }
+            .toSet()
+    }
+
+    /**
+     * Samples text color at the given cursor position.
+     */
+    fun getTextColorAt(spans: List<RichSpan>, cursor: Int): String? {
+        if (cursor <= 0) return null
+        val charIndex = cursor - 1
+        return spans.lastOrNull { it.type == RichSpanType.TEXT_COLOR && it.start <= charIndex && it.end > charIndex }?.payload
     }
 
     /**
@@ -515,9 +558,9 @@ object RichTextEngine {
 
         val isCollapsed = start == end
         fun hasInline(type: RichSpanType): Boolean {
-            if (pendingTypingTypes.contains(type)) return true
             return if (isCollapsed) {
-                spans.any { it.type == type && ((it.start <= start && it.end >= start) || (start > 0 && it.start < start && it.end >= start)) }
+                // When cursor is collapsed, pendingTypingTypes represents the active typing attributes
+                pendingTypingTypes.contains(type)
             } else {
                 spans.any { it.type == type && it.start < end && it.end > start }
             }
@@ -691,7 +734,21 @@ object RichTextEngine {
                     val spanStart = startChange
                     val spanEnd = startChange + delta
                     if (spanEnd > spanStart) {
-                        updated.add(RichSpan(pType, spanStart, spanEnd))
+                        // Enforce mutual exclusivity for subscript & superscript
+                        if (pType == RichSpanType.SUBSCRIPT) {
+                            updated.removeAll { it.type == RichSpanType.SUPERSCRIPT && it.start >= spanStart && it.end <= spanEnd }
+                        } else if (pType == RichSpanType.SUPERSCRIPT) {
+                            updated.removeAll { it.type == RichSpanType.SUBSCRIPT && it.start >= spanStart && it.end <= spanEnd }
+                        }
+
+                        // Merge with preceding adjacent span of same type if present
+                        val existingPrev = updated.firstOrNull { it.type == pType && it.end == spanStart }
+                        if (existingPrev != null) {
+                            updated.remove(existingPrev)
+                            updated.add(existingPrev.copy(end = spanEnd))
+                        } else {
+                            updated.add(RichSpan(pType, spanStart, spanEnd))
+                        }
                     }
                 }
             }
@@ -701,11 +758,45 @@ object RichTextEngine {
             val spanStart = startChange
             val spanEnd = startChange + delta
             if (spanEnd > spanStart) {
-                updated.add(RichSpan(RichSpanType.TEXT_COLOR, spanStart, spanEnd, payload = pendingTextColor))
+                val existingPrev = updated.firstOrNull { it.type == RichSpanType.TEXT_COLOR && it.payload == pendingTextColor && it.end == spanStart }
+                if (existingPrev != null) {
+                    updated.remove(existingPrev)
+                    updated.add(existingPrev.copy(end = spanEnd))
+                } else {
+                    updated.add(RichSpan(RichSpanType.TEXT_COLOR, spanStart, spanEnd, payload = pendingTextColor))
+                }
             }
         }
 
         return updated.filter { it.isValid(textLength) }.sortedBy { it.start }
+    }
+
+    /**
+     * Splits formatting spans across a split index when a block is divided (e.g. inserting an image inline).
+     */
+    fun splitSpansAt(spans: List<RichSpan>, splitIndex: Int): Pair<List<RichSpan>, List<RichSpan>> {
+        val before = mutableListOf<RichSpan>()
+        val after = mutableListOf<RichSpan>()
+        for (span in spans) {
+            when {
+                span.end <= splitIndex -> {
+                    before.add(span)
+                }
+                span.start >= splitIndex -> {
+                    after.add(span.copy(start = span.start - splitIndex, end = span.end - splitIndex))
+                }
+                else -> {
+                    // Span overlaps the split index
+                    if (splitIndex > span.start) {
+                        before.add(span.copy(end = splitIndex))
+                    }
+                    if (span.end > splitIndex) {
+                        after.add(span.copy(start = 0, end = span.end - splitIndex))
+                    }
+                }
+            }
+        }
+        return Pair(before, after)
     }
 
     /**
@@ -898,17 +989,17 @@ object RichTextEngine {
                         )
                         RichSpanType.HEADING_1 -> SpanStyle(
                             fontWeight = FontWeight.Bold,
-                            fontSize = (baseFontSizeSp * 1.85f).sp,
+                            fontSize = (baseFontSizeSp * 1.95f).sp,
                             color = if (isDark) Color.White else textColor
                         )
                         RichSpanType.HEADING_2 -> SpanStyle(
                             fontWeight = FontWeight.Bold,
-                            fontSize = (baseFontSizeSp * 1.50f).sp,
+                            fontSize = (baseFontSizeSp * 1.58f).sp,
                             color = if (isDark) Color.White else textColor
                         )
                         RichSpanType.HEADING_3 -> SpanStyle(
                             fontWeight = FontWeight.Bold,
-                            fontSize = (baseFontSizeSp * 1.25f).sp,
+                            fontSize = (baseFontSizeSp * 1.28f).sp,
                             color = if (isDark) Color.White else textColor
                         )
                         RichSpanType.HEADING_4 -> SpanStyle(
@@ -1116,17 +1207,17 @@ object RichTextEngine {
                     )
                     RichSpanType.HEADING_1 -> SpanStyle(
                         fontWeight = FontWeight.Bold,
-                        fontSize = (baseFontSizeSp * 1.85f).sp,
+                        fontSize = (baseFontSizeSp * 1.95f).sp,
                         color = if (isDark) Color.White else textColor
                     )
                     RichSpanType.HEADING_2 -> SpanStyle(
                         fontWeight = FontWeight.Bold,
-                        fontSize = (baseFontSizeSp * 1.50f).sp,
+                        fontSize = (baseFontSizeSp * 1.58f).sp,
                         color = if (isDark) Color.White else textColor
                     )
                     RichSpanType.HEADING_3 -> SpanStyle(
                         fontWeight = FontWeight.Bold,
-                        fontSize = (baseFontSizeSp * 1.25f).sp,
+                        fontSize = (baseFontSizeSp * 1.28f).sp,
                         color = if (isDark) Color.White else textColor
                     )
                     RichSpanType.HEADING_4 -> SpanStyle(

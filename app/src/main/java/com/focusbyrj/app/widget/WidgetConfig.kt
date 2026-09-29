@@ -26,11 +26,40 @@ enum class WidgetAccent(val displayName: String, val hex: String) {
     MONOCHROME("Clean White", "#E2E8F0")
 }
 
+enum class WidgetTextSize(val spValue: Float, val displayName: String) {
+    SIZE_12(12f, "12 sp (Small)"),
+    SIZE_14(14f, "14 sp (Regular)"),
+    SIZE_16(16f, "16 sp (Medium)"),
+    SIZE_18(18f, "18 sp (Large)"),
+    SIZE_20(20f, "20 sp (Extra Large)"),
+    SIZE_22(22f, "22 sp (Huge)");
+
+    companion object {
+        fun fromNameOrDefault(name: String?): WidgetTextSize {
+            if (name == null) return SIZE_14
+            return try {
+                WidgetTextSize.valueOf(name)
+            } catch (_: Exception) {
+                when (name) {
+                    "TINY", "COMPACT", "SMALL" -> SIZE_12
+                    "STANDARD", "REGULAR" -> SIZE_14
+                    "MEDIUM" -> SIZE_16
+                    "LARGE" -> SIZE_18
+                    "EXTRA_LARGE" -> SIZE_20
+                    "HUGE" -> SIZE_22
+                    else -> SIZE_14
+                }
+            }
+        }
+    }
+}
+
 data class WidgetConfig(
     val theme: WidgetTheme = WidgetTheme.DARK,
     val accent: WidgetAccent = WidgetAccent.NEON_GREEN,
     val opacityPercent: Int = 95, // 0 - 100
-    val cornerRadiusDp: Int = 0
+    val cornerRadiusDp: Int = 0,
+    val textSize: WidgetTextSize = WidgetTextSize.SIZE_14
 ) {
     val backgroundColorInt: Int
         get() {
@@ -66,27 +95,50 @@ object WidgetConfigHelper {
     private const val KEY_ACCENT = "accent_"
     private const val KEY_OPACITY = "opacity_"
     private const val KEY_CORNER = "corner_"
+    private const val KEY_TEXT_SIZE = "text_size_"
+    private const val KEY_DEFAULT_SUFFIX = "default"
 
     fun getConfig(context: Context, appWidgetId: Int): WidgetConfig {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val themeName = prefs.getString(KEY_THEME + appWidgetId, WidgetTheme.DARK.name) ?: WidgetTheme.DARK.name
-        val accentName = prefs.getString(KEY_ACCENT + appWidgetId, WidgetAccent.NEON_GREEN.name) ?: WidgetAccent.NEON_GREEN.name
-        val opacity = prefs.getInt(KEY_OPACITY + appWidgetId, 95)
-        val corner = prefs.getInt(KEY_CORNER + appWidgetId, 0)
+        val keySuffix = if (appWidgetId > 0 && prefs.contains(KEY_THEME + appWidgetId)) {
+            appWidgetId.toString()
+        } else if (prefs.contains(KEY_THEME + KEY_DEFAULT_SUFFIX)) {
+            KEY_DEFAULT_SUFFIX
+        } else {
+            appWidgetId.toString()
+        }
+
+        val themeName = prefs.getString(KEY_THEME + keySuffix, WidgetTheme.DARK.name) ?: WidgetTheme.DARK.name
+        val accentName = prefs.getString(KEY_ACCENT + keySuffix, WidgetAccent.NEON_GREEN.name) ?: WidgetAccent.NEON_GREEN.name
+        val opacity = prefs.getInt(KEY_OPACITY + keySuffix, 95)
+        val corner = prefs.getInt(KEY_CORNER + keySuffix, 0)
+        val textSizeName = prefs.getString(KEY_TEXT_SIZE + keySuffix, WidgetTextSize.SIZE_14.name)
 
         val theme = runCatching { WidgetTheme.valueOf(themeName) }.getOrDefault(WidgetTheme.DARK)
         val accent = runCatching { WidgetAccent.valueOf(accentName) }.getOrDefault(WidgetAccent.NEON_GREEN)
+        val textSize = WidgetTextSize.fromNameOrDefault(textSizeName)
 
-        return WidgetConfig(theme, accent, opacity, corner)
+        return WidgetConfig(theme, accent, opacity, corner, textSize)
     }
 
     fun saveConfig(context: Context, appWidgetId: Int, config: WidgetConfig) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putString(KEY_THEME + appWidgetId, config.theme.name)
-            .putString(KEY_ACCENT + appWidgetId, config.accent.name)
-            .putInt(KEY_OPACITY + appWidgetId, config.opacityPercent)
-            .putInt(KEY_CORNER + appWidgetId, config.cornerRadiusDp)
-            .apply()
+        val editor = prefs.edit()
+
+        fun writeForSuffix(suffix: String) {
+            editor
+                .putString(KEY_THEME + suffix, config.theme.name)
+                .putString(KEY_ACCENT + suffix, config.accent.name)
+                .putInt(KEY_OPACITY + suffix, config.opacityPercent)
+                .putInt(KEY_CORNER + suffix, config.cornerRadiusDp)
+                .putString(KEY_TEXT_SIZE + suffix, config.textSize.name)
+        }
+
+        if (appWidgetId > 0) {
+            writeForSuffix(appWidgetId.toString())
+        } else {
+            writeForSuffix(KEY_DEFAULT_SUFFIX)
+        }
+        editor.apply()
     }
 }

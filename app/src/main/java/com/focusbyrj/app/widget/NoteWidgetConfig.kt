@@ -143,56 +143,66 @@ object NoteWidgetConfigHelper {
     fun getConfig(context: Context, appWidgetId: Int): NoteWidgetConfig {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-        // Resolve which key suffix to read from:
-        // 1. If explicit widget ID has settings, use it
-        // 2. Otherwise fallback to the shared "default" settings
-        val hasSpecificConfig = appWidgetId > 0 && (
-            prefs.contains(KEY_TEXT_SIZE + appWidgetId) ||
-            prefs.contains(KEY_THEME + appWidgetId) ||
-            prefs.contains(KEY_FILTER_MODE_PREFIX + appWidgetId)
-        )
-        val keySuffix = if (hasSpecificConfig) {
-            appWidgetId.toString()
-        } else {
-            KEY_DEFAULT_SUFFIX
+        fun getStringVal(prefix: String, defaultVal: String): String {
+            if (appWidgetId > 0 && prefs.contains(prefix + appWidgetId)) {
+                return prefs.getString(prefix + appWidgetId, defaultVal) ?: defaultVal
+            }
+            return prefs.getString(prefix + KEY_DEFAULT_SUFFIX, defaultVal) ?: defaultVal
         }
 
-        val modeStr = prefs.getString(KEY_FILTER_MODE_PREFIX + keySuffix, NoteWidgetFilterMode.ALL.name)
+        fun getBooleanVal(prefix: String, defaultVal: Boolean): Boolean {
+            if (appWidgetId > 0 && prefs.contains(prefix + appWidgetId)) {
+                return prefs.getBoolean(prefix + appWidgetId, defaultVal)
+            }
+            return prefs.getBoolean(prefix + KEY_DEFAULT_SUFFIX, defaultVal)
+        }
+
+        fun getIntVal(prefix: String, defaultVal: Int): Int {
+            if (appWidgetId > 0 && prefs.contains(prefix + appWidgetId)) {
+                return prefs.getInt(prefix + appWidgetId, defaultVal)
+            }
+            return prefs.getInt(prefix + KEY_DEFAULT_SUFFIX, defaultVal)
+        }
+
+        val modeStr = getStringVal(KEY_FILTER_MODE_PREFIX, NoteWidgetFilterMode.ALL.name)
         val filterMode = try {
-            NoteWidgetFilterMode.valueOf(modeStr ?: NoteWidgetFilterMode.ALL.name)
+            NoteWidgetFilterMode.valueOf(modeStr)
         } catch (_: Exception) {
             NoteWidgetFilterMode.ALL
         }
 
-        val specificIdRaw = prefs.getLong(KEY_SPECIFIC_ID_PREFIX + keySuffix, -1L)
+        val specificIdRaw = if (appWidgetId > 0 && prefs.contains(KEY_SPECIFIC_ID_PREFIX + appWidgetId)) {
+            prefs.getLong(KEY_SPECIFIC_ID_PREFIX + appWidgetId, -1L)
+        } else {
+            prefs.getLong(KEY_SPECIFIC_ID_PREFIX + KEY_DEFAULT_SUFFIX, -1L)
+        }
         val specificNoteId = if (specificIdRaw != -1L) specificIdRaw else null
 
-        val themeName = prefs.getString(KEY_THEME + keySuffix, WidgetTheme.DARK.name) ?: WidgetTheme.DARK.name
-        val accentName = prefs.getString(KEY_ACCENT + keySuffix, WidgetAccent.BLUE.name) ?: WidgetAccent.BLUE.name
-        val opacity = prefs.getInt(KEY_OPACITY + keySuffix, 95)
-        val corner = prefs.getInt(KEY_CORNER + keySuffix, 16)
-        val matchNote = prefs.getBoolean(KEY_MATCH_NOTE + keySuffix, true)
+        val themeName = getStringVal(KEY_THEME, WidgetTheme.DARK.name)
+        val accentName = getStringVal(KEY_ACCENT, WidgetAccent.BLUE.name)
+        val opacity = getIntVal(KEY_OPACITY, 95)
+        val corner = getIntVal(KEY_CORNER, 16)
+        val matchNote = getBooleanVal(KEY_MATCH_NOTE, true)
 
-        val sortStr = prefs.getString(KEY_SORT_BY + keySuffix, NoteWidgetSortBy.RECENTLY_UPDATED.name)
-        val sortBy = runCatching { NoteWidgetSortBy.valueOf(sortStr ?: "") }.getOrDefault(NoteWidgetSortBy.RECENTLY_UPDATED)
+        val sortStr = getStringVal(KEY_SORT_BY, NoteWidgetSortBy.RECENTLY_UPDATED.name)
+        val sortBy = runCatching { NoteWidgetSortBy.valueOf(sortStr) }.getOrDefault(NoteWidgetSortBy.RECENTLY_UPDATED)
 
-        val defaultTextStr = prefs.getString(KEY_TEXT_SIZE + KEY_DEFAULT_SUFFIX, NoteWidgetTextSize.SIZE_16.name) ?: NoteWidgetTextSize.SIZE_16.name
-        val textStr = prefs.getString(KEY_TEXT_SIZE + keySuffix, defaultTextStr) ?: defaultTextStr
+        val textStr = getStringVal(KEY_TEXT_SIZE, NoteWidgetTextSize.SIZE_16.name)
         val textSize = NoteWidgetTextSize.fromNameOrDefault(textStr)
 
-        val padStr = prefs.getString(KEY_PADDING + keySuffix, NoteWidgetPadding.STANDARD.name)
-        val padding = runCatching { NoteWidgetPadding.valueOf(padStr ?: "") }.getOrDefault(NoteWidgetPadding.STANDARD)
+        val padStr = getStringVal(KEY_PADDING, NoteWidgetPadding.STANDARD.name)
+        val padding = runCatching { NoteWidgetPadding.valueOf(padStr) }.getOrDefault(NoteWidgetPadding.STANDARD)
 
-        val showTitle = prefs.getBoolean(KEY_SHOW_TITLE + keySuffix, true)
-        val showQuickAdd = prefs.getBoolean(KEY_SHOW_QUICK_ADD + keySuffix, true)
-        val showActionButtons = prefs.getBoolean(KEY_SHOW_ACTION_BUTTONS + keySuffix, true)
-        val showNavHeader = prefs.getBoolean(KEY_SHOW_NAV_HEADER + keySuffix, true)
-        val adaptiveLayout = prefs.getBoolean(KEY_ADAPTIVE_LAYOUT + keySuffix, true)
+        val showTitle = getBooleanVal(KEY_SHOW_TITLE, true)
+        val showQuickAdd = getBooleanVal(KEY_SHOW_QUICK_ADD, true)
+        val showActionButtons = getBooleanVal(KEY_SHOW_ACTION_BUTTONS, true)
+        val showNavHeader = getBooleanVal(KEY_SHOW_NAV_HEADER, true)
+        val adaptiveLayout = getBooleanVal(KEY_ADAPTIVE_LAYOUT, true)
 
         val theme = runCatching { WidgetTheme.valueOf(themeName) }.getOrDefault(WidgetTheme.DARK)
         val accent = runCatching { WidgetAccent.valueOf(accentName) }.getOrDefault(WidgetAccent.BLUE)
 
-        val resolvedConfig = NoteWidgetConfig(
+        return NoteWidgetConfig(
             theme = theme,
             accent = accent,
             opacityPercent = opacity,
@@ -209,14 +219,6 @@ object NoteWidgetConfigHelper {
             showNavHeader = showNavHeader,
             adaptiveLayout = adaptiveLayout
         )
-
-        // If an explicit widget ID didn't have its own keys yet, snapshot the resolved default config
-        // under the widget's own ID so subsequent independent operations maintain stability.
-        if (appWidgetId > 0 && !hasSpecificConfig) {
-            saveConfig(context, appWidgetId, resolvedConfig)
-        }
-
-        return resolvedConfig
     }
 
     fun saveConfig(context: Context, appWidgetId: Int, config: NoteWidgetConfig) {
@@ -247,20 +249,10 @@ object NoteWidgetConfigHelper {
             }
         }
 
-        // Always save to default so any un-keyed reads or new widgets share the latest user selection
-        writeForSuffix(KEY_DEFAULT_SUFFIX)
-
         if (appWidgetId > 0) {
             writeForSuffix(appWidgetId.toString())
         } else {
-            // Also write for any currently active widgets
-            kotlin.runCatching {
-                val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-                val ids = appWidgetManager.getAppWidgetIds(android.content.ComponentName(context, NoteWidgetProvider::class.java))
-                ids?.forEach { id ->
-                    if (id > 0) writeForSuffix(id.toString())
-                }
-            }
+            writeForSuffix(KEY_DEFAULT_SUFFIX)
         }
 
         editor.apply()

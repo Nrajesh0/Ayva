@@ -508,16 +508,17 @@ fun NotesnookEditorDrawer(
                 NotesnookTileButton(
                     isActive = isHeadingActive,
                     onClick = {
-                        // Cycle: P (0) -> H1 (1) -> H2 (2) -> H3 (3) -> P (0)
+                        // Cycle: P (0) -> H3 (3, Subheading 1.28x) -> H2 (2, Section 1.58x) -> H1 (1, Title 1.95x) -> P (0)
+                        // Font size increases on each step from Paragraph to Heading!
                         val nextLevel = when (currentLevel) {
-                            0 -> 1
-                            1 -> 2
-                            2 -> 3
+                            0 -> 3
+                            3 -> 2
+                            2 -> 1
                             else -> 0
                         }
                         onToggleHeading(nextLevel)
                     },
-                    contentDescription = "Text Heading $headingCycleLabel (Tap to cycle: P → H1 → H2 → H3)",
+                    contentDescription = "Text Heading $headingCycleLabel (Tap to cycle: P → H3 → H2 → H1)",
                     isDark = isDark,
                     activeTint = activeTint
                 ) {

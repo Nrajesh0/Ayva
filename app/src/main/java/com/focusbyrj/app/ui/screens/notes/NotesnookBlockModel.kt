@@ -110,12 +110,16 @@ object NotesnookBlockManager {
     /**
      * Serializes a list of NotesnookBlocks into a persistent string.
      */
-    fun serialize(blocks: List<NotesnookBlock>): String {
-        if (blocks.isEmpty()) return ""
+    fun serialize(
+        blocks: List<NotesnookBlock>,
+        isArticle: Boolean = false,
+        subtitle: String = ""
+    ): String {
+        if (blocks.isEmpty() && !isArticle && subtitle.isBlank()) return ""
 
-        // If the note consists of only a single Text block with no special spans,
+        // If not article mode and single text block with no spans and no subtitle,
         // serialize via standard RichTextEngine to keep maximum backward compatibility
-        if (blocks.size == 1 && blocks[0] is NotesnookBlock.Text) {
+        if (!isArticle && subtitle.isBlank() && blocks.size == 1 && blocks[0] is NotesnookBlock.Text) {
             val textBlock = blocks[0] as NotesnookBlock.Text
             if (textBlock.spans.isEmpty()) {
                 return textBlock.text
@@ -125,6 +129,12 @@ object NotesnookBlockManager {
         try {
             val root = JSONObject()
             root.put("version", 1)
+            if (isArticle) {
+                root.put("isArticle", true)
+            }
+            if (subtitle.isNotBlank()) {
+                root.put("subtitle", subtitle)
+            }
             val array = JSONArray()
 
             for (block in blocks) {
@@ -219,6 +229,42 @@ object NotesnookBlockManager {
             // Fallback plain string
             return toPlainText(blocks)
         }
+    }
+
+    /**
+     * Checks if a note's raw content was serialized in Article Mode.
+     */
+    fun isArticleMode(raw: String): Boolean {
+        val prefixIdx = raw.indexOf(BLOCKS_PREFIX)
+        val suffixIdx = if (prefixIdx != -1) raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length) else -1
+        if (prefixIdx != -1 && suffixIdx != -1) {
+            val jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
+            return try {
+                val root = JSONObject(jsonStr)
+                root.optBoolean("isArticle", false)
+            } catch (_: Exception) {
+                false
+            }
+        }
+        return false
+    }
+
+    /**
+     * Retrieves the subtitle from a note's block content if present.
+     */
+    fun getSubtitle(raw: String): String {
+        val prefixIdx = raw.indexOf(BLOCKS_PREFIX)
+        val suffixIdx = if (prefixIdx != -1) raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length) else -1
+        if (prefixIdx != -1 && suffixIdx != -1) {
+            val jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
+            return try {
+                val root = JSONObject(jsonStr)
+                root.optString("subtitle", "")
+            } catch (_: Exception) {
+                ""
+            }
+        }
+        return ""
     }
 
     /**

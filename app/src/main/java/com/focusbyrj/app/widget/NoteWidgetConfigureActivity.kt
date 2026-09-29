@@ -1122,7 +1122,6 @@ fun NoteWidgetLivePreview(
     Surface(
         shape = RoundedCornerShape(config.cornerRadiusDp.dp),
         color = bgColor,
-        border = BorderStroke(1.dp, borderColor),
         modifier = Modifier
             .fillMaxWidth()
             .height(185.dp)
