@@ -25,6 +25,12 @@ import androidx.compose.ui.unit.sp
 import com.focusbyrj.app.ui.screens.InstalledApp
 import com.focusbyrj.app.util.ImageUtils
 
+object AppModeHelper {
+    fun sanitizeAppsForDisplay(apps: List<InstalledApp>): List<InstalledApp> {
+        return apps.filter { it.packageName.isNotBlank() }.distinctBy { it.packageName }
+    }
+}
+
 @Composable
 fun AppModeDropZone(
     title: String,
@@ -84,7 +90,7 @@ fun AppModeDropZone(
                 )
             }
         } else {
-            val validApps = apps.filter { it.packageName.isNotBlank() }
+            val validApps = AppModeHelper.sanitizeAppsForDisplay(apps)
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxWidth()

@@ -14,6 +14,7 @@ object CustomCategoryManager {
     private const val PREFS_NAME = "custom_categories_prefs"
     private const val KEY_CATEGORIES = "categories"
     
+    private var isInitialized = false
     private val _categories = MutableStateFlow<List<CustomCategory>>(emptyList())
     val categories: StateFlow<List<CustomCategory>> = _categories.asStateFlow()
 
@@ -21,10 +22,11 @@ object CustomCategoryManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val jsonString = prefs.getString(KEY_CATEGORIES, "[]") ?: "[]"
         _categories.value = parseCategories(jsonString)
+        isInitialized = true
     }
 
     fun getCategories(context: Context): List<CustomCategory> {
-        if (_categories.value.isEmpty()) {
+        if (!isInitialized) {
             init(context)
         }
         return _categories.value
@@ -67,24 +69,31 @@ object CustomCategoryManager {
             .apply()
     }
 
-    private fun parseCategories(jsonString: String): List<CustomCategory> {
+    internal fun parseCategories(jsonString: String): List<CustomCategory> {
         val list = mutableListOf<CustomCategory>()
         try {
             val jsonArray = JSONArray(jsonString)
             for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
-                val id = obj.getString("id")
-                val name = obj.getString("name")
-                val pkgsArray = obj.getJSONArray("packages")
-                val pkgs = mutableSetOf<String>()
-                for (j in 0 until pkgsArray.length()) {
-                    pkgs.add(pkgsArray.getString(j))
-                }
-                list.add(CustomCategory(id, name, pkgs))
+                try {
+                    val obj = jsonArray.optJSONObject(i) ?: continue
+                    val id = obj.optString("id").takeIf { it.isNotBlank() } ?: continue
+                    val name = obj.optString("name").takeIf { it.isNotBlank() } ?: "Unnamed"
+                    val pkgsArray = obj.optJSONArray("packages")
+                    val pkgs = mutableSetOf<String>()
+                    if (pkgsArray != null) {
+                        for (j in 0 until pkgsArray.length()) {
+                            val pkg = pkgsArray.optString(j)
+                            if (!pkg.isNullOrBlank()) {
+                                pkgs.add(pkg)
+                            }
+                        }
+                    }
+                    list.add(CustomCategory(id, name, pkgs))
+                } catch (_: Exception) {}
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return list
+        return list.distinctBy { it.id }
     }
 }

@@ -1,18 +1,8 @@
 /*
- * Copyright (C) 2024-2026 Focus by Rj
+ * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This software is proprietary and confidential. Unauthorized copying,
+ * distribution, or modification is strictly prohibited.
  */
 
 package com.focusbyrj.app.util
@@ -46,13 +36,21 @@ object DeviceStatsHelper {
             }
         }
         
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            }
+        } catch (_: Exception) {
+            try {
+                context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            } catch (_: Exception) {}
         }
         
-        val initialIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val initialIntent = try {
+            context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        } catch (_: Exception) { null }
         if (initialIntent != null) {
             trySend(parseBatteryInfo(context, initialIntent))
         } else {
@@ -77,11 +75,11 @@ object DeviceStatsHelper {
         }
     }
 
-    private fun parseBatteryInfo(context: Context?, intent: Intent): BatteryHealthInfo {
+    internal fun parseBatteryInfo(context: Context?, intent: Intent): BatteryHealthInfo {
         val temperature = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10f
         val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-        val rawPercentage = if (scale > 0) (level * 100) / scale else 80
+        val rawPercentage = if (scale > 0) ((level * 100) / scale).coerceIn(0, 100) else 80
         val voltage = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
         val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
         val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
@@ -100,7 +98,7 @@ object DeviceStatsHelper {
             }
         }
 
-        val realRemaining = (rawPercentage.toFloat() * healthPercent.toFloat()) / 100f
+        val realRemaining = ((rawPercentage.toFloat() * healthPercent.toFloat()) / 100f).coerceIn(0f, 100f)
 
         val healthLabel = when (rawHealthInt) {
             BatteryManager.BATTERY_HEALTH_GOOD -> if (healthPercent >= 80) "Normal (Good)" else "Service Recommended"

@@ -1,18 +1,8 @@
 /*
- * Copyright (C) 2024-2026 Focus by Rj
+ * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This software is proprietary and confidential. Unauthorized copying,
+ * distribution, or modification is strictly prohibited.
  */
 
 package com.focusbyrj.app.util
@@ -22,6 +12,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import com.focusbyrj.app.service.BubbleService
 import java.util.Calendar
+
 
 /**
  * Monitors continuous application usage and total continuous screen time to gently
@@ -195,7 +186,10 @@ object UsageBreakTracker {
 
         if (isNightTime) {
             // Night rule: 45 continuous minutes of single app usage
-            if (continuousAppUsageMs >= NIGHT_APP_USAGE_THRESHOLD_MS) {
+            // Respect the BEDTIME_SLEEP alert toggle — skip entirely if the user disabled it
+            if (continuousAppUsageMs >= NIGHT_APP_USAGE_THRESHOLD_MS &&
+                AyvaAlertCategory.BEDTIME_SLEEP.isEnabled(context)
+            ) {
                 val lastAlert = prefs.getSafeLong(KEY_LAST_NIGHT_ALERT_TIME, 0L)
                 if (now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val appName = getAppFriendlyName(context, trackedAppPackage)
@@ -205,8 +199,11 @@ object UsageBreakTracker {
                 }
             }
         } else {
+            // Respect the EXCESSIVE_USAGE alert toggle — skip both day rules if the user disabled it
+            val screenTimeAlertsEnabled = AyvaAlertCategory.EXCESSIVE_USAGE.isEnabled(context)
+
             // Day rule 1: 90 continuous minutes on a single app (with grace period for quick messages)
-            if (continuousAppUsageMs >= DAY_APP_USAGE_THRESHOLD_MS) {
+            if (screenTimeAlertsEnabled && continuousAppUsageMs >= DAY_APP_USAGE_THRESHOLD_MS) {
                 val lastAlert = prefs.getSafeLong(KEY_LAST_DAY_SINGLE_ALERT_TIME, 0L)
                 if (now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val appName = getAppFriendlyName(context, trackedAppPackage)
@@ -217,7 +214,7 @@ object UsageBreakTracker {
             }
 
             // Day rule 2: 2 continuous hours (120 mins) total screen time across any apps
-            if (continuousTotalScreenMs >= DAY_TOTAL_SCREEN_THRESHOLD_MS) {
+            if (screenTimeAlertsEnabled && continuousTotalScreenMs >= DAY_TOTAL_SCREEN_THRESHOLD_MS) {
                 val lastAlert = prefs.getSafeLong(KEY_LAST_DAY_TOTAL_ALERT_TIME, 0L)
                 if (now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val message = AyvaDialogueEngine.getDayTotalScreenBreakSuggestion(context)
@@ -230,6 +227,10 @@ object UsageBreakTracker {
 
     /**
      * Emits the gentle break reminder directly into the floating bubble preview pill and chat log.
+     *
+     * NOTE: Callers are responsible for checking the relevant [AyvaAlertCategory.isEnabled]
+     * BEFORE calling this method. This function itself is intentionally unguarded so that
+     * future callers with different category semantics can reuse it cleanly.
      */
     private fun sendBubbleReminder(context: Context, text: String) {
         val chatMessage = PersistedChatMessage(

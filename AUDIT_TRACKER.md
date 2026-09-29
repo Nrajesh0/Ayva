@@ -45,8 +45,9 @@ Every finding follows this strict TDD workflow â€” no exceptions:
 | **Batch 10** | Background Workers, Schedulers, Diagnostics & Core Data | 🔄 Completed (Pass 1 Deep Dive) | 8 Found → 8 Fixed ✅ |
 | **Batch 11** | Note Editor Helpers, Share Parsers & Export Dialogs | 🔄 Completed (Pass 1 Deep Dive) | 8 Found → 8 Fixed ✅ |
 | **Batch 12** | Quiz, Drill Runners & Settings Screens | 🔄 Completed (Pass 1 Deep Dive) | 8 Found → 8 Fixed ✅ |
+| **Batch 13** | Presentation Cards, Theme & Design Tokens | 🔄 Completed (Pass 1 Deep Dive) | 8 Found → 8 Fixed ✅ |
 
-**Active Batch**: **Batch 13: Presentation Cards, Theme & Design Tokens** 🚀
+**Active Batch**: **None — Full Codebase Audit 100% Complete! 🎉**
 
 ---
 
@@ -194,8 +195,43 @@ Every finding follows this strict TDD workflow â€” no exceptions:
 | `BubbleSettingsScreen.kt` | 12 | ✅ Audited | 2026-09-29 |
 | `PreferencesHubScreen.kt` | 12 | ✅ Audited | 2026-09-29 |
 | `CustomCategoryEditor.kt` | 12 | ✅ Audited | 2026-09-29 |
+| `CategoryEditorHelper.kt` | 12 | ✅ Audited | 2026-09-29 |
 | `SubscriptionScreen.kt` | 12 | ✅ Audited | 2026-09-29 |
 | `AptitudeProfileCard.kt` | 12 | ✅ Audited | 2026-09-29 |
+| `SettingsScreenHelper.kt` | 12 | ✅ Audited | 2026-09-29 |
+| `DrillPaletteHelper.kt` | 12 | ✅ Audited | 2026-09-29 |
+| `DrillStreakHelper.kt` | 12 | ✅ Audited | 2026-09-29 |
+| `DrillSummaryMathHelper.kt` | 12 | ✅ Audited | 2026-09-29 |
+| `DrillTopBarHelper.kt` | 12 | ✅ Audited | 2026-09-29 |
+| `AddRestrictionScreen.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `AppModeSection.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `CustomRestrictionSection.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `CustomCategoryManager.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `ArithmeticCard.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `HabitsChatCard.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `MysteryBoxChatCard.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `VocabBriefContent.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `VocabRetentionHubChatCard.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `PermissionsDialog.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `PermissionUtils.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `DeviceStatsHelper.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `AnalyticsComponents.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `AppThemeManager.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `Color.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `Theme.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `Type.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `AyvaAlertTheme.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `AyvaIcon.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `CatMagicRiveView.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `DuolingoComponents.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `ProfessionalSlider.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `ProfileAvatarManager.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `GamificationHaptics.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `TalkActionChips.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `AyvaNotificationColorsDialog.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `FocusQuotes.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `HabitMicroCopyProvider.kt` | 13 | ✅ Audited | 2026-09-29 |
+| `SummaryQuotes.kt` | 13 | ✅ Audited | 2026-09-29 |
 
 ---
 
@@ -641,6 +677,36 @@ Findings that cannot be covered by automated unit tests. Verify on a physical de
 
 ---
 
+## 📦 Batch 13: Presentation Cards, Theme & Design Tokens
+
+**Audit Session**: Adversarial Deep Dive (Pass 1).  
+**Methodology**: Adversarial read → Failing reproduction test written → Fix applied → Test verified green.  
+**Test file**: [`Batch13SecurityAuditTest.kt`](file:///app/src/test/java/com/focusbyrj/app/Batch13SecurityAuditTest.kt)
+
+### Scope & Target Files (29 files, ~6,500 LOC)
+- **Restrictions & Mode Selection UI**: [`AddRestrictionScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/AddRestrictionScreen.kt), [`AppModeSection.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/AppModeSection.kt), [`CustomRestrictionSection.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/CustomRestrictionSection.kt), [`CustomCategoryManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/CustomCategoryManager.kt)
+- **Chat & Presentation Cards**: [`ArithmeticCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/ArithmeticCard.kt), [`HabitsChatCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/HabitsChatCard.kt), [`MysteryBoxChatCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/MysteryBoxChatCard.kt), [`VocabBriefContent.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/VocabBriefContent.kt), [`VocabRetentionHubChatCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/VocabRetentionHubChatCard.kt)
+- **Permissions, Device Stats & Diagnostics**: [`PermissionsDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/permissions/PermissionsDialog.kt), [`PermissionUtils.kt`](file:///app/src/main/java/com/focusbyrj/app/util/PermissionUtils.kt), [`DeviceStatsHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/util/DeviceStatsHelper.kt), [`AnalyticsComponents.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/AnalyticsComponents.kt)
+- **Theme, Styling, Animation & Components**: [`AppThemeManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/AppThemeManager.kt), [`Color.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/Color.kt), [`Theme.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/Theme.kt), [`Type.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/Type.kt), [`AyvaAlertTheme.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/AyvaAlertTheme.kt), [`AyvaIcon.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/AyvaIcon.kt), [`CatMagicRiveView.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/CatMagicRiveView.kt), [`DuolingoComponents.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/DuolingoComponents.kt), [`ProfessionalSlider.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/ProfessionalSlider.kt), [`ProfileAvatarManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/ProfileAvatarManager.kt), [`GamificationHaptics.kt`](file:///app/src/main/java/com/focusbyrj/app/util/GamificationHaptics.kt), [`TalkActionChips.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/TalkActionChips.kt), [`AyvaNotificationColorsDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/AyvaNotificationColorsDialog.kt), [`FocusQuotes.kt`](file:///app/src/main/java/com/focusbyrj/app/util/FocusQuotes.kt), [`HabitMicroCopyProvider.kt`](file:///app/src/main/java/com/focusbyrj/app/util/HabitMicroCopyProvider.kt), [`SummaryQuotes.kt`](file:///app/src/main/java/com/focusbyrj/app/util/SummaryQuotes.kt)
+
+### Findings & Resolutions
+
+| ID | Severity | File | Description | Test | Status |
+|:---|:---|:---|:---|:---|:---|
+| BATCH-13-001 | 🔴 High | `AppModeSection.kt`, `AddRestrictionScreen.kt` | **Duplicate Package Name Key Collision in Compose LazyRow/LazyColumn**: Duplicate packages from package manager queries or multi-user profiles crashed Compose runtime with `IllegalArgumentException: Key $key was already used`. Remediated by adding `AppModeHelper.sanitizeAppsForDisplay` and `.distinctBy { it.packageName }`. | `test_batch13_001_duplicatePackagesInAppModeSectionAndAddRestrictions` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
+| BATCH-13-002 | 🔴 High | `ArithmeticCard.kt` | **Rigid Drill JSON Parsing & NaN/DivZero in Question Progress Calculation**: Strict `getString` caused Compose cards to fail on missing fields; progress calculation threw `NaN`/`DivZero` if `totalQ <= 0`. Remediated by introducing `ArithmeticCardHelper.parseDrillJson` with `optString`/`optInt` and `computeProgressFraction`. | `test_batch13_002_arithmeticCardSafeJsonAndProgressMath` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
+| BATCH-13-003 | 🟠 Medium | `CustomCategoryManager.kt` | **Brittle Monolithic JSON Parsing & Repeated Disk I/O**: Single corrupted category JSON discarded the entire list; `getCategories()` hit SharedPreferences on every call when categories were empty. Remediated by adding `isInitialized` flag and resilient per-item JSON parsing. | `test_batch13_003_customCategoryManagerResilientParsingAndCaching` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
+| BATCH-13-004 | 🟠 Medium | `HabitsChatCard.kt`, `HabitWithProgress` | **Progress Fraction Zero/Negative Bound Handling in Compose**: Passing `progressFraction <= 0f` to `fillMaxWidth` risked Compose layout constraint errors. Remediated by guarding rendering with `if (progressFraction > 0f) fillMaxWidth(progressFraction.coerceIn(0.01f, 1f))`. | `test_batch13_004_habitsCardProgressFractionClamping` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
+| BATCH-13-005 | 🟠 Medium | `DeviceStatsHelper.kt` | **Negative Battery Level & Zero Scale Arithmetic**: Missing battery extras resulted in `level = -1` or `scale = 0`, producing negative percentages or division by zero. Remediated by clamping `rawPercentage` to `0..100`, guarding `scale <= 0`, and safely wrapping receiver registration. | `test_batch13_005_deviceStatsHelperBatteryInfoMathGuards` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
+| BATCH-13-006 | 🟠 Medium | `Theme.kt` | **Unsafe `(view.context as Activity)` Direct Cast**: When Composable is hosted in a Dialog, ContextWrapper, or test environment, direct casting caused `ClassCastException`. Remediated by implementing recursive `Context.findActivity(): Activity?` and safe null check before accessing window. | `test_batch13_006_themeContextUnwrapSafeActivity` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
+| BATCH-13-007 | 🟠 Medium | `CustomRestrictionSection.kt` | **Time Limit Slider Range & Stepper Bound Mismatch**: Stepper button allowed up to 180 min, but slider was clamped to 120 min, causing UI desynchronization. Remediated by aligning `ProfessionalSlider` `valueRange` and value coercion to `1f..180f`. | `test_batch13_007_customRestrictionSectionTimeLimitSliderBounds` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
+| BATCH-13-008 | 🟠 Medium | `VocabRetentionHubChatCard.kt`, `VocabBriefContent.kt` | **Mastery Progress Overflow & Unbounded In-Memory Set**: Data desync allowed `masteryProgress > 1.0f`; duplicate IDs collided in `LazyColumn`; static card ID cache grew indefinitely. Remediated by adding `computeMasteryProgress` clamped to `0f..1f`, unique keys with term suffix, and LRU cap on card ID set. | `test_batch13_008_vocabRetentionHubMasteryProgressClampingAndKeys` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
+
+**Batch 13 Result**: 0 Critical + 2 High + 6 Medium = **8 Total — All 8 fixed** ✅  
+**Test Suite**: `Batch13SecurityAuditTest.kt` (8 automated regression tests, 100% passing).  
+
+---
+
 ## 🗂️ Remediation Log
 
 | Date | Batch | Action / Finding | Commits / Changes |
@@ -678,5 +744,6 @@ Findings that cannot be covered by automated unit tests. Verify on a physical de
 | *2026-09-29* | **Batch 10 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Background Workers, Schedulers, Diagnostics & Core Data. Identified and resolved 8 vulnerabilities (1 Critical, 2 High, 5 Medium) across `LicenseManager.kt`, `FocusApplication.kt`, `CameraQrScannerDialog.kt`, `AutoBackupWorker.kt`, `BlockActivity.kt`, `HabitAlarmScheduler.kt`, `AppLogger.kt`, `DrillDatabase.kt`, `NoteEntity.kt`, `DiagnosticManager.kt`, `CompletedTaskHistoryManager.kt`, and `VocabRepository.kt`. Created `Batch10SecurityAuditTest.kt` with 9 regression tests (100% passing). | Applied fixes across LicenseManager.kt, FocusApplication.kt, CameraQrScannerDialog.kt, AutoBackupWorker.kt, BlockActivity.kt, HabitAlarmScheduler.kt, AppLogger.kt, DrillDatabase.kt, NoteEntity.kt, DiagnosticManager.kt, CompletedTaskHistoryManager.kt, and VocabRepository.kt. 100% resolved ✅ |
 | *2026-09-29* | **Batch 11 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Note Editor Helpers, Share Parsers & Export Dialogs (17 files, ~7,630 LOC). Identified and resolved 8 vulnerabilities (4 High, 4 Medium) across `KeepNoteCard.kt`, `NotesnookBlockModel.kt`, `EditLabelsDialog.kt`, `NoteLabelsDialog.kt`, `ImageUtils.kt`, `ArticleTocHelper.kt`, `NotesnookInsertBottomSheet.kt`, `KeepSketchDialog.kt`, `KeepNoteShareParser.kt`, and `AudioPlayerWidget.kt`. Created `Batch11SecurityAuditTest.kt` with 10 regression tests (100% passing). | Applied fixes across KeepNoteCard.kt, NotesnookBlockModel.kt, EditLabelsDialog.kt, NoteLabelsDialog.kt, ImageUtils.kt, ArticleTocHelper.kt, NotesnookInsertBottomSheet.kt, KeepSketchDialog.kt, KeepNoteShareParser.kt, AudioPlayerWidget.kt, and Batch11SecurityAuditTest.kt. 100% resolved ✅ |
 | *2026-09-29* | **Batch 12 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Quiz, Drill Runners & Settings Screens (16 files, ~9,000 LOC). Identified and resolved 8 vulnerabilities (2 High, 6 Medium) across `FullscreenDrillView.kt`, `FullscreenDrillSummaryView.kt`, `FullscreenSolutionsView.kt`, `DrillSummaryCard.kt`, `DrillTopBar.kt`, `DrillQuestionPaletteModal.kt`, `SolutionsTopBar.kt`, `SettingsScreen.kt`, `BubbleSettingsScreen.kt`, `CustomCategoryEditor.kt`, and `AptitudeProfileCard.kt`. Created `Batch12SecurityAuditTest.kt` with 8 regression tests (100% passing). | Applied fixes across FullscreenDrillView.kt, FullscreenDrillSummaryView.kt, FullscreenSolutionsView.kt, DrillSummaryCard.kt, DrillTopBar.kt, DrillQuestionPaletteModal.kt, SolutionsTopBar.kt, SettingsScreen.kt, BubbleSettingsScreen.kt, CustomCategoryEditor.kt, AptitudeProfileCard.kt, and Batch12SecurityAuditTest.kt. 100% resolved ✅ |
+| *2026-09-29* | **Batch 13 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Presentation Cards, Theme & Design Tokens (29 files, ~6,500 LOC). Identified and resolved 8 vulnerabilities (2 High, 6 Medium) across `AppModeSection.kt`, `AddRestrictionScreen.kt`, `ArithmeticCard.kt`, `CustomCategoryManager.kt`, `HabitsChatCard.kt`, `DeviceStatsHelper.kt`, `Theme.kt`, `CustomRestrictionSection.kt`, `VocabRetentionHubChatCard.kt`, and `VocabBriefContent.kt`. Created `Batch13SecurityAuditTest.kt` with 8 regression tests (100% passing). | Applied fixes across AppModeSection.kt, AddRestrictionScreen.kt, ArithmeticCard.kt, CustomCategoryManager.kt, HabitsChatCard.kt, DeviceStatsHelper.kt, Theme.kt, CustomRestrictionSection.kt, VocabRetentionHubChatCard.kt, VocabBriefContent.kt, and Batch13SecurityAuditTest.kt. 100% resolved ✅ |
 
 

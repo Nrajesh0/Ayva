@@ -1,10 +1,8 @@
 /*
- * Copyright (C) 2024-2026 Focus by Rj
+ * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This software is proprietary and confidential. Unauthorized copying,
+ * distribution, or modification is strictly prohibited.
  */
 
 package com.focusbyrj.app.ui.screens
@@ -509,13 +507,15 @@ private fun HabitsListView(
                                         .clip(RoundedCornerShape(3.dp))
                                         .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxHeight()
-                                            .fillMaxWidth(progressFraction)
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(habitColor)
-                                    )
+                                    if (progressFraction > 0f) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .fillMaxWidth(progressFraction.coerceIn(0.01f, 1f))
+                                                .clip(RoundedCornerShape(3.dp))
+                                                .background(habitColor)
+                                        )
+                                    }
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(

@@ -1,18 +1,8 @@
 /*
- * Copyright (C) 2024-2026 Focus by Rj
+ * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This software is proprietary and confidential. Unauthorized copying,
+ * distribution, or modification is strictly prohibited.
  */
 
 package com.focusbyrj.app.ui.components
@@ -191,9 +181,9 @@ fun CustomRestrictionSection(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     ProfessionalSlider(
-                        value = timeLimitMinutes.coerceIn(1, 120).toFloat(),
-                        onValueChange = { onTimeLimitChange(it.toInt().coerceAtLeast(1)) },
-                        valueRange = 1f..120f,
+                        value = timeLimitMinutes.coerceIn(1, 180).toFloat(),
+                        onValueChange = { onTimeLimitChange(it.toInt().coerceIn(1, 180)) },
+                        valueRange = 1f..180f,
                         modifier = Modifier.fillMaxWidth()
                     )
 

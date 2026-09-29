@@ -30,6 +30,49 @@ import com.focusbyrj.app.util.FocusEconomyManager
 import com.focusbyrj.app.util.GamificationHaptics
 import org.json.JSONObject
 
+data class ParsedDrillData(
+    val title: String,
+    val questionText: String,
+    val options: List<String>,
+    val correctIndex: Int,
+    val explanation: String
+)
+
+object ArithmeticCardHelper {
+    fun parseDrillJson(json: String?): ParsedDrillData? {
+        if (json.isNullOrBlank()) return null
+        return try {
+            val obj = JSONObject(json)
+            val title = obj.optString("title", "Drill")
+            val questionText = obj.optString("questionText", "")
+            val arr = obj.optJSONArray("options")
+            val options = mutableListOf<String>()
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    options.add(arr.optString(i, ""))
+                }
+            }
+            val rawCorrectIndex = obj.optInt("correctIndex", 0)
+            val correctIndex = if (options.isNotEmpty()) rawCorrectIndex.coerceIn(0, options.size - 1) else 0
+            val explanation = obj.optString("explanation", "")
+            ParsedDrillData(
+                title = title,
+                questionText = questionText,
+                options = options,
+                correctIndex = correctIndex,
+                explanation = explanation
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun computeProgressFraction(currentQ: Int, totalQ: Int): Float {
+        if (totalQ <= 0) return 0f
+        return (currentQ.toFloat() / totalQ.toFloat()).coerceIn(0f, 1f)
+    }
+}
+
 @Composable
 fun ArithmeticCard(
     message: ChatMessage, 
@@ -44,27 +87,19 @@ fun ArithmeticCard(
     var selectedIndex by rememberSaveable(message.id) { mutableStateOf<Int?>(null) }
     val context = LocalContext.current
 
-    val json = message.arithmeticJson ?: return
-    val title: String
-    val questionText: String
-    val options: List<String>
-    val correctIndex: Int
-    val explanation: String
-
-    try {
-        val obj = JSONObject(json)
-        title = obj.getString("title")
-        questionText = obj.getString("questionText")
-        val arr = obj.getJSONArray("options")
-        val parsedOptions = mutableListOf<String>()
-        for (i in 0 until arr.length()) parsedOptions.add(arr.getString(i))
-        options = parsedOptions
-        correctIndex = obj.getInt("correctIndex")
-        explanation = obj.getString("explanation")
-    } catch (e: Exception) {
+    val drillData = remember(message.arithmeticJson) {
+        ArithmeticCardHelper.parseDrillJson(message.arithmeticJson)
+    }
+    if (drillData == null) {
         Text("Error loading drill.", modifier = Modifier.padding(16.dp))
         return
     }
+
+    val title = drillData.title
+    val questionText = drillData.questionText
+    val options = drillData.options
+    val correctIndex = drillData.correctIndex
+    val explanation = drillData.explanation
 
     val isDark = isSystemInDarkTheme()
     val duolingoGreen = Color(0xFF58CC02)
@@ -149,7 +184,7 @@ fun ArithmeticCard(
         if (isActiveDrill && drillProgress != null && drillProgress.second > 0) {
             val currentQ = drillProgress.first
             val totalQ = drillProgress.second
-            val progressFraction = (currentQ.toFloat() / totalQ.toFloat()).coerceIn(0f, 1f)
+            val progressFraction = ArithmeticCardHelper.computeProgressFraction(currentQ, totalQ)
             val animatedProgress by animateFloatAsState(
                 targetValue = progressFraction,
                 animationSpec = tween(durationMillis = 350),

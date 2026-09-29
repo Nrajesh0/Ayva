@@ -1,18 +1,8 @@
 /*
- * Copyright (C) 2024-2026 Focus by Rj
+ * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * This software is proprietary and confidential. Unauthorized copying,
+ * distribution, or modification is strictly prohibited.
  */
 
 package com.focusbyrj.app.ui.screens
@@ -160,6 +150,7 @@ fun AddRestrictionScreen(
             val apps = packages
                 .filter { pm.getLaunchIntentForPackage(it.packageName) != null && it.packageName != context.packageName }
                 .map { InstalledApp(it.packageName, it.loadLabel(pm).toString(), getCategoryForApp(it, it.packageName)) }
+                .distinctBy { it.packageName }
                 .sortedBy { it.appName }
             installedApps = apps
             isLoading = false
@@ -398,7 +389,7 @@ fun AddRestrictionScreen(
                             if (searchQuery.isNotBlank()) {
                                 list = list.filter { it.appName.contains(searchQuery, ignoreCase = true) }
                             }
-                            list
+                            list.distinctBy { it.packageName }
                         }
 
                         if (isLoading) {

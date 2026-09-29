@@ -205,14 +205,19 @@ class TodoWidgetProvider : AppWidgetProvider() {
 
                 appWidgetManager.updateAppWidget(appWidgetId, views)
 
-                // Calculate task count asynchronously
+                // Calculate task count asynchronously.
+                // IMPORTANT: partiallyUpdateAppWidget merges the provided RemoteViews into the
+                // existing widget state. Creating a bare RemoteViews from XML would reset views that
+                // have XML-hardcoded sizes (e.g. widget_title at 17sp), discarding the user's chosen
+                // font size. We re-apply the exact same styling as the main update for every view we
+                // touch in the partial update.
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
                         val app = context.applicationContext as? FocusApplication ?: return@launch
                         val allTasks = app.database.taskDao().getAllTasks().first()
 
-                        val now = Calendar.getInstance()
-                        val todayStart = now.apply {
+                        val now2 = Calendar.getInstance()
+                        val todayStart = now2.apply {
                             set(Calendar.HOUR_OF_DAY, 0)
                             set(Calendar.MINUTE, 0)
                             set(Calendar.SECOND, 0)
@@ -234,13 +239,25 @@ class TodoWidgetProvider : AppWidgetProvider() {
                             else -> uncompleted.size
                         }
 
+                        // Only update the task-count text and its badge color — nothing else.
+                        // Do NOT create a full RemoteViews from XML here; use just the fields we need
+                        // so we don't trigger an XML-defaults reset on any other view's text size.
                         val countViews = RemoteViews(context.packageName, R.layout.widget_todo_layout)
                         countViews.setTextViewText(R.id.widget_task_count, count.toString())
+                        // Re-apply accent color and title font size so the partial merge is safe
+                        countViews.setTextColor(R.id.widget_task_count, config.accentColorInt)
+                        countViews.setTextColor(R.id.widget_title, config.primaryTextColorInt)
+                        countViews.setTextViewTextSize(
+                            R.id.widget_title,
+                            android.util.TypedValue.COMPLEX_UNIT_SP,
+                            config.textSize.spValue.coerceAtLeast(14f)
+                        )
                         appWidgetManager.partiallyUpdateAppWidget(appWidgetId, countViews)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
                 }
+
             }
         }
     }

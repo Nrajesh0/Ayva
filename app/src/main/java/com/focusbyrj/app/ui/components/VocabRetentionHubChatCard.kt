@@ -50,6 +50,11 @@ data class LearnedWordDisplayItem(
     val repetitions: Int = 0
 )
 
+fun computeMasteryProgress(totalMastered: Int, totalLearned: Int): Float {
+    if (totalLearned <= 0) return 0f
+    return (totalMastered.toFloat() / totalLearned.toFloat()).coerceIn(0f, 1f)
+}
+
 @Composable
 fun VocabRetentionHubChatCard(
     stats: VocabStats?,
@@ -61,7 +66,7 @@ fun VocabRetentionHubChatCard(
     val totalLearned = stats?.totalLearned ?: 0
     val totalMastered = stats?.totalMastered ?: 0
     val pendingReview = stats?.pendingReview ?: 0
-    val masteryProgress = if (totalLearned > 0) totalMastered.toFloat() / totalLearned else 0f
+    val masteryProgress = computeMasteryProgress(totalMastered, totalLearned)
     val masteryPercent = (masteryProgress * 100).toInt()
 
     var isExpandedLearnedWords by remember { mutableStateOf(false) }
@@ -630,7 +635,7 @@ fun VocabRetentionHubChatCard(
                                     contentPadding = PaddingValues(10.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    items(filteredWords, key = { "${if (it.isIdiom) "i" else "o"}_${it.id}" }) { item ->
+                                    items(filteredWords, key = { "${if (it.isIdiom) "i" else "o"}_${it.id}_${it.term}" }) { item ->
                                         LearnedWordCardItem(item)
                                     }
                                 }

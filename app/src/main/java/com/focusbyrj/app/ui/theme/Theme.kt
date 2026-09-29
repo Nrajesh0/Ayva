@@ -1,6 +1,7 @@
 package com.focusbyrj.app.ui.theme
 
 import android.app.Activity
+import android.content.Context
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -15,6 +16,15 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.focusbyrj.app.util.AppThemeManager
 import com.focusbyrj.app.util.ThemeMode
+
+internal fun Context.findActivity(): Activity? {
+    var current: Context? = this
+    while (current is android.content.ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return null
+}
 
 @Composable
 fun FocusByRjTheme(
@@ -111,7 +121,7 @@ fun FocusByRjTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
+            val window = view.context.findActivity()?.window ?: return@SideEffect
             @Suppress("DEPRECATION")
             window.statusBarColor = colorScheme.background.toArgb()
             @Suppress("DEPRECATION")

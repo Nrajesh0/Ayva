@@ -32,7 +32,9 @@ enum class WidgetTextSize(val spValue: Float, val displayName: String) {
     SIZE_16(16f, "16 sp (Medium)"),
     SIZE_18(18f, "18 sp (Large)"),
     SIZE_20(20f, "20 sp (Extra Large)"),
-    SIZE_22(22f, "22 sp (Huge)");
+    SIZE_22(22f, "22 sp (Huge)"),
+    SIZE_24(24f, "24 sp (Larger)"),
+    SIZE_26(26f, "26 sp (Max)");
 
     companion object {
         fun fromNameOrDefault(name: String?): WidgetTextSize {
@@ -41,18 +43,25 @@ enum class WidgetTextSize(val spValue: Float, val displayName: String) {
                 WidgetTextSize.valueOf(name)
             } catch (_: Exception) {
                 when (name) {
+                    // Legacy enum name aliases
                     "TINY", "COMPACT", "SMALL" -> SIZE_12
-                    "STANDARD", "REGULAR" -> SIZE_14
-                    "MEDIUM" -> SIZE_16
-                    "LARGE" -> SIZE_18
-                    "EXTRA_LARGE" -> SIZE_20
-                    "HUGE" -> SIZE_22
-                    else -> SIZE_14
+                    "STANDARD", "REGULAR"      -> SIZE_14
+                    "MEDIUM"                   -> SIZE_16
+                    "LARGE"                    -> SIZE_18
+                    "EXTRA_LARGE"              -> SIZE_20
+                    "HUGE"                     -> SIZE_22
+                    // NoteWidgetTextSize names that may appear if prefs were ever cross-read;
+                    // map to nearest available Todo widget size instead of silently defaulting to SIZE_14
+                    "SIZE_28", "SIZE_30"       -> SIZE_26
+                    "SIZE_32", "SIZE_34",
+                    "SIZE_36"                  -> SIZE_26
+                    else                       -> SIZE_14
                 }
             }
         }
     }
 }
+
 
 data class WidgetConfig(
     val theme: WidgetTheme = WidgetTheme.DARK,
@@ -100,22 +109,32 @@ object WidgetConfigHelper {
 
     fun getConfig(context: Context, appWidgetId: Int): WidgetConfig {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val keySuffix = if (appWidgetId > 0 && prefs.contains(KEY_THEME + appWidgetId)) {
-            appWidgetId.toString()
-        } else if (prefs.contains(KEY_THEME + KEY_DEFAULT_SUFFIX)) {
-            KEY_DEFAULT_SUFFIX
-        } else {
-            appWidgetId.toString()
+
+        // Read each key independently: prefer widget-specific value, fall back to "default" suffix.
+        // Previously a single keySuffix was chosen based solely on whether KEY_THEME was present,
+        // causing all other keys (including text_size) to silently resolve to the wrong suffix
+        // whenever prefs were partially written (e.g. after a restore, OTA, or cache clear).
+        fun getStr(key: String, default: String): String {
+            if (appWidgetId > 0 && prefs.contains(key + appWidgetId)) {
+                return prefs.getString(key + appWidgetId, default) ?: default
+            }
+            return prefs.getString(key + KEY_DEFAULT_SUFFIX, default) ?: default
+        }
+        fun getInt(key: String, default: Int): Int {
+            if (appWidgetId > 0 && prefs.contains(key + appWidgetId)) {
+                return prefs.getInt(key + appWidgetId, default)
+            }
+            return prefs.getInt(key + KEY_DEFAULT_SUFFIX, default)
         }
 
-        val themeName = prefs.getString(KEY_THEME + keySuffix, WidgetTheme.DARK.name) ?: WidgetTheme.DARK.name
-        val accentName = prefs.getString(KEY_ACCENT + keySuffix, WidgetAccent.NEON_GREEN.name) ?: WidgetAccent.NEON_GREEN.name
-        val opacity = prefs.getInt(KEY_OPACITY + keySuffix, 95)
-        val corner = prefs.getInt(KEY_CORNER + keySuffix, 0)
-        val textSizeName = prefs.getString(KEY_TEXT_SIZE + keySuffix, WidgetTextSize.SIZE_14.name)
+        val themeName    = getStr(KEY_THEME,     WidgetTheme.DARK.name)
+        val accentName   = getStr(KEY_ACCENT,    WidgetAccent.NEON_GREEN.name)
+        val opacity      = getInt(KEY_OPACITY,   95)
+        val corner       = getInt(KEY_CORNER,    0)
+        val textSizeName = getStr(KEY_TEXT_SIZE, WidgetTextSize.SIZE_14.name)
 
-        val theme = runCatching { WidgetTheme.valueOf(themeName) }.getOrDefault(WidgetTheme.DARK)
-        val accent = runCatching { WidgetAccent.valueOf(accentName) }.getOrDefault(WidgetAccent.NEON_GREEN)
+        val theme    = runCatching { WidgetTheme.valueOf(themeName) }.getOrDefault(WidgetTheme.DARK)
+        val accent   = runCatching { WidgetAccent.valueOf(accentName) }.getOrDefault(WidgetAccent.NEON_GREEN)
         val textSize = WidgetTextSize.fromNameOrDefault(textSizeName)
 
         return WidgetConfig(theme, accent, opacity, corner, textSize)

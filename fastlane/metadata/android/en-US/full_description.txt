@@ -7,4 +7,4 @@ Features:
 - Detailed battery health and usage statistics.
 - Secure fallback mechanisms, biometric lock, and device administrator protections to prevent circumvention.
 
-This application is fully open source (GPLv3), contains zero analytics or tracking software, and operates 100% offline. All data is stored locally on your device.
+This application contains zero analytics or tracking software and operates 100% offline. All data is stored locally on your device.

@@ -58,6 +58,9 @@ fun VocabBriefContent(
     // Guarded to only execute once per card instance so scrolling chat list does not bump spaced repetition repeatedly
     LaunchedEffect(vocabJson, messageId) {
         val cardKey = messageId ?: vocabJson.hashCode().toString()
+        if (processedVocabCardIds.size > 200) {
+            processedVocabCardIds.clear()
+        }
         if (!processedVocabCardIds.add(cardKey)) {
             return@LaunchedEffect
         }
