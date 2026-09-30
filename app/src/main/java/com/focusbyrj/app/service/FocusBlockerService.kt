@@ -543,6 +543,8 @@ class FocusBlockerService : Service() {
                         } else {
                             startService(bubbleIntent)
                         }
+                    } else {
+                        sendBroadcast(Intent(BubbleService.ACTION_VERIFY_BUBBLE_STATE).setPackage(packageName))
                     }
                 }
             } catch (_: Exception) {}

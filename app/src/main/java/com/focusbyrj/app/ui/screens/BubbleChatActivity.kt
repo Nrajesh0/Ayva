@@ -375,13 +375,13 @@ class BubbleChatActivity : ComponentActivity() {
         com.focusbyrj.app.util.BubbleChatManager.markAllAsViewed(this)
         com.focusbyrj.app.util.BubbleChatManager.checkAndClearIfInactive(this)
         com.focusbyrj.app.util.BubbleChatManager.updateLastActivityTime(this)
-        sendBroadcast(Intent("com.focusbyrj.app.CHAT_OPENED"))
+        sendBroadcast(Intent("com.focusbyrj.app.CHAT_OPENED").setPackage(packageName))
     }
 
     override fun onPause() {
         super.onPause()
         com.focusbyrj.app.util.BubbleChatManager.updateLastActivityTime(this)
-        sendBroadcast(Intent("com.focusbyrj.app.CHAT_CLOSED"))
+        sendBroadcast(Intent("com.focusbyrj.app.CHAT_CLOSED").setPackage(packageName))
         if (isFinishing) {
             // Optional: any specific finish logic
         }

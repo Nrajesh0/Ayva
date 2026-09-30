@@ -85,6 +85,13 @@ class BubbleService : Service() {
         resumeBubble()
     }
 
+    private val permissionRestoreHandler = Handler(Looper.getMainLooper())
+    private val permissionRestoreRunnable = Runnable {
+        if (isHiddenForPermission) {
+            restoreFromPermission()
+        }
+    }
+
     private var taskObserverJob: Job? = null
     private var latestOverdueCount: Int = 0
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
@@ -94,6 +101,23 @@ class BubbleService : Service() {
         override fun onDisplayRemoved(displayId: Int) {}
         override fun onDisplayChanged(displayId: Int) {
             updateLandscapeVisibility(force = false)
+        }
+    }
+
+    private val systemReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON -> {
+                    if (isHiddenForPermission) {
+                        restoreFromPermission()
+                    }
+                    if (!isChatOpen && !isSnoozed(this@BubbleService)) {
+                        addBubbleToWindowManager()
+                        unpeekBubble(animate = false)
+                        resetHideTimer()
+                    }
+                }
+            }
         }
     }
 
@@ -107,6 +131,7 @@ class BubbleService : Service() {
         const val ACTION_SNOOZE_BUBBLE = "com.focusbyrj.app.SNOOZE_BUBBLE"
         const val ACTION_RESUME_BUBBLE = "com.focusbyrj.app.RESUME_BUBBLE"
         const val ACTION_SHOW_ALERT_PREVIEW = "com.focusbyrj.app.SHOW_ALERT_PREVIEW"
+        const val ACTION_VERIFY_BUBBLE_STATE = "com.focusbyrj.app.VERIFY_BUBBLE_STATE"
         const val EXTRA_ALERT_TEXT = "extra_alert_text"
 
         const val PREFS_KEY_SNOOZED_UNTIL = "bubble_snoozed_until"
@@ -121,11 +146,42 @@ class BubbleService : Service() {
         fun snooze(context: Context, durationMs: Long = DEFAULT_SNOOZE_DURATION_MS) {
             val prefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
             prefs.edit().putLong(PREFS_KEY_SNOOZED_UNTIL, System.currentTimeMillis() + durationMs).apply()
+
+            // Backup with AlarmManager so if the process dies while snoozed, it automatically resumes
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+            val resumeIntent = Intent(context, BubbleService::class.java).apply {
+                action = ACTION_RESUME_BUBBLE
+                setPackage(context.packageName)
+            }
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                PendingIntent.getForegroundService(context, 103, resumeIntent, flags)
+            } else {
+                PendingIntent.getService(context, 103, resumeIntent, flags)
+            }
+            try {
+                alarmManager?.set(android.app.AlarmManager.ELAPSED_REALTIME, android.os.SystemClock.elapsedRealtime() + durationMs, pendingIntent)
+            } catch (_: Exception) {}
         }
 
         fun clearSnooze(context: Context) {
             val prefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
             prefs.edit().remove(PREFS_KEY_SNOOZED_UNTIL).apply()
+
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+            val resumeIntent = Intent(context, BubbleService::class.java).apply {
+                action = ACTION_RESUME_BUBBLE
+                setPackage(context.packageName)
+            }
+            val flags = PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                PendingIntent.getForegroundService(context, 103, resumeIntent, flags)
+            } else {
+                PendingIntent.getService(context, 103, resumeIntent, flags)
+            }
+            if (pendingIntent != null) {
+                try { alarmManager?.cancel(pendingIntent) } catch (_: Exception) {}
+            }
         }
         
         fun startIfEnabled(context: Context, ignoreSnooze: Boolean = false) {
@@ -147,10 +203,8 @@ class BubbleService : Service() {
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action ?: return
-            if (action != Intent.ACTION_USER_PRESENT && action != Intent.ACTION_SCREEN_ON) {
-                if (intent.getPackage() != null && intent.getPackage() != packageName) {
-                    return
-                }
+            if (intent.getPackage() != null && intent.getPackage() != packageName) {
+                return
             }
             when (action) {
                 "com.focusbyrj.app.CHAT_CLOSED" -> {
@@ -200,6 +254,11 @@ class BubbleService : Service() {
                 ACTION_RESUME_BUBBLE -> {
                     resumeBubble()
                 }
+                ACTION_VERIFY_BUBBLE_STATE -> {
+                    if (!isChatOpen && !isSnoozed(this@BubbleService) && !isHiddenForPermission) {
+                        addBubbleToWindowManager()
+                    }
+                }
                 BubbleChatManager.ACTION_UNREAD_COUNT_CHANGED -> {
                     updateBadgeCount()
                 }
@@ -207,19 +266,12 @@ class BubbleService : Service() {
                     applyBubbleStyleSettings()
                 }
                 ACTION_SHOW_ALERT_PREVIEW -> {
-                    val alertText = intent?.getStringExtra(EXTRA_ALERT_TEXT)
+                    val alertText = intent.getStringExtra(EXTRA_ALERT_TEXT)
                     if (!alertText.isNullOrBlank()) {
                         clearSnooze(this@BubbleService)
                         addBubbleToWindowManager()
                         unpeekBubble(animate = false)
                         showNotificationPreviewPill(alertText)
-                    }
-                }
-                Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON -> {
-                    if (!isChatOpen && !isSnoozed(this@BubbleService) && !isHiddenForPermission) {
-                        addBubbleToWindowManager()
-                        unpeekBubble(animate = false)
-                        resetHideTimer()
                     }
                 }
             }
@@ -239,6 +291,11 @@ class BubbleService : Service() {
             ACTION_RESUME_BUBBLE -> resumeBubble()
             ACTION_HIDE_FOR_PERMISSION -> hideForPermission()
             ACTION_RESTORE_FROM_PERMISSION -> restoreFromPermission()
+            ACTION_VERIFY_BUBBLE_STATE -> {
+                if (!isChatOpen && !isSnoozed(this) && !isHiddenForPermission) {
+                    addBubbleToWindowManager()
+                }
+            }
             ACTION_SHOW_ALERT_PREVIEW -> {
                 val alertText = intent.getStringExtra(EXTRA_ALERT_TEXT)
                 if (!alertText.isNullOrBlank()) {
@@ -256,6 +313,9 @@ class BubbleService : Service() {
         super.onCreate()
         isRunning = true
         
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+
         updateNotification()
 
         val filter = IntentFilter().apply {
@@ -267,19 +327,27 @@ class BubbleService : Service() {
             addAction(ACTION_RESTORE_FROM_PERMISSION)
             addAction(ACTION_SNOOZE_BUBBLE)
             addAction(ACTION_RESUME_BUBBLE)
+            addAction(ACTION_VERIFY_BUBBLE_STATE)
             addAction(ACTION_SHOW_ALERT_PREVIEW)
             addAction(BubbleChatManager.ACTION_UNREAD_COUNT_CHANGED)
             addAction(ACTION_SETTINGS_CHANGED)
-            addAction(Intent.ACTION_USER_PRESENT)
-            addAction(Intent.ACTION_SCREEN_ON)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(receiver, filter)
         }
+
+        val systemFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(systemReceiver, systemFilter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(systemReceiver, systemFilter)
+        }
         
-        displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         displayManager.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         
         setupBubble()
@@ -310,9 +378,10 @@ class BubbleService : Service() {
         try {
             cv.visibility = View.GONE
             if (isCloseViewAdded || cv.windowToken != null || cv.isAttachedToWindow) {
-                windowManager.removeView(cv)
+                windowManager.removeViewImmediate(cv)
             }
         } catch (_: Exception) {
+            try { windowManager.removeView(cv) } catch (_: Exception) {}
         } finally {
             isCloseViewAdded = false
         }
@@ -325,10 +394,13 @@ class BubbleService : Service() {
         try {
             bubbleView?.let { bv ->
                 if (isBubbleAdded || bv.windowToken != null || bv.isAttachedToWindow) {
-                    windowManager.removeView(bv)
+                    windowManager.removeViewImmediate(bv)
                 }
             }
         } catch (_: Exception) {
+            try {
+                bubbleView?.let { bv -> windowManager.removeView(bv) }
+            } catch (_: Exception) {}
         } finally {
             isBubbleAdded = false
         }
@@ -336,7 +408,6 @@ class BubbleService : Service() {
 
     @Synchronized
     private fun addBubbleToWindowManager() {
-        if (isBubbleAdded) return
         if (isSnoozed(this)) return
         if (isHiddenForPermission) return
         val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
@@ -345,19 +416,28 @@ class BubbleService : Service() {
         val hideInLandscape = prefs.getBoolean("hide_in_landscape", true)
         if (hideInLandscape && isLandscapeMode()) return
 
+        val bv = bubbleView ?: return
+        val lp = layoutParams ?: return
+
         try {
-            bubbleView?.let { bv ->
-                val lp = layoutParams ?: return
-                if (!isBubbleAdded && bv.windowToken == null && !bv.isAttachedToWindow) {
-                    bv.visibility = View.VISIBLE
-                    bv.scaleX = 1f
-                    bv.scaleY = 1f
-                    bv.alpha = 1f
-                    windowManager.addView(bv, lp)
-                    isBubbleAdded = true
-                    updateBadgeCount()
-                    resetHideTimer()
-                }
+            if (bv.isAttachedToWindow || bv.windowToken != null) {
+                bv.visibility = View.VISIBLE
+                bv.scaleX = 1f
+                bv.scaleY = 1f
+                bv.alpha = 1f
+                windowManager.updateViewLayout(bv, lp)
+                isBubbleAdded = true
+                updateBadgeCount()
+                resetHideTimer()
+            } else {
+                bv.visibility = View.VISIBLE
+                bv.scaleX = 1f
+                bv.scaleY = 1f
+                bv.alpha = 1f
+                windowManager.addView(bv, lp)
+                isBubbleAdded = true
+                updateBadgeCount()
+                resetHideTimer()
             }
         } catch (e: Exception) {
             android.util.Log.e("BubbleService", "Error adding bubble view", e)
@@ -367,10 +447,13 @@ class BubbleService : Service() {
     private fun hideForPermission() {
         if (isHiddenForPermission) return
         isHiddenForPermission = true
+        permissionRestoreHandler.removeCallbacks(permissionRestoreRunnable)
+        permissionRestoreHandler.postDelayed(permissionRestoreRunnable, 45_000L) // Safety auto-restore after 45s
         removeBubbleFromWindowManager()
     }
 
     private fun restoreFromPermission() {
+        permissionRestoreHandler.removeCallbacks(permissionRestoreRunnable)
         if (!isHiddenForPermission) return
         isHiddenForPermission = false
         if (!isSnoozed(this)) {
@@ -404,21 +487,30 @@ class BubbleService : Service() {
         updateLandscapeVisibility(force = true)
     }
 
+    private fun getRealScreenBounds(): android.graphics.Rect {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            windowManager.currentWindowMetrics.bounds
+        } else {
+            @Suppress("DEPRECATION")
+            val display = windowManager.defaultDisplay
+            val size = android.graphics.Point()
+            display.getRealSize(size)
+            android.graphics.Rect(0, 0, size.x, size.y)
+        }
+    }
+
     private fun isLandscapeMode(): Boolean {
-        val config = resources.configuration
-        if (config.orientation == Configuration.ORIENTATION_LANDSCAPE) return true
-        val metrics = resources.displayMetrics
-        if (metrics.widthPixels > metrics.heightPixels) return true
-        return false
+        val bounds = getRealScreenBounds()
+        return bounds.width() > bounds.height()
     }
 
     private fun updateLandscapeVisibility(force: Boolean = false) {
         val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
         val hideInLandscape = prefs.getBoolean("hide_in_landscape", true)
         val isLandscape = isLandscapeMode()
-        val displayMetrics = resources.displayMetrics
-        val currentWidth = displayMetrics.widthPixels
-        val currentHeight = displayMetrics.heightPixels
+        val bounds = getRealScreenBounds()
+        val currentWidth = bounds.width()
+        val currentHeight = bounds.height()
 
         val orientationChanged = lastIsLandscape != isLandscape
         val dimensionsChanged = lastScreenWidth != currentWidth || lastScreenHeight != currentHeight
@@ -629,8 +721,9 @@ class BubbleService : Service() {
                         val closeCenterY = screenHeight - (40 * displayMetrics.density).toInt() - cSize / 2
                         
                         val dist = Math.hypot((bubbleCenterX - closeCenterX).toDouble(), (bubbleCenterY - closeCenterY).toDouble())
+                        val dismissThreshold = cSize * 1.15
                         
-                        if (dist < cSize * 2.0) {
+                        if (dist < dismissThreshold) {
                             (closeView?.background as? GradientDrawable)?.setColor(android.graphics.Color.parseColor("#FF5252"))
                             closeView?.scaleX = 1.15f
                             closeView?.scaleY = 1.15f
@@ -668,8 +761,9 @@ class BubbleService : Service() {
                         val closeCenterY = screenHeight - (40 * displayMetrics.density).toInt() - cSize / 2
                         
                         val dist = Math.hypot((bubbleCenterX - closeCenterX).toDouble(), (bubbleCenterY - closeCenterY).toDouble())
+                        val dismissThreshold = cSize * 1.15
                         
-                        if (dist < cSize * 2.0) {
+                        if (dist < dismissThreshold) {
                             // Dragged to dismiss with animated exit
                             dismissBubbleWithAnimation()
                             return@setOnTouchListener true
@@ -1151,7 +1245,12 @@ class BubbleService : Service() {
         val restartServiceIntent = Intent(applicationContext, BubbleService::class.java).also {
             it.setPackage(packageName)
         }
-        val restartServicePendingIntent = android.app.PendingIntent.getService(this, 1, restartServiceIntent, android.app.PendingIntent.FLAG_ONE_SHOT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        val flags = PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+        val restartServicePendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            PendingIntent.getForegroundService(this, 1, restartServiceIntent, flags)
+        } else {
+            PendingIntent.getService(this, 1, restartServiceIntent, flags)
+        }
         val alarmService = applicationContext.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
         alarmService?.set(android.app.AlarmManager.ELAPSED_REALTIME, android.os.SystemClock.elapsedRealtime() + 1000, restartServicePendingIntent)
     }
@@ -1232,28 +1331,36 @@ class BubbleService : Service() {
         springXAnim?.cancel()
         hideHandler.removeCallbacks(hideRunnable)
         snoozeHandler.removeCallbacks(snoozeExpiredRunnable)
+        permissionRestoreHandler.removeCallbacks(permissionRestoreRunnable)
         previewDismissHandler.removeCallbacks(previewDismissRunnable)
         kotlin.runCatching { unregisterReceiver(receiver) }
+        kotlin.runCatching { unregisterReceiver(systemReceiver) }
         try {
             displayManager.unregisterDisplayListener(displayListener)
         } catch (_: Exception) {}
         previewPillView?.let {
-            try { windowManager.removeView(it) } catch (e: Exception) {}
+            try { windowManager.removeViewImmediate(it) } catch (e: Exception) {
+                try { windowManager.removeView(it) } catch (_: Exception) {}
+            }
         }
         bubbleView?.let {
             try {
                 if (isBubbleAdded || it.windowToken != null || it.isAttachedToWindow) {
-                    windowManager.removeView(it)
+                    windowManager.removeViewImmediate(it)
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                try { windowManager.removeView(it) } catch (_: Exception) {}
+            }
             isBubbleAdded = false
         }
         closeView?.let {
             try {
                 if (isCloseViewAdded || it.windowToken != null || it.isAttachedToWindow) {
-                    windowManager.removeView(it)
+                    windowManager.removeViewImmediate(it)
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                try { windowManager.removeView(it) } catch (_: Exception) {}
+            }
             isCloseViewAdded = false
         }
     }
