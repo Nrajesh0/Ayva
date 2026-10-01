@@ -84,7 +84,6 @@ object BlockOverlayManager {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
                 WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_SECURE,
                 PixelFormat.TRANSLUCENT
             ).apply {
@@ -134,9 +133,9 @@ object BlockOverlayManager {
             }
 
             val totalSoftLockSeconds = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
-                .getInt("soft_lock_duration", 10)
+                .getInt("soft_lock_duration", 10).coerceIn(5, 120)
             val unlockMins = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
-                .getInt("soft_unlock_duration", 5)
+                .getInt("soft_unlock_duration", 5).coerceIn(1, 60)
 
             val displayedQuote = FocusQuotes.getQuoteOrDefault(quote)
             timeLeft = if (isHardMode) 0 else totalSoftLockSeconds
@@ -379,7 +378,7 @@ object BlockOverlayManager {
                                 setOnClickListener {
                                     com.focusbyrj.app.util.FocusEconomyManager.applySoftUnlockPenalty()
                                     TemporaryUnlockManager.grantUnlock(context, packageName, unlockMins)
-                                    hideOverlay()
+                                    hideOverlay(context)
                                 }
                             }
                             dynamicActionLayout.addView(openBtn, LinearLayout.LayoutParams(
@@ -419,7 +418,7 @@ object BlockOverlayManager {
             windowManager?.addView(overlayView, params)
             true
         } catch (e: Exception) {
-            hideOverlay()
+            hideOverlay(context)
             false
         }
     }
@@ -445,8 +444,12 @@ object BlockOverlayManager {
             countdownRunnable?.let { handler.removeCallbacks(it) }
             countdownRunnable = null
             val viewToRemove = overlayView
-            if (viewToRemove != null && (viewToRemove.isAttachedToWindow || viewToRemove.windowToken != null)) {
-                windowManager?.removeViewImmediate(viewToRemove)
+            if (viewToRemove != null) {
+                try {
+                    windowManager?.removeViewImmediate(viewToRemove)
+                } catch (_: Exception) {
+                    try { windowManager?.removeView(viewToRemove) } catch (_: Exception) {}
+                }
             }
         } catch (e: Exception) {
             // Ignore

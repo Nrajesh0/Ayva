@@ -51,8 +51,9 @@ data class NoteEntity(
         try {
             val jsonArray = JSONArray(imageUrisJson)
             for (i in 0 until jsonArray.length()) {
-                val uri = jsonArray.getString(i).trim()
-                if (uri.isNotEmpty() && !list.contains(uri)) {
+                if (jsonArray.isNull(i)) continue
+                val uri = jsonArray.optString(i, "").trim()
+                if (uri.isNotEmpty() && uri != "null" && !list.contains(uri)) {
                     list.add(uri)
                 }
             }
@@ -66,8 +67,9 @@ data class NoteEntity(
         try {
             val jsonArray = JSONArray(audioUrisJson)
             for (i in 0 until jsonArray.length()) {
-                val uri = jsonArray.getString(i).trim()
-                if (uri.isNotEmpty() && !list.contains(uri)) {
+                if (jsonArray.isNull(i)) continue
+                val uri = jsonArray.optString(i, "").trim()
+                if (uri.isNotEmpty() && uri != "null" && !list.contains(uri)) {
                     list.add(uri)
                 }
             }
@@ -80,7 +82,7 @@ data class NoteEntity(
         try {
             val jsonArray = JSONArray(checklistJson)
             for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
+                val obj = jsonArray.optJSONObject(i) ?: continue
                 list.add(
                     ChecklistItem(
                         id = obj.optString("id", UUID.randomUUID().toString()),
@@ -108,8 +110,9 @@ data class NoteEntity(
         try {
             val jsonArray = JSONArray(labelsJson)
             for (i in 0 until jsonArray.length()) {
-                val label = jsonArray.getString(i).trim()
-                if (label.isNotEmpty() && !list.contains(label)) {
+                if (jsonArray.isNull(i)) continue
+                val label = jsonArray.optString(i, "").trim()
+                if (label.isNotEmpty() && label != "null" && !list.contains(label)) {
                     list.add(label)
                 }
             }
@@ -201,7 +204,7 @@ data class ChecklistItem(
             try {
                 val jsonArray = JSONArray(json)
                 for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
+                    val obj = jsonArray.optJSONObject(i) ?: continue
                     list.add(
                         ChecklistItem(
                             id = obj.optString("id", UUID.randomUUID().toString()),

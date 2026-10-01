@@ -44,7 +44,11 @@ data class DrillQuestionResult(
             val opts = mutableListOf<String>()
             if (optsArr != null) {
                 for (j in 0 until optsArr.length()) {
-                    opts.add(optsArr.getString(j))
+                    if (optsArr.isNull(j)) continue
+                    val opt = optsArr.optString(j, "").trim()
+                    if (opt.isNotEmpty() && opt != "null") {
+                        opts.add(opt)
+                    }
                 }
             }
             val status = obj.optString("status", "unattempted")
@@ -58,7 +62,7 @@ data class DrillQuestionResult(
                 }
             }
             val accuracy = if (obj.has("accuracyPct")) {
-                obj.optInt("accuracyPct", 80)
+                obj.optInt("accuracyPct", 80).coerceIn(0, 100)
             } else {
                 when (status) {
                     "correct" -> 75 + (index * 3) % 20
@@ -162,7 +166,7 @@ data class DrillSummary(
 
                 if (qArr != null) {
                     for (i in 0 until count) {
-                        val qObj = qArr.getJSONObject(i)
+                        val qObj = qArr.optJSONObject(i) ?: continue
                         questionsList.add(DrillQuestionResult.fromJson(qObj, avgSec, i))
                     }
                 }

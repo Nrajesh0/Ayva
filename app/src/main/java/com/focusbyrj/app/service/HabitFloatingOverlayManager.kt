@@ -798,34 +798,36 @@ object HabitFloatingOverlayManager {
                 .setListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
                         try {
-                            if (card.isAttachedToWindow) {
-                                wm.removeViewImmediate(card)
-                            }
+                            wm.removeViewImmediate(card)
                         } catch (e: Exception) {
-                            Log.e(TAG, "Error removing overlay view", e)
+                            try { wm.removeView(card) } catch (_: Exception) {}
                         } finally {
-                            val ctx = card.context.applicationContext
-                            overlayCard = null
-                            isShowing = false
-                            currentHabitId = -1L
-                            UnifiedOverlayCoordinator.onOverlayDismissed(ctx)
+                            if (overlayCard === card) {
+                                val ctx = card.context.applicationContext
+                                overlayCard = null
+                                isShowing = false
+                                currentHabitId = -1L
+                                UnifiedOverlayCoordinator.onOverlayDismissed(ctx)
+                            }
                         }
                     }
                 })
                 .start()
         } else {
+            card.animate().cancel()
+            card.animate().setListener(null)
             try {
-                if (card.isAttachedToWindow) {
-                    wm.removeViewImmediate(card)
-                }
+                wm.removeViewImmediate(card)
             } catch (e: Exception) {
-                Log.e(TAG, "Error removing overlay view", e)
+                try { wm.removeView(card) } catch (_: Exception) {}
             } finally {
-                val ctx = card.context.applicationContext
-                overlayCard = null
-                isShowing = false
-                currentHabitId = -1L
-                UnifiedOverlayCoordinator.onOverlayDismissed(ctx)
+                if (overlayCard === card || overlayCard == null) {
+                    val ctx = card.context.applicationContext
+                    overlayCard = null
+                    isShowing = false
+                    currentHabitId = -1L
+                    UnifiedOverlayCoordinator.onOverlayDismissed(ctx)
+                }
             }
         }
     }

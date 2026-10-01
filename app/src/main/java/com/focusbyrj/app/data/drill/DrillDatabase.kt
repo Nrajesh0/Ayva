@@ -77,7 +77,9 @@ object DrillSessionRepository {
         }
     )
     private var database: DrillDatabase? = null
+    private val repoScope = CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
 
+    @Synchronized
     fun init(context: Context) {
         if (database == null) {
             database = DrillDatabase.getDatabase(context)
@@ -91,7 +93,7 @@ object DrillSessionRepository {
             init(ctx)
         }
         database?.let { db ->
-            CoroutineScope(Dispatchers.IO).launch {
+            repoScope.launch {
                 try {
                     val entity = DrillSessionEntity(
                         sessionId = summary.sessionId,
@@ -131,7 +133,7 @@ object DrillSessionRepository {
             memoryCache[sessionId] = existing.copy(isClaimed = true)
         }
         database?.let { db ->
-            CoroutineScope(Dispatchers.IO).launch {
+            repoScope.launch {
                 try {
                     db.drillSessionDao().markClaimed(sessionId)
                 } catch (_: Exception) {}

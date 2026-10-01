@@ -7,25 +7,32 @@ import android.provider.Settings
 
 object DndHelper {
     fun hasDndPermission(context: Context): Boolean {
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        return notificationManager.isNotificationPolicyAccessGranted
+        return kotlin.runCatching {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            notificationManager?.isNotificationPolicyAccessGranted == true
+        }.getOrDefault(false)
     }
 
     fun requestDndPermission(context: Context) {
-        val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        kotlin.runCatching {
+            val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }
     }
 
     fun setDndMode(context: Context, enable: Boolean) {
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (notificationManager.isNotificationPolicyAccessGranted) {
-            val filter = if (enable) {
-                NotificationManager.INTERRUPTION_FILTER_NONE
-            } else {
-                NotificationManager.INTERRUPTION_FILTER_ALL
+        kotlin.runCatching {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            if (notificationManager?.isNotificationPolicyAccessGranted == true) {
+                val filter = if (enable) {
+                    NotificationManager.INTERRUPTION_FILTER_NONE
+                } else {
+                    NotificationManager.INTERRUPTION_FILTER_ALL
+                }
+                notificationManager.setInterruptionFilter(filter)
             }
-            notificationManager.setInterruptionFilter(filter)
         }
     }
 }

@@ -53,6 +53,7 @@ fun CameraQrScannerDialog(
     }
 
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    val hasScanned = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
     DisposableEffect(lifecycleOwner) {
@@ -126,13 +127,16 @@ fun CameraQrScannerDialog(
                                     try {
                                         val result = reader.decode(bitmap)
                                         if (result != null && result.text.isNotBlank()) {
-                                            cameraProvider.unbindAll()
-                                            executor.execute {
-                                                onQrScanned(result.text)
+                                            if (hasScanned.compareAndSet(false, true)) {
+                                                cameraProvider.unbindAll()
+                                                executor.execute {
+                                                    onQrScanned(result.text)
+                                                }
                                             }
                                         }
-                                    } catch (_: NotFoundException) {
+                                    } catch (_: Exception) {
                                     } finally {
+                                        reader.reset()
                                         imageProxy.close()
                                     }
                                 }

@@ -94,6 +94,7 @@ object UsageBreakTracker {
             screenSessionStartTime = now
             trackedAppStartTime = now
             trackedAppLastActiveTime = now
+            trackedAppPackage = null
             diversionAppPackage = null
             diversionStartTime = 0L
         }
@@ -191,7 +192,7 @@ object UsageBreakTracker {
                 AyvaAlertCategory.BEDTIME_SLEEP.isEnabled(context)
             ) {
                 val lastAlert = prefs.getSafeLong(KEY_LAST_NIGHT_ALERT_TIME, 0L)
-                if (now - lastAlert >= ALERT_COOLDOWN_MS) {
+                if (lastAlert > now || now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val appName = getAppFriendlyName(context, trackedAppPackage)
                     val message = AyvaDialogueEngine.getNightSleepSuggestion(context, appName)
                     sendBubbleReminder(context, message)
@@ -202,21 +203,23 @@ object UsageBreakTracker {
             // Respect the EXCESSIVE_USAGE alert toggle — skip both day rules if the user disabled it
             val screenTimeAlertsEnabled = AyvaAlertCategory.EXCESSIVE_USAGE.isEnabled(context)
 
+            var alertTriggered = false
             // Day rule 1: 90 continuous minutes on a single app (with grace period for quick messages)
             if (screenTimeAlertsEnabled && continuousAppUsageMs >= DAY_APP_USAGE_THRESHOLD_MS) {
                 val lastAlert = prefs.getSafeLong(KEY_LAST_DAY_SINGLE_ALERT_TIME, 0L)
-                if (now - lastAlert >= ALERT_COOLDOWN_MS) {
+                if (lastAlert > now || now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val appName = getAppFriendlyName(context, trackedAppPackage)
                     val message = AyvaDialogueEngine.getDaySingleAppBreakSuggestion(context, appName)
                     sendBubbleReminder(context, message)
                     prefs.edit().putLong(KEY_LAST_DAY_SINGLE_ALERT_TIME, now).apply()
+                    alertTriggered = true
                 }
             }
 
             // Day rule 2: 2 continuous hours (120 mins) total screen time across any apps
-            if (screenTimeAlertsEnabled && continuousTotalScreenMs >= DAY_TOTAL_SCREEN_THRESHOLD_MS) {
+            if (!alertTriggered && screenTimeAlertsEnabled && continuousTotalScreenMs >= DAY_TOTAL_SCREEN_THRESHOLD_MS) {
                 val lastAlert = prefs.getSafeLong(KEY_LAST_DAY_TOTAL_ALERT_TIME, 0L)
-                if (now - lastAlert >= ALERT_COOLDOWN_MS) {
+                if (lastAlert > now || now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val message = AyvaDialogueEngine.getDayTotalScreenBreakSuggestion(context)
                     sendBubbleReminder(context, message)
                     prefs.edit().putLong(KEY_LAST_DAY_TOTAL_ALERT_TIME, now).apply()

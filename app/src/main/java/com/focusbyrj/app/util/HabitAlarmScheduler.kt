@@ -128,7 +128,7 @@ object HabitAlarmScheduler {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val habits = habitRepo.getAllActiveHabits().firstOrNull() ?: emptyList()
-                habits.filter { it.isReminderEnabled && !it.isArchived }.forEach { habit ->
+                habits.forEach { habit ->
                     scheduleHabitReminder(context, habit)
                 }
             } catch (e: Exception) {
@@ -150,8 +150,8 @@ object HabitAlarmScheduler {
         return when (habit.type) {
             HabitType.ONCE_DAILY -> {
                 val cal = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, habit.fixedReminderHour)
-                    set(Calendar.MINUTE, habit.fixedReminderMinute)
+                    set(Calendar.HOUR_OF_DAY, habit.fixedReminderHour.coerceIn(0, 23))
+                    set(Calendar.MINUTE, habit.fixedReminderMinute.coerceIn(0, 59))
                     set(Calendar.SECOND, 0)
                     set(Calendar.MILLISECOND, 0)
                 }
@@ -163,22 +163,22 @@ object HabitAlarmScheduler {
 
             HabitType.INTERVAL_WINDOW -> {
                 val todayStartCal = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, habit.windowStartHour)
-                    set(Calendar.MINUTE, habit.windowStartMinute)
+                    set(Calendar.HOUR_OF_DAY, habit.windowStartHour.coerceIn(0, 23))
+                    set(Calendar.MINUTE, habit.windowStartMinute.coerceIn(0, 59))
                     set(Calendar.SECOND, 0)
                     set(Calendar.MILLISECOND, 0)
                 }
 
                 val todayEndCal = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, habit.windowEndHour)
-                    set(Calendar.MINUTE, habit.windowEndMinute)
+                    set(Calendar.HOUR_OF_DAY, habit.windowEndHour.coerceIn(0, 23))
+                    set(Calendar.MINUTE, habit.windowEndMinute.coerceIn(0, 59))
                     set(Calendar.SECOND, 0)
                     set(Calendar.MILLISECOND, 0)
                 }
 
                 val intervalMs = (habit.totalIntervalMinutes.coerceAtLeast(5) * 60 * 1000L)
                 val isOvernight = habit.windowEndHour < habit.windowStartHour ||
-                        (habit.windowEndHour == habit.windowStartHour && habit.windowEndMinute <= habit.windowStartMinute)
+                        (habit.windowEndHour == habit.windowStartHour && habit.windowEndMinute < habit.windowStartMinute)
 
                 // If daily goal is already achieved today, roll over to the next day's active window start
                 if (isGoalCompletedToday) {
@@ -190,8 +190,8 @@ object HabitAlarmScheduler {
                             if (now >= todayStartCal.timeInMillis) {
                                 add(Calendar.DAY_OF_YEAR, 1)
                             }
-                            set(Calendar.HOUR_OF_DAY, habit.windowStartHour)
-                            set(Calendar.MINUTE, habit.windowStartMinute)
+                            set(Calendar.HOUR_OF_DAY, habit.windowStartHour.coerceIn(0, 23))
+                            set(Calendar.MINUTE, habit.windowStartMinute.coerceIn(0, 59))
                             set(Calendar.SECOND, 0)
                             set(Calendar.MILLISECOND, 0)
                         }
@@ -234,7 +234,7 @@ object HabitAlarmScheduler {
                     when {
                         // Currently in the early morning portion of the window (e.g. 03:00, before 06:00)
                         now <= todayEndCal.timeInMillis -> {
-                            val nextInterval = now + intervalMs
+                            val nextInterval = (anchorTime + intervalMs).coerceAtLeast(now + 60_000L)
                             if (nextInterval <= todayEndCal.timeInMillis) {
                                 nextInterval
                             } else {
@@ -251,7 +251,7 @@ object HabitAlarmScheduler {
                             val tomorrowEndCal = (todayEndCal.clone() as Calendar).apply {
                                 add(Calendar.DAY_OF_YEAR, 1)
                             }
-                            val nextInterval = now + intervalMs
+                            val nextInterval = (anchorTime + intervalMs).coerceAtLeast(now + 60_000L)
                             if (nextInterval <= tomorrowEndCal.timeInMillis) {
                                 nextInterval
                             } else {

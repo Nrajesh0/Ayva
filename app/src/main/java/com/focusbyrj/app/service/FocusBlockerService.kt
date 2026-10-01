@@ -129,14 +129,22 @@ class FocusBlockerService : Service() {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
         }
-        registerReceiver(screenReceiver, filter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(screenReceiver, filter)
+        }
 
         val pkgFilter = android.content.IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_REMOVED)
             addAction(Intent.ACTION_PACKAGE_FULLY_REMOVED)
             addDataScheme("package")
         }
-        registerReceiver(packageReceiver, pkgFilter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(packageReceiver, pkgFilter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(packageReceiver, pkgFilter)
+        }
 
         scope.launch {
             (application as? com.focusbyrj.app.FocusApplication)?.repository?.cleanUninstalledPackages(packageManager)
@@ -434,7 +442,7 @@ class FocusBlockerService : Service() {
         }
     }
 
-    private val homePackages = mutableSetOf<String>()
+    private val homePackages = java.util.concurrent.CopyOnWriteArraySet<String>()
     private var lastHomePackagesCheck = 0L
 
     private fun refreshHomePackages() {
@@ -544,7 +552,7 @@ class FocusBlockerService : Service() {
                             startService(bubbleIntent)
                         }
                     } else {
-                        sendBroadcast(Intent(BubbleService.ACTION_VERIFY_BUBBLE_STATE).setPackage(packageName))
+                        sendBroadcast(Intent(BubbleService.ACTION_VERIFY_BUBBLE_STATE).setPackage(this@FocusBlockerService.packageName))
                     }
                 }
             } catch (_: Exception) {}
@@ -679,8 +687,8 @@ class FocusBlockerService : Service() {
         lastTrackedPackage = null
         lastUsageQueryTime = 0L
         UsageBreakTracker.reset()
-        val prefs = applicationContext.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("isSessionActive", false).apply()
+        // Do NOT wipe isSessionActive here; focus sessions and locks must persist
+        // across service recreations or low memory kills until explicitly ended by user or timer.
         com.focusbyrj.app.util.DndHelper.setDndMode(applicationContext, false)
         kotlin.runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

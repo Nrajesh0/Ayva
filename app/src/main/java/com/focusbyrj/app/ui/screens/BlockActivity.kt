@@ -70,26 +70,15 @@ class BlockActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
         val filter = android.content.IntentFilter("com.focusbyrj.app.CLOSE_BLOCK_SCREEN")
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(closeReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(closeReceiver, filter)
         }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        try {
-            unregisterReceiver(closeReceiver)
-        } catch (e: Exception) {}
-    }
-
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
         
         val prefs = getSharedPreferences("focus_prefs", android.content.Context.MODE_PRIVATE)
         val secureRecents = prefs.getBoolean("secure_recents", true)
@@ -174,6 +163,13 @@ class BlockActivity : ComponentActivity() {
         }
         moveTaskToBack(true)
         finish()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            unregisterReceiver(closeReceiver)
+        } catch (_: Exception) {}
     }
 }
 

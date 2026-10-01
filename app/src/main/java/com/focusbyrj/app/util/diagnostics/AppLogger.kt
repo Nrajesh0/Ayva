@@ -60,7 +60,7 @@ object AppLogger {
     private val JWT_REGEX = Regex("Bearer\\s+[A-Za-z0-9-_=]+\\.[A-Za-z0-9-_=]+\\.?[A-Za-z0-9-_.+/=]*")
     private val RAW_JWT_REGEX = Regex("eyJ[A-Za-z0-9-_=]{20,}\\.[A-Za-z0-9-_=]{20,}\\.?[A-Za-z0-9-_.+/=]*")
     private val BIP39_MNEMONIC_REGEX = Regex("\\b(?:[a-z]{3,8}\\s+){11,23}[a-z]{3,8}\\b", RegexOption.IGNORE_CASE)
-    private val PIN_OR_SECRET_REGEX = Regex("(?i)(\\b(?:passcode|pin|password|secret|apikey|mnemonic)\\b[\"':=\\s]+)([A-Za-z0-9!@#\$%^&*()_+=-]{3,})")
+    private val PIN_OR_SECRET_REGEX = Regex("(?i)(\\b(?:passcode|pin|password|secret|apikey|api_key|access_token|auth_token|token|passphrase|mnemonic)\\b[\"':=\\s]+)([A-Za-z0-9!@#\$%^&*()_+=-]{3,})")
 
     fun init(context: Context) {
         val app = context.applicationContext
@@ -111,7 +111,7 @@ object AppLogger {
         val threadName = Thread.currentThread().name
 
         val logLine = if (throwable != null) {
-            val stackTrace = Log.getStackTraceString(throwable)
+            val stackTrace = sanitize(Log.getStackTraceString(throwable))
             "[$timestamp] [T:$threadName] [$level] [$tag]: $sanitized\n$stackTrace"
         } else {
             "[$timestamp] [T:$threadName] [$level] [$tag]: $sanitized"

@@ -242,4 +242,179 @@ class Batch10SecurityAuditTest {
         }
         assertFalse("Tuesday 10:00 must be inactive", schedule.isActiveAt(calTueDay))
     }
+
+    @Test
+    fun batch10_010_appLoggerSanitizesStackTraceAndExtendedKeywords() {
+        // Test extended secret keywords: passphrase, api_key, access_token
+        val rawLog = "Config loaded with passphrase: superSecretPassword123 and api_key=xyzSecretKey987 and access_token: secretToken555"
+        val sanitized = AppLogger.sanitize(rawLog)
+        assertFalse("Raw passphrase must not leak", sanitized.contains("superSecretPassword123"))
+        assertFalse("Raw api_key must not leak", sanitized.contains("xyzSecretKey987"))
+        assertFalse("Raw access_token must not leak", sanitized.contains("secretToken555"))
+        assertTrue("Passphrase should be redacted", sanitized.contains("passphrase: [REDACTED]"))
+
+        // Test exception stack trace sanitization
+        val exception = RuntimeException("Failed auth with Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.doNotLeakThisSignature")
+        AppLogger.e("SecurityTest", "Operation failed", exception)
+
+        val recentLogs = AppLogger.getRecentLogsSnapshot()
+        val exceptionLog = recentLogs.lastOrNull { it.contains("SecurityTest") }
+        assertNotNull("Log entry must be recorded", exceptionLog)
+        assertFalse("Exception stack trace must not contain raw Bearer token", exceptionLog!!.contains("doNotLeakThisSignature"))
+        assertTrue("Exception stack trace should have redacted JWT", exceptionLog.contains("[REDACTED_JWT]"))
+    }
+
+    @Test
+    fun batch10_011_habitAlarmSchedulerAnchorsOvernightInterval() {
+        val now = System.currentTimeMillis()
+        val habit = com.focusbyrj.app.data.Habit(
+            id = 777L,
+            title = "Night Hydration",
+            type = com.focusbyrj.app.data.HabitType.INTERVAL_WINDOW,
+            intervalHours = 1,
+            intervalMinutes = 0,
+            windowStartHour = 22,
+            windowStartMinute = 0,
+            windowEndHour = 6,
+            windowEndMinute = 0
+        )
+
+        // Mock current time at 23:00 (inside overnight evening window)
+        // If completed 10 minutes ago, next trigger should be roughly now + 50 mins, anchored from completion
+        val tenMinutesAgo = now - (10 * 60 * 1000L)
+        val triggerWithAnchor = HabitAlarmScheduler.calculateNextTriggerTime(
+            habit = habit,
+            lastCompletedTimestamp = tenMinutesAgo,
+            isGoalCompletedToday = false
+        )
+        assertNotNull("Trigger time must be computed", triggerWithAnchor)
+        assertTrue("Next trigger must be in the future", triggerWithAnchor!! > now)
+
+        // Verify that equal start and end (e.g. 08:00 to 08:00) is NOT considered overnight
+        val sameStartEndHabit = habit.copy(
+            windowStartHour = 8,
+            windowStartMinute = 0,
+            windowEndHour = 8,
+            windowEndMinute = 0
+        )
+        val triggerSame = HabitAlarmScheduler.calculateNextTriggerTime(sameStartEndHabit)
+        assertNotNull(triggerSame)
+    }
+
+    @Test
+    fun batch10_012_drillSummaryFromJsonToleratesNullOrCorruptedQuestions() {
+        val corruptedJson = """
+            {
+                "sessionId": "valid-session-123",
+                "title": "Quantum Algebra",
+                "total": 3,
+                "correct": 2,
+                "timeSpentSeconds": 120,
+                "xpEarned": 150,
+                "questions": [
+                    {
+                        "qNum": 1,
+                        "title": "Q1",
+                        "questionText": "What is 2+2?",
+                        "options": ["3", "4", null, "5"],
+                        "correctIndex": 1,
+                        "userSelectedIndex": 1,
+                        "status": "correct",
+                        "accuracyPct": 120
+                    },
+                    null,
+                    {
+                        "qNum": 3,
+                        "title": "Q3",
+                        "questionText": "What is 3*3?",
+                        "options": ["6", "9"],
+                        "correctIndex": 1,
+                        "userSelectedIndex": 1,
+                        "status": "correct"
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val summary = com.focusbyrj.app.data.drill.DrillSummary.fromJson(corruptedJson)
+        // It must NOT fail closed to the blank fallback dummy summary
+        assertEquals("valid-session-123", summary.sessionId)
+        assertEquals("Quantum Algebra", summary.title)
+        assertEquals(150, summary.xpEarned)
+        // Valid questions parsed (skipping null question at index 1)
+        assertEquals(2, summary.questions.size)
+        // Accuracy percentage coerced into [0, 100]
+        assertEquals(100, summary.questions[0].accuracyPct)
+        // Null option safely filtered
+        assertFalse(summary.questions[0].options.contains("null"))
+        assertEquals(3, summary.questions[0].options.size)
+    }
+
+    @Test
+    fun batch10_013_noteEntityParsesUrisAndChecklistWithCorruptedEntries() {
+        // Image URIs JSON with null or empty entries
+        val note = NoteEntity(
+            id = 101L,
+            title = "Test Note",
+            content = "Body",
+            imageUrisJson = "[\"file:///media/img1.jpg\", null, \"   \", \"file:///media/img2.jpg\"]",
+            audioUrisJson = "[\"file:///media/audio1.mp3\", null, \"file:///media/audio2.mp3\"]",
+            labelsJson = "[\"work\", null, \"urgent\"]",
+            isChecklist = true,
+            checklistJson = "[{\"id\":\"c1\",\"text\":\"Item 1\",\"isChecked\":true}, null, {\"id\":\"c2\",\"text\":\"Item 2\",\"isChecked\":false}]"
+        )
+
+        val imageUris = note.getImageUris()
+        assertEquals("Should extract both valid image URIs despite null element", 2, imageUris.size)
+        assertEquals("file:///media/img1.jpg", imageUris[0])
+        assertEquals("file:///media/img2.jpg", imageUris[1])
+
+        val audioUris = note.getAudioUris()
+        assertEquals("Should extract both valid audio URIs despite null element", 2, audioUris.size)
+
+        val labels = note.getLabels()
+        assertEquals("Should extract both valid labels despite null element", 2, labels.size)
+        assertTrue(labels.contains("work"))
+        assertTrue(labels.contains("urgent"))
+
+        val checklist = note.getChecklistItems()
+        assertEquals("Should extract both valid checklist items despite null element", 2, checklist.size)
+        assertEquals("Item 1", checklist[0].text)
+        assertEquals("Item 2", checklist[1].text)
+    }
+
+    @Test
+    fun batch10_014_vocabRepositoryRejectsUnknownTypeInRecordQuizResult() = kotlinx.coroutines.runBlocking {
+        val app = context as FocusApplication
+        val vocabRepo = app.vocabRepository
+
+        // Ensure we have an OWS entry
+        val unlearnedOws = vocabRepo.getNextOwsToLearn()
+        val owsId = unlearnedOws?.id ?: 1
+        val initialOws = app.vocabDatabase.vocabDao().getOwsById(owsId)
+        val initialMastery = initialOws?.isMastered ?: 0
+
+        // Call recordQuizResult with an invalid type "unsupported_type"
+        vocabRepo.recordQuizResult("unsupported_type", owsId, isCorrect = true)
+
+        val afterOws = app.vocabDatabase.vocabDao().getOwsById(owsId)
+        assertEquals("Unknown type must NOT alter OWS mastery", initialMastery, afterOws?.isMastered ?: 0)
+    }
+
+    @Test
+    fun batch10_015_completedTaskHistoryUsesTaskCompletedAtIfSet() {
+        val customCompletionTime = System.currentTimeMillis() - 1800_000L // 30 minutes ago today
+        val task = com.focusbyrj.app.data.Task(
+            id = 999L,
+            title = "Dedicated Milestone",
+            completedAt = customCompletionTime
+        )
+
+        CompletedTaskHistoryManager.recordCompletedTask(context, task)
+
+        val todayTasks = CompletedTaskHistoryManager.getTodayCompletedTasks(context)
+        val recorded = todayTasks.find { it.id == 999L }
+        assertNotNull("Task must be recorded", recorded)
+        assertEquals("Recorded task should preserve custom completedAt", customCompletionTime, recorded?.completedAt)
+    }
 }

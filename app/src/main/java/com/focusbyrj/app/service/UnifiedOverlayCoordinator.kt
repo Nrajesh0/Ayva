@@ -53,6 +53,7 @@ object UnifiedOverlayCoordinator {
     private var currentActiveItem: OverlayQueueItem? = null
     private val handler = Handler(Looper.getMainLooper())
     private var activeWatchdogRunnable: Runnable? = null
+    private var pendingAdvanceRunnable: Runnable? = null
 
     val isAnyOverlayShowing: Boolean
         get() = currentActiveItem != null || HabitFloatingOverlayManager.isShowing || TaskReminderOverlayManager.isShowing
@@ -98,6 +99,8 @@ object UnifiedOverlayCoordinator {
         }
     }
 
+    private const val MAX_QUEUE_SIZE = 10
+
     private fun handleEnqueue(context: Context, item: OverlayQueueItem) {
         if (isAnyOverlayShowing) {
             // Prevent duplicate entries in queue
@@ -116,6 +119,9 @@ object UnifiedOverlayCoordinator {
             }
 
             if (!isDuplicate) {
+                if (queue.size >= MAX_QUEUE_SIZE) {
+                    queue.removeFirst()
+                }
                 queue.addLast(item)
                 Log.d(TAG, "Overlay queued. Pending queue count: ${queue.size}")
             }
@@ -164,24 +170,39 @@ object UnifiedOverlayCoordinator {
     }
 
     fun onOverlayDismissed(context: Context) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post { onOverlayDismissed(context) }
+            return
+        }
         activeWatchdogRunnable?.let { handler.removeCallbacks(it) }
         activeWatchdogRunnable = null
-        handler.postDelayed({
+        pendingAdvanceRunnable?.let { handler.removeCallbacks(it) }
+        val advance = Runnable {
+            pendingAdvanceRunnable = null
             currentActiveItem = null
             if (queue.isNotEmpty()) {
                 val next = queue.removeFirst()
                 Log.d(TAG, "Displaying next queued overlay. Remaining: ${queue.size}")
                 presentItem(context, next)
             }
-        }, 280L)
+        }
+        pendingAdvanceRunnable = advance
+        handler.postDelayed(advance, 280L)
     }
 
     fun clearQueue() {
-        handler.post {
+        val action = Runnable {
             activeWatchdogRunnable?.let { handler.removeCallbacks(it) }
             activeWatchdogRunnable = null
+            pendingAdvanceRunnable?.let { handler.removeCallbacks(it) }
+            pendingAdvanceRunnable = null
             queue.clear()
             currentActiveItem = null
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action.run()
+        } else {
+            handler.post(action)
         }
     }
 }

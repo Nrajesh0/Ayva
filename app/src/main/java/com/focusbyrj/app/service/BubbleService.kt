@@ -39,6 +39,7 @@ import com.focusbyrj.app.util.BubbleChatManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -420,7 +421,7 @@ class BubbleService : Service() {
         val lp = layoutParams ?: return
 
         try {
-            if (bv.isAttachedToWindow || bv.windowToken != null) {
+            if (isBubbleAdded || bv.isAttachedToWindow || bv.windowToken != null) {
                 bv.visibility = View.VISIBLE
                 bv.scaleX = 1f
                 bv.scaleY = 1f
@@ -974,7 +975,6 @@ class BubbleService : Service() {
     private fun dismissPreviewPill(animated: Boolean) {
         previewDismissHandler.removeCallbacks(previewDismissRunnable)
         val pill = previewPillView ?: return
-        if (pill.windowToken == null || pill.visibility != View.VISIBLE) return
 
         if (animated) {
             val isLeft = ((layoutParams?.x ?: 0) + (30 * resources.displayMetrics.density)) < resources.displayMetrics.widthPixels / 2
@@ -987,15 +987,23 @@ class BubbleService : Service() {
                 .setDuration(200)
                 .withEndAction {
                     pill.visibility = View.GONE
-                    try { windowManager.removeView(pill) } catch (_: Exception) {}
-                    previewPillView = null
+                    try { windowManager.removeViewImmediate(pill) } catch (_: Exception) {
+                        try { windowManager.removeView(pill) } catch (_: Exception) {}
+                    }
+                    if (previewPillView === pill) {
+                        previewPillView = null
+                    }
                 }
                 .start()
         } else {
             pill.animate().cancel()
             pill.visibility = View.GONE
-            try { windowManager.removeView(pill) } catch (_: Exception) {}
-            previewPillView = null
+            try { windowManager.removeViewImmediate(pill) } catch (_: Exception) {
+                try { windowManager.removeView(pill) } catch (_: Exception) {}
+            }
+            if (previewPillView === pill) {
+                previewPillView = null
+            }
         }
     }
 
@@ -1232,10 +1240,14 @@ class BubbleService : Service() {
         dismissPreviewPill(animated = false)
         BubbleChatManager.clearUnread(this)
         updateBadgeCount(0)
-        val intent = Intent(this, BubbleChatActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        try {
+            val intent = Intent(this, BubbleChatActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("BubbleService", "Failed to start BubbleChatActivity", e)
         }
-        startActivity(intent)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -1328,7 +1340,9 @@ class BubbleService : Service() {
         super.onDestroy()
         isRunning = false
         taskObserverJob?.cancel()
+        serviceScope.cancel()
         springXAnim?.cancel()
+        peekAnimator?.cancel()
         hideHandler.removeCallbacks(hideRunnable)
         snoozeHandler.removeCallbacks(snoozeExpiredRunnable)
         permissionRestoreHandler.removeCallbacks(permissionRestoreRunnable)

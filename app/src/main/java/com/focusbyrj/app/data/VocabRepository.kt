@@ -60,7 +60,15 @@ class VocabRepository(val vocabDao: VocabDao) {
     // Quiz feedback loop: updates mastery and sets review priority
     suspend fun recordQuizResult(type: String, id: Int, isCorrect: Boolean) {
         val now = System.currentTimeMillis()
-        val isIdiom = type.trim().equals("idiom", ignoreCase = true)
+        val trimmedType = type.trim()
+        val isIdiom = trimmedType.equals("idiom", ignoreCase = true)
+        val isOws = trimmedType.equals("ows", ignoreCase = true)
+
+        if (!isIdiom && !isOws) {
+            android.util.Log.w("VocabRepository", "Unknown quiz result type: $type")
+            return
+        }
+
         if (isCorrect) {
             // Mastered on quiz success, refresh review timestamp
             if (isIdiom) {

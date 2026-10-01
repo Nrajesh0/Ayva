@@ -163,7 +163,7 @@ object TaskReminderOverlayManager {
         isPersistent: Boolean,
         openRescheduleInitially: Boolean
     ): Boolean {
-        hideOverlayDirect()
+        hideOverlayDirect(context)
 
         return try {
             val wm = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
@@ -742,23 +742,27 @@ object TaskReminderOverlayManager {
             true
         } catch (e: Exception) {
             Log.e(TAG, "Exception in tryShowOverlay", e)
-            hideOverlayDirect()
+            hideOverlayDirect(context)
             false
         }
     }
 
-    private fun hideOverlayDirect() {
-        var appContext: Context? = null
+    private fun hideOverlayDirect(fallbackContext: Context? = null) {
+        var appContext: Context? = fallbackContext?.applicationContext ?: fallbackContext
         try {
             val view = overlayView
             if (view != null && windowManager != null) {
-                appContext = view.context.applicationContext
+                if (appContext == null) {
+                    appContext = view.context.applicationContext
+                }
                 // Hide keyboard before removing the view to prevent ImeBackDispatcher errors
                 val imm = view.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
                 imm?.hideSoftInputFromWindow(view.windowToken, 0)
                 
-                if (view.isAttachedToWindow) {
-                    windowManager?.removeView(view)
+                try {
+                    windowManager?.removeViewImmediate(view)
+                } catch (e: Exception) {
+                    try { windowManager?.removeView(view) } catch (_: Exception) {}
                 }
             }
         } catch (e: Exception) {
@@ -771,9 +775,9 @@ object TaskReminderOverlayManager {
         }
     }
 
-    fun hideOverlay() {
+    fun hideOverlay(context: Context? = null) {
         Handler(Looper.getMainLooper()).post {
-            hideOverlayDirect()
+            hideOverlayDirect(context)
         }
     }
 }

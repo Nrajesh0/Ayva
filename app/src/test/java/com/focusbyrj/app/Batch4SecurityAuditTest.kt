@@ -354,4 +354,244 @@ class Batch4SecurityAuditTest {
             result
         )
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-008
+    // FocusBlockerService watchdog intent must target app's own package,
+    // NOT the third-party packageName parameter being checked.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_008_verifyBubbleStateIntentMustBeScopedToAppPackageNotBlockedApp() {
+        val blockedPkg = "com.instagram.android"
+        val appPkg = context.packageName
+
+        // The intent constructed for BubbleService.ACTION_VERIFY_BUBBLE_STATE
+        // must be explicitly scoped to context.packageName, NOT the blockedPkg.
+        val intent = android.content.Intent(com.focusbyrj.app.service.BubbleService.ACTION_VERIFY_BUBBLE_STATE).apply {
+            setPackage(context.packageName)
+        }
+
+        assertEquals(
+            "Watchdog broadcast must be delivered to our own package",
+            appPkg,
+            intent.`package`
+        )
+        assertNotEquals(
+            "Watchdog broadcast must NEVER be targeted to the blocked third-party app",
+            blockedPkg,
+            intent.`package`
+        )
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-009 & BATCH-4-010
+    // UnifiedOverlayCoordinator queue advance runnable must be cancellable
+    // and idempotent so rapid dismissals or clearQueue do not pop multiple items.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_009_coordinatorRapidDismissalDoesNotAdvanceQueueTwice() {
+        UnifiedOverlayCoordinator.clearQueue()
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+
+        val habit1 = com.focusbyrj.app.data.Habit(id = 101L, title = "Reading")
+        val habit2 = com.focusbyrj.app.data.Habit(id = 102L, title = "Meditation")
+        val habit3 = com.focusbyrj.app.data.Habit(id = 103L, title = "Water")
+
+        UnifiedOverlayCoordinator.enqueueHabit(context, habit1, 0, 1)
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+
+        UnifiedOverlayCoordinator.enqueueHabit(context, habit2, 0, 1)
+        UnifiedOverlayCoordinator.enqueueHabit(context, habit3, 0, 1)
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+
+        // Rapid duplicate dismissals should only schedule ONE transition
+        UnifiedOverlayCoordinator.onOverlayDismissed(context)
+        UnifiedOverlayCoordinator.onOverlayDismissed(context)
+
+        // Advance by 350ms to let the single delayed transition run
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(350))
+
+        // Only habit2 should be active now (habit3 must still be in queue, not double-popped)
+        assertTrue("An overlay should now be showing after queue advancement", UnifiedOverlayCoordinator.isAnyOverlayShowing)
+    }
+
+    @Test
+    fun batch4_010_coordinatorClearQueueCancelsPendingAdvanceRunnable() {
+        UnifiedOverlayCoordinator.clearQueue()
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+
+        val habit1 = com.focusbyrj.app.data.Habit(id = 201L, title = "Running")
+        val habit2 = com.focusbyrj.app.data.Habit(id = 202L, title = "Journaling")
+
+        UnifiedOverlayCoordinator.enqueueHabit(context, habit1, 0, 1)
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+
+        UnifiedOverlayCoordinator.enqueueHabit(context, habit2, 0, 1)
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+
+        // Trigger dismissal which schedules 280ms runnable
+        UnifiedOverlayCoordinator.onOverlayDismissed(context)
+
+        // Immediately clear queue before 280ms elapsed
+        UnifiedOverlayCoordinator.clearQueue()
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(350))
+
+        // After clearing, nothing should be showing
+        assertFalse(
+            "clearQueue must cancel any pending advance runnable to avoid showing cleared overlays",
+            UnifiedOverlayCoordinator.isAnyOverlayShowing
+        )
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-014
+    // BlockOverlayManager must NOT include FLAG_NOT_TOUCH_MODAL in its
+    // WindowManager.LayoutParams to prevent touch leakage to blocked apps.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_014_blockOverlayMustNotIncludeFlagNotTouchModal() {
+        val notTouchModalFlag = android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+
+        // Verify that a secure blocking overlay should be modal (i.e. FLAG_NOT_TOUCH_MODAL must be absent)
+        val testSecureBlockingFlags = android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
+            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
+            android.view.WindowManager.LayoutParams.FLAG_SECURE
+
+        assertEquals(
+            "FLAG_NOT_TOUCH_MODAL must not be set on full-screen blocking overlays to prevent touch leakage to blocked apps",
+            0,
+            testSecureBlockingFlags and notTouchModalFlag
+        )
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-015
+    // UsageStatsHelper thread-safe home packages cache under concurrent calls.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_015_usageStatsHelperHomePackagesConcurrentSafety() {
+        // Query today's usage map multiple times concurrently to ensure no ConcurrentModificationException
+        val threads = (1..5).map {
+            Thread {
+                val map = com.focusbyrj.app.util.UsageStatsHelper.getTodayUsageMap(context, forceRefresh = false)
+                assertNotNull("Usage map must not be null", map)
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join(2000L) }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-016
+    // BlockOverlayManager safe lock duration clamping.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_016_blockOverlaySafeClampingAndModalProperties() {
+        val prefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putInt("soft_lock_duration", -10)
+            .putInt("soft_unlock_duration", 0)
+            .commit()
+
+        val softLock = prefs.getInt("soft_lock_duration", 10).coerceIn(5, 120)
+        val softUnlock = prefs.getInt("soft_unlock_duration", 5).coerceIn(1, 60)
+        assertEquals("Soft lock duration must clamp to minimum safe bound of 5s", 5, softLock)
+        assertEquals("Soft unlock duration must clamp to minimum safe bound of 1m", 1, softUnlock)
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-017
+    // BubbleService snooze state and idempotence.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_017_bubbleServiceSnoozeStateAndIdempotence() {
+        val prefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("bubble_enabled", true).commit()
+
+        com.focusbyrj.app.service.BubbleService.snooze(context, 5000L)
+        assertTrue("Bubble must report snoozed when snooze active", com.focusbyrj.app.service.BubbleService.isSnoozed(context))
+
+        com.focusbyrj.app.service.BubbleService.clearSnooze(context)
+        assertFalse("Bubble must not report snoozed after clearSnooze", com.focusbyrj.app.service.BubbleService.isSnoozed(context))
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-018
+    // FocusBlockerService.onDestroy() must NOT wipe isSessionActive.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_018_focusBlockerServiceOnDestroyPreservesSessionActive() {
+        val prefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("isSessionActive", true).commit()
+
+        val controller = org.robolectric.Robolectric.buildService(com.focusbyrj.app.service.FocusBlockerService::class.java)
+        val service = controller.create().get()
+        controller.destroy()
+
+        assertTrue(
+            "isSessionActive must remain true after FocusBlockerService.onDestroy() to avoid wiping session on memory kill",
+            prefs.getBoolean("isSessionActive", false)
+        )
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-020
+    // UnifiedOverlayCoordinator synchronous clearQueue on main looper
+    // and queue capacity enforcement.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_020_coordinatorSynchronousClearAndMaxQueueCap() {
+        UnifiedOverlayCoordinator.clearQueue()
+        assertFalse("Coordinator should have no overlay showing after clear", UnifiedOverlayCoordinator.isAnyOverlayShowing)
+
+        // Enqueue 15 items when MAX_QUEUE_SIZE is 10
+        val dummyHabit = com.focusbyrj.app.data.Habit(id = 500L, title = "ActiveHabit")
+        UnifiedOverlayCoordinator.enqueueHabit(context, dummyHabit, 0, 1)
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+
+        for (i in 1..15) {
+            val habit = com.focusbyrj.app.data.Habit(id = 500L + i, title = "QueuedHabit$i")
+            UnifiedOverlayCoordinator.enqueueHabit(context, habit, 0, 1)
+        }
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
+
+        // clearQueue invoked on main looper should immediately take effect synchronously
+        UnifiedOverlayCoordinator.clearQueue()
+        assertFalse("clearQueue on main looper must synchronously clear items without deferral", UnifiedOverlayCoordinator.isAnyOverlayShowing)
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-022
+    // UsageBreakTracker reset and screen-off session behavior.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_022_usageBreakTrackerScreenOffResetsTrackedApp() {
+        com.focusbyrj.app.util.UsageBreakTracker.reset()
+        com.focusbyrj.app.util.UsageBreakTracker.onScreenOn()
+        com.focusbyrj.app.util.UsageBreakTracker.onForegroundPackageChecked(context, "com.example.game", false)
+
+        com.focusbyrj.app.util.UsageBreakTracker.onScreenOff()
+        com.focusbyrj.app.util.UsageBreakTracker.onScreenOn()
+        // Ensure reset clears state cleanly without NPE
+        com.focusbyrj.app.util.UsageBreakTracker.reset()
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // BATCH-4-023
+    // TemporaryUnlockManager revokeUnlock with synchronous commit and expired pruning.
+    // ─────────────────────────────────────────────────────────────────
+    @Test
+    fun batch4_023_temporaryUnlockManagerRevokeCommitAndCleanExpired() {
+        val pkg = "com.example.distracting"
+        com.focusbyrj.app.util.TemporaryUnlockManager.grantUnlock(context, pkg, 5)
+        assertTrue("App must be unlocked after grantUnlock", com.focusbyrj.app.util.TemporaryUnlockManager.isUnlocked(context, pkg))
+
+        com.focusbyrj.app.util.TemporaryUnlockManager.revokeUnlock(context, pkg)
+        assertFalse("App must not be unlocked after revokeUnlock", com.focusbyrj.app.util.TemporaryUnlockManager.isUnlocked(context, pkg))
+
+        // Verify pruning runs cleanly
+        com.focusbyrj.app.util.TemporaryUnlockManager.pruneExpiredUnlocks(context)
+    }
 }

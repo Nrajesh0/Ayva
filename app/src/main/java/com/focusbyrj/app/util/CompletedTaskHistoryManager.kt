@@ -65,12 +65,13 @@ object CompletedTaskHistoryManager {
             // Remove if duplicate id exists to avoid multiple records
             currentList.removeAll { (task.id != 0L && it.id == task.id) || (task.id == 0L && it.title == task.title) }
 
+            val effectiveCompletedAt = task.completedAt ?: completedAt
             val record = CompletedTaskRecord(
                 id = task.id,
                 title = task.title,
                 details = task.details,
                 dueDate = task.dueDate,
-                completedAt = completedAt,
+                completedAt = effectiveCompletedAt,
                 type = task.type.name,
                 isPriority = task.isPriority
             )
@@ -140,7 +141,7 @@ object CompletedTaskHistoryManager {
         try {
             val array = JSONArray(jsonStr)
             for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
+                val obj = array.optJSONObject(i) ?: continue
                 list.add(
                     CompletedTaskRecord(
                         id = obj.optLong("id"),

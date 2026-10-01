@@ -30,7 +30,7 @@ object UsageStatsHelper {
     private var lastUsageMapFetchTime: Long = 0L
     private const val USAGE_MAP_CACHE_TTL_MS = 2500L
 
-    private val homePackagesCache = mutableSetOf<String>()
+    private val homePackagesCache = java.util.concurrent.CopyOnWriteArraySet<String>()
     @Volatile
     private var lastHomePackagesRefreshTime = 0L
 
@@ -70,7 +70,7 @@ object UsageStatsHelper {
     }
 
     fun hasUsageStatsPermission(context: Context): Boolean {
-        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             appOps.unsafeCheckOpNoThrow(
                 AppOpsManager.OPSTR_GET_USAGE_STATS,
@@ -89,9 +89,12 @@ object UsageStatsHelper {
     }
 
     fun requestUsageStatsPermission(context: Context) {
-        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        kotlin.runCatching {
+            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }
     }
 
     fun getTodayUsageMap(context: Context, forceRefresh: Boolean = false): Map<String, Long> {
@@ -210,7 +213,7 @@ object UsageStatsHelper {
     }
 
     fun getLast30DaysUsageStats(context: Context): Map<Int, Long> {
-        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager ?: return emptyMap()
         val calendar = Calendar.getInstance().apply {
             add(Calendar.DAY_OF_YEAR, -30)
             set(Calendar.HOUR_OF_DAY, 0)
