@@ -108,8 +108,13 @@ object BubbleChatManager {
 
     @Volatile
     private var isInitialized = false
+    // AtomicBoolean for idempotent init: compareAndSet(false, true) is the only way to enter init body (P2-003)
+    private val initLatch = java.util.concurrent.atomic.AtomicBoolean(false)
 
     fun init(context: Context) {
+        // Idempotent: only the first concurrent caller proceeds (BATCH-9-P2-003)
+        if (!initLatch.compareAndSet(false, true)) return
+
         val appContext = context.applicationContext
         val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _unreadCountFlow.value = prefs.getInt(KEY_UNREAD_COUNT, 0)
@@ -133,10 +138,8 @@ object BubbleChatManager {
 
                 // Initial read
                 val initial = database.chatDao().getAllMessagesSync().map { it.toPersistedChatMessage() }
-                if (!isInitialized) {
-                    _messagesFlow.value = initial
-                    isInitialized = true
-                }
+                _messagesFlow.value = initial
+                isInitialized = true
             } catch (e: Exception) {
                 android.util.Log.e("BubbleChatManager", "Error initializing chat DB", e)
                 isInitialized = true
@@ -323,8 +326,15 @@ object BubbleChatManager {
         }
         val cached = _messagesFlow.value
         if (cached.isNotEmpty()) return cached
-        
-        // If not initialized yet, query synchronously once to guarantee callers have messages
+
+        // Emergency fallback: query DB synchronously.
+        // IMPORTANT (BATCH-9-P2-004): runBlocking BLOCKS the calling thread regardless of the
+        // dispatcher argument. This path should only be hit pre-init and only from background
+        // threads. If called on the main thread it risks ANR; callers should await init() instead.
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            android.util.Log.w("BubbleChatManager", "getMessages() called on main thread before init() completed — returning empty list to avoid ANR")
+            return emptyList()
+        }
         return try {
             val db = AyvaChatDatabase.getDatabase(context.applicationContext)
             runBlocking(Dispatchers.IO) {
@@ -352,7 +362,10 @@ object BubbleChatManager {
         scope.launch {
             try {
                 val db = AyvaChatDatabase.getDatabase(appContext)
-                db.chatDao().syncAllMessages(trimmed.map { it.toEntity() })
+                // Re-read the latest in-memory snapshot inside the coroutine to capture any
+                // addMessage() calls that raced between the outer assignment and this DB write (BATCH-9-P2-002)
+                val latestSnapshot = _messagesFlow.value
+                db.chatDao().syncAllMessages(latestSnapshot.map { it.toEntity() })
             } catch (e: Exception) {
                 android.util.Log.e("BubbleChatManager", "Failed to persist chat messages to Room", e)
             }

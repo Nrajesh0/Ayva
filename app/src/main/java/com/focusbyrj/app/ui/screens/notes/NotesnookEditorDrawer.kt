@@ -847,13 +847,14 @@ fun NotesnookEditorDrawer(
                         .background(if (isDark) Color(0xFF1A1D21) else Color(0xFFE8EBF0))
                         .padding(horizontal = 4.dp)
                 ) {
+                    val currentSize = if (fontSizeSp.isNaN() || fontSizeSp <= 0f) 16f else fontSizeSp
                     // Decrement `-`
                     Box(
                         modifier = Modifier
                             .size(26.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .clickable {
-                                val next = (fontSizeSp - 1f).coerceIn(11f, 32f)
+                                val next = (currentSize - 1f).coerceIn(11f, 32f)
                                 onFontSizeChange(next)
                                 onLineHeightChange(next * 1.45f)
                             },
@@ -869,7 +870,7 @@ fun NotesnookEditorDrawer(
 
                     // Size display
                     Text(
-                        text = "${fontSizeSp.toInt()}px",
+                        text = "${currentSize.toInt()} sp",
                         style = TextStyle(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -884,7 +885,7 @@ fun NotesnookEditorDrawer(
                             .size(26.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .clickable {
-                                val next = (fontSizeSp + 1f).coerceIn(11f, 32f)
+                                val next = (currentSize + 1f).coerceIn(11f, 32f)
                                 onFontSizeChange(next)
                                 onLineHeightChange(next * 1.45f)
                             },

@@ -10,17 +10,25 @@ package com.focusbyrj.app
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import com.focusbyrj.app.service.AptitudeReminderHelper
 import com.focusbyrj.app.service.BubbleService
 import com.focusbyrj.app.ui.screens.AppCategory
+import com.focusbyrj.app.ui.screens.AptitudeCardHelper
+import com.focusbyrj.app.ui.screens.BubbleSettingsHelper
 import com.focusbyrj.app.ui.screens.CategoryEditorHelper
 import com.focusbyrj.app.ui.screens.InstalledApp
+import com.focusbyrj.app.ui.screens.PreferencesHubHelper
 import com.focusbyrj.app.ui.screens.SettingsScreenHelper
 import com.focusbyrj.app.ui.screens.drill.DrillPaletteHelper
 import com.focusbyrj.app.ui.screens.drill.DrillStreakHelper
 import com.focusbyrj.app.ui.screens.drill.DrillSummaryMathHelper
 import com.focusbyrj.app.ui.screens.drill.DrillTopBarHelper
+import com.focusbyrj.app.ui.screens.drill.FullscreenDrillHelper
+import com.focusbyrj.app.ui.screens.drill.SolutionsViewHelper
 import com.focusbyrj.app.ui.screens.drill.formatSecondsToMinutesSec
 import com.focusbyrj.app.ui.screens.drill.formatSecondsToMmSs
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -39,6 +47,14 @@ import org.robolectric.RobolectricTestRunner
  * - BATCH-12-006: Negative total questions crashing LazyVerticalGrid.items(count)
  * - BATCH-12-007: Negative remaining blitz seconds and progress calculation
  * - BATCH-12-008: Missing FLAG_ACTIVITY_NEW_TASK on widget configuration launch
+ * - BATCH-12-009: FullscreenDrillView combo progression, reset, and correctIndex bounds
+ * - BATCH-12-010: BubbleSettings slider value coercion and safe time parsing
+ * - BATCH-12-011: SolutionsView null question resilience and safe index bounds
+ * - BATCH-12-012: SettingsScreen reminder interval snapping and duration clamping
+ * - BATCH-12-013: PreferencesHub safe TaskDao resolution without ClassCastException
+ * - BATCH-12-014: CustomCategoryEditor package name search and blank package filtering
+ * - BATCH-12-015: AptitudeProfileCard accuracy and streak freeze bounds clamping
+ * - BATCH-12-016: AptitudeReminder hour/minute parsing and Calendar rollover prevention
  */
 @RunWith(RobolectricTestRunner::class)
 class Batch12SecurityAuditTest {
@@ -185,4 +201,172 @@ class Batch12SecurityAuditTest {
         val hasNewTask = (intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0
         assertTrue("Intent must contain FLAG_ACTIVITY_NEW_TASK to be safe on non-Activity contexts", hasNewTask)
     }
+
+    @Test
+    fun test_BATCH_12_009_fullscreenDrillView_comboProgressionAndCorrectIndex() {
+        // Combo starts at 0, first correct answer progresses combo to 1 and maxCombo to 1
+        val firstCorrect = FullscreenDrillHelper.updateCombo(0, 0, isCorrect = true)
+        assertEquals(1, firstCorrect.first)
+        assertEquals(1, firstCorrect.second)
+
+        // Consecutive correct answers increase combo and maxCombo
+        val secondCorrect = FullscreenDrillHelper.updateCombo(firstCorrect.first, firstCorrect.second, isCorrect = true)
+        assertEquals(2, secondCorrect.first)
+        assertEquals(2, secondCorrect.second)
+
+        // Wrong answer resets combo to 0 but preserves maxCombo
+        val wrongAnswer = FullscreenDrillHelper.updateCombo(secondCorrect.first, secondCorrect.second, isCorrect = false)
+        assertEquals(0, wrongAnswer.first)
+        assertEquals(2, wrongAnswer.second)
+
+        // Negative values in corrupted sessions are coerced safely
+        val safeNegative = FullscreenDrillHelper.updateCombo(-10, -5, isCorrect = true)
+        assertEquals(1, safeNegative.first)
+        assertEquals(1, safeNegative.second)
+
+        // CorrectIndex bounding
+        assertEquals(0, FullscreenDrillHelper.safeCorrectIndex(-1, 4))
+        assertEquals(3, FullscreenDrillHelper.safeCorrectIndex(10, 4))
+        assertEquals(2, FullscreenDrillHelper.safeCorrectIndex(2, 4))
+        assertEquals(0, FullscreenDrillHelper.safeCorrectIndex(2, 0))
+    }
+
+    @Test
+    fun test_BATCH_12_010_bubbleSettings_sliderCoercionAndSafeTimeParsing() {
+        // Slider value coercion prevents IllegalArgumentException in Compose Slider
+        assertEquals(20f, BubbleSettingsHelper.coerceSliderValue(0, 20..100), 0.001f)
+        assertEquals(100f, BubbleSettingsHelper.coerceSliderValue(150, 20..100), 0.001f)
+        assertEquals(65f, BubbleSettingsHelper.coerceSliderValue(65, 20..100), 0.001f)
+
+        // Resilient time string parsing
+        assertEquals(Pair(20, 30), BubbleSettingsHelper.parseTimeSafe("08:30 PM"))
+        assertEquals(Pair(8, 30), BubbleSettingsHelper.parseTimeSafe("08:30 AM"))
+        assertEquals(Pair(0, 0), BubbleSettingsHelper.parseTimeSafe("12:00 AM"))
+        assertEquals(Pair(12, 0), BubbleSettingsHelper.parseTimeSafe("12:00 PM"))
+        assertEquals(Pair(23, 59), BubbleSettingsHelper.parseTimeSafe("25:99 PM"))
+        assertEquals(Pair(8, 0), BubbleSettingsHelper.parseTimeSafe("not_a_time", 8, 0))
+    }
+
+    @Test
+    fun test_BATCH_12_011_solutionsView_nullQuestionResilienceAndSafeIndex() {
+        val qArr = JSONArray().apply {
+            put(JSONObject().apply {
+                put("qNum", 1)
+                put("questionText", "What is 2 + 2?")
+                put("options", JSONArray().apply { put("3"); put("4") })
+                put("correctIndex", 1)
+            })
+            put(JSONObject.NULL) // Corrupted or null element
+            put(JSONObject().apply {
+                put("qNum", 3)
+                put("questionText", "What is 5 * 5?")
+                put("options", JSONArray().apply { put("20"); put("25") })
+                put("correctIndex", 1)
+            })
+        }
+
+        val parsed = SolutionsViewHelper.parseQuestionsSafely(qArr)
+        assertEquals(2, parsed.size)
+        assertEquals(1, parsed[0].qNum)
+        assertEquals(3, parsed[1].qNum)
+
+        // Safe index bounding
+        assertEquals(0, SolutionsViewHelper.safeQuestionIndex(-5, 10))
+        assertEquals(9, SolutionsViewHelper.safeQuestionIndex(15, 10))
+        assertEquals(4, SolutionsViewHelper.safeQuestionIndex(4, 10))
+        assertEquals(0, SolutionsViewHelper.safeQuestionIndex(5, 0))
+    }
+
+    @Test
+    fun test_BATCH_12_012_settingsScreen_reminderIntervalsAndDurationCoercion() {
+        // Sequential increment progression
+        assertEquals(10, SettingsScreenHelper.getNextReminderInterval(5, isIncrement = true))
+        assertEquals(15, SettingsScreenHelper.getNextReminderInterval(10, isIncrement = true))
+        assertEquals(30, SettingsScreenHelper.getNextReminderInterval(15, isIncrement = true))
+        assertEquals(360, SettingsScreenHelper.getNextReminderInterval(300, isIncrement = true))
+        assertEquals(360, SettingsScreenHelper.getNextReminderInterval(360, isIncrement = true))
+
+        // Sequential decrement progression
+        assertEquals(300, SettingsScreenHelper.getNextReminderInterval(360, isIncrement = false))
+        assertEquals(5, SettingsScreenHelper.getNextReminderInterval(10, isIncrement = false))
+        assertEquals(5, SettingsScreenHelper.getNextReminderInterval(5, isIncrement = false))
+
+        // Corrupted value recovery: snaps to nearest valid interval without deadlocking
+        assertEquals(5, SettingsScreenHelper.getNextReminderInterval(-10, isIncrement = true))
+        assertEquals(30, SettingsScreenHelper.getNextReminderInterval(25, isIncrement = true))
+        assertEquals(15, SettingsScreenHelper.getNextReminderInterval(25, isIncrement = false))
+        assertEquals(360, SettingsScreenHelper.getNextReminderInterval(1000, isIncrement = true))
+        assertEquals(360, SettingsScreenHelper.getNextReminderInterval(1000, isIncrement = false))
+
+        // Duration coercion
+        assertEquals(5, SettingsScreenHelper.coerceSoftLockDuration(-10))
+        assertEquals(60, SettingsScreenHelper.coerceSoftLockDuration(100))
+        assertEquals(10, SettingsScreenHelper.coerceSoftLockDuration(10))
+
+        assertEquals(1, SettingsScreenHelper.coerceSoftUnlockDuration(-5))
+        assertEquals(60, SettingsScreenHelper.coerceSoftUnlockDuration(120))
+        assertEquals(5, SettingsScreenHelper.coerceSoftUnlockDuration(5))
+    }
+
+    @Test
+    fun test_BATCH_12_013_preferencesHub_taskDaoSafeResolution() {
+        // Safe cast on actual FocusApplication context returns valid TaskDao
+        val dao = PreferencesHubHelper.getTaskDao(context)
+        assertNotNull("TaskDao must be non-null when resolved via PreferencesHubHelper on FocusApplication", dao)
+
+        // Non-FocusApplication context wrapper must return null safely without throwing ClassCastException
+        val plainContext = object : android.content.ContextWrapper(context) {
+            override fun getApplicationContext(): Context {
+                return android.app.Application()
+            }
+        }
+        val safeNullDao = PreferencesHubHelper.getTaskDao(plainContext)
+        assertNull("TaskDao should safely return null on non-FocusApplication context", safeNullDao)
+    }
+
+    @Test
+    fun test_BATCH_12_014_customCategoryEditor_packageNameSearchAndBlankFiltering() {
+        val apps = listOf(
+            InstalledApp("", "Ghost App", AppCategory.OTHERS), // Blank package name
+            InstalledApp("   ", "Empty Package", AppCategory.OTHERS), // Whitespace package name
+            InstalledApp("com.android.chrome", "Google Browser", AppCategory.UTILITY),
+            InstalledApp("com.instagram.android", "Instagram", AppCategory.SOCIAL)
+        )
+
+        // All category without query: blank package apps filtered out
+        val filtered = CategoryEditorHelper.filterAndDeduplicateApps(apps, AppCategory.ALL, "")
+        assertEquals(2, filtered.size)
+        assertTrue(filtered.none { it.packageName.isBlank() })
+
+        // Search by package name substring (e.g. "chrome") even if appName doesn't contain "chrome"
+        val searchedByPkg = CategoryEditorHelper.filterAndDeduplicateApps(apps, AppCategory.ALL, "chrome")
+        assertEquals(1, searchedByPkg.size)
+        assertEquals("com.android.chrome", searchedByPkg[0].packageName)
+    }
+
+    @Test
+    fun test_BATCH_12_015_aptitudeProfileCard_accuracyAndStreakFreezesClamping() {
+        assertEquals(0, AptitudeCardHelper.clampAccuracy(-20f))
+        assertEquals(0, AptitudeCardHelper.clampAccuracy(Float.NaN))
+        assertEquals(100, AptitudeCardHelper.clampAccuracy(140f))
+        assertEquals(85, AptitudeCardHelper.clampAccuracy(85.4f))
+
+        assertEquals(0, AptitudeCardHelper.clampStreakFreezes(-2))
+        assertEquals(3, AptitudeCardHelper.clampStreakFreezes(5))
+        assertEquals(2, AptitudeCardHelper.clampStreakFreezes(2))
+    }
+
+    @Test
+    fun test_BATCH_12_016_aptitudeReminder_hourAndMinuteParsingBounds() {
+        assertEquals(Pair(9, 15), AptitudeReminderHelper.parseHourAndMinute("09:15 AM"))
+        assertEquals(Pair(18, 45), AptitudeReminderHelper.parseHourAndMinute("06:45 PM"))
+        assertEquals(Pair(0, 0), AptitudeReminderHelper.parseHourAndMinute("12:00 AM"))
+        assertEquals(Pair(12, 0), AptitudeReminderHelper.parseHourAndMinute("12:00 PM"))
+
+        // Out-of-bounds hour and minute clamped to valid ranges
+        assertEquals(Pair(23, 59), AptitudeReminderHelper.parseHourAndMinute("28:95 PM"))
+        assertEquals(Pair(0, 0), AptitudeReminderHelper.parseHourAndMinute("-5:-10 AM"))
+        assertEquals(Pair(18, 0), AptitudeReminderHelper.parseHourAndMinute("corrupted_format", 18, 0))
+    }
 }
+

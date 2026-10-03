@@ -143,7 +143,12 @@ fun CatActionLottieView(
         iterations = LottieConstants.IterateForever
     )
 
-    val startTime = remember { System.currentTimeMillis() }
+    val startTime = remember(assetName) { System.currentTimeMillis() }
+
+    LaunchedEffect(assetName) {
+        delay(5000L)
+        onDismiss()
+    }
 
     val targetSize = when (assetName) {
         "cat_error.lottie" -> 250.dp

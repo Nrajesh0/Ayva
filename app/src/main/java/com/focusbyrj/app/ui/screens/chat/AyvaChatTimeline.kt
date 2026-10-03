@@ -255,10 +255,37 @@ fun DuolingoFreezeButton(
     }
 }
 
+private val ALLOWED_PREF_ACTIONS = mapOf(
+    "app_theme_color" to "string",
+    "app_theme_mode" to "string",
+    "auto_hide_duration_sec" to "int",
+    "bubble_enabled" to "boolean",
+    "default_start_tab" to "string",
+    "evening_brief_time" to "string",
+    "hide_in_landscape" to "boolean",
+    "morning_brief_time" to "string",
+    "overlay_theme_mode" to "string",
+    "persistent_reminder_interval" to "int",
+    "routine_notifications" to "boolean",
+    "secure_recents" to "boolean",
+    "soft_lock_duration" to "int",
+    "soft_unlock_duration" to "int",
+    "streak_notification_enabled" to "boolean",
+    "streak_notification_time" to "string",
+    "task_notification_style" to "string",
+    "vacation_mode" to "boolean"
+)
+
 @Composable
 fun PendingActionCard(message: ChatMessage, fontSizeSp: Float, onMessageUpdate: (ChatMessage) -> Unit) {
     val context = LocalContext.current
-    val json = remember(message.pendingActionJson) { JSONObject(message.pendingActionJson ?: "{}") }
+    val json = remember(message.pendingActionJson) {
+        try {
+            JSONObject(message.pendingActionJson ?: "{}")
+        } catch (_: Exception) {
+            JSONObject()
+        }
+    }
     val status = json.optString("status", "pending")
 
     Spacer(modifier = Modifier.height(8.dp))
@@ -271,21 +298,31 @@ fun PendingActionCard(message: ChatMessage, fontSizeSp: Float, onMessageUpdate: 
             Button(
                 onClick = {
                     val prefKey = json.optString("prefKey")
-                    val prefType = json.optString("prefType")
+                    val expectedType = ALLOWED_PREF_ACTIONS[prefKey]
+                    if (expectedType == null) {
+                        android.util.Log.e("PendingActionCard", "Rejected unauthorized prefKey injection: $prefKey")
+                        return@Button
+                    }
                     val value = json.optString("value")
 
                     val prefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE).edit()
                     val bubblePrefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE).edit()
 
-                    if (prefType == "int") {
-                        prefs.putInt(prefKey, value.toIntOrNull() ?: 0)
-                        bubblePrefs.putInt(prefKey, value.toIntOrNull() ?: 0)
-                    } else if (prefType == "boolean") {
-                        prefs.putBoolean(prefKey, value == "true")
-                        bubblePrefs.putBoolean(prefKey, value == "true")
-                    } else if (prefType == "string") {
-                        prefs.putString(prefKey, value)
-                        bubblePrefs.putString(prefKey, value)
+                    when (expectedType) {
+                        "int" -> {
+                            val parsedInt = value.toIntOrNull() ?: 0
+                            prefs.putInt(prefKey, parsedInt)
+                            bubblePrefs.putInt(prefKey, parsedInt)
+                        }
+                        "boolean" -> {
+                            val parsedBool = value == "true"
+                            prefs.putBoolean(prefKey, parsedBool)
+                            bubblePrefs.putBoolean(prefKey, parsedBool)
+                        }
+                        "string" -> {
+                            prefs.putString(prefKey, value)
+                            bubblePrefs.putString(prefKey, value)
+                        }
                     }
                     prefs.apply()
                     bubblePrefs.apply()
@@ -1493,7 +1530,11 @@ fun ChatBubble(
                     putExtra("navigate_to", "habits")
                     putExtra("NAV_DESTINATION", "habits")
                 }
-                context.startActivity(intent)
+                runCatching {
+                    context.startActivity(intent)
+                }.onFailure { e ->
+                    android.util.Log.w("AyvaChatTimeline", "startActivity for habits blocked or failed", e)
+                }
             }
         )
         return

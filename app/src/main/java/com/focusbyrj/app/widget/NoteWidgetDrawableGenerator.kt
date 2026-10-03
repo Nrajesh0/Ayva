@@ -82,8 +82,10 @@ object NoteWidgetDrawableGenerator {
             accentColorInt = config.accentColorInt
         }
 
-        val emptyBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ALPHA_8)
-        return BackgroundColors(
+        // Create a minimal placeholder bitmap (recycled immediately — actual background bitmap is
+        // built by createWidgetBackground which always replaces this field). BATCH-9-P2-012.
+        val emptyBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        val result = BackgroundColors(
             bitmap = emptyBitmap,
             bgColor = bgColorInt,
             borderColor = borderColorInt,
@@ -93,6 +95,8 @@ object NoteWidgetDrawableGenerator {
             pillBorderColor = pillBorderInt,
             accentColor = accentColorInt
         )
+        emptyBitmap.recycle()
+        return result
     }
 
     fun createWidgetBackground(
@@ -135,7 +139,16 @@ object NoteWidgetDrawableGenerator {
         val isDark: Boolean
     )
 
-    private val checkboxCache = java.util.concurrent.ConcurrentHashMap<CheckboxKey, Bitmap>()
+    // Bounded LRU cache for checkbox bitmaps — max 32 distinct style combinations (BATCH-9-P2-013)
+    private val checkboxCache: MutableMap<CheckboxKey, Bitmap> = object : java.util.LinkedHashMap<CheckboxKey, Bitmap>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CheckboxKey, Bitmap>?): Boolean {
+            if (size > 32) {
+                eldest?.value?.takeIf { !it.isRecycled }?.recycle()
+                return true
+            }
+            return false
+        }
+    }
 
     fun createCheckboxBitmap(
         isChecked: Boolean,

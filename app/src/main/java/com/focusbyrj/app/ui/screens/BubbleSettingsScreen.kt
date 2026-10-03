@@ -77,9 +77,9 @@ fun BubbleSettingsScreen(navController: NavController) {
 
     // Hidden Bubble Customization States
     var isDockingSettingsExpanded by remember { mutableStateOf(false) }
-    var hiddenOpacity by remember { mutableStateOf(prefs.getInt("bubble_hidden_opacity", 85)) }
-    var hiddenAmount by remember { mutableStateOf(prefs.getInt("bubble_hidden_amount", 60)) }
-    var glowIntensity by remember { mutableStateOf(prefs.getInt("bubble_glow_intensity", 65)) }
+    var hiddenOpacity by remember { mutableStateOf(prefs.getInt("bubble_hidden_opacity", 85).coerceIn(20, 100)) }
+    var hiddenAmount by remember { mutableStateOf(prefs.getInt("bubble_hidden_amount", 60).coerceIn(25, 85)) }
+    var glowIntensity by remember { mutableStateOf(prefs.getInt("bubble_glow_intensity", 65).coerceIn(0, 100)) }
     var accentColorHex by remember { mutableStateOf(prefs.getString("bubble_accent_color", "#4ADE80") ?: "#4ADE80") }
     var isCurrentlySnoozed by remember { mutableStateOf(BubbleService.isSnoozed(context)) }
 
@@ -848,7 +848,7 @@ private fun SettingsSliderRow(
         Spacer(modifier = Modifier.height(8.dp))
 
         ProfessionalSlider(
-            value = value.toFloat(),
+            value = BubbleSettingsHelper.coerceSliderValue(value, valueRange),
             onValueChange = { onValueChange(it.toInt().coerceIn(valueRange.first, valueRange.last)) },
             valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
             modifier = Modifier.fillMaxWidth()
@@ -858,21 +858,11 @@ private fun SettingsSliderRow(
 
 private fun showTimePicker(context: Context, currentTime: String, onTimeSelected: (String) -> Unit) {
     val calendar = Calendar.getInstance()
-    var hour = calendar.get(Calendar.HOUR_OF_DAY)
-    var minute = calendar.get(Calendar.MINUTE)
-    
-    try {
-        val parts = currentTime.split(":", " ")
-        if(parts.size == 3) {
-            var h = parts[0].toInt()
-            val m = parts[1].toInt()
-            val amPm = parts[2]
-            if (amPm == "PM" && h != 12) h += 12
-            if (amPm == "AM" && h == 12) h = 0
-            hour = h
-            minute = m
-        }
-    } catch (e: Exception) {}
+    val (hour, minute) = BubbleSettingsHelper.parseTimeSafe(
+        currentTime,
+        calendar.get(Calendar.HOUR_OF_DAY),
+        calendar.get(Calendar.MINUTE)
+    )
 
     TimePickerDialog(
         context,

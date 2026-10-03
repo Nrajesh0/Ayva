@@ -255,6 +255,7 @@ private fun ActivationSection(
 
         Button(
             onClick = onActivate,
+            enabled = licenseKey.trim().isNotBlank(),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),

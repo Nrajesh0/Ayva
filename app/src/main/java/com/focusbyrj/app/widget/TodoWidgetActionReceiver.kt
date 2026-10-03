@@ -67,7 +67,12 @@ class TodoWidgetActionReceiver : BroadcastReceiver() {
                     } else {
                         null
                     }
-                    context.startActivity(mainIntent, options?.toBundle())
+                    // Guard against SecurityException on Android 14+ when BAL exemption is denied (BATCH-9-P2-018)
+                    runCatching {
+                        context.startActivity(mainIntent, options?.toBundle())
+                    }.onFailure { e ->
+                        android.util.Log.w("TodoWidgetActionReceiver", "startActivity blocked by BAL restriction", e)
+                    }
                     return
                 }
 

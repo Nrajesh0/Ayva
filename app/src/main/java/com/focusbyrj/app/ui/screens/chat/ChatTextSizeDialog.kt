@@ -21,6 +21,8 @@ fun ChatTextSizeDialog(
     onFontSizeChange: (Float) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val safeFontSize = if (fontSizeSp.isNaN() || fontSizeSp < 12f) 15f else fontSizeSp.coerceIn(12f, 24f)
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -63,8 +65,8 @@ fun ChatTextSizeDialog(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "🌅 Good Morning!\nHere is your daily update:\n🎉 All clear for today!",
-                            fontSize = fontSizeSp.sp,
-                            lineHeight = (fontSizeSp * 1.45f).sp,
+                            fontSize = safeFontSize.sp,
+                            lineHeight = (safeFontSize * 1.45f).sp,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -77,8 +79,8 @@ fun ChatTextSizeDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     FilledTonalIconButton(
-                        onClick = { onFontSizeChange(fontSizeSp - 1f) },
-                        enabled = fontSizeSp > 12f,
+                        onClick = { onFontSizeChange((safeFontSize - 1f).coerceIn(12f, 24f)) },
+                        enabled = safeFontSize > 12f,
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(Icons.Filled.Remove, contentDescription = "Decrease size")
@@ -86,16 +88,16 @@ fun ChatTextSizeDialog(
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "${fontSizeSp.toInt()} sp",
+                            text = "${safeFontSize.toInt()} sp",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
                             text = when {
-                                fontSizeSp <= 13f -> "Small"
-                                fontSizeSp <= 15f -> "Default"
-                                fontSizeSp <= 18f -> "Medium"
-                                fontSizeSp <= 21f -> "Large"
+                                safeFontSize <= 13f -> "Small"
+                                safeFontSize <= 15f -> "Default"
+                                safeFontSize <= 18f -> "Medium"
+                                safeFontSize <= 21f -> "Large"
                                 else -> "Extra Large"
                             },
                             style = MaterialTheme.typography.labelSmall,
@@ -104,8 +106,8 @@ fun ChatTextSizeDialog(
                     }
 
                     FilledTonalIconButton(
-                        onClick = { onFontSizeChange(fontSizeSp + 1f) },
-                        enabled = fontSizeSp < 24f,
+                        onClick = { onFontSizeChange((safeFontSize + 1f).coerceIn(12f, 24f)) },
+                        enabled = safeFontSize < 24f,
                         modifier = Modifier.size(40.dp)
                     ) {
                         Icon(Icons.Filled.Add, contentDescription = "Increase size")
@@ -114,8 +116,8 @@ fun ChatTextSizeDialog(
 
                 // Classic professional slider
                 ProfessionalSlider(
-                    value = fontSizeSp,
-                    onValueChange = { onFontSizeChange(kotlin.math.round(it)) },
+                    value = safeFontSize,
+                    onValueChange = { onFontSizeChange(kotlin.math.round(it).coerceIn(12f, 24f)) },
                     valueRange = 12f..24f,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -131,7 +133,7 @@ fun ChatTextSizeDialog(
                         "Large" to 18f,
                         "Huge" to 21f
                     ).forEach { (label, size) ->
-                        val isSelected = (fontSizeSp == size)
+                        val isSelected = (safeFontSize == size)
                         FilterChip(
                             selected = isSelected,
                             onClick = { onFontSizeChange(size) },

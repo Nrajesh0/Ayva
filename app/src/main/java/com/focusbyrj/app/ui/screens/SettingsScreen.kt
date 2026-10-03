@@ -93,8 +93,8 @@ fun SettingsScreen(navController: NavController) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE) }
 
-    var softLockDuration by remember { mutableStateOf(prefs.getInt("soft_lock_duration", 10)) }
-    var softUnlockDuration by remember { mutableStateOf(prefs.getInt("soft_unlock_duration", 5)) }
+    var softLockDuration by remember { mutableStateOf(SettingsScreenHelper.coerceSoftLockDuration(prefs.getInt("soft_lock_duration", 10))) }
+    var softUnlockDuration by remember { mutableStateOf(SettingsScreenHelper.coerceSoftUnlockDuration(prefs.getInt("soft_unlock_duration", 5))) }
     var routineNotifications by remember { mutableStateOf(prefs.getBoolean("routine_notifications", true)) }
     var persistentReminderInterval by remember { mutableStateOf(prefs.getInt("persistent_reminder_interval", 15)) }
     var defaultStartTab by remember {
@@ -471,36 +471,14 @@ fun SettingsScreen(navController: NavController) {
                         "${persistentReminderInterval}m"
                     },
                     onDecrement = {
-                        val newInterval = when (persistentReminderInterval) {
-                            360 -> 300 // 6h -> 5h
-                            300 -> 240 // 5h -> 4h
-                            240 -> 180 // 4h -> 3h
-                            180 -> 120 // 3h -> 2h
-                            120 -> 60  // 2h -> 1h
-                            60 -> 30
-                            30 -> 15
-                            15 -> 10
-                            10 -> 5
-                            else -> persistentReminderInterval
-                        }
+                        val newInterval = SettingsScreenHelper.getNextReminderInterval(persistentReminderInterval, isIncrement = false)
                         if (newInterval != persistentReminderInterval) {
                             persistentReminderInterval = newInterval
                             prefs.edit().putInt("persistent_reminder_interval", newInterval).apply()
                         }
                     },
                     onIncrement = {
-                        val newInterval = when (persistentReminderInterval) {
-                            5 -> 10
-                            10 -> 15
-                            15 -> 30
-                            30 -> 60
-                            60 -> 120
-                            120 -> 180
-                            180 -> 240
-                            240 -> 300
-                            300 -> 360
-                            else -> persistentReminderInterval
-                        }
+                        val newInterval = SettingsScreenHelper.getNextReminderInterval(persistentReminderInterval, isIncrement = true)
                         if (newInterval != persistentReminderInterval) {
                             persistentReminderInterval = newInterval
                             prefs.edit().putInt("persistent_reminder_interval", newInterval).apply()

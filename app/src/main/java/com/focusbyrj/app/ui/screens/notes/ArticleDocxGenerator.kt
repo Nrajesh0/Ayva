@@ -41,7 +41,8 @@ object ArticleDocxGenerator {
             addZipEntry(zip, "word/styles.xml", buildStylesXml())
 
             // 5. word/document.xml
-            val docXml = buildDocumentXml(title, blocks, fallbackContent, isChecklist, checklistItems)
+            val effectiveBlocks = ArticleExporterHelper.getEffectiveBlocks(blocks, fallbackContent)
+            val docXml = buildDocumentXml(title, effectiveBlocks, fallbackContent, isChecklist, checklistItems)
             addZipEntry(zip, "word/document.xml", docXml)
         }
         return baos.toByteArray()

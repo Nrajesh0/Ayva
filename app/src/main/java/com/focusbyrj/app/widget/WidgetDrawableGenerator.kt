@@ -9,6 +9,27 @@ import android.graphics.RectF
 
 object WidgetDrawableGenerator {
 
+    private data class CheckboxKey(
+        val accentColor: Int,
+        val isChecked: Boolean,
+        val isDark: Boolean,
+        val isMonochrome: Boolean
+    )
+
+    // Bounded LRU cache for item backgrounds (max 4 entries - dark/light variations)
+    private val itemBgCache = java.util.concurrent.ConcurrentHashMap<Boolean, Bitmap>()
+
+    // Bounded LRU cache for checkbox bitmaps (max 32 entries) (BATCH-9-P3-002)
+    private val checkboxCache: MutableMap<CheckboxKey, Bitmap> = object : java.util.LinkedHashMap<CheckboxKey, Bitmap>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CheckboxKey, Bitmap>?): Boolean {
+            if (size > 32) {
+                eldest?.value?.takeIf { !it.isRecycled }?.recycle()
+                return true
+            }
+            return false
+        }
+    }
+
     /**
      * Renders a crisp, borderless rounded rectangle background for the task widget.
      * Generates a smooth, anti-aliased fill without blurry borders.
@@ -38,9 +59,15 @@ object WidgetDrawableGenerator {
 
     /**
      * Clean, flat item row with a subtle indented bottom divider.
-     * Removes the chunky filled card lozenges.
+     * Cached by dark/light mode to prevent allocating for every single item row (BATCH-9-P3-002).
      */
     fun createItemBackground(context: Context, config: WidgetConfig): Bitmap {
+        val isDark = config.theme.isDark
+        val cached = itemBgCache[isDark]
+        if (cached != null && !cached.isRecycled) {
+            return cached
+        }
+
         val width = 120
         val height = 40
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -48,14 +75,15 @@ object WidgetDrawableGenerator {
 
         // Subtle indented bottom divider for a professional list appearance
         val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            val dividerAlpha = if (config.theme.isDark) 18 else 24
-            val col = if (config.theme.isDark) 255 else 0
+            val dividerAlpha = if (isDark) 18 else 24
+            val col = if (isDark) 255 else 0
             color = Color.argb(dividerAlpha, col, col, col)
             style = Paint.Style.FILL
         }
         // Indented past the checkbox
         canvas.drawRect(34f, height - 1f, width.toFloat(), height.toFloat(), dividerPaint)
 
+        itemBgCache[isDark] = bitmap
         return bitmap
     }
 
@@ -141,6 +169,17 @@ object WidgetDrawableGenerator {
     }
 
     fun createCheckbox(context: Context, config: WidgetConfig, isChecked: Boolean): Bitmap {
+        val isDark = config.theme.isDark
+        val isMonochrome = config.accent == WidgetAccent.MONOCHROME
+        val key = CheckboxKey(config.accentColorInt, isChecked, isDark, isMonochrome)
+
+        synchronized(checkboxCache) {
+            val cached = checkboxCache[key]
+            if (cached != null && !cached.isRecycled) {
+                return cached
+            }
+        }
+
         val size = 36
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -154,7 +193,7 @@ object WidgetDrawableGenerator {
             canvas.drawCircle(radius, radius, radius - 2f, fillPaint)
 
             val checkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = if (config.accent == WidgetAccent.MONOCHROME && !config.theme.isDark) Color.WHITE else Color.parseColor("#121516")
+                color = if (isMonochrome && !isDark) Color.WHITE else Color.parseColor("#121516")
                 style = Paint.Style.STROKE
                 strokeWidth = 3.2f
                 strokeCap = Paint.Cap.ROUND
@@ -168,8 +207,8 @@ object WidgetDrawableGenerator {
             canvas.drawPath(path, checkPaint)
         } else {
             val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                val borderAlpha = if (config.theme.isDark) 100 else 130
-                val col = if (config.theme.isDark) 200 else 110
+                val borderAlpha = if (isDark) 100 else 130
+                val col = if (isDark) 200 else 110
                 color = Color.argb(borderAlpha, col, col, col)
                 style = Paint.Style.STROKE
                 strokeWidth = 2f
@@ -177,6 +216,9 @@ object WidgetDrawableGenerator {
             canvas.drawCircle(radius, radius, radius - 2.5f, borderPaint)
         }
 
+        synchronized(checkboxCache) {
+            checkboxCache[key] = bitmap
+        }
         return bitmap
     }
 }

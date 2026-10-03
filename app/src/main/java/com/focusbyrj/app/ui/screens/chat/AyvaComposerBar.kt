@@ -48,19 +48,15 @@ data class Suggestion(val displayText: String, val replacementText: String)
 class CommandVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val input = text.text
-        val builder = AnnotatedString.Builder()
+        val builder = AnnotatedString.Builder(input)
         if (input.startsWith("/")) {
-            val parts = input.split(" ", limit = 3)
-            val cmd = parts[0]
-            builder.withStyle(SpanStyle(color = Color(0xFF3B82F6), fontWeight = FontWeight.Bold)) {
-                append(cmd)
-            }
-            if (parts.size > 1) {
-                builder.append(" ")
-                builder.append(parts.drop(1).joinToString(" "))
-            }
-        } else {
-            builder.append(input)
+            val firstSpace = input.indexOf(' ')
+            val cmdEnd = if (firstSpace != -1) firstSpace else input.length
+            builder.addStyle(
+                SpanStyle(color = Color(0xFF3B82F6), fontWeight = FontWeight.Bold),
+                0,
+                cmdEnd
+            )
         }
         return TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
     }
@@ -317,7 +313,7 @@ fun AyvaComposerBar(
                 ),
                 maxLines = 4,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSend() })
+                keyboardActions = KeyboardActions(onSend = { if (inputText.isNotBlank()) onSend() })
             )
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -338,7 +334,5 @@ fun AyvaComposerBar(
                 )
             }
         }
-        // Navigation Bar padding
-        Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     }
 }

@@ -52,6 +52,8 @@ data class CollageRowConfig(
     val rowHeight: Dp
 )
 
+const val MAX_COLLAGE_IMAGES = 50
+
 /**
  * Computes aesthetic Google Keep row distributions with staggered, varied column widths
  * in each row (all items in the same row share the exact same height, but have varied, dynamic widths).
@@ -61,7 +63,9 @@ fun buildGoogleKeepCollageRows(
     maxImagesToShow: Int = totalImages,
     isCardPreview: Boolean = false
 ): List<CollageRowConfig> {
-    val count = totalImages.coerceAtMost(maxImagesToShow)
+    val safeMax = maxOf(0, maxImagesToShow)
+    val safeTotal = maxOf(0, totalImages)
+    val count = minOf(safeTotal, safeMax).coerceAtMost(MAX_COLLAGE_IMAGES)
     if (count <= 0) return emptyList()
 
     val rows = mutableListOf<CollageRowConfig>()

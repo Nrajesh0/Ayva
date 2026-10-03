@@ -24,6 +24,9 @@ data class ParsedSharedNote(
 
 object KeepNoteShareParser {
 
+    const val MAX_ATTACHED_IMAGES = 50
+    const val MAX_CHECKLIST_ITEMS = 500
+
     private val CHECKED_REGEX = Regex("""^(\s*[-*•]?\s*(☑|\[[xX]\]|\([xX]\))\s*)(.*)$""")
     private val UNCHECKED_REGEX = Regex("""^(\s*[-*•]?\s*(☐|\[\s*\]|\(\s*\))\s*)(.*)$""")
     private val BULLET_REGEX = Regex("""^(\s*[-*•]\s+)(.*)$""")
@@ -115,10 +118,10 @@ object KeepNoteShareParser {
         // 2. Multiple streams
         kotlin.runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)?.let { uris.addAll(it) }
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)?.filterNotNull()?.let { uris.addAll(it) }
             } else {
                 @Suppress("DEPRECATION")
-                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let { uris.addAll(it) }
+                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.filterNotNull()?.let { uris.addAll(it) }
             }
         }
 
@@ -135,7 +138,7 @@ object KeepNoteShareParser {
             }
         }
 
-        return uris.distinct()
+        return uris.filterNotNull().distinct().take(MAX_ATTACHED_IMAGES)
     }
 
     fun parseContent(rawSubject: String?, rawText: String?, imageUris: List<Uri> = emptyList()): ParsedSharedNote {
@@ -203,7 +206,8 @@ object KeepNoteShareParser {
 
         if (hasCheckboxes) {
             val items = mutableListOf<ChecklistItem>()
-            remainingLines.forEach { line ->
+            for (line in remainingLines) {
+                if (items.size >= MAX_CHECKLIST_ITEMS) break
                 val trimmed = line.trim()
                 if (trimmed.isNotBlank()) {
                     val (isChecked, cleanText) = parseChecklistLine(trimmed)
@@ -215,7 +219,7 @@ object KeepNoteShareParser {
                 content = "",
                 isChecklist = true,
                 checklistItems = items,
-                imageUris = imageUris
+                imageUris = imageUris.filterNotNull().distinct().take(MAX_ATTACHED_IMAGES)
             )
         } else {
             val body = remainingLines.joinToString("\n").trim()

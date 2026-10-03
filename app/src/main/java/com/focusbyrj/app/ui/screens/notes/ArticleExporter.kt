@@ -61,14 +61,16 @@ object ArticleExporter {
             return sb.toString().trim()
         }
 
-        if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
-            val text = if (blocks.isNotEmpty()) (blocks[0] as NotesnookBlock.Text).text else fallbackContent
-            val spans = if (blocks.isNotEmpty()) (blocks[0] as NotesnookBlock.Text).spans else emptyList()
+        val effectiveBlocks = ArticleExporterHelper.getEffectiveBlocks(blocks, fallbackContent)
+
+        if (effectiveBlocks.size <= 1 && (effectiveBlocks.isEmpty() || effectiveBlocks[0] is NotesnookBlock.Text)) {
+            val text = if (effectiveBlocks.isNotEmpty()) (effectiveBlocks[0] as NotesnookBlock.Text).text else fallbackContent
+            val spans = if (effectiveBlocks.isNotEmpty()) (effectiveBlocks[0] as NotesnookBlock.Text).spans else emptyList()
             sb.append(convertTextSpansToMarkdown(text, spans))
             return sb.toString().trim()
         }
 
-        blocks.forEach { block ->
+        effectiveBlocks.forEach { block ->
             when (block) {
                 is NotesnookBlock.Text -> {
                     if (block.text.isNotBlank()) {
@@ -294,15 +296,7 @@ object ArticleExporter {
             sb.append("<h1>").append(escapeHtml(title)).append("</h1>\n")
         }
 
-        val effectiveBlocks = if (blocks.isEmpty() && fallbackContent.contains(NotesnookBlockManager.BLOCKS_PREFIX)) {
-            try {
-                NotesnookBlockManager.parse(fallbackContent)
-            } catch (_: Exception) {
-                blocks
-            }
-        } else {
-            blocks
-        }
+        val effectiveBlocks = ArticleExporterHelper.getEffectiveBlocks(blocks, fallbackContent)
 
         if (isChecklist && checklistItems.isNotEmpty()) {
             sb.append("<ul class=\"checklist\">\n")
@@ -617,11 +611,7 @@ object ArticleExporter {
     }
 
     private fun sanitizeFileName(title: String, extension: String): String {
-        val safeTitle = title.trim().ifBlank { "Focus_Note" }
-            .replace(Regex("[^a-zA-Z0-9._-]"), "_")
-            .take(50)
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())
-        return "${safeTitle}_$timestamp.$extension"
+        return ArticleExporterHelper.sanitizeFileName(title, extension)
     }
 
     fun shareExportedFile(

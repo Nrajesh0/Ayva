@@ -69,16 +69,21 @@ fun PreferencesHubScreen(
     var syncSuccessMessage by remember { mutableStateOf<String?>(null) }
 
     val noteDao = remember { NoteDatabase.getInstance(context).noteDao() }
-    val taskDao = remember { (context.applicationContext as FocusApplication).database.taskDao() }
+    val taskDao = remember { PreferencesHubHelper.getTaskDao(context) }
 
     fun triggerManualSync() {
         if (isSyncingNow) return
+        val currentTaskDao = taskDao
+        if (currentTaskDao == null) {
+            Toast.makeText(context, "Task database unavailable for sync", Toast.LENGTH_SHORT).show()
+            return
+        }
         isSyncingNow = true
         syncErrorMessage = null
         syncSuccessMessage = null
         scope.launch {
             try {
-                val result = SupabaseSyncEngine.performSync(context, noteDao, taskDao)
+                val result = SupabaseSyncEngine.performSync(context, noteDao, currentTaskDao)
                 result.onSuccess { res ->
                     syncSuccessMessage = res.message
                     Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()

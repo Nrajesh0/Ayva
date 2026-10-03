@@ -157,7 +157,7 @@ fun AptitudeProfileCard() {
                     CompactDivider(borderColor)
                     CompactStatItem("Questions", "${profile.totalQuestions}", textColor, mutedTextColor)
                     CompactDivider(borderColor)
-                    CompactStatItem("Accuracy", "${profile.accuracy.roundToInt()}%", textColor, mutedTextColor)
+                    CompactStatItem("Accuracy", "${AptitudeCardHelper.clampAccuracy(profile.accuracy)}%", textColor, mutedTextColor)
                 }
             }
         }
@@ -272,7 +272,7 @@ fun AptitudeProfileCard() {
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                text = "Streak Freeze (${profile.streakFreezesCount}/3)",
+                                text = "Streak Freeze (${AptitudeCardHelper.clampStreakFreezes(profile.streakFreezesCount)}/3)",
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
                                 color = textColor
                             )

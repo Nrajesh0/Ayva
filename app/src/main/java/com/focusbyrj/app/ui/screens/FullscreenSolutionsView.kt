@@ -113,11 +113,7 @@ fun FullscreenSolutionsView(
                         val categoryTitle = obj.optString("title", "Arithmetic & Speed Drill")
                         examTitle = if (isBlitz) "⚡ Speed Blitz Review" else "$categoryTitle Solutions"
                         val qArr = obj.optJSONArray("questions")
-                        if (qArr != null && qArr.length() > 0) {
-                            for (i in 0 until qArr.length()) {
-                                questionsList.add(DrillQuestionResult.fromJson(qArr.getJSONObject(i), 20, i))
-                            }
-                        }
+                        questionsList.addAll(SolutionsViewHelper.parseQuestionsSafely(qArr))
                     } catch (_: Exception) {}
                 }
             }
@@ -130,13 +126,15 @@ fun FullscreenSolutionsView(
     val unattemptedCount = questionsList.count { it.status == "unattempted" }
     val overtimeCount = questionsList.count { it.timeTakenSec > 35 }
 
-    val currentQuestion = questionsList.getOrNull(selectedQuestionIndex)
+    val safeIndex = SolutionsViewHelper.safeQuestionIndex(selectedQuestionIndex, questionsList.size)
+    val currentQuestion = questionsList.getOrNull(safeIndex)
     val stripListState = rememberLazyListState()
     val scrollState = rememberScrollState()
 
-    LaunchedEffect(selectedQuestionIndex) {
-        if (questionsList.isNotEmpty() && selectedQuestionIndex in questionsList.indices) {
-            stripListState.animateScrollToItem(selectedQuestionIndex)
+    LaunchedEffect(selectedQuestionIndex, questionsList.size) {
+        if (questionsList.isNotEmpty()) {
+            val validIndex = SolutionsViewHelper.safeQuestionIndex(selectedQuestionIndex, questionsList.size)
+            stripListState.animateScrollToItem(validIndex)
             scrollState.scrollTo(0)
         }
     }

@@ -102,6 +102,7 @@ fun NotesSpeedDialFab(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.65f))
                     .clickable(
+                        enabled = isExpanded,
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) {

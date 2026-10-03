@@ -83,7 +83,7 @@ class TodoWidgetConfigureActivity : ComponentActivity() {
 
                         // Push widget update
                         val appWidgetManager = AppWidgetManager.getInstance(this)
-                        if (appWidgetId != 0) {
+                        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID && appWidgetId != 0) {
                             TodoWidgetProvider.updateWidget(this, appWidgetManager, appWidgetId)
                         } else {
                             TodoWidgetProvider.updateAllWidgets(this)

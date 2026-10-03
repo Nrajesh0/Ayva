@@ -257,7 +257,10 @@ class BubbleService : Service() {
                 }
                 ACTION_VERIFY_BUBBLE_STATE -> {
                     if (!isChatOpen && !isSnoozed(this@BubbleService) && !isHiddenForPermission) {
-                        addBubbleToWindowManager()
+                        val bv = bubbleView
+                        if (!isBubbleAdded || bv == null || (!bv.isAttachedToWindow && bv.windowToken == null)) {
+                            addBubbleToWindowManager()
+                        }
                     }
                 }
                 BubbleChatManager.ACTION_UNREAD_COUNT_CHANGED -> {
@@ -273,6 +276,11 @@ class BubbleService : Service() {
                         addBubbleToWindowManager()
                         unpeekBubble(animate = false)
                         showNotificationPreviewPill(alertText)
+                        resetHideTimer()
+                        val latestMsg = BubbleChatManager.getMessages(this@BubbleService).lastOrNull { !it.isUser }
+                        if (latestMsg != null) {
+                            lastPreviewedMessageId = latestMsg.id
+                        }
                     }
                 }
             }
@@ -294,7 +302,10 @@ class BubbleService : Service() {
             ACTION_RESTORE_FROM_PERMISSION -> restoreFromPermission()
             ACTION_VERIFY_BUBBLE_STATE -> {
                 if (!isChatOpen && !isSnoozed(this) && !isHiddenForPermission) {
-                    addBubbleToWindowManager()
+                    val bv = bubbleView
+                    if (!isBubbleAdded || bv == null || (!bv.isAttachedToWindow && bv.windowToken == null)) {
+                        addBubbleToWindowManager()
+                    }
                 }
             }
             ACTION_SHOW_ALERT_PREVIEW -> {
@@ -304,6 +315,11 @@ class BubbleService : Service() {
                     addBubbleToWindowManager()
                     unpeekBubble(animate = false)
                     showNotificationPreviewPill(alertText)
+                    resetHideTimer()
+                    val latestMsg = BubbleChatManager.getMessages(this).lastOrNull { !it.isUser }
+                    if (latestMsg != null) {
+                        lastPreviewedMessageId = latestMsg.id
+                    }
                 }
             }
         }
@@ -421,15 +437,24 @@ class BubbleService : Service() {
         val lp = layoutParams ?: return
 
         try {
-            if (isBubbleAdded || bv.isAttachedToWindow || bv.windowToken != null) {
-                bv.visibility = View.VISIBLE
-                bv.scaleX = 1f
-                bv.scaleY = 1f
-                bv.alpha = 1f
-                windowManager.updateViewLayout(bv, lp)
+            val isAttached = bv.isAttachedToWindow || bv.windowToken != null
+            if (isBubbleAdded && isAttached) {
+                // View is already safely added and attached to WindowManager.
+                // Do not disturb existing position, alpha, hide/peek state, or timers.
+                return
+            }
+
+            if (isAttached) {
                 isBubbleAdded = true
-                updateBadgeCount()
-                resetHideTimer()
+                bv.visibility = View.VISIBLE
+                if (!isPeeking) {
+                    bv.scaleX = 1f
+                    bv.scaleY = 1f
+                    bv.alpha = 1f
+                    try { windowManager.updateViewLayout(bv, lp) } catch (_: Exception) {}
+                    updateBadgeCount()
+                    resetHideTimer()
+                }
             } else {
                 bv.visibility = View.VISIBLE
                 bv.scaleX = 1f
@@ -816,25 +841,29 @@ class BubbleService : Service() {
             (bv.background as? GradientDrawable)?.setColor(android.graphics.Color.parseColor("#E53935"))
             bv.text = if (count > 99) "99+" else count.toString()
             bv.visibility = View.VISIBLE
-            if (isPeeking) {
-                unpeekBubble(animate = true)
-            }
 
             // Check if there's a new unread message to show in the Messenger-style preview pill
             val latestMsg = BubbleChatManager.getMessages(this).lastOrNull { !it.isUser }
             if (latestMsg != null && latestMsg.id != lastPreviewedMessageId && !isChatOpen) {
+                val isRecent = latestMsg.timestamp > 0L && (System.currentTimeMillis() - latestMsg.timestamp) < 30_000L
                 lastPreviewedMessageId = latestMsg.id
-                val previewText = latestMsg.text.trim()
-                if (previewText.isNotEmpty()) {
-                    val category = com.focusbyrj.app.util.AyvaAlertCategory.infer(
-                        text = previewText,
-                        isMorning = latestMsg.isMorningBrief,
-                        isEvening = latestMsg.isEveningBrief,
-                        isDrill = latestMsg.isArithmetic || latestMsg.isDrillSummary,
-                        isStreakPrompt = latestMsg.isStreakPrompt,
-                        messageId = latestMsg.id
-                    )
-                    showNotificationPreviewPill(previewText, category)
+                if (isRecent) {
+                    if (isPeeking) {
+                        unpeekBubble(animate = true)
+                    }
+                    resetHideTimer()
+                    val previewText = latestMsg.text.trim()
+                    if (previewText.isNotEmpty()) {
+                        val category = com.focusbyrj.app.util.AyvaAlertCategory.infer(
+                            text = previewText,
+                            isMorning = latestMsg.isMorningBrief,
+                            isEvening = latestMsg.isEveningBrief,
+                            isDrill = latestMsg.isArithmetic || latestMsg.isDrillSummary,
+                            isStreakPrompt = latestMsg.isStreakPrompt,
+                            messageId = latestMsg.id
+                        )
+                        showNotificationPreviewPill(previewText, category)
+                    }
                 }
             }
             return
@@ -1049,6 +1078,7 @@ class BubbleService : Service() {
         val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
         if (!force && !prefs.getBoolean("auto_hide_enabled", false)) return
 
+        hideHandler.removeCallbacks(hideRunnable)
         isPeeking = true
         val displayMetrics = resources.displayMetrics
         val size = (60 * displayMetrics.density).toInt()
@@ -1150,7 +1180,7 @@ class BubbleService : Service() {
 
     private fun resetHideTimer() {
         hideHandler.removeCallbacks(hideRunnable)
-        if (isChatOpen) return
+        if (isChatOpen || isPeeking) return
         val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
         if (prefs.getBoolean("auto_hide_enabled", false)) {
             val durationSecs = prefs.getInt("auto_hide_duration_sec", 3)

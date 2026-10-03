@@ -2015,7 +2015,9 @@ private fun EnclaveHeatmapGrid(colors: EnclaveColors, dailyUsage: Map<Int, Long>
                         val daysAgo = (totalCols - 1 - col) * 7 + (6 - row)
                         val targetCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
                         val dayOfYear = targetCal.get(Calendar.DAY_OF_YEAR)
-                        val realMinutes = (dailyUsage[dayOfYear] ?: 0L) / (60 * 1000L)
+                        val compositeKey = targetCal.get(Calendar.YEAR) * 1000 + dayOfYear
+                        // Support composite year*1000+dayOfYear key (BATCH-9-P2-005) with fallback to bare dayOfYear
+                        val realMinutes = ((dailyUsage[compositeKey] ?: dailyUsage[dayOfYear]) ?: 0L) / (60 * 1000L)
 
                         val cellColor = when {
                             realMinutes > 45 -> colors.accentPrimary

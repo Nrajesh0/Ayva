@@ -42,6 +42,7 @@ object ArticlePdfGenerator {
         isChecklist: Boolean = false,
         checklistItems: List<ChecklistItem> = emptyList()
     ): ByteArray {
+        val effectiveBlocks = ArticleExporterHelper.getEffectiveBlocks(blocks, fallbackContent)
         val pdfDoc = PdfDocument()
         try {
             var pageNumber = 1
@@ -225,8 +226,8 @@ object ArticlePdfGenerator {
 
                 currentY += rowHeight
             }
-        } else if (blocks.size <= 1 && (blocks.isEmpty() || blocks[0] is NotesnookBlock.Text)) {
-            val text = if (blocks.isNotEmpty()) (blocks[0] as NotesnookBlock.Text).text else fallbackContent
+        } else if (effectiveBlocks.size <= 1 && (effectiveBlocks.isEmpty() || effectiveBlocks[0] is NotesnookBlock.Text)) {
+            val text = if (effectiveBlocks.isNotEmpty()) (effectiveBlocks[0] as NotesnookBlock.Text).text else fallbackContent
             val lines = text.split("\n")
             lines.forEach { line ->
                 if (line.isNotBlank()) {
@@ -242,7 +243,7 @@ object ArticlePdfGenerator {
                 }
             }
         } else {
-            blocks.forEach { block ->
+            effectiveBlocks.forEach { block ->
                 when (block) {
                     is NotesnookBlock.Text -> {
                         if (block.text.isNotBlank()) {

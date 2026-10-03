@@ -37,6 +37,9 @@ object AyvaIntentRouter {
         knownRoutines: List<String> = emptyList()
     ): RouterDestination {
         val trimmed = input.trim()
+        // Sanitize newlines from user input before embedding in ConflictOption commands.
+        // A raw "\n/clear" in trimmed would be split by the compound command handler as two commands (BATCH-9-P2-011).
+        val safeTrimmed = trimmed.replace(Regex("[\r\n]+"), " ").trim()
         val lower = trimmed.lowercase()
 
         // 1. Direct Slash Commands
@@ -56,7 +59,7 @@ object AyvaIntentRouter {
                         ConflictOption(
                             label = "Add as New Task",
                             emoji = "➕",
-                            command = "/create $trimmed"
+                            command = "/create $safeTrimmed"
                         ),
                         ConflictOption(
                             label = "Mark Existing Complete",
@@ -119,7 +122,7 @@ object AyvaIntentRouter {
                     ConflictOption(
                         label = "Add as Todo Task: '$title'",
                         emoji = "➕",
-                        command = "/create $trimmed"
+                        command = "/create $safeTrimmed"
                     ),
                     ConflictOption(
                         label = "Open Routines",
@@ -141,7 +144,7 @@ object AyvaIntentRouter {
                     ConflictOption(
                         label = "Add as Todo Task: '$title'",
                         emoji = "➕",
-                        command = "/create $trimmed"
+                        command = "/create $safeTrimmed"
                     ),
                     ConflictOption(
                         label = "View Habits Hub",
@@ -163,7 +166,7 @@ object AyvaIntentRouter {
                     ConflictOption(
                         label = "Add as Todo Task: '$title'",
                         emoji = "➕",
-                        command = "/create $trimmed"
+                        command = "/create $safeTrimmed"
                     ),
                     ConflictOption(
                         label = "Start Focus Mode",
@@ -185,7 +188,7 @@ object AyvaIntentRouter {
                     ConflictOption(
                         label = "Add as Todo Task: '$title'",
                         emoji = "➕",
-                        command = "/create $trimmed"
+                        command = "/create $safeTrimmed"
                     ),
                     ConflictOption(
                         label = "Start Math Drill",
@@ -207,7 +210,7 @@ object AyvaIntentRouter {
                     ConflictOption(
                         label = "Add as Todo Task: '$title'",
                         emoji = "➕",
-                        command = "/create $trimmed"
+                        command = "/create $safeTrimmed"
                     ),
                     ConflictOption(
                         label = "Configure App Blocker",
@@ -229,7 +232,7 @@ object AyvaIntentRouter {
                     ConflictOption(
                         label = "Add as Todo Task: '$title'",
                         emoji = "➕",
-                        command = "/create $trimmed"
+                        command = "/create $safeTrimmed"
                     ),
                     ConflictOption(
                         label = "View Daily Summary",

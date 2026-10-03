@@ -100,29 +100,7 @@ class AptitudeReminderReceiver : BroadcastReceiver() {
         private fun scheduleExactSlot(context: Context, timeStr: String) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
             
-            var hour = 18
-            var minute = 0
-            try {
-                val cleaned = timeStr.trim()
-                if (cleaned.contains("AM", ignoreCase = true) || cleaned.contains("PM", ignoreCase = true)) {
-                    val parts = cleaned.split(":", " ").filter { it.isNotBlank() }
-                    if (parts.size >= 3) {
-                        var h = parts[0].toInt()
-                        val m = parts[1].toInt()
-                        val amPm = parts[2]
-                        if (amPm.equals("PM", ignoreCase = true) && h != 12) h += 12
-                        if (amPm.equals("AM", ignoreCase = true) && h == 12) h = 0
-                        hour = h
-                        minute = m
-                    }
-                } else {
-                    val parts = cleaned.split(":")
-                    if (parts.size >= 2) {
-                        hour = parts[0].toInt()
-                        minute = parts[1].toInt()
-                    }
-                }
-            } catch (_: Exception) {}
+            val (hour, minute) = AptitudeReminderHelper.parseHourAndMinute(timeStr, 18, 0)
 
             val now = Calendar.getInstance()
             val target = Calendar.getInstance().apply {

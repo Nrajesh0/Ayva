@@ -170,7 +170,7 @@ fun NoteLabelsDialog(
                         .heightIn(max = 240.dp)
                 ) {
                     items(filteredLabels, key = { it }) { label ->
-                        val isChecked = selectedLabels.contains(label)
+                        val isChecked = LabelDialogHelper.isLabelSelected(label, selectedLabels)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

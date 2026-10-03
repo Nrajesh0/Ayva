@@ -136,8 +136,8 @@ fun ExportBackupPasswordDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (password.length < 8) {
-                        errorMessage = "Password must be at least 8 characters long."
+                    if (password.trim().length < 8) {
+                        errorMessage = "Password must contain at least 8 non-whitespace characters."
                     } else if (password != confirmPassword) {
                         errorMessage = "Passwords do not match."
                     } else {
@@ -325,10 +325,9 @@ fun ConfigureRestoredVaultPinDialog(
                 OutlinedTextField(
                     value = pin,
                     onValueChange = {
-                        if (it.length <= 6 && it.all { char -> char.isDigit() }) {
-                            pin = it
-                            errorMessage = null
-                        }
+                        val digits = it.filter { char -> char.isDigit() }.take(6)
+                        pin = digits
+                        errorMessage = null
                     },
                     label = { Text("6-Digit Vault PIN") },
                     singleLine = true,
@@ -351,10 +350,9 @@ fun ConfigureRestoredVaultPinDialog(
                 OutlinedTextField(
                     value = confirmPin,
                     onValueChange = {
-                        if (it.length <= 6 && it.all { char -> char.isDigit() }) {
-                            confirmPin = it
-                            errorMessage = null
-                        }
+                        val digits = it.filter { char -> char.isDigit() }.take(6)
+                        confirmPin = digits
+                        errorMessage = null
                     },
                     label = { Text("Confirm 6-Digit PIN") },
                     singleLine = true,

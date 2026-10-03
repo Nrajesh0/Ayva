@@ -75,8 +75,17 @@ fun SharedPreferences.getSafeFloat(key: String, defValue: Float): Float {
         } catch (_: Exception) {
             try {
                 val longVal = this.getLong(key, defValue.toLong())
-                this.edit().putFloat(key, longVal.toFloat()).apply()
-                longVal.toFloat()
+                // BATCH-9-P2-007: Float can only represent integers exactly up to 2^24 (16_777_216).
+                // A Long outside that range (e.g. an epoch timestamp) would lose precision when cast to Float.
+                // Self-heal only within the safe range; otherwise return defValue.
+                val floatSafeMax = 1L shl 24 // 16_777_216
+                if (longVal in -floatSafeMax..floatSafeMax) {
+                    val floatVal = longVal.toFloat()
+                    this.edit().putFloat(key, floatVal).apply()
+                    floatVal
+                } else {
+                    defValue
+                }
             } catch (_: Exception) {
                 try {
                     val strVal = this.getString(key, null)

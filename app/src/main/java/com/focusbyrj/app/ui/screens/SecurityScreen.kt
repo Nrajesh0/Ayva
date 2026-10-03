@@ -455,6 +455,7 @@ fun SecurityScreen(navController: NavController) {
                                 onClick = {
                                     importLauncher.launch(arrayOf("*/*"))
                                 },
+                                enabled = !isRestoring && !isExporting,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer
@@ -463,7 +464,7 @@ fun SecurityScreen(navController: NavController) {
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                                 modifier = Modifier.height(36.dp)
                             ) {
-                                Text("Restore", style = MaterialTheme.typography.labelMedium)
+                                Text(if (isRestoring) "Restoring..." else "Restore", style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     )

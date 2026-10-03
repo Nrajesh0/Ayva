@@ -112,13 +112,17 @@ object AyvaCompoundCommandHandler {
     fun extractTimeLimitMinutes(input: String): Int? {
         val matcher = Pattern.compile("(?i)(?:for|limit\\s+to)\\s+(\\d+)\\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)?").matcher(input)
         if (matcher.find()) {
-            val amount = matcher.group(1)?.toIntOrNull() ?: return null
+            val amount = matcher.group(1)?.toLongOrNull() ?: return null
             val unit = matcher.group(2)?.lowercase() ?: "m"
-            return if (unit.startsWith("h")) {
-                amount * 60
+            // Use Long arithmetic to prevent Int overflow; clamp to 24h max (1440 minutes)
+            val minutes = if (unit.startsWith("h")) {
+                amount * 60L
             } else {
                 amount
             }
+            // Negative or zero duration is invalid; cap at 24h to avoid unintended infinite blocks
+            if (minutes <= 0L) return null
+            return minutes.coerceAtMost(1440L).toInt()
         }
         return null
     }

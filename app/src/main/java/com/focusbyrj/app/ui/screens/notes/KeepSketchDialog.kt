@@ -180,6 +180,14 @@ object KeepSketchHelper {
     fun coerceColorComponent(component: Float): Int {
         return (component * 255f).toInt().coerceIn(0, 255)
     }
+
+    fun safeRadius(radius: Float): Float {
+        return if (radius.isNaN() || radius <= 0f) 0f else radius
+    }
+
+    fun isCoordinateValid(x: Float, y: Float): Boolean {
+        return !x.isNaN() && !y.isNaN() && !x.isInfinite() && !y.isInfinite()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -1455,22 +1463,26 @@ private fun createSmoothPath(points: List<Offset>): Path {
  */
 private fun erasePathsNear(paths: MutableList<DrawingPath>, target: Offset, radius: Float): Boolean {
     val initialSize = paths.size
+    if (!KeepSketchHelper.isCoordinateValid(target.x, target.y)) return false
+    val safeRadius = KeepSketchHelper.safeRadius(radius)
+    if (safeRadius <= 0f) return false
+
     val iterator = paths.iterator()
     while (iterator.hasNext()) {
         val p = iterator.next()
         var hit = false
         if (p.shapeType != null && p.startPoint != null && p.endPoint != null) {
-            val minX = minOf(p.startPoint.x, p.endPoint.x) - radius
-            val maxX = maxOf(p.startPoint.x, p.endPoint.x) + radius
-            val minY = minOf(p.startPoint.y, p.endPoint.y) - radius
-            val maxY = maxOf(p.startPoint.y, p.endPoint.y) + radius
+            val minX = minOf(p.startPoint.x, p.endPoint.x) - safeRadius
+            val maxX = maxOf(p.startPoint.x, p.endPoint.x) + safeRadius
+            val minY = minOf(p.startPoint.y, p.endPoint.y) - safeRadius
+            val maxY = maxOf(p.startPoint.y, p.endPoint.y) + safeRadius
             if (target.x in minX..maxX && target.y in minY..maxY) {
                 hit = true
             }
         } else {
             for (pt in p.points) {
                 val dist = hypot(pt.x - target.x, pt.y - target.y)
-                if (dist <= radius + (p.strokeWidth / 2f)) {
+                if (dist <= safeRadius + (p.strokeWidth / 2f)) {
                     hit = true
                     break
                 }

@@ -176,10 +176,11 @@ object FocusStatsManager {
             refreshStats(context)
         } else {
             // Lightweight update for periodic background routine ticks: update today's minutes without 30-day recalculation loop
+            // Use composite year*1000+dayOfYear key to avoid Jan-1 year-boundary collision (BATCH-9-P2-006)
             val currentStats = _statsFlow.value
-            val todayDayOfYear = cal.get(Calendar.DAY_OF_YEAR)
+            val compositeKey = cal.get(Calendar.YEAR) * 1000 + cal.get(Calendar.DAY_OF_YEAR)
             val updatedMap = currentStats.dailyFocusMinutes.toMutableMap()
-            updatedMap[todayDayOfYear] = newMs
+            updatedMap[compositeKey] = newMs
             _statsFlow.value = currentStats.copy(dailyFocusMinutes = updatedMap)
         }
     }
@@ -194,6 +195,8 @@ object FocusStatsManager {
         installCal.set(Calendar.SECOND, 0)
         installCal.set(Calendar.MILLISECOND, 0)
 
+        // Use composite year*1000+dayOfYear as map key to avoid Jan-1 year-boundary collision (BATCH-9-P2-005)
+        // e.g. Dec 31, 2025 = 2025*1000+365 = 2025365; Jan 1, 2026 = 2026*1000+1 = 2026001 — no collision
         val dailyMap = mutableMapOf<Int, Long>()
         val cal = Calendar.getInstance()
 
@@ -201,26 +204,28 @@ object FocusStatsManager {
         val historyDays = 130
         for (i in 0 downTo -historyDays) {
             val dayCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, i) }
-            val dayOfYear = dayCal.get(Calendar.DAY_OF_YEAR)
+            val compositeKey = dayCal.get(Calendar.YEAR) * 1000 + dayCal.get(Calendar.DAY_OF_YEAR)
 
             if (dayCal.before(installCal) && !isSameDay(dayCal, installCal)) {
-                dailyMap[dayOfYear] = 0L
+                dailyMap[compositeKey] = 0L
             } else {
-                val key = getDailyKey(dayCal)
-                val focusMs = prefs.getSafeLong(key, 0L)
-                dailyMap[dayOfYear] = focusMs
+                val prefKey = getDailyKey(dayCal)
+                val focusMs = prefs.getSafeLong(prefKey, 0L)
+                dailyMap[compositeKey] = focusMs
             }
         }
 
         var currentStreak = 0
         val todayCal = Calendar.getInstance()
-        val todayMs = dailyMap[todayCal.get(Calendar.DAY_OF_YEAR)] ?: 0L
+        val todayCompositeKey = todayCal.get(Calendar.YEAR) * 1000 + todayCal.get(Calendar.DAY_OF_YEAR)
+        val todayMs = dailyMap[todayCompositeKey] ?: 0L
         val minActiveMs = 1 * 60 * 1000L // 1 minute focus counts towards streak
 
         var startIndex = 0
         if (todayMs < minActiveMs) {
             val yestCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
-            val yestMs = dailyMap[yestCal.get(Calendar.DAY_OF_YEAR)] ?: 0L
+            val yestCompositeKey = yestCal.get(Calendar.YEAR) * 1000 + yestCal.get(Calendar.DAY_OF_YEAR)
+            val yestMs = dailyMap[yestCompositeKey] ?: 0L
             if (yestMs >= minActiveMs && !yestCal.before(installCal)) {
                 startIndex = -1
             } else {
@@ -234,7 +239,8 @@ object FocusStatsManager {
                 if (checkCal.before(installCal) && !isSameDay(checkCal, installCal)) {
                     break
                 }
-                val ms = dailyMap[checkCal.get(Calendar.DAY_OF_YEAR)] ?: 0L
+                val ck = checkCal.get(Calendar.YEAR) * 1000 + checkCal.get(Calendar.DAY_OF_YEAR)
+                val ms = dailyMap[ck] ?: 0L
                 if (ms >= minActiveMs) {
                     currentStreak++
                 } else {
@@ -251,7 +257,8 @@ object FocusStatsManager {
                 runningStreak = 0
                 continue
             }
-            val ms = dailyMap[checkCal.get(Calendar.DAY_OF_YEAR)] ?: 0L
+            val ck = checkCal.get(Calendar.YEAR) * 1000 + checkCal.get(Calendar.DAY_OF_YEAR)
+            val ms = dailyMap[ck] ?: 0L
             if (ms >= minActiveMs) {
                 runningStreak++
                 if (runningStreak > maxStreak) {

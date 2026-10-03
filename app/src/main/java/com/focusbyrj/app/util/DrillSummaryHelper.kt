@@ -14,11 +14,12 @@ object DrillSummaryHelper {
             "hard" -> 30
             else -> 20
         }
-        
-        var xpEarned = session.correct * baseMultiplier
+
+        // Use Long for all intermediate XP to prevent Int overflow on high-score sessions (BATCH-9-P2-009)
+        var xpEarnedL: Long = session.correct.toLong() * baseMultiplier
         val isPerfect = session.targetQuestions >= 10 && session.correct == session.targetQuestions
         if (isPerfect) {
-            xpEarned *= 2
+            xpEarnedL *= 2
         }
 
         // Combo bonus XP
@@ -28,21 +29,24 @@ object DrillSummaryHelper {
             session.maxCombo >= 3 -> (session.correct * 5)
             else -> 0
         }
-        xpEarned += comboBonusXp
+        xpEarnedL += comboBonusXp
 
         val streakBonusPercent = AptitudeManager.getStreakBonusPercent()
         val streakBonusXp = if (streakBonusPercent > 0) {
-            ((xpEarned * streakBonusPercent) / 100.0).roundToInt()
+            ((xpEarnedL * streakBonusPercent) / 100.0).roundToInt()
         } else {
             0
         }
-        xpEarned += streakBonusXp
+        xpEarnedL += streakBonusXp
 
         // Potion / Beaker XP Boost Multiplier (e.g. 2X EXP)
         val boostMultiplier = AptitudeManager.getXpMultiplier()
         if (boostMultiplier > 1.0f) {
-            xpEarned = (xpEarned * boostMultiplier).roundToInt()
+            xpEarnedL = (xpEarnedL * boostMultiplier).toLong()
         }
+
+        // Convert back to Int, clamped to non-negative (defensive — should never be negative after proper inputs)
+        var xpEarned = xpEarnedL.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
 
         val profileBefore = AptitudeManager.profileFlow.value
         val wasAlreadySettled = session.isSettled.getAndSet(true)

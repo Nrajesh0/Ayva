@@ -47,7 +47,8 @@ fun ProfessionalSlider(
     ) {
         val widthPx = constraints.maxWidth.toFloat()
         val rangeSpan = (valueRange.endInclusive - valueRange.start).let { if (it <= 0f) 1f else it }
-        val normalized = ((value - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
+        val safeValue = if (value.isNaN()) valueRange.start else value
+        val normalized = ((safeValue - valueRange.start) / rangeSpan).coerceIn(0f, 1f)
 
         val density = LocalDensity.current
         val thumbRadiusPx = with(density) { (thumbDiameter / 2).toPx() }

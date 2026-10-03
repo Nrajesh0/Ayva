@@ -122,7 +122,7 @@ fun FullscreenDrillView(
                     for (i in 0 until arr.length()) list.add(arr.getString(i))
                 }
                 options = list
-                correctIndex = obj.optInt("correctIndex", 0)
+                correctIndex = FullscreenDrillHelper.safeCorrectIndex(obj.optInt("correctIndex", 0), list.size)
                 explanation = obj.optString("explanation", "")
                 vocabType = if (obj.has("vocabType")) obj.optString("vocabType") else null
                 vocabId = if (obj.has("vocabId")) obj.optInt("vocabId") else null
@@ -331,11 +331,18 @@ fun FullscreenDrillView(
                                 selectedIndex = optIndex
                                 val isCorrectAnswer = (optIndex == correctIndex)
 
+                                val (newCombo, newMax) = FullscreenDrillHelper.updateCombo(
+                                    activeSession.combo,
+                                    activeSession.maxCombo,
+                                    isCorrectAnswer
+                                )
+                                activeSession.combo = newCombo
+                                activeSession.maxCombo = newMax
+
                                 if (isCorrectAnswer) {
                                     DailyQuestManager.recordCorrectAnswer()
-                                    val nextCombo = activeSession.combo + 1
-                                    DailyQuestManager.recordCombo(nextCombo)
-                                    GamificationHaptics.playCombo(context, nextCombo)
+                                    DailyQuestManager.recordCombo(newCombo)
+                                    GamificationHaptics.playCombo(context, newCombo)
                                 } else {
                                     GamificationHaptics.playWrong(context)
                                 }

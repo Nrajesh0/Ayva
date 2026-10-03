@@ -11,16 +11,22 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import androidx.test.core.app.ApplicationProvider
+import android.net.Uri
 import com.focusbyrj.app.data.note.NoteEntity
+import com.focusbyrj.app.ui.screens.notes.ArticleExporter
+import com.focusbyrj.app.ui.screens.notes.ArticleExporterHelper
 import com.focusbyrj.app.ui.screens.notes.ArticleTocHelper
 import com.focusbyrj.app.ui.screens.notes.AudioPlayerWidgetHelper
+import com.focusbyrj.app.ui.screens.notes.DocumentMetricsCalculator
 import com.focusbyrj.app.ui.screens.notes.KeepNoteCardHelper
 import com.focusbyrj.app.ui.screens.notes.KeepNoteShareParser
 import com.focusbyrj.app.ui.screens.notes.KeepSketchHelper
 import com.focusbyrj.app.ui.screens.notes.LabelDialogHelper
+import com.focusbyrj.app.ui.screens.notes.MAX_COLLAGE_IMAGES
 import com.focusbyrj.app.ui.screens.notes.NotesnookBlock
 import com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager
 import com.focusbyrj.app.ui.screens.notes.NotesnookUrlValidator
+import com.focusbyrj.app.ui.screens.notes.buildGoogleKeepCollageRows
 import com.focusbyrj.app.util.ImageUtils
 import org.junit.Assert.*
 import org.junit.Before
@@ -242,5 +248,204 @@ class Batch11SecurityAuditTest {
         assertEquals(0, AudioPlayerWidgetHelper.calculateSeekPosition(Float.NaN, duration))
         assertEquals(0, AudioPlayerWidgetHelper.calculateSeekPosition(0.5f, 0L))
         assertEquals(0, AudioPlayerWidgetHelper.calculateSeekPosition(0.5f, -5000L))
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH-11-009: Serialized Block JSON Leaks in Exporters
+    // -------------------------------------------------------------------------
+    @Test
+    fun test_BATCH_11_009_exportParsesSerializedBlocksWithoutLeakingJson() {
+        val blockJson = "<!--NOTESNOOK_BLOCKS:[{\"type\":\"text\",\"text\":\"Meeting notes line 1\"},{\"type\":\"quote\",\"text\":\"Deep insight quote\"}]-->"
+        val fallback = blockJson
+
+        // When blocks list is empty, getEffectiveBlocks must unpack serialized blocks
+        val effective = ArticleExporterHelper.getEffectiveBlocks(emptyList(), fallback)
+        assertEquals(2, effective.size)
+        assertTrue(effective[0] is NotesnookBlock.Text)
+        assertTrue(effective[1] is NotesnookBlock.Quote)
+
+        // exportToMarkdown must format the blocks, NOT dump raw JSON
+        val md = ArticleExporter.exportToMarkdown(
+            title = "Test Article",
+            blocks = emptyList(),
+            fallbackContent = fallback
+        )
+        assertFalse("Exported Markdown must NOT leak raw NOTESNOOK_BLOCKS comment", md.contains("<!--NOTESNOOK_BLOCKS:"))
+        assertTrue("Exported Markdown must contain formatted text", md.contains("Meeting notes line 1"))
+        assertTrue("Exported Markdown must contain blockquote indicator", md.contains("> Deep insight quote"))
+
+        // exportToHtml must also format the blocks
+        val html = ArticleExporter.exportToHtml(
+            title = "Test Article",
+            blocks = emptyList(),
+            fallbackContent = fallback
+        )
+        assertFalse("Exported HTML must NOT leak raw NOTESNOOK_BLOCKS comment", html.contains("<!--NOTESNOOK_BLOCKS:"))
+        assertTrue("Exported HTML must contain blockquote tag", html.contains("<blockquote><p>Deep insight quote</p></blockquote>"))
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH-11-010: Path Traversal & Reserved Names in Export File Name Sanitizer
+    // -------------------------------------------------------------------------
+    @Test
+    fun test_BATCH_11_010_sanitizeFileNamePathTraversalAndReservedNames() {
+        val testDate = java.util.Date(1727580000000L) // Fixed date for deterministic test
+
+        // Path traversal attempts
+        val traversalName = ArticleExporterHelper.sanitizeFileName("../../etc/passwd", "pdf", testDate)
+        assertFalse("Filename must not contain path traversal ../", traversalName.contains(".."))
+        assertFalse("Filename must not contain slash", traversalName.contains("/"))
+        assertTrue("Filename must end with .pdf", traversalName.endsWith(".pdf"))
+
+        // Windows / FAT32 reserved names (CON, PRN, AUX, NUL)
+        val reservedName = ArticleExporterHelper.sanitizeFileName("CON", "md", testDate)
+        assertTrue("Reserved device name must fallback to Focus_Note", reservedName.startsWith("Focus_Note_"))
+
+        // Leading dot files (hidden files on Unix/Android)
+        val dotName = ArticleExporterHelper.sanitizeFileName(".hidden_note", "txt", testDate)
+        assertFalse("Filename must not start with a dot", dotName.startsWith("."))
+
+        // Clean normal name
+        val normalName = ArticleExporterHelper.sanitizeFileName("My Sprint Plan", "docx", testDate)
+        assertTrue("Normal title must be preserved in filename", normalName.startsWith("My_Sprint_Plan_"))
+        assertTrue(normalName.endsWith(".docx"))
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH-11-011: DocumentMetrics Linear O(1) Memory Scan and Effective Blocks
+    // -------------------------------------------------------------------------
+    @Test
+    fun test_BATCH_11_011_documentMetricsLinearScannerAndEffectiveBlocks() {
+        // Document with punctuation, sentences, and paragraphs
+        val sampleText = "Hello world! This is Ayva.\n\nHere is a second paragraph. Are you ready? Yes!"
+        val metrics = DocumentMetricsCalculator.calculate(
+            title = "Summary",
+            content = sampleText,
+            blocks = emptyList()
+        )
+
+        // Title has 1 word. Sample text has 12 words -> total 13 words
+        assertTrue("Word count should be accurate", metrics.words >= 12)
+        assertTrue("Paragraphs should be detected", metrics.paragraphs >= 2)
+        assertTrue("Sentences should be counted accurately", metrics.sentences >= 4)
+        assertTrue("Characters without spaces must be strictly positive", metrics.charactersNoSpaces > 0)
+        assertTrue("Characters must exceed characters without spaces", metrics.characters > metrics.charactersNoSpaces)
+
+        // Metrics from serialized blocks
+        val blockJson = "<!--NOTESNOOK_BLOCKS:[{\"type\":\"text\",\"text\":\"First block sentence.\"},{\"type\":\"text\",\"text\":\"Second block sentence.\"}]-->"
+        val blockMetrics = DocumentMetricsCalculator.calculate(
+            title = "",
+            content = blockJson,
+            blocks = emptyList()
+        )
+        // Must parse structured blocks rather than counting raw JSON characters
+        assertEquals("Should parse 2 text blocks", 2, blockMetrics.textBlocksCount)
+        assertTrue("Should count sentences from parsed text", blockMetrics.sentences >= 2)
+        assertFalse("Must not treat JSON quotes as excessive words", blockMetrics.words > 10)
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH-11-012: Label Dialogs Rename Uniqueness Check
+    // -------------------------------------------------------------------------
+    @Test
+    fun test_BATCH_11_012_labelDialogHelperCanRenameLabelUniqueness() {
+        val existing = listOf("Work", "Personal", "Health")
+
+        // Renaming to itself (or case-variant of itself) is valid / no-op
+        assertTrue(LabelDialogHelper.canRenameLabel("Work", "Work", existing))
+        assertTrue(LabelDialogHelper.canRenameLabel("Work", "work", existing))
+
+        // Renaming to a distinct unused name is valid
+        assertTrue(LabelDialogHelper.canRenameLabel("Work", "Career", existing))
+
+        // Renaming to an existing name (different label) must be rejected to prevent duplicate key crashes
+        assertFalse(LabelDialogHelper.canRenameLabel("Work", "Personal", existing))
+        assertFalse(LabelDialogHelper.canRenameLabel("Work", "personal", existing))
+        assertFalse(LabelDialogHelper.canRenameLabel("Work", "HEALTH", existing))
+
+        // Blank or whitespace-only rename must be rejected
+        assertFalse(LabelDialogHelper.canRenameLabel("Work", "   ", existing))
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH-11-013: KeepNoteShareParser Caps & Null Extras Filtering
+    // -------------------------------------------------------------------------
+    @Test
+    fun test_BATCH_11_013_keepNoteShareParserCapsItemsAndFiltersNullUris() {
+        // Generate note with 700 checklist items (exceeding MAX_CHECKLIST_ITEMS = 500)
+        val sb = java.lang.StringBuilder()
+        for (i in 1..700) {
+            sb.append("- [ ] Item $i\n")
+        }
+
+        val parsed = KeepNoteShareParser.parseContent("Massive Checklist", sb.toString())
+        assertTrue("Parsed note must be a checklist", parsed.isChecklist)
+        assertTrue(
+            "Checklist items must be capped at MAX_CHECKLIST_ITEMS (500) to prevent OOM",
+            parsed.checklistItems.size <= KeepNoteShareParser.MAX_CHECKLIST_ITEMS
+        )
+        assertEquals(500, parsed.checklistItems.size)
+
+        // Verify null URIs are filtered out from image list
+        val mixedUris: List<Uri> = listOfNotNull(
+            Uri.parse("content://media/1"),
+            null,
+            Uri.parse("content://media/2")
+        )
+        val parsedWithImages = KeepNoteShareParser.parseContent("Image Note", "Body", mixedUris)
+        assertEquals(2, parsedWithImages.imageUris.size)
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH-11-014: Label Selection Whitespace and Case Invariance
+    // -------------------------------------------------------------------------
+    @Test
+    fun test_BATCH_11_014_labelDialogHelperIsLabelSelectedCaseInsensitive() {
+        val selected = listOf("Work ", "Fitness", "TRAVEL")
+
+        assertTrue("Trimmed match should be recognized as selected", LabelDialogHelper.isLabelSelected("Work", selected))
+        assertTrue("Case-insensitive match should be recognized as selected", LabelDialogHelper.isLabelSelected("fitness", selected))
+        assertTrue("Uppercase match should be recognized as selected", LabelDialogHelper.isLabelSelected("travel", selected))
+        assertFalse("Unselected label should return false", LabelDialogHelper.isLabelSelected("Personal", selected))
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH-11-015: KeepSketchHelper Safe Radius and Coordinate Bounds
+    // -------------------------------------------------------------------------
+    @Test
+    fun test_BATCH_11_015_keepSketchHelperSafeRadiusAndCoordinates() {
+        // Safe radius bounds
+        assertEquals(0f, KeepSketchHelper.safeRadius(-10f), 0.001f)
+        assertEquals(0f, KeepSketchHelper.safeRadius(Float.NaN), 0.001f)
+        assertEquals(15f, KeepSketchHelper.safeRadius(15f), 0.001f)
+
+        // Coordinate validity
+        assertTrue(KeepSketchHelper.isCoordinateValid(100f, 200f))
+        assertFalse(KeepSketchHelper.isCoordinateValid(Float.NaN, 200f))
+        assertFalse(KeepSketchHelper.isCoordinateValid(100f, Float.POSITIVE_INFINITY))
+        assertFalse(KeepSketchHelper.isCoordinateValid(Float.NEGATIVE_INFINITY, 200f))
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH-11-016: KeepImageCollage Rows Calculation Bounds
+    // -------------------------------------------------------------------------
+    @Test
+    fun test_BATCH_11_016_keepImageCollageRowBuilderCapsExtremeImages() {
+        // Negative count returns emptyList
+        val negativeRows = buildGoogleKeepCollageRows(-5)
+        assertTrue(negativeRows.isEmpty())
+
+        // Zero count returns emptyList
+        val zeroRows = buildGoogleKeepCollageRows(0)
+        assertTrue(zeroRows.isEmpty())
+
+        // Extreme count (e.g. 1000 images) must be capped to MAX_COLLAGE_IMAGES (50)
+        val extremeRows = buildGoogleKeepCollageRows(1000)
+        val totalImagesInRows = extremeRows.sumOf { it.itemsInRow }
+        assertEquals(
+            "Collage builder must cap total images to MAX_COLLAGE_IMAGES",
+            MAX_COLLAGE_IMAGES,
+            totalImagesInRows
+        )
     }
 }

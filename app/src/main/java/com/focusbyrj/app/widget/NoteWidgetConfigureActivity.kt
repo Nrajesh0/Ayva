@@ -123,11 +123,13 @@ class NoteWidgetConfigureActivity : ComponentActivity() {
                     onSave = { newConfig ->
                         NoteWidgetConfigHelper.saveConfig(this, appWidgetId, newConfig)
                         val appWidgetManager = AppWidgetManager.getInstance(this)
-                        // Only update the specific widget being configured.
-                        // Do NOT call updateAllWidgets() here — it launches a competing coroutine
-                        // that races with the widget-specific update and non-deterministically
-                        // overwrites the font size with stale config data.
-                        NoteWidgetProvider.updateWidget(this, appWidgetManager, appWidgetId)
+                        // Only update the specific widget being configured if a valid ID was supplied.
+                        // If no specific ID exists (appWidgetId == 0), update all note widgets.
+                        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID && appWidgetId != 0) {
+                            NoteWidgetProvider.updateWidget(this, appWidgetManager, appWidgetId)
+                        } else {
+                            NoteWidgetProvider.updateAllWidgets(this)
+                        }
 
                         val resultValue = Intent().apply {
                             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)

@@ -71,14 +71,15 @@ object DocumentMetricsCalculator {
         checklistItems: List<ChecklistItem> = emptyList(),
         isChecklist: Boolean = false
     ): DocumentMetrics {
+        val effectiveBlocks = ArticleExporterHelper.getEffectiveBlocks(blocks, content)
         val allText = buildString {
             if (title.isNotBlank()) append(title).append("\n\n")
             if (isChecklist) {
                 checklistItems.forEach { item ->
                     append(item.text).append("\n")
                 }
-            } else if (blocks.isNotEmpty()) {
-                blocks.forEach { b ->
+            } else if (effectiveBlocks.isNotEmpty()) {
+                effectiveBlocks.forEach { b ->
                     when (b) {
                         is NotesnookBlock.Text -> append(b.text).append("\n\n")
                         is NotesnookBlock.Table -> {
@@ -102,30 +103,63 @@ object DocumentMetricsCalculator {
             }
         }.trim()
 
-        val chars = allText.length
-        val charsNoSpaces = allText.count { !it.isWhitespace() }
-        val wordsList = allText.split(Regex("\\s+")).filter { it.isNotBlank() }
-        val wordCount = wordsList.size
+        val chars = maxOf(0, allText.length)
+        var charsNoSpaces = 0
+        var wordCount = 0
+        var inWord = false
+        var paragraphCount = 0
+        var inParagraph = false
+        var sentenceCount = 0
 
-        val paragraphs = if (allText.isBlank()) 0 else allText.split(Regex("\n+")).filter { it.isNotBlank() }.size
-        val sentences = if (allText.isBlank()) 0 else allText.split(Regex("[.!?]+\\s*")).filter { it.isNotBlank() }.size
+        for (i in allText.indices) {
+            val c = allText[i]
+            if (!c.isWhitespace()) {
+                charsNoSpaces++
+            }
+            if (c.isWhitespace()) {
+                if (inWord) {
+                    wordCount++
+                    inWord = false
+                }
+            } else {
+                inWord = true
+            }
+
+            if (c == '\n') {
+                if (inParagraph) {
+                    paragraphCount++
+                    inParagraph = false
+                }
+            } else if (!c.isWhitespace()) {
+                inParagraph = true
+            }
+
+            if (c == '.' || c == '!' || c == '?') {
+                val nextIsSpaceOrEnd = (i + 1 >= allText.length) || allText[i + 1].isWhitespace()
+                if (nextIsSpaceOrEnd) {
+                    sentenceCount++
+                }
+            }
+        }
+        if (inWord) wordCount++
+        if (inParagraph) paragraphCount++
 
         val readingMinutes = if (wordCount == 0) 0 else if (wordCount <= 200) 1 else kotlin.math.ceil(wordCount / 200.0).toInt()
         val speakingMinutes = if (wordCount == 0) 0 else if (wordCount <= 130) 1 else kotlin.math.ceil(wordCount / 130.0).toInt()
 
-        val textBlocks = blocks.count { it is NotesnookBlock.Text }
-        val tables = blocks.count { it is NotesnookBlock.Table }
-        val codeBlocks = blocks.count { it is NotesnookBlock.Code }
-        val otherBlocks = blocks.size - (textBlocks + tables + codeBlocks)
+        val textBlocks = effectiveBlocks.count { it is NotesnookBlock.Text }
+        val tables = effectiveBlocks.count { it is NotesnookBlock.Table }
+        val codeBlocks = effectiveBlocks.count { it is NotesnookBlock.Code }
+        val otherBlocks = effectiveBlocks.size - (textBlocks + tables + codeBlocks)
 
         return DocumentMetrics(
-            words = wordCount,
+            words = maxOf(0, wordCount),
             characters = chars,
             charactersNoSpaces = charsNoSpaces,
-            paragraphs = paragraphs,
-            sentences = sentences,
-            readingTimeMinutes = readingMinutes,
-            speakingTimeMinutes = speakingMinutes,
+            paragraphs = maxOf(0, paragraphCount),
+            sentences = maxOf(0, sentenceCount),
+            readingTimeMinutes = maxOf(0, readingMinutes),
+            speakingTimeMinutes = maxOf(0, speakingMinutes),
             textBlocksCount = textBlocks,
             tablesCount = tables,
             codeBlocksCount = codeBlocks,

@@ -70,6 +70,19 @@ object LabelDialogHelper {
         if (trimmed.isBlank()) return false
         return !existingLabels.any { it.equals(trimmed, ignoreCase = true) }
     }
+
+    fun canRenameLabel(oldLabel: String, newLabel: String, existingLabels: List<String>): Boolean {
+        val trimmedNew = newLabel.trim()
+        val trimmedOld = oldLabel.trim()
+        if (trimmedNew.isBlank()) return false
+        if (trimmedNew.equals(trimmedOld, ignoreCase = true)) return true
+        return !existingLabels.any { it.trim().equals(trimmedNew, ignoreCase = true) }
+    }
+
+    fun isLabelSelected(label: String, selectedLabels: List<String>): Boolean {
+        val trimmed = label.trim()
+        return selectedLabels.any { it.trim().equals(trimmed, ignoreCase = true) }
+    }
 }
 
 @Composable
@@ -253,7 +266,7 @@ fun EditLabelsDialog(
 
                                     IconButton(
                                         onClick = {
-                                            if (editTextInput.isNotBlank()) {
+                                            if (LabelDialogHelper.canRenameLabel(label, editTextInput, displayLabels)) {
                                                 onRenameLabel(label, editTextInput.trim())
                                             }
                                             editingLabelName = null

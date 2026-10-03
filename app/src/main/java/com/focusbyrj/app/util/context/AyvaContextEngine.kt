@@ -109,9 +109,11 @@ object AyvaContextEngine {
         }
 
         val dayOfYear = cal.get(Calendar.DAY_OF_YEAR)
+        val compositeKey = cal.get(Calendar.YEAR) * 1000 + dayOfYear
         val screenTimeMinutes = try {
             val dailyMap = FocusStatsManager.statsFlow.value.dailyFocusMinutes
-            (dailyMap[dayOfYear] ?: 0L) / (1000L * 60L)
+            // Support composite year*1000+dayOfYear key (BATCH-9-P2-005) with fallback to bare dayOfYear
+            ((dailyMap[compositeKey] ?: dailyMap[dayOfYear]) ?: 0L) / (1000L * 60L)
         } catch (_: Exception) {
             0L
         }

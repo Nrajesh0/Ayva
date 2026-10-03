@@ -115,16 +115,26 @@ object WidgetConfigHelper {
         // causing all other keys (including text_size) to silently resolve to the wrong suffix
         // whenever prefs were partially written (e.g. after a restore, OTA, or cache clear).
         fun getStr(key: String, default: String): String {
-            if (appWidgetId > 0 && prefs.contains(key + appWidgetId)) {
-                return prefs.getString(key + appWidgetId, default) ?: default
+            return try {
+                if (appWidgetId > 0 && prefs.contains(key + appWidgetId)) {
+                    prefs.getString(key + appWidgetId, default) ?: default
+                } else {
+                    prefs.getString(key + KEY_DEFAULT_SUFFIX, default) ?: default
+                }
+            } catch (_: Exception) {
+                default
             }
-            return prefs.getString(key + KEY_DEFAULT_SUFFIX, default) ?: default
         }
         fun getInt(key: String, default: Int): Int {
-            if (appWidgetId > 0 && prefs.contains(key + appWidgetId)) {
-                return prefs.getInt(key + appWidgetId, default)
+            return try {
+                if (appWidgetId > 0 && prefs.contains(key + appWidgetId)) {
+                    prefs.getInt(key + appWidgetId, default)
+                } else {
+                    prefs.getInt(key + KEY_DEFAULT_SUFFIX, default)
+                }
+            } catch (_: Exception) {
+                default
             }
-            return prefs.getInt(key + KEY_DEFAULT_SUFFIX, default)
         }
 
         val themeName    = getStr(KEY_THEME,     WidgetTheme.DARK.name)

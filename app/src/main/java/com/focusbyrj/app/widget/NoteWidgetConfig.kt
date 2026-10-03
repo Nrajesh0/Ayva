@@ -236,6 +236,9 @@ object NoteWidgetConfigHelper {
             if (config.filterMode == NoteWidgetFilterMode.SPECIFIC && config.specificNoteId != null && config.specificNoteId > 0) {
                 editor.putLong(KEY_CURRENT_NOTE_ID_PREFIX + suffix, config.specificNoteId)
                 editor.putInt(KEY_INDEX_PREFIX + suffix, 0)
+            } else {
+                editor.remove(KEY_CURRENT_NOTE_ID_PREFIX + suffix)
+                editor.putInt(KEY_INDEX_PREFIX + suffix, 0)
             }
         }
 
