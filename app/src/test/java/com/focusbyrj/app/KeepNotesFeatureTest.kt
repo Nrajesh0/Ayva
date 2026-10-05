@@ -128,4 +128,36 @@ class KeepNotesFeatureTest {
         assertEquals(1, parsed.imageUris.size)
         assertEquals(fakeUri, parsed.imageUris[0])
     }
+
+    @Test
+    fun testKeepNoteShareParser_SecurityValidation() {
+        val parser = com.focusbyrj.app.ui.screens.notes.KeepNoteShareParser
+
+        // 1. Valid URIs should be accepted
+        val validContent = android.net.Uri.parse("content://media/external/images/media/12345")
+        val validResource = android.net.Uri.parse("android.resource://com.other.app/drawable/icon")
+        assertTrue(parser.isSafeShareUri(validContent))
+        assertTrue(parser.isSafeShareUri(validResource))
+
+        // 2. Unsafe schemes (file://, http://, javascript://) should be rejected
+        val fileUri = android.net.Uri.parse("file:///data/data/com.focusbyrj.app/databases/keep_notes_encrypted.db")
+        val httpUri = android.net.Uri.parse("http://malicious.com/exploit.jpg")
+        val jsUri = android.net.Uri.parse("javascript:alert(1)")
+        assertFalse(parser.isSafeShareUri(fileUri))
+        assertFalse(parser.isSafeShareUri(httpUri))
+        assertFalse(parser.isSafeShareUri(jsUri))
+
+        // 3. Self-referential FileProvider URIs should be rejected (prevent internal reflection)
+        val selfFileProviderUri = android.net.Uri.parse("content://com.focusbyrj.app.fileprovider/exports/secret.txt")
+        assertFalse(parser.isSafeShareUri(selfFileProviderUri))
+
+        // 4. Directory traversal in URI string should be rejected
+        val traversalUri = android.net.Uri.parse("content://external/images/../../files/db")
+        val encodedTraversalUri = android.net.Uri.parse("content://external/images/%2e%2e/db")
+        assertFalse(parser.isSafeShareUri(traversalUri))
+        assertFalse(parser.isSafeShareUri(encodedTraversalUri))
+
+        // 5. Null or empty URI should be rejected
+        assertFalse(parser.isSafeShareUri(null))
+    }
 }

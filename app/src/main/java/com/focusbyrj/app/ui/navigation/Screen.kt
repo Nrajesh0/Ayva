@@ -42,6 +42,4 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Time : Screen("time", "Screen Time", Icons.Filled.Schedule)
     object EmptyTab : Screen("empty_tab", "Empty", Icons.Filled.CropSquare)
     object PreferencesHub : Screen("preferences_hub", "Preferences", Icons.Filled.Settings)
-    object DeviceSync : Screen("device_sync", "Cloud Vault & Security", Icons.Filled.Lock)
-    object CloudAuth : Screen("cloud_auth", "Sign In & Sign Up", Icons.Filled.Lock)
 }

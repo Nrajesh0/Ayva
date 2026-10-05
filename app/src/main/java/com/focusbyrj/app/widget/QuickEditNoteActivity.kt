@@ -325,7 +325,6 @@ fun QuickEditNoteOverlay(
                     com.focusbyrj.app.util.backup.DataSafetyManager.writePreOpSnapshot(appContext, noteDao, "empty_note_soft_delete")
                     noteDao.softDeleteNote(toDelete.id, now)
                     NotesViewModel.latestNotesCache.remove(toDelete.id)
-                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(appContext)
                     loadedNote = null
                 }
             } else {
@@ -339,7 +338,6 @@ fun QuickEditNoteOverlay(
                     loadedNote = inserted
                     NotesViewModel.latestNotesCache[newId] = inserted
                 }
-                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(appContext)
             }
             if (appWidgetId != null && appWidgetId != android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID) {
                 val finalId = loadedNote?.id

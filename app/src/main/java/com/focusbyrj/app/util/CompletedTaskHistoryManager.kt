@@ -17,7 +17,7 @@ import java.util.Calendar
 /**
  * Manages local-only history of completed tasks for Ayva and daily summaries.
  * When a task is completed, it is immediately removed from the active database
- * and Supabase cloud vault, while being archived here locally.
+ * while being archived here locally.
  *
  * When the clock strikes 12 AM (midnight), records from previous days are automatically purged.
  */

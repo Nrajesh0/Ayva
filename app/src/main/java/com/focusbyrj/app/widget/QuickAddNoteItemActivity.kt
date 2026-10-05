@@ -219,7 +219,6 @@ fun QuickAddNoteItemDialog(
                         NotesViewModel.latestNotesCache[updatedNote.id] = updatedNote
                     }
                 }
-                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 withContext(Dispatchers.Main) {
                     onItemAdded()
                 }

@@ -49,8 +49,6 @@ import com.focusbyrj.app.ui.navigation.Screen
 import com.focusbyrj.app.util.FocusEconomyManager
 import com.focusbyrj.app.util.PermissionUtils
 import com.focusbyrj.app.util.ProfileAvatarManager
-import com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager
-import com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,43 +60,6 @@ fun PreferencesHubScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val economyProfile by FocusEconomyManager.profileFlow.collectAsStateWithLifecycle()
-
-    var sessionState by remember { mutableStateOf(SupabaseKeyManager.getSessionState(context)) }
-    var isSyncingNow by remember { mutableStateOf(false) }
-    var syncErrorMessage by remember { mutableStateOf<String?>(null) }
-    var syncSuccessMessage by remember { mutableStateOf<String?>(null) }
-
-    val noteDao = remember { NoteDatabase.getInstance(context).noteDao() }
-    val taskDao = remember { PreferencesHubHelper.getTaskDao(context) }
-
-    fun triggerManualSync() {
-        if (isSyncingNow) return
-        val currentTaskDao = taskDao
-        if (currentTaskDao == null) {
-            Toast.makeText(context, "Task database unavailable for sync", Toast.LENGTH_SHORT).show()
-            return
-        }
-        isSyncingNow = true
-        syncErrorMessage = null
-        syncSuccessMessage = null
-        scope.launch {
-            try {
-                val result = SupabaseSyncEngine.performSync(context, noteDao, currentTaskDao)
-                result.onSuccess { res ->
-                    syncSuccessMessage = res.message
-                    Toast.makeText(context, res.message, Toast.LENGTH_SHORT).show()
-                }.onFailure { err ->
-                    syncErrorMessage = err.message ?: "Sync failed"
-                    Toast.makeText(context, "Sync failed: ${err.message}", Toast.LENGTH_LONG).show()
-                }
-            } catch (e: Exception) {
-                syncErrorMessage = e.message ?: "Sync error"
-            } finally {
-                isSyncingNow = false
-                sessionState = SupabaseKeyManager.getSessionState(context)
-            }
-        }
-    }
 
     var hasUsageStats by remember { mutableStateOf(PermissionUtils.hasUsageStatsPermission(context)) }
     var hasOverlay by remember { mutableStateOf(PermissionUtils.hasOverlayPermission(context)) }
@@ -113,7 +74,6 @@ fun PreferencesHubScreen(
                 hasOverlay = PermissionUtils.hasOverlayPermission(context)
                 isBatteryUnrestricted = PermissionUtils.isIgnoringBatteryOptimizations(context)
                 hasNotifications = PermissionUtils.hasNotificationPermission(context)
-                sessionState = SupabaseKeyManager.getSessionState(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -177,20 +137,14 @@ fun PreferencesHubScreen(
             ) {
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Profile & Cloud Account Header
+                // Profile & Offline Enclave Header
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(18.dp))
                         .clickable {
-                            if (sessionState.isSignedIn) {
-                                navController.navigate(Screen.DeviceSync.route) {
-                                    launchSingleTop = true
-                                }
-                            } else {
-                                navController.navigate(Screen.CloudAuth.route) {
-                                    launchSingleTop = true
-                                }
+                            navController.navigate(Screen.Account.route) {
+                                launchSingleTop = true
                             }
                         }
                         .testTag("preferences_profile_card"),
@@ -208,14 +162,6 @@ fun PreferencesHubScreen(
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             val avatarRes = ProfileAvatarManager.getAvatarImageRes(
-                                economyProfile.selectedAvatar,
-                                economyProfile.avatarTier
-                            )
-                            val avatarBorder = ProfileAvatarManager.getAvatarBorderColor(
-                                economyProfile.selectedAvatar,
-                                economyProfile.avatarTier
-                            )
-                            val rankTitle = ProfileAvatarManager.getAvatarTitle(
                                 economyProfile.selectedAvatar,
                                 economyProfile.avatarTier
                             )
@@ -239,11 +185,7 @@ fun PreferencesHubScreen(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (sessionState.isSignedIn && !sessionState.userEmail.isNullOrBlank()) {
-                                        sessionState.userEmail!!
-                                    } else {
-                                        economyProfile.name.ifBlank { "Focus Warrior" }
-                                    },
+                                    text = economyProfile.name.ifBlank { "Focus Warrior" },
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 17.sp
@@ -257,48 +199,37 @@ fun PreferencesHubScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    if (sessionState.isSignedIn) {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = Color(0xFF2E7D32).copy(alpha = 0.15f),
-                                            border = BorderStroke(0.8.dp, Color(0xFF2E7D32).copy(alpha = 0.3f))
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFF2E7D32).copy(alpha = 0.15f),
+                                        border = BorderStroke(0.8.dp, Color(0xFF2E7D32).copy(alpha = 0.3f))
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
                                         ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(5.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color(0xFF2E7D32))
-                                                )
-                                                Text(
-                                                    text = "E2EE ACTIVE",
-                                                    style = MaterialTheme.typography.labelSmall.copy(
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 9.sp
-                                                    ),
-                                                    color = Color(0xFF2E7D32)
-                                                )
-                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(5.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF2E7D32))
+                                            )
+                                            Text(
+                                                text = "OFFLINE VAULT",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 9.sp
+                                                ),
+                                                color = Color(0xFF2E7D32)
+                                            )
                                         }
-                                        Text(
-                                            text = "• Synced",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                        )
-                                    } else {
-                                        Text(
-                                            text = "Tap to Sign In / Sync",
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Medium
-                                            ),
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
                                     }
+                                    Text(
+                                        text = "• Local Storage",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
                                 }
                             }
 
@@ -312,102 +243,38 @@ fun PreferencesHubScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Account Profile Options: Actions conditioned on sign-in state
+                        // Account Profile Options
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (sessionState.isSignedIn) {
-                                // Primary Sync Action Button (Only when signed in)
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(42.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                                        .clickable(enabled = !isSyncingNow) { triggerManualSync() },
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color.Transparent,
-                                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)
-                                    ) {
-                                        if (isSyncingNow) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(15.dp),
-                                                color = MaterialTheme.colorScheme.primary,
-                                                strokeWidth = 2.dp
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Syncing", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                                        } else {
-                                            Icon(Icons.Filled.Sync, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(5.dp))
-                                            Text("Sync Now", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                    .clickable {
+                                        navController.navigate(Screen.Account.route) {
+                                            launchSingleTop = true
                                         }
-                                    }
-                                }
-
-                                // Vault Action Button
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(42.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                                        .clickable {
-                                            navController.navigate(Screen.DeviceSync.route) {
-                                                launchSingleTop = true
-                                            }
-                                        },
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color.Transparent,
-                                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                                    },
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color.Transparent,
+                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)
                                 ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)
-                                    ) {
-                                        Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f), modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(5.dp))
-                                        Text("Vault", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                            } else {
-                                // Sign In Action Button (When not signed in)
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(42.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                                        .clickable {
-                                            navController.navigate(Screen.CloudAuth.route) {
-                                                launchSingleTop = true
-                                            }
-                                        },
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color.Transparent,
-                                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)
-                                    ) {
-                                        Icon(Icons.Filled.Login, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Sign In to Sync", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                                    }
+                                    Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Profile & Rank", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
 
-                            // Stats Button
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
@@ -415,7 +282,7 @@ fun PreferencesHubScreen(
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
                                     .clickable {
-                                        navController.navigate(Screen.Account.route) {
+                                        navController.navigate(Screen.Security.route) {
                                             launchSingleTop = true
                                         }
                                     },
@@ -428,64 +295,9 @@ fun PreferencesHubScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp)
                                 ) {
-                                    Icon(Icons.Filled.BarChart, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f), modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Filled.Security, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f), modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(5.dp))
-                                    Text("Stats", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-                                }
-                            }
-                        }
-
-                        // Sync Error Inspector
-                        syncErrorMessage?.let { errText ->
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
-                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.4f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.ErrorOutline,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.error,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Text(
-                                                "Sync Error Detected",
-                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.5.sp),
-                                                color = MaterialTheme.colorScheme.error
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = { syncErrorMessage = null },
-                                            modifier = Modifier.size(20.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Filled.Close,
-                                                contentDescription = "Dismiss",
-                                                tint = MaterialTheme.colorScheme.error,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-
-                                    Text(
-                                        text = errText,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
+                                    Text("Security Vault", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
                                 }
                             }
                         }

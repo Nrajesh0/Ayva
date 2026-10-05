@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.*
@@ -76,6 +77,8 @@ fun AyvaComposerBar(
     onTogglePersistent: () -> Unit,
     parsedDueDateText: String?,
     onSend: () -> Unit,
+    isLiveTranscribing: Boolean = false,
+    onLiveTranscriptionClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val inputText = inputTextFieldValue.text
@@ -183,6 +186,28 @@ fun AyvaComposerBar(
                     )
                 }
 
+                // Live Transcription Quick Action
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isLiveTranscribing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
+                        .border(
+                            1.dp,
+                            if (isLiveTranscribing) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                            CircleShape
+                        )
+                        .clickable { onLiveTranscriptionClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Mic,
+                        contentDescription = "Live transcription",
+                        tint = if (isLiveTranscribing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
                 // Math Drill Quick Action
                 Box(
                     modifier = Modifier
@@ -278,31 +303,52 @@ fun AyvaComposerBar(
                 shape = RoundedCornerShape(24.dp),
                 visualTransformation = CommandVisualTransformation(),
                 trailingIcon = {
-                    Box(
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                            .clickable {
-                                val cur = inputTextFieldValue.text
-                                if (!cur.startsWith("/")) {
-                                    val newText = "/$cur"
-                                    onInputChange(
-                                        TextFieldValue(
-                                            text = newText,
-                                            selection = TextRange(newText.length)
-                                        )
-                                    )
-                                }
-                            },
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.padding(end = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            "/",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(if (isLiveTranscribing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                .clickable { onLiveTranscriptionClick() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Mic,
+                                contentDescription = "Live transcription",
+                                tint = if (isLiveTranscribing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                                .clickable {
+                                    val cur = inputTextFieldValue.text
+                                    if (!cur.startsWith("/")) {
+                                        val newText = "/$cur"
+                                        onInputChange(
+                                            TextFieldValue(
+                                                text = newText,
+                                                selection = TextRange(newText.length)
+                                            )
+                                        )
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "/",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 },
                 colors = OutlinedTextFieldDefaults.colors(

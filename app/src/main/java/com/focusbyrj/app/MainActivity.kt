@@ -235,7 +235,6 @@ class MainActivity : FragmentActivity() {
         kotlin.runCatching { com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.TodoWidgetProvider.updateAllWidgets(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(this) }
-        kotlin.runCatching { com.focusbyrj.app.util.sync.supabase.AutoSyncManager.checkAndSyncIfStale(this, staleThresholdMs = 2 * 60 * 1000L) }
     }
 
     private fun applySecureWindowFlags() {
@@ -543,9 +542,7 @@ fun MainAppScreen(
                     Screen.BubbleSettings.route,
                     Screen.Subscription.route,
                     Screen.Habits.route,
-                    Screen.PreferencesHub.route,
-                    Screen.DeviceSync.route,
-                    Screen.CloudAuth.route
+                    Screen.PreferencesHub.route
                 )
                 val notesEditingState by notesViewModel.editingState.collectAsStateWithLifecycle()
                 val isEditingNote = currentDestination?.route == Screen.Empty.route && notesEditingState != null
@@ -799,24 +796,6 @@ fun MainAppScreen(
                         habitViewModel = habitViewModel,
                         onBack = { navController.popBackStack() },
                         initialOpenCreate = initialOpenAdd || pendingOpenAdd
-                    )
-                }
-                composable(Screen.DeviceSync.route) {
-                    val app = context.applicationContext as FocusApplication
-                    val noteDb = com.focusbyrj.app.data.note.NoteDatabase.getInstance(app)
-                    com.focusbyrj.app.ui.screens.sync.DeviceSyncScreen(
-                        navController = navController,
-                        noteDao = noteDb.noteDao(),
-                        taskDao = app.database.taskDao()
-                    )
-                }
-                composable(Screen.CloudAuth.route) {
-                    val app = context.applicationContext as FocusApplication
-                    val noteDb = com.focusbyrj.app.data.note.NoteDatabase.getInstance(app)
-                    com.focusbyrj.app.ui.screens.sync.supabase.SupabaseAuthScreen(
-                        navController = navController,
-                        noteDao = noteDb.noteDao(),
-                        taskDao = app.database.taskDao()
                     )
                 }
             }

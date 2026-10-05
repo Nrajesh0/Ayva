@@ -152,10 +152,6 @@ class DailySummaryReceiver : BroadcastReceiver() {
                         com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(context)
                         val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000L)
                         kotlin.runCatching {
-                            val expiredIds = app.database.taskDao().getCompletedTaskIdsBefore(thirtyDaysAgo)
-                            expiredIds.forEach { id ->
-                                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", id)
-                            }
                             app.database.taskDao().deleteCompletedTasksBefore(thirtyDaysAgo)
                         }
                         kotlin.runCatching {

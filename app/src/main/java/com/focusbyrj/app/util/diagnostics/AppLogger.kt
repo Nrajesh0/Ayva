@@ -31,7 +31,7 @@ import java.util.Locale
  * 1. Non-blocking asynchronous I/O backed by Kotlin Channel & Dispatchers.IO.
  * 2. In-memory circular ring buffer of recent logs for instant crash contextualization.
  * 3. Automatic 2-file rolling log mechanism (max 2MB per file, 4MB total cap).
- * 4. Automatic secret & PII sanitization (JWTs, Supabase keys, BIP-39 recovery phrases, PINs).
+ * 4. Automatic secret & PII sanitization (JWTs, tokens, BIP-39 recovery phrases, PINs).
  * 5. Synchronous emergency flush for uncaught crashes.
  */
 object AppLogger {
@@ -132,7 +132,7 @@ object AppLogger {
     }
 
     /**
-     * Masks any sensitive tokens, Supabase keys, mnemonic phrases, and PINs.
+     * Masks any sensitive tokens, mnemonic phrases, and PINs.
      */
     fun sanitize(input: String): String {
         var clean = input

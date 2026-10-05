@@ -188,7 +188,6 @@ object TaskReminderHelper {
                         scheduleReminder(context, nextTask.copy(id = newId))
                     }
                     TodoWidgetProvider.updateAllWidgets(context)
-                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 }
             } finally {
                 if (onDone != null) {
@@ -219,7 +218,6 @@ object TaskReminderHelper {
                     taskDao.updateTask(updated)
                     scheduleReminder(context, updated)
                     TodoWidgetProvider.updateAllWidgets(context)
-                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 }
             } finally {
                 if (onDone != null) {
@@ -274,7 +272,6 @@ object TaskReminderHelper {
                         }
                     }
                     TodoWidgetProvider.updateAllWidgets(context)
-                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 }
             } finally {
                 if (onDone != null) {

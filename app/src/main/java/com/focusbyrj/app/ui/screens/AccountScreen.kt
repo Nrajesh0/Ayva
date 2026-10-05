@@ -81,8 +81,6 @@ import com.focusbyrj.app.ui.screens.security.RestoreBackupPasswordDialog
 import com.focusbyrj.app.ui.screens.security.ConfigureRestoredVaultPinDialog
 import com.focusbyrj.app.util.*
 import com.focusbyrj.app.util.backup.BackupRestoreManager
-import com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager
-import com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine
 import com.focusbyrj.app.ui.screens.notes.RichTextEngine
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -167,9 +165,6 @@ fun AccountScreen(
             ?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
         mutableStateOf(initial)
     }
-
-    // Cloud session state
-    var sessionState by remember { mutableStateOf(SupabaseKeyManager.getSessionState(context)) }
 
     // Navigation & Tab state
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Overview, 1: Achievements, 2: Logs
@@ -268,7 +263,6 @@ fun AccountScreen(
     LaunchedEffect(Unit) {
         FocusEconomyManager.init(context)
         FocusStatsManager.refreshStats(context)
-        sessionState = SupabaseKeyManager.getSessionState(context)
     }
 
     Box(
@@ -310,15 +304,11 @@ fun AccountScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // QUICK STATS ROW: [GOLD] [LEVEL] [SYNC]
+            // QUICK STATS ROW: [GOLD] [LEVEL] [VAULT]
             EnclaveQuickStatsRow(
                 colors = enclaveColors,
                 gold = effectiveGold,
-                level = effectiveLevel,
-                sessionState = sessionState,
-                onSyncClick = {
-                    navController?.navigate(Screen.PreferencesHub.route) { launchSingleTop = true }
-                }
+                level = effectiveLevel
             )
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -1038,22 +1028,14 @@ private fun EnclaveIdentityHeroCard(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. QUICK STATS ROW: [GOLD] [LEVEL] [SYNC]
+// 3. QUICK STATS ROW: [GOLD] [LEVEL] [VAULT]
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun EnclaveQuickStatsRow(
     colors: EnclaveColors,
     gold: Int,
-    level: Int,
-    sessionState: SupabaseKeyManager.SessionState,
-    onSyncClick: () -> Unit
+    level: Int
 ) {
-    val (syncValue, syncUnit, syncLabel) = when {
-        !sessionState.isSignedIn -> Triple("LOCAL", null, "SYNC")
-        sessionState.isOfflineMode -> Triple("PAUSED", null, "SYNC")
-        else -> Triple("100", "%", "SYNC")
-    }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1080,14 +1062,11 @@ private fun EnclaveQuickStatsRow(
 
         EnclaveStatCard(
             colors = colors,
-            modifier = Modifier
-                .weight(1f)
-                .clickable { onSyncClick() },
-            value = syncValue,
-            unit = syncUnit,
-            label = syncLabel,
-            icon = Icons.Filled.Sync,
-            iconTint = if (sessionState.isSignedIn && !sessionState.isOfflineMode) colors.accentGreen else colors.textMuted
+            modifier = Modifier.weight(1f),
+            value = "LOCAL",
+            label = "VAULT",
+            icon = Icons.Filled.Lock,
+            iconTint = colors.accentGreen
         )
     }
 }

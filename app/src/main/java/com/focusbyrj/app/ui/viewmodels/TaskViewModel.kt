@@ -31,10 +31,6 @@ class TaskViewModel(
             try {
                 val expiredIds = repository.getCompletedTaskIdsBefore(thirtyDaysAgo)
                 if (expiredIds.isNotEmpty()) {
-                    val context = getApplication<Application>()
-                    expiredIds.forEach { id ->
-                        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(context, "TASK", id)
-                    }
                     repository.deleteCompletedTasksBefore(thirtyDaysAgo)
                 }
             } catch (e: Exception) {
@@ -60,7 +56,6 @@ class TaskViewModel(
             val id = repository.insertTask(task)
             TaskReminderHelper.scheduleReminder(getApplication(), task.copy(id = id))
             TodoWidgetProvider.updateAllWidgets(getApplication())
-            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }
     }
 
@@ -70,21 +65,18 @@ class TaskViewModel(
             repository.updateTask(updatedTask)
             TaskReminderHelper.scheduleReminder(getApplication(), updatedTask)
             TodoWidgetProvider.updateAllWidgets(getApplication())
-            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }
     }
 
     /**
      * Directly and permanently deletes the task (standard production To-Do model).
-     * Queues cloud tombstone for Supabase, cancels reminders, and updates widgets.
+     * Cancels reminders and updates widgets.
      */
     fun deleteTask(task: Task) {
         viewModelScope.launch {
-            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "TASK", task.id)
             repository.deletePermanently(task)
             TaskReminderHelper.cancelReminder(getApplication(), task)
             TodoWidgetProvider.updateAllWidgets(getApplication())
-            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }
     }
 
@@ -95,7 +87,6 @@ class TaskViewModel(
                 TaskReminderHelper.scheduleReminder(getApplication(), task.copy(isTrashed = false))
             }
             TodoWidgetProvider.updateAllWidgets(getApplication())
-            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }
     }
 
@@ -108,26 +99,15 @@ class TaskViewModel(
             try {
                 val app = getApplication<FocusApplication>()
                 val noteDb = NoteDatabase.getInstance(app)
-                // CONFLICT-2 fix: take ONE unified multi-table snapshot (notes + tasks + habits
-                // + schedules + restrictions) instead of the previous redundant tasks-only snapshot.
-                // NoteRepository.emptyTrash() would also try to snapshot if given a Context, but
-                // that would create a second fragmented file. By passing null here we let it skip
-                // its own snapshot — the unified one above covers everything.
                 DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "emptyTrash_unified", app.database)
             } catch (_: Exception) {}
-            val currentTrashed = repository.getTrashedTasksSync()
-            currentTrashed.forEach { t ->
-                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "TASK", t.id)
-            }
             repository.emptyTrash()
             TodoWidgetProvider.updateAllWidgets(getApplication())
-            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         }
     }
 
     fun toggleTaskCompletion(task: Task) {
         TaskReminderHelper.toggleTaskById(getApplication(), task.id)
-        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
     }
 
     fun toggleSubtask(task: Task, subtaskId: String) {

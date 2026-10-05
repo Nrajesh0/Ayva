@@ -27,6 +27,31 @@ object NoteImageHelper {
         var orientedBitmap: Bitmap? = null
         var finalBitmap: Bitmap? = null
         return try {
+            val scheme = contentUri.scheme?.lowercase()
+            if (scheme != "content" && scheme != "android.resource") {
+                android.util.Log.w("NoteImageHelper", "Rejected unsafe URI scheme: $scheme")
+                return null
+            }
+            val authority = contentUri.authority?.lowercase().orEmpty()
+            if (authority.contains("focusbyrj") && authority.contains("fileprovider")) {
+                android.util.Log.w("NoteImageHelper", "Rejected self-referential FileProvider URI: $contentUri")
+                return null
+            }
+            val mimeType = try {
+                context.contentResolver.getType(contentUri)?.lowercase()
+            } catch (_: Throwable) { null }
+            if (mimeType != null && !mimeType.startsWith("image/") && mimeType != "application/octet-stream") {
+                android.util.Log.w("NoteImageHelper", "Rejected non-image MIME type: $mimeType")
+                return null
+            }
+            val descriptorSize = try {
+                context.contentResolver.openFileDescriptor(contentUri, "r")?.use { it.statSize } ?: -1L
+            } catch (_: Throwable) { -1L }
+            if (descriptorSize > 50 * 1024 * 1024L) {
+                android.util.Log.w("NoteImageHelper", "Rejected oversized image stream: $descriptorSize bytes")
+                return null
+            }
+
             val imagesDir = File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
             val outputFile = File(imagesDir, "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg")
 
@@ -53,6 +78,10 @@ object NoteImageHelper {
 
             val origWidth = boundsOptions.outWidth
             val origHeight = boundsOptions.outHeight
+            if (origWidth <= 0 || origHeight <= 0 || origWidth > 12000 || origHeight > 12000) {
+                android.util.Log.w("NoteImageHelper", "Rejected image with invalid/excessive dimensions: ${origWidth}x${origHeight}")
+                return null
+            }
             val maxDim = MAX_IMAGE_DIMENSION
 
             var sampleSize = 1

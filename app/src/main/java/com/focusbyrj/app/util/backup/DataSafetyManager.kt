@@ -154,8 +154,7 @@ object DataSafetyManager {
     ): String? = writePreOpSnapshot(context, noteDao, operationTag, null)
 
     /**
-     * Writes an emergency snapshot when a sync anomaly is detected (>40% data drop).
-     * This is called by [SupabaseSyncEngine] before aborting the sync result.
+     * Writes an emergency snapshot when an anomaly is detected (>40% data drop).
      */
     suspend fun writeEmergencySnapshot(
         context: Context,

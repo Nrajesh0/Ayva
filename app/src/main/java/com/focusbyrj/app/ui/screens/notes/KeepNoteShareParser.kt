@@ -138,7 +138,34 @@ object KeepNoteShareParser {
             }
         }
 
-        return uris.filterNotNull().distinct().take(MAX_ATTACHED_IMAGES)
+        return uris.filterNotNull().filter { isSafeShareUri(it) }.distinct().take(MAX_ATTACHED_IMAGES)
+    }
+
+    /**
+     * Security validation for incoming share URIs to defend against intent redirection,
+     * path traversal, and unauthorized local file access.
+     */
+    fun isSafeShareUri(uri: Uri?): Boolean {
+        if (uri == null) return false
+        val scheme = uri.scheme?.lowercase() ?: return false
+        // Strictly allow only content:// and android.resource:// schemes
+        if (scheme != "content" && scheme != "android.resource") {
+            return false
+        }
+
+        // Reject self-referential FileProvider URIs to prevent internal cache/private file reflection
+        val authority = uri.authority?.lowercase().orEmpty()
+        if (authority.contains("focusbyrj") && authority.contains("fileprovider")) {
+            return false
+        }
+
+        // Reject path traversal attacks in URI string representation
+        val uriStr = uri.toString()
+        if (uriStr.contains("../") || uriStr.contains("..\\") || uriStr.contains("%2e%2e")) {
+            return false
+        }
+
+        return true
     }
 
     fun parseContent(rawSubject: String?, rawText: String?, imageUris: List<Uri> = emptyList()): ParsedSharedNote {

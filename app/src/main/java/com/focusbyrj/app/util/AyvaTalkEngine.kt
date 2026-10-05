@@ -1263,7 +1263,6 @@ object AyvaTalkEngine {
                                 val newId = app.taskRepository.insertTask(newTask)
                                 TaskReminderHelper.scheduleReminder(context, newTask.copy(id = newId))
                                 TodoWidgetProvider.updateAllWidgets(context)
-                                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
 
                                 val dateStr = if (finalDueDate != null) " (Due: ${SmartDateParser.formatDueDate(finalDueDate)})" else ""
                                 val actions = listOf(
@@ -1322,7 +1321,6 @@ object AyvaTalkEngine {
                                             TaskReminderHelper.cancelReminder(context, it)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val praise = AyvaDialogueEngine.getOverdueCleanPraise(context, overdueTasks.size)
                                         val actions = listOf(
                                             TalkAction.AskQuery("/tasks", "📋 View Remaining Tasks"),
@@ -1338,7 +1336,6 @@ object AyvaTalkEngine {
                                             TaskReminderHelper.scheduleReminder(context, updated)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val timeStr = SmartDateParser.formatDueDate(targetDate)
                                         val praise = AyvaDialogueEngine.getOverdueTriagePraise(context, overdueTasks.size, timeStr)
                                         val actions = listOf(
@@ -1359,7 +1356,6 @@ object AyvaTalkEngine {
                                             TaskReminderHelper.scheduleReminder(context, updated)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val dateStr = SmartDateParser.formatDueDate(newDate)
                                         return TalkResponse("⏰ **Rescheduled all ${pending.size} tasks** to $dateStr.")
                                     } else if (nluResult.intent == NluIntent.COMPLETE) {
@@ -1381,7 +1377,6 @@ object AyvaTalkEngine {
                                             }
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val actions = listOf(TalkAction.AskQuery("/summary", "📊 Daily Summary"), TalkAction.AskQuery("/advice", "💡 Focus Advice"))
                                         return TalkResponse("🎉 **All ${pending.size} tasks marked complete!** Entire radar is clear. Outstanding work!", actions, "tasks", serializeActionsJson("tasks", actions))
                                     } else if (nluResult.intent == NluIntent.DELETE) {
@@ -1411,7 +1406,6 @@ object AyvaTalkEngine {
                                             TaskReminderHelper.cancelReminder(context, it)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         return TalkResponse("🗑️ **Moved all ${pending.size} pending tasks to Trash.** (Retained for 30 days)")
                                     }
                                 } else if (nluResult.targetTask != null) {
@@ -1433,7 +1427,6 @@ object AyvaTalkEngine {
                                             TaskReminderHelper.scheduleReminder(context, nextTask.copy(id = newId))
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val remaining = pending.size - 1
                                         val praise = AyvaDialogueEngine.getTaskCompletedPraise(context, targetTask.title, remaining)
                                         val actions = listOf(
@@ -1445,7 +1438,6 @@ object AyvaTalkEngine {
                                         app.taskRepository.moveToTrash(targetTask.id)
                                         TaskReminderHelper.cancelReminder(context, targetTask)
                                         TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         val remaining = pending.size - 1
                                         val actions = listOf(
                                             TalkAction.AskQuery("/tasks", "📋 View Tasks ($remaining)")

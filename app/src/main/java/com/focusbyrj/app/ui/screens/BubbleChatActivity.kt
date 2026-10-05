@@ -74,9 +74,13 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.OffsetMapping
-import androidx.compose.ui.text.withStyle
 import android.content.pm.PackageManager
-import com.airbnb.lottie.RenderMode
+import android.Manifest
+import androidx.core.content.ContextCompat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.focusbyrj.app.ui.screens.notes.AudioMemoManager
+import com.focusbyrj.app.ui.screens.notes.VoiceRecordDialog
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
@@ -476,6 +480,10 @@ fun ChatInterface() {
     var isHighPriority by remember { mutableStateOf(false) }
     var isPersistent by remember { mutableStateOf(false) }
 
+    val audioMemoManager = remember { AudioMemoManager(context.applicationContext) }
+    val recordingState by audioMemoManager.recordingState.collectAsState()
+    var initialInputBeforeTranscription by remember { mutableStateOf("") }
+
     var lastInteractionTimestamp by remember { mutableStateOf(System.currentTimeMillis()) }
     var showCatForWelcome by remember { mutableStateOf(false) }
     var showCatForInactivity by remember { mutableStateOf(false) }
@@ -484,6 +492,70 @@ fun ChatInterface() {
     var currentCatActionAsset by remember { mutableStateOf("cat_action.lottie") }
     var catTapCount by remember { mutableStateOf(0) }
     var lastCatTapTime by remember { mutableStateOf(0L) }
+
+    val startLiveTranscriptionAction = {
+        lastInteractionTimestamp = System.currentTimeMillis()
+        showCatForWelcome = false
+        showCatForInactivity = false
+        isCatActionPlaying = false
+        initialInputBeforeTranscription = inputTextFieldValue.text
+        audioMemoManager.startRecording(
+            onTranscriptUpdate = { transcript ->
+                if (transcript.isNotBlank()) {
+                    val combined = if (initialInputBeforeTranscription.isBlank()) {
+                        transcript
+                    } else {
+                        "${initialInputBeforeTranscription.trim()} $transcript"
+                    }
+                    inputTextFieldValue = TextFieldValue(
+                        text = combined,
+                        selection = TextRange(combined.length)
+                    )
+                }
+            }
+        )
+    }
+
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            if (isGranted) {
+                startLiveTranscriptionAction()
+            } else {
+                android.widget.Toast.makeText(context, "Microphone permission is required for live transcription", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    )
+
+    val toggleLiveTranscription: () -> Unit = {
+        lastInteractionTimestamp = System.currentTimeMillis()
+        if (recordingState.isRecording) {
+            val (_, finalTranscript) = audioMemoManager.stopRecording()
+            if (finalTranscript.isNotBlank()) {
+                val combined = if (initialInputBeforeTranscription.isBlank()) {
+                    finalTranscript
+                } else {
+                    "${initialInputBeforeTranscription.trim()} $finalTranscript"
+                }
+                inputTextFieldValue = TextFieldValue(
+                    text = combined,
+                    selection = TextRange(combined.length)
+                )
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                startLiveTranscriptionAction()
+            } else {
+                recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            audioMemoManager.cancelRecording()
+        }
+    }
 
     LaunchedEffect(lastInteractionTimestamp, messages.size, inputText) {
         if (inputText.isNotBlank()) {
@@ -510,6 +582,7 @@ fun ChatInterface() {
     val quickActionCommands = remember {
         listOf(
             QuickActionCommand("💬 /talk", "/talk "),
+            QuickActionCommand("🎙️ /transcribe", "/transcribe"),
             QuickActionCommand("📋 /tasks", "/tasks "),
             QuickActionCommand("🎯 /habit", "/habit"),
             QuickActionCommand("🧹 /clear", "/clear"),
@@ -531,10 +604,14 @@ fun ChatInterface() {
         showCatForWelcome = false
         showCatForInactivity = false
         isCatActionPlaying = false
-        inputTextFieldValue = TextFieldValue(
-            text = commandText,
-            selection = TextRange(commandText.length)
-        )
+        if (commandText == "/transcribe") {
+            toggleLiveTranscription()
+        } else {
+            inputTextFieldValue = TextFieldValue(
+                text = commandText,
+                selection = TextRange(commandText.length)
+            )
+        }
     }
 
     val updateFontSize = { newSize: Float ->
@@ -609,6 +686,21 @@ fun ChatInterface() {
                     if (newIncoming.isNotEmpty()) {
                         val mapped = newIncoming.map { it.toChatMessage() }
                         messages = messages + mapped
+                    }
+                }
+            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
+                if (recordingState.isRecording) {
+                    val (_, finalTranscript) = audioMemoManager.stopRecording()
+                    if (finalTranscript.isNotBlank()) {
+                        val combined = if (initialInputBeforeTranscription.isBlank()) {
+                            finalTranscript
+                        } else {
+                            "${initialInputBeforeTranscription.trim()} $finalTranscript"
+                        }
+                        inputTextFieldValue = TextFieldValue(
+                            text = combined,
+                            selection = TextRange(combined.length)
+                        )
                     }
                 }
             }
@@ -837,7 +929,6 @@ fun ChatInterface() {
                                     val newId = repo.insertTask(newTask)
                                     TaskReminderHelper.scheduleReminder(context, newTask.copy(id = newId))
                                     TodoWidgetProvider.updateAllWidgets(context)
-                                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
 
                                     val dateStr = if (dueDateToUse != null) " (Due: ${SmartDateParser.formatDueDate(dueDateToUse)})" else ""
                                     val actions = listOf(
@@ -927,6 +1018,12 @@ fun ChatInterface() {
                         var replyMsg = "Command not recognized."
                         
                         when (cmd) {
+                            "/transcribe", "/voice", "/mic" -> {
+                                withContext(Dispatchers.Main) {
+                                    toggleLiveTranscription()
+                                }
+                                return@launch
+                            }
                             "/profile", "/stats", "/xp", "/level" -> {
                                 val profMsg = ChatMessage(
                                     id = java.util.UUID.randomUUID().toString(),
@@ -1098,7 +1195,6 @@ fun ChatInterface() {
                                     val createdId = repo.insertTask(tTask)
                                     TaskReminderHelper.scheduleReminder(context, tTask.copy(id = createdId))
                                     TodoWidgetProvider.updateAllWidgets(context)
-                                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
 
                                     withContext(Dispatchers.Main) {
                                         val dueStr = if (tDueDate != null) SmartDateParser.formatDueDate(tDueDate) else null
@@ -1513,7 +1609,6 @@ fun ChatInterface() {
                                             TaskReminderHelper.scheduleReminder(context, updated)
                                         }
                                         TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         replyMsg = "⏰ **Rescheduled all ${targetList.size} tasks** to ${SmartDateParser.formatDueDate(newDate)}."
                                     } else if (nluResult.targetTask != null) {
                                         val task = nluResult.targetTask
@@ -1532,7 +1627,6 @@ fun ChatInterface() {
                                         repo.updateTask(updatedTask)
                                         TaskReminderHelper.scheduleReminder(context, updatedTask)
                                         TodoWidgetProvider.updateAllWidgets(context)
-                                        com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                         replyMsg = com.focusbyrj.app.util.AyvaDialogueEngine.getRescheduleSuccessResponse(context, task.title, SmartDateParser.formatDueDate(newDate))
                                     } else if (nluResult.matchingTasks.isNotEmpty()) {
                                         val builder = StringBuilder()
@@ -1554,7 +1648,6 @@ fun ChatInterface() {
                                                 repo.updateTask(updatedTask)
                                                 TaskReminderHelper.scheduleReminder(context, updatedTask)
                                                 TodoWidgetProvider.updateAllWidgets(context)
-                                                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                                 replyMsg = com.focusbyrj.app.util.AyvaDialogueEngine.getRescheduleSuccessResponse(context, task.title, SmartDateParser.formatDueDate(parsed.timestamp))
                                             } else {
                                                 replyMsg = "Couldn't decipher '$timeStr'. Try something like 'tomorrow at 3pm' or '5pm'."
@@ -1582,7 +1675,6 @@ fun ChatInterface() {
                                         TaskReminderHelper.scheduleReminder(context, updatedTask)
                                     }
                                     TodoWidgetProvider.updateAllWidgets(context)
-                                    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                     replyMsg = com.focusbyrj.app.util.AyvaDialogueEngine.getPostponeAllResponse(context, tasks.size)
                                 }
                             }
@@ -1691,7 +1783,6 @@ fun ChatInterface() {
                 val newId = repo.insertTask(newTask)
                 TaskReminderHelper.scheduleReminder(context, newTask.copy(id = newId))
                 TodoWidgetProvider.updateAllWidgets(context)
-                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                 
                 withContext(Dispatchers.Main) {
                     val attrs = mutableListOf<String>()
@@ -2165,7 +2256,6 @@ fun ChatInterface() {
                                     TaskReminderHelper.scheduleReminder(context, nextTask.copy(id = newId))
                                 }
                                 TodoWidgetProvider.updateAllWidgets(context)
-                                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
                                 
                                 withContext(Dispatchers.Main) {
                                     val newMessages = messages.map { m ->
@@ -2263,7 +2353,9 @@ fun ChatInterface() {
                     isPersistent = isPersistent,
                     onTogglePersistent = { isPersistent = !isPersistent },
                     parsedDueDateText = parsedResult?.timestamp?.let { SmartDateParser.formatDueDate(it) },
-                    onSend = { sendMessage() }
+                    onSend = { sendMessage() },
+                    isLiveTranscribing = recordingState.isRecording,
+                    onLiveTranscriptionClick = toggleLiveTranscription
                 )
             }
             // Navigation Bar padding
@@ -2300,5 +2392,35 @@ fun ChatInterface() {
                     com.focusbyrj.app.util.DailyQuestManager.refreshState()
                 }
             )
+        }
+
+        if (recordingState.isRecording) {
+            VoiceRecordDialog(
+                elapsedSeconds = recordingState.elapsedSeconds,
+                amplitude = recordingState.currentAmplitude,
+                liveTranscript = recordingState.liveTranscript,
+                statusMessage = recordingState.statusMessage,
+                onCancel = {
+                    audioMemoManager.cancelRecording()
+                    inputTextFieldValue = TextFieldValue(
+                        text = initialInputBeforeTranscription,
+                        selection = TextRange(initialInputBeforeTranscription.length)
+                    )
+                },
+                onDone = {
+                    val (_, finalTranscript) = audioMemoManager.stopRecording()
+                    if (finalTranscript.isNotBlank()) {
+                        val combined = if (initialInputBeforeTranscription.isBlank()) {
+                            finalTranscript
+                        } else {
+                            "${initialInputBeforeTranscription.trim()} $finalTranscript"
+                        }
+                        inputTextFieldValue = TextFieldValue(
+                            text = combined,
+                            selection = TextRange(combined.length)
+                        )
+                    }
+                }
+            )
+        }
     }
-}

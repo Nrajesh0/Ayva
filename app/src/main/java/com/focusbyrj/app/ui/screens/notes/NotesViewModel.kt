@@ -370,8 +370,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     note
                 }
-                com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), targetNote)
-                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", targetNote.id)
                 deleteNoteMediaFiles(targetNote)
                 repository.deletePermanently(targetNote)
             }
@@ -1093,7 +1091,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val updated = current.imageUris.filter { it != imageUri }
         _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
         persistCurrentEditorState()
-        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(getApplication(), imageUri)
         NoteMediaManager.secureDeleteMediaFile(imageUri)
         triggerAutoSync()
     }
@@ -1481,7 +1478,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         if (playbackState.value.currentPath == audioUri) {
             audioMemoManager.stopPlayback()
         }
-        com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordPendingMediaDeletion(getApplication(), audioUri)
         NoteMediaManager.secureDeleteMediaFile(audioUri)
         triggerAutoSync()
     }
@@ -1640,8 +1636,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 note
             }
-            com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), targetNote)
-            com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", targetNote.id)
             deleteNoteMediaFiles(targetNote)
             repository.deletePermanently(targetNote)
             triggerAutoSync()
@@ -1658,8 +1652,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     note
                 }
-                com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine.recordNoteMediaDeletions(getApplication(), targetNote)
-                com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.recordLocalDeletion(getApplication(), "NOTE", targetNote.id)
                 deleteNoteMediaFiles(targetNote)
             }
             repository.emptyTrash(getApplication())
@@ -1926,7 +1918,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun triggerAutoSync() {
         try {
-            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(getApplication())
         } catch (_: Exception) {}
     }
 

@@ -16,7 +16,6 @@ import com.focusbyrj.app.data.note.ChecklistItem
 import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.data.note.NoteEntity
 import com.focusbyrj.app.ui.screens.notes.NotesViewModel
-import com.focusbyrj.app.util.sync.supabase.AutoSyncManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -89,8 +88,6 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                     if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                                         NoteWidgetConfigHelper.setCurrentNoteId(context, appWidgetId, updatedNote.id)
                                     }
-
-                                    AutoSyncManager.triggerDebouncedSync(context)
                                     NoteWidgetProvider.updateAllWidgets(context)
                                     if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                                         NoteWidgetProvider.updateWidget(context, appWidgetManager, appWidgetId)
@@ -131,8 +128,6 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                                             NoteWidgetConfigHelper.setCurrentNoteId(context, appWidgetId, updatedNote.id)
                                         }
-
-                                        AutoSyncManager.triggerDebouncedSync(context)
                                         NoteWidgetProvider.updateAllWidgets(context)
                                         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                                             NoteWidgetProvider.updateWidget(context, appWidgetManager, appWidgetId)

@@ -133,23 +133,6 @@ object VaultSyncManager {
             if (!mergeMode) {
                 noteDao.deleteAllNotes()
                 taskDao.deleteAllTasks()
-                if (context != null) {
-                    val session = com.focusbyrj.app.util.sync.supabase.SupabaseKeyManager.getSessionState(context)
-                    val userId = session.userId ?: ""
-                    if (userId.isNotBlank()) {
-                        val syncPrefs = context.getSharedPreferences("focus_supabase_sync_id_mapping", Context.MODE_PRIVATE)
-                        val editor = syncPrefs.edit()
-                        for (k in syncPrefs.all.keys) {
-                            if (k.startsWith("$userId:")) {
-                                editor.remove(k)
-                            }
-                        }
-                        editor.commit()
-
-                        val tsPrefs = context.getSharedPreferences("focus_task_sync_timestamps", Context.MODE_PRIVATE)
-                        tsPrefs.edit().clear().commit()
-                    }
-                }
             }
 
             // Restore Notes
@@ -211,10 +194,6 @@ object VaultSyncManager {
                 )
                 taskDao.insertTask(task)
                 importedTasksCount++
-            }
-
-            if (context != null) {
-                com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context.applicationContext)
             }
 
             Result.success(Pair(importedNotesCount, importedTasksCount))

@@ -66,12 +66,10 @@ class FocusApplication : Application(), ImageLoaderFactory {
             }
         }
 
-        // Warm up Ayva knowledge base, start intelligent AutoSyncManager, and
-        // schedule daily rolling auto-backup (7-day retention, internal storage).
+        // Warm up Ayva knowledge base and schedule daily rolling auto-backup (7-day retention, internal storage).
         val ioScope = CoroutineScope(Dispatchers.IO)
         ioScope.launch {
             com.focusbyrj.app.util.AyvaTalkEngine.warmUp(this@FocusApplication)
-            com.focusbyrj.app.util.sync.supabase.AutoSyncManager.init(this@FocusApplication)
             try {
                 habitRepository.cleanPlaceholderData(this@FocusApplication)
             } catch (t: Throwable) {

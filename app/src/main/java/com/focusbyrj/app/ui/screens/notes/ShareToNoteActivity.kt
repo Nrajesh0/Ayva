@@ -103,6 +103,18 @@ class ShareToNoteActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val action = intent?.action
+        if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) {
+            finish()
+            return
+        }
+
+        val mimeType = intent.type?.lowercase()
+        if (mimeType != null && !mimeType.startsWith("text/") && !mimeType.startsWith("image/")) {
+            finish()
+            return
+        }
+
         val parsed = try {
             KeepNoteShareParser.parseIntent(intent)
         } catch (t: Throwable) {
@@ -593,9 +605,8 @@ private suspend fun saveImportedNote(
     val savedId = db.noteDao().insertNote(noteEntity)
     NotesViewModel.latestNotesCache[savedId] = noteEntity.copy(id = savedId)
 
-    // Notify widgets and sync
+    // Notify widgets
     NoteWidgetProvider.updateAllWidgets(context)
-    com.focusbyrj.app.util.sync.supabase.AutoSyncManager.triggerDebouncedSync(context)
 
     return savedId
 }

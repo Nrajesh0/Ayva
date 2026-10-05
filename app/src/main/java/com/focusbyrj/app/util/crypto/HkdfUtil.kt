@@ -14,9 +14,8 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * RFC 5869 HKDF for deriving independent domain-separated subkeys:
- * - "ayva_auth_v1"  -> Supabase auth token (never used for decryption)
- * - "ayva_vault_v1" -> Local data encryption key (never sent to server)
- * - "ayva_hmac_v1"  -> Integrity signing key (never sent to server)
+ * - "ayva_vault_v1" -> Local data encryption key
+ * - "ayva_hmac_v1"  -> Integrity signing key
  */
 object HkdfUtil {
 
@@ -110,7 +109,6 @@ object HkdfUtil {
 
     /**
      * Computes an HMAC-SHA256 message authentication code.
-     * Used externally by SupabaseKeyManager for item-level anti-tamper signatures.
      *
      * @param key  The HMAC signing key (hmacKey derived via HKDF).
      * @param data The message bytes to authenticate.
