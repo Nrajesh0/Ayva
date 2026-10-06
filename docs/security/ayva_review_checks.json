@@ -1,0 +1,37 @@
+{
+  "scope": "source assertions plus synthetic crypto/SQLite models; not an Android test run",
+  "checks": [
+    {
+      "check": "Known fallback key: data/note/DatabaseKeyProvider.kt",
+      "evidence": "Independent key reconstruction decrypts synthetic ciphertext without any user secret"
+    },
+    {
+      "check": "Known fallback key: data/note/ArchiveVaultSecurity.kt",
+      "evidence": "Independent key reconstruction decrypts synthetic ciphertext without any user secret"
+    },
+    {
+      "check": "Known fallback key: util/crypto/EncryptedMediaStorage.kt",
+      "evidence": "Independent key reconstruction decrypts synthetic ciphertext without any user secret"
+    },
+    {
+      "check": "Lock/save guard",
+      "evidence": "Lock leaves editor and autosave intact; payload encryptor returns original entity when subkey is null"
+    },
+    {
+      "check": "Rekey crash-window model",
+      "evidence": "DB committed under new key cannot open using old persisted credentials"
+    },
+    {
+      "check": "Legacy migration cleanup",
+      "evidence": "Source deletion is not conditional on complete successful copy"
+    },
+    {
+      "check": "Habit read/replace interleaving model",
+      "evidence": "Two increments leave count 1 rather than 2"
+    },
+    {
+      "check": "Missing test dependency",
+      "evidence": "Test imports SupabaseSyncEngine; corresponding production definition absent"
+    }
+  ]
+}
