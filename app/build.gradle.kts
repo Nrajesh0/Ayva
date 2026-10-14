@@ -15,8 +15,8 @@ android {
     multiDexEnabled = true
     minSdk = 24
     targetSdk = 35
-    versionCode = 99
-    versionName = "1.9.9"
+    versionCode = 100
+    versionName = "2.0.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -80,7 +80,14 @@ android {
     buildConfig = true
   }
 
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      all {
+        it.maxHeapSize = "2048m"
+      }
+    }
+  }
 
   dependenciesInfo {
     includeInApk = false
@@ -110,6 +117,10 @@ kotlin {
   compilerOptions {
     jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
   }
+}
+
+ksp {
+  arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -149,7 +160,6 @@ dependencies {
 
   // QR Generation for PC Sync
   implementation(libs.zxing.core)
-  implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
   implementation("androidx.camera:camera-camera2:1.3.4")
   implementation("androidx.camera:camera-lifecycle:1.3.4")
   implementation("androidx.camera:camera-view:1.3.4")

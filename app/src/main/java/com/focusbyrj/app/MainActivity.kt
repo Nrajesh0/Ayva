@@ -183,7 +183,7 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
 
         // Apply Anti-Screenshot / FLAG_SECURE protection dynamically based on user preference (defaults to false / off)
-        applySecureWindowFlags()
+        updateSecureWindowFlags()
 
         val app = application as FocusApplication
         val vm: FocusViewModel by viewModels {
@@ -231,20 +231,29 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        applySecureWindowFlags()
+        updateSecureWindowFlags()
         kotlin.runCatching { com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.TodoWidgetProvider.updateAllWidgets(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(this) }
     }
 
-    private fun applySecureWindowFlags() {
+    @Volatile
+    private var isSensitiveSurfaceActive = false
+
+    fun updateSecureWindowFlags(isSensitive: Boolean = isSensitiveSurfaceActive) {
+        isSensitiveSurfaceActive = isSensitive
         try {
             val prefs = getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
-            val isSecureEnabled = prefs.getBoolean("secure_recents", false)
-            if (isSecureEnabled) {
+            val isSecurePrefEnabled = prefs.getBoolean("secure_recents", false)
+            val shouldProtect = isSecurePrefEnabled || isSensitive
+            if (shouldProtect) {
                 window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
             } else {
                 window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                window.setHideOverlayWindows(shouldProtect)
             }
         } catch (_: Exception) {}
     }
@@ -400,6 +409,23 @@ fun MainAppScreen(
     val currentDestination = navBackStackEntry?.destination
     val notesViewModel: com.focusbyrj.app.ui.screens.notes.NotesViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
+    val context = LocalContext.current
+    val activity = remember(context) {
+        var ctx = context
+        while (ctx is android.content.ContextWrapper) {
+            if (ctx is MainActivity) break
+            ctx = ctx.baseContext
+        }
+        ctx as? MainActivity
+    }
+    val isSensitiveRoute = currentDestination?.route in setOf(
+        Screen.Empty.route,
+        Screen.Security.route
+    )
+    LaunchedEffect(isSensitiveRoute, activity) {
+        activity?.updateSecureWindowFlags(isSensitiveRoute)
+    }
+
     val pendingRoute by viewModel.pendingNavigationRoute.collectAsStateWithLifecycle()
     val pendingOpenAdd by viewModel.pendingOpenAddDialog.collectAsStateWithLifecycle()
     val pendingOpenNoteId by viewModel.pendingOpenNoteId.collectAsStateWithLifecycle()
@@ -463,7 +489,6 @@ fun MainAppScreen(
         com.focusbyrj.app.util.StreakSource.DRILL -> drillProfile.currentStreak
         com.focusbyrj.app.util.StreakSource.FOCUS -> focusStats.currentStreak
     }
-    val context = LocalContext.current
 
     val prefs = remember { context.getSharedPreferences("focus_app_prefs", Context.MODE_PRIVATE) }
     val hasSeenOnboarding = remember { prefs.getBoolean("has_seen_permission_onboarding", false) }

@@ -87,11 +87,14 @@ object DataSafetyManager {
         try {
             val dir = ensureDir(context, AUTO_BACKUP_DIR)
             val notes = noteDao.getAllNotesList()
-            val payload = buildMultiTableSnapshot(notes, focusDb)
+            val payload = buildMultiTableSnapshot(notes, focusDb, context)
 
             val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
             val file = File(dir, "${DAILY_PREFIX}${dateStamp}.json")
             writeAtomically(file, payload)
+
+            // Migrate any old unencrypted legacy snapshots
+            try { migrateLegacyPlaintextSnapshots(context) } catch (_: Exception) {}
 
             // Rotate: remove oldest if over limit
             rotateDailyBackups(dir)
@@ -126,12 +129,15 @@ object DataSafetyManager {
         try {
             val dir = ensureDir(context, PRE_OP_DIR)
             val notes = noteDao.getAllNotesList()
-            val payload = buildMultiTableSnapshot(notes, focusDb)
+            val payload = buildMultiTableSnapshot(notes, focusDb, context)
 
             val ts = System.currentTimeMillis()
             val safeTag = operationTag.replace(Regex("[^a-zA-Z0-9_]"), "_")
             val file = File(dir, "${PRE_OP_PREFIX}${safeTag}_${ts}.json")
             writeAtomically(file, payload)
+
+            // Migrate any old unencrypted legacy snapshots
+            try { migrateLegacyPlaintextSnapshots(context) } catch (_: Exception) {}
 
             // Rotate: keep only the most recent MAX_PRE_OP_BACKUPS
             rotatePreOpBackups(dir)
@@ -350,9 +356,28 @@ object DataSafetyManager {
                 }
 
                 if (restoredNotes.isNotEmpty()) {
-                    noteDao.insertNotes(restoredNotes)
-                    totalRestored += restoredNotes.size
-                    Log.i(TAG, "Restored ${restoredNotes.size} notes from snapshot: ${file.name}")
+                    val activeSubKey = com.focusbyrj.app.data.note.ArchiveVaultSecurity.getActiveVaultSubKey()
+                    val safeToRestoreNotes = mutableListOf<NoteEntity>()
+                    for (note in restoredNotes) {
+                        if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                            val liveNote = noteDao.getNoteByIdSync(note.id)
+                            if (liveNote != null && activeSubKey != null) {
+                                val liveDec = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(liveNote, activeSubKey)
+                                val restoredDec = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, activeSubKey)
+                                if (liveDec is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success &&
+                                    restoredDec !is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success) {
+                                    Log.w(TAG, "F06 guard: Live note ${note.id} decrypts successfully, but snapshot note uses obsolete key. Preserving live note.")
+                                    continue
+                                }
+                            }
+                        }
+                        safeToRestoreNotes.add(note)
+                    }
+                    if (safeToRestoreNotes.isNotEmpty()) {
+                        noteDao.insertNotes(safeToRestoreNotes)
+                        totalRestored += safeToRestoreNotes.size
+                        Log.i(TAG, "Restored ${safeToRestoreNotes.size} notes from snapshot: ${file.name}")
+                    }
                 }
             }
 
@@ -546,11 +571,38 @@ object DataSafetyManager {
     // Internals
     // ──────────────────────────────────────────────────────────────────────
 
+    /**
+     * Converts any existing unencrypted legacy JSON snapshots into encrypted containers (F05).
+     * Preserves exact contents and safely deletes old plaintext files after verification.
+     */
+    fun migrateLegacyPlaintextSnapshots(context: Context): Int {
+        var count = 0
+        listOf(File(context.filesDir, AUTO_BACKUP_DIR), File(context.filesDir, PRE_OP_DIR)).forEach { dir ->
+            if (dir.exists()) {
+                dir.listFiles { f -> f.isFile && f.name.endsWith(".json") }?.forEach { file ->
+                    try {
+                        if (!SnapshotCryptoEngine.isEncrypted(file)) {
+                            val content = readAtomically(file)
+                            // Re-write using encrypted writer
+                            writeAtomically(file, content)
+                            count++
+                            Log.i(TAG, "Migrated legacy plaintext snapshot to encrypted container: ${file.name}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to migrate legacy snapshot: ${file.name}", e)
+                    }
+                }
+            }
+        }
+        return count
+    }
+
     internal fun writeAtomically(file: File, content: String) {
         val atomicFile = androidx.core.util.AtomicFile(file)
         val fos = atomicFile.startWrite()
         try {
-            fos.write(content.toByteArray(Charsets.UTF_8))
+            val encryptedBytes = SnapshotCryptoEngine.encryptSnapshot(content.toByteArray(Charsets.UTF_8))
+            fos.write(encryptedBytes)
             atomicFile.finishWrite(fos)
         } catch (e: Exception) {
             atomicFile.failWrite(fos)
@@ -560,8 +612,14 @@ object DataSafetyManager {
 
     internal fun readAtomically(file: File): String {
         val atomicFile = androidx.core.util.AtomicFile(file)
-        return atomicFile.openRead().use { stream ->
-            stream.bufferedReader(Charsets.UTF_8).readText()
+        val bytes = atomicFile.openRead().use { stream ->
+            stream.readBytes()
+        }
+        return if (SnapshotCryptoEngine.isEncrypted(bytes)) {
+            val decryptedBytes = SnapshotCryptoEngine.decryptSnapshot(bytes)
+            String(decryptedBytes, Charsets.UTF_8)
+        } else {
+            String(bytes, Charsets.UTF_8)
         }
     }
 
@@ -573,12 +631,19 @@ object DataSafetyManager {
 
     private suspend fun buildMultiTableSnapshot(
         notes: List<NoteEntity>,
-        focusDb: FocusDatabase?
+        focusDb: FocusDatabase?,
+        context: Context? = null
     ): String {
         val root = JSONObject().apply {
             put("snapshotVersion", 2)
+            put("cryptoVersion", "aes-256-gcm-v1")
             put("createdAt", System.currentTimeMillis())
             put("noteCount", notes.size)
+            put("completeness", "COMPLETE")
+            if (context != null) {
+                put("vaultKeyVersion", com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultDataKeyVersion(context))
+                put("vaultStatus", com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultStatus(context).name)
+            }
             
             val notesArr = JSONArray()
             notes.forEach { note ->

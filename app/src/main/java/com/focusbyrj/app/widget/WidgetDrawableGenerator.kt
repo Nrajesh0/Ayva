@@ -16,8 +16,16 @@ object WidgetDrawableGenerator {
         val isMonochrome: Boolean
     )
 
-    // Bounded LRU cache for item backgrounds (max 4 entries - dark/light variations)
-    private val itemBgCache = java.util.concurrent.ConcurrentHashMap<Boolean, Bitmap>()
+    // Bounded LRU cache for item backgrounds (max 4 entries - dark/light variations) (BATCH-9-P3-002)
+    private val itemBgCache: MutableMap<Boolean, Bitmap> = object : java.util.LinkedHashMap<Boolean, Bitmap>(4, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Boolean, Bitmap>?): Boolean {
+            if (size > 4) {
+                eldest?.value?.takeIf { !it.isRecycled }?.recycle()
+                return true
+            }
+            return false
+        }
+    }
 
     // Bounded LRU cache for checkbox bitmaps (max 32 entries) (BATCH-9-P3-002)
     private val checkboxCache: MutableMap<CheckboxKey, Bitmap> = object : java.util.LinkedHashMap<CheckboxKey, Bitmap>(32, 0.75f, true) {
@@ -61,11 +69,11 @@ object WidgetDrawableGenerator {
      * Clean, flat item row with a subtle indented bottom divider.
      * Cached by dark/light mode to prevent allocating for every single item row (BATCH-9-P3-002).
      */
-    fun createItemBackground(context: Context, config: WidgetConfig): Bitmap {
+    fun createItemBackground(context: Context, config: WidgetConfig): Bitmap = synchronized(itemBgCache) {
         val isDark = config.theme.isDark
         val cached = itemBgCache[isDark]
         if (cached != null && !cached.isRecycled) {
-            return cached
+            return@synchronized cached
         }
 
         val width = 120
@@ -84,7 +92,7 @@ object WidgetDrawableGenerator {
         canvas.drawRect(34f, height - 1f, width.toFloat(), height.toFloat(), dividerPaint)
 
         itemBgCache[isDark] = bitmap
-        return bitmap
+        bitmap
     }
 
     /**

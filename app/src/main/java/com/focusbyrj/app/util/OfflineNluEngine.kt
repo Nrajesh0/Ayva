@@ -121,6 +121,7 @@ object OfflineNluEngine {
         title = title.replace(Regex("(?i)^\\s*(?:(?:add|create|new|schedule)(?:\\s+(?:a\\s+)?(?:task|todo|reminder))?|remind\\s+me\\s+to|please\\s+remind\\s+me\\s+to|remember\\s+to|need\\s+to|i\\s+need\\s+to|have\\s+to|i\\s+have\\s+to|must\\b|todo\\s*:?|task\\s*:?|don't\\s+forget\\s+to)\\s*[,:\\-]?\\s*"), "")
         // Clean trailing phrases like "on my list", "to my radar"
         title = title.replace(Regex("(?i)\\s+(?:on\\s+(?:my\\s+)?(?:list|radar|agenda)|to\\s+(?:my\\s+)?(?:list|radar|agenda|tasks))$"), "")
+        title = title.replace(Regex("[\r\n]+"), " ").split(Regex("\\s*/"))[0].trim()
         title = title.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
         return Pair(title.ifBlank { "New Task" }, parsed.timestamp)
     }

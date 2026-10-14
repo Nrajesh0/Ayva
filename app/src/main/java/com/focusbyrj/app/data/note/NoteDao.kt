@@ -71,7 +71,7 @@ interface NoteDao {
     suspend fun insertNotes(notes: List<NoteEntity>)
 
     @Update
-    suspend fun updateNote(note: NoteEntity)
+    suspend fun updateNote(note: NoteEntity): Int
 
     /**
      * Hard-deletes a note row. Only call this from emptyTrash, backup restore

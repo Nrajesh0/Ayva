@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -42,7 +42,16 @@ object EncryptedMediaStorage {
     private const val MAGIC_HEADER = "FOC_ENC_V1:"
     const val MAX_DECRYPT_BYTES_LIMIT = 50 * 1024 * 1024L // 50MB upper limit for heap ByteArray loading
 
-    private fun getOrCreateKey(): SecretKey {
+    private val isUnitTestEnvironment: Boolean by lazy {
+        try {
+            android.os.Build.FINGERPRINT.startsWith("robolectric") ||
+            Class.forName("org.robolectric.Robolectric") != null
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun getMasterKeyForEncryption(): SecretKey {
         return try {
             val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
             if (keyStore.containsAlias(MEDIA_KEY_ALIAS)) {
@@ -50,7 +59,6 @@ object EncryptedMediaStorage {
                 if (entry != null) {
                     return entry.secretKey
                 }
-                // Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
                 throw SecurityException("Media storage master key exists in AndroidKeyStore but could not be loaded as SecretKeyEntry. Refusing to overwrite key to prevent permanent data loss.")
             }
 
@@ -68,13 +76,33 @@ object EncryptedMediaStorage {
             keyGenerator.init(spec)
             keyGenerator.generateKey()
         } catch (e: Exception) {
-            // Rethrow SecurityException so alias collisions fail closed instead of falling back to software seed
             if (e is SecurityException) throw e
-            Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey for media storage.", e)
-            val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
-                .digest("focus_media_storage_software_seed_v1".toByteArray(Charsets.UTF_8))
-            javax.crypto.spec.SecretKeySpec(fallbackSeed, "AES")
+            if (isUnitTestEnvironment) {
+                Log.w(TAG, "AndroidKeyStore is unavailable in unit test environment; using test software key.")
+                return getLegacyFallbackKey()
+            }
+            Log.e(TAG, "AndroidKeyStore is unavailable for media storage key generation. Refusing to use static software key for new writes.", e)
+            throw SecurityException("Failed to generate hardware-backed media storage key in AndroidKeyStore", e)
         }
+    }
+
+    private fun getMasterKeyForDecryption(): SecretKey? {
+        return try {
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            if (keyStore.containsAlias(MEDIA_KEY_ALIAS)) {
+                val entry = keyStore.getEntry(MEDIA_KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
+                entry?.secretKey
+            } else null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to retrieve media storage master key from AndroidKeyStore", e)
+            null
+        }
+    }
+
+    internal fun getLegacyFallbackKey(): SecretKey {
+        val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("focus_media_storage_software_seed_v1".toByteArray(Charsets.UTF_8))
+        return javax.crypto.spec.SecretKeySpec(fallbackSeed, "AES")
     }
 
     /**
@@ -85,22 +113,12 @@ object EncryptedMediaStorage {
         // Ensure parent directory exists before attempting to write temp file
         file.parentFile?.mkdirs()
         val tempFile = File(file.parentFile, "${file.name}.tmp")
-        val secretKey = getOrCreateKey()
+        val secretKey = getMasterKeyForEncryption()
 
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-        val iv = try {
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            // Re-init cipher if cipher.iv is null so ciphertext matches returned IV
-            cipher.iv ?: run {
-                val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
-                cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
-                generatedIv
-            }
-        } catch (_: Exception) {
-            val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
-            generatedIv
-        }
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        val iv = checkNotNull(cipher.iv) { "Cipher failed to generate IV for media encryption" }
+        require(iv.size == GCM_IV_LENGTH) { "Cipher generated IV of invalid length: ${iv.size}, expected $GCM_IV_LENGTH" }
 
         // Wrap all writes in try/catch so tempFile is always cleaned up on failure.
         // Previously, a disk-full or OOM during write would leave an orphaned .tmp file on disk.
@@ -174,16 +192,36 @@ object EncryptedMediaStorage {
                     }
                     if (totalCipherRead != cipherLen) return null
 
-                    val secretKey = getOrCreateKey()
-                    val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-                    val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-                    cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
-
+                    // Primary: Try hardware KeyStore key
+                    var decrypted: ByteArray? = null
                     try {
-                        cipher.doFinal(ciphertext)
-                    } finally {
-                        java.util.Arrays.fill(ciphertext, 0.toByte())
+                        val keyStoreKey = getMasterKeyForDecryption()
+                        if (keyStoreKey != null) {
+                            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+                            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+                            cipher.init(Cipher.DECRYPT_MODE, keyStoreKey, gcmSpec)
+                            decrypted = cipher.doFinal(ciphertext)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "KeyStore decryption failed for media file, trying legacy fallback key: ${file.name}", e)
                     }
+
+                    // Secondary: Compatibility adapter with legacy static software key (read-only)
+                    if (decrypted == null) {
+                        try {
+                            val legacyKey = getLegacyFallbackKey()
+                            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+                            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+                            cipher.init(Cipher.DECRYPT_MODE, legacyKey, gcmSpec)
+                            decrypted = cipher.doFinal(ciphertext)
+                            Log.w(TAG, "Successfully decrypted media file using legacy fallback key: ${file.name}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to decrypt media file with both KeyStore and legacy keys: ${file.name}", e)
+                        }
+                    }
+
+                    java.util.Arrays.fill(ciphertext, 0.toByte())
+                    decrypted
                 } else {
                     // Legacy plaintext fallback
                     val fullBytes = ByteArray(fileLen.toInt())
@@ -204,7 +242,7 @@ object EncryptedMediaStorage {
     }
 
     /**
-     * Opens a streaming [InputStream] that decrypts media on-the-fly via [CipherInputStream].
+     * Opens a streaming [InputStream] that decrypts media on-the-fly via [CipherInputStream] or memory buffer.
      * If the file is legacy plaintext, returns a direct [FileInputStream].
      * Returns null if file does not exist or has a corrupted header.
      */
@@ -214,43 +252,36 @@ object EncryptedMediaStorage {
         val minEncryptedLen = magicBytes.size + GCM_IV_LENGTH + 16
         val fileLen = file.length()
 
-        val fis = FileInputStream(file)
-        try {
-            if (fileLen >= minEncryptedLen) {
-                val headerBuf = ByteArray(magicBytes.size)
-                var bytesRead = 0
-                while (bytesRead < magicBytes.size) {
-                    val r = fis.read(headerBuf, bytesRead, magicBytes.size - bytesRead)
-                    if (r == -1) break
-                    bytesRead += r
-                }
-
-                if (bytesRead == magicBytes.size && headerBuf.contentEquals(magicBytes)) {
-                    val iv = ByteArray(GCM_IV_LENGTH)
-                    var ivRead = 0
-                    while (ivRead < GCM_IV_LENGTH) {
-                        val r = fis.read(iv, ivRead, GCM_IV_LENGTH - ivRead)
+        if (fileLen >= minEncryptedLen) {
+            val isEnc = try {
+                FileInputStream(file).use { fis ->
+                    val headerBuf = ByteArray(magicBytes.size)
+                    var bytesRead = 0
+                    while (bytesRead < magicBytes.size) {
+                        val r = fis.read(headerBuf, bytesRead, magicBytes.size - bytesRead)
                         if (r == -1) break
-                        ivRead += r
+                        bytesRead += r
                     }
-                    if (ivRead != GCM_IV_LENGTH) {
-                        fis.close()
-                        return null
-                    }
+                    bytesRead == magicBytes.size && headerBuf.contentEquals(magicBytes)
+                }
+            } catch (_: Exception) { false }
 
-                    val secretKey = getOrCreateKey()
-                    val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-                    cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
-                    return CipherInputStream(fis, cipher)
+            if (isEnc) {
+                // If encrypted, read and decrypt safely (handling both KeyStore and legacy software keys)
+                val decrypted = readDecryptedBytes(file)
+                return if (decrypted != null) {
+                    java.io.ByteArrayInputStream(decrypted)
+                } else {
+                    null
                 }
             }
-            // Legacy plaintext fallback: reopen fresh stream at byte 0
-            fis.close()
-            return FileInputStream(file)
+        }
+        // Legacy plaintext fallback
+        return try {
+            FileInputStream(file)
         } catch (e: Exception) {
-            try { fis.close() } catch (_: Exception) {}
             Log.e(TAG, "Failed to open decrypted stream: ${file.absolutePath}", e)
-            return null
+            null
         }
     }
 
@@ -258,21 +289,11 @@ object EncryptedMediaStorage {
      * Opens a stream for writing encrypted data using hardware-generated IV.
      */
     fun openEncryptedOutputStream(file: File): OutputStream {
-        val secretKey = getOrCreateKey()
+        val secretKey = getMasterKeyForEncryption()
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-        val iv = try {
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            // Re-init cipher if cipher.iv is null so ciphertext matches returned IV
-            cipher.iv ?: run {
-                val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
-                cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
-                generatedIv
-            }
-        } catch (_: Exception) {
-            val generatedIv = ByteArray(GCM_IV_LENGTH).also { SecureRandom().nextBytes(it) }
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
-            generatedIv
-        }
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        val iv = checkNotNull(cipher.iv) { "Cipher failed to generate IV for media output stream" }
+        require(iv.size == GCM_IV_LENGTH) { "Cipher generated IV of invalid length: ${iv.size}, expected $GCM_IV_LENGTH" }
 
         // Ensure parent directory exists before creating output stream
         file.parentFile?.mkdirs()

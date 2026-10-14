@@ -65,6 +65,21 @@ interface HabitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateLog(log: HabitLog): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertOrIgnoreLog(log: HabitLog): Long
+
+    @Query("UPDATE habit_logs SET completedCount = completedCount + 1, lastCompletedTimestamp = :now WHERE habitId = :habitId AND date = :date")
+    suspend fun atomicIncrementLog(habitId: Long, date: String, now: Long): Int
+
+    @Query("UPDATE habit_logs SET completedCount = CASE WHEN completedCount > 0 THEN completedCount - 1 ELSE 0 END WHERE habitId = :habitId AND date = :date")
+    suspend fun atomicDecrementLog(habitId: Long, date: String): Int
+
+    @androidx.room.Transaction
+    suspend fun deleteHabitWithLogsTransactional(habitId: Long, habit: Habit) {
+        deleteLogsForHabit(habitId)
+        deleteHabit(habit)
+    }
+
     @Query("DELETE FROM habit_logs WHERE habitId = :habitId")
     suspend fun deleteLogsForHabit(habitId: Long)
 

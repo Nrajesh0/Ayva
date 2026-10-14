@@ -2313,12 +2313,12 @@ fun ChatInterface() {
                         if (catTapCount >= 3) {
                             catTapCount = 0
                             catActionInvocationCount += 1
-                            val isError = kotlin.random.Random.nextInt(100) == 0
-                            currentCatActionAsset = if (isError) {
-                                "cat_error.lottie"
+                            val isRare = kotlin.random.Random.nextInt(100) == 0
+                            currentCatActionAsset = if (isRare) {
+                                val rareActionPool = listOf("cat_dance.lottie", "cat_dancing.lottie")
+                                rareActionPool.random()
                             } else {
-                                val actionPool = listOf("cat_action.lottie", "cat_dance.lottie", "cat_dancing.lottie")
-                                actionPool.random()
+                                "cat_action.lottie"
                             }
                             isCatActionPlaying = true
                         }

@@ -107,13 +107,28 @@ object NoteMediaManager {
      * Securely deletes all media files attached to a note, including header images, voice memos,
      * and embedded Notesnook block images/attachments.
      */
-    fun deleteNoteMediaFiles(note: NoteEntity) {
+    fun deleteNoteMediaFiles(note: NoteEntity, allNotes: List<NoteEntity>? = null) {
         try {
+            val otherReferencedPaths = if (allNotes != null) {
+                val set = HashSet<String>()
+                allNotes.filter { it.id != note.id }.forEach { other ->
+                    set.addAll(other.getImageUris())
+                    set.addAll(other.getAudioUris())
+                }
+                set
+            } else {
+                emptySet<String>()
+            }
+
             note.getImageUris().forEach { path ->
-                secureDeleteMediaFile(path)
+                if (!otherReferencedPaths.contains(path)) {
+                    secureDeleteMediaFile(path)
+                }
             }
             note.getAudioUris().forEach { path ->
-                secureDeleteMediaFile(path)
+                if (!otherReferencedPaths.contains(path)) {
+                    secureDeleteMediaFile(path)
+                }
             }
             if (note.content.contains(com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.BLOCKS_PREFIX)) {
                 try {
@@ -121,10 +136,10 @@ object NoteMediaManager {
                     for (b in blocks) {
                         when (b) {
                             is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Image -> {
-                                if (b.uri.isNotBlank()) secureDeleteMediaFile(b.uri)
+                                if (b.uri.isNotBlank() && !otherReferencedPaths.contains(b.uri)) secureDeleteMediaFile(b.uri)
                             }
                             is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Attachment -> {
-                                if (b.uri.isNotBlank()) secureDeleteMediaFile(b.uri)
+                                if (b.uri.isNotBlank() && !otherReferencedPaths.contains(b.uri)) secureDeleteMediaFile(b.uri)
                             }
                             else -> {}
                         }
@@ -156,12 +171,18 @@ object NoteMediaManager {
             val validImagePaths = HashSet<String>()
             val validAudioPaths = HashSet<String>()
 
-            allNotes.forEach { rawNote ->
+            for (rawNote in allNotes) {
                 val note = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
                     if (activeSubKey != null) {
-                        com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(rawNote, activeSubKey)
+                        val decrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(rawNote, activeSubKey)
+                        if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(decrypted)) {
+                            Log.w(TAG, "Note ${rawNote.id} payload could not be decrypted. Aborting orphan cleanup to protect attachments.")
+                            return
+                        }
+                        decrypted
                     } else {
-                        rawNote
+                        Log.w(TAG, "Unreadable note ${rawNote.id} without active subkey. Aborting orphan cleanup.")
+                        return
                     }
                 } else {
                     rawNote

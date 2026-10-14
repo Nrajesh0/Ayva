@@ -6,8 +6,7 @@ import com.focusbyrj.app.util.backup.AutoBackupScheduler
 import com.focusbyrj.app.util.backup.AutoBackupWorker
 import com.focusbyrj.app.util.backup.CryptoBackupEngine
 import com.focusbyrj.app.util.backup.DataSafetyManager
-import com.focusbyrj.app.util.sync.supabase.AutoSyncManager
-import com.focusbyrj.app.util.sync.supabase.AutoSyncWorker
+
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -108,7 +107,7 @@ class DataIntegrityPhase1Test {
         // 1. Atomic write
         DataSafetyManager.writeAtomically(testFile, payload)
         assertTrue("File should exist on disk", testFile.exists())
-        assertEquals(payload.length.toLong(), testFile.length())
+        assertTrue("File on disk is encrypted with AEAD overhead", testFile.length() >= payload.length.toLong())
 
         // 2. Atomic read
         val readBack = DataSafetyManager.readAtomically(testFile)
@@ -121,32 +120,14 @@ class DataIntegrityPhase1Test {
     }
 
     @Test
-    fun testWorkManagerAutoBackupAndSyncRegistration() {
+    fun testWorkManagerAutoBackupRegistration() {
         val context = ApplicationProvider.getApplicationContext<Context>()
 
         // 1. Enqueue and cancel AutoBackupWorker
         AutoBackupWorker.enqueue(context)
         AutoBackupWorker.cancel(context)
 
-        // 2. Enqueue and cancel AutoSyncWorker
-        AutoSyncWorker.enqueuePeriodic(context)
-        AutoSyncWorker.enqueueOneOff(context)
-        AutoSyncWorker.cancel(context)
-
-        // 3. AutoBackupScheduler.schedule should not crash
+        // 2. AutoBackupScheduler.schedule should not crash
         AutoBackupScheduler.schedule(context)
-
-        // 4. AutoSyncManager preference toggles should invoke WorkManager cleanly
-        AutoSyncManager.setAutoSyncEnabled(context, true)
-        assertTrue(AutoSyncManager.isAutoSyncEnabled(context))
-
-        AutoSyncManager.setSyncOnWifiOnly(context, true)
-        assertTrue(AutoSyncManager.isSyncOnWifiOnly(context))
-
-        AutoSyncManager.setSyncOnWifiOnly(context, false)
-        assertFalse(AutoSyncManager.isSyncOnWifiOnly(context))
-
-        AutoSyncManager.setAutoSyncEnabled(context, false)
-        assertFalse(AutoSyncManager.isAutoSyncEnabled(context))
     }
 }

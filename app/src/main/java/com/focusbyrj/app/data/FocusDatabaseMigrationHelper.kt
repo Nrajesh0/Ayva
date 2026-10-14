@@ -28,6 +28,26 @@ object FocusDatabaseMigrationHelper {
 
     fun getEncryptedDatabaseName(): String = ENCRYPTED_DB_NAME
 
+    /**
+     * Safely quarantines an insecure legacy fallback database to a .quarantine file
+     * instead of deleting it blindly, preserving data if recovery is needed.
+     */
+    fun quarantineFallbackDatabase(fallbackDb: File): Boolean {
+        if (!fallbackDb.exists()) return false
+        val parent = fallbackDb.parentFile ?: return false
+        val quarantineFile = File(parent, "${fallbackDb.name}.quarantine")
+        return if (!fallbackDb.renameTo(quarantineFile)) {
+            try {
+                fallbackDb.copyTo(quarantineFile, overwrite = true)
+                fallbackDb.delete()
+            } catch (_: Exception) {
+                false
+            }
+        } else {
+            true
+        }
+    }
+
     fun isPlaintextSqliteFile(file: File): Boolean {
         if (!file.exists() || file.length() < 16) return false
         val header = ByteArray(16)
@@ -43,272 +63,361 @@ object FocusDatabaseMigrationHelper {
         }
     }
 
+    private fun tableExists(db: android.database.sqlite.SQLiteDatabase, tableName: String): Boolean {
+        return try {
+            val cursor = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name=?", arrayOf(tableName))
+            cursor.use { it.moveToFirst() }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     /**
      * Checks if a legacy unencrypted database exists and migrates all data to the encrypted database.
+     * Hardened against data loss:
+     * - Headroom check ensures disk space before starting.
+     * - WAL checkpoint flushes uncommitted frames.
+     * - Transactional migration guarantees atomicity across all tables.
+     * - Strict table verification aborts safely on error without wiping legacy database.
      */
     fun checkAndMigrateIfLegacyPlaintextExists(context: Context, encryptedDb: FocusDatabase) {
-        try {
-            val dbFile = context.getDatabasePath(PLAINTEXT_DB_NAME)
-            if (!dbFile.exists() || dbFile.length() == 0L) {
-                return
-            }
+        val prefs = context.getSharedPreferences("focus_migration_prefs", Context.MODE_PRIVATE)
+        val dbFile = context.getDatabasePath(PLAINTEXT_DB_NAME)
+        val walFile = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME-wal")
+        val shmFile = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME-shm")
+        val legacyMigrated = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME.migrated")
 
-            if (!isPlaintextSqliteFile(dbFile)) {
-                return
-            }
+        if (!dbFile.exists() || dbFile.length() == 0L) {
+            return
+        }
 
-            Log.i(TAG, "Legacy unencrypted FocusDatabase detected. Starting migration to SQLCipher vault...")
+        // If migration was already recorded as completed, securely clean residual plaintext files
+        if (prefs.getBoolean("focus_legacy_plaintext_migrated", false)) {
+            Log.i(TAG, "Legacy FocusDatabase migration already completed. Cleaning residual files.")
+            if (legacyMigrated.exists()) secureWipeAndDelete(legacyMigrated)
+            secureWipeAndDelete(dbFile)
+            secureWipeAndDelete(walFile)
+            secureWipeAndDelete(shmFile)
+            return
+        }
 
-            val rawDb = try {
-                android.database.sqlite.SQLiteDatabase.openDatabase(
+        if (!isPlaintextSqliteFile(dbFile)) {
+            return
+        }
+
+        // 1. Check disk headroom (require at least 2x source size + 10MB margin)
+        val totalSourceBytes = dbFile.length() + (if (walFile.exists()) walFile.length() else 0L)
+        val freeSpace = dbFile.freeSpace
+        val minRequiredSpace = (totalSourceBytes * 2) + (10 * 1024 * 1024L)
+        if (freeSpace in 1 until minRequiredSpace) {
+            Log.e(TAG, "Insufficient disk headroom for safe FocusDatabase migration: free=$freeSpace, required=$minRequiredSpace. Aborting.")
+            return
+        }
+
+        // 2. Safely checkpoint WAL before opening read-only
+        if (walFile.exists() && walFile.length() > 0L) {
+            try {
+                val rwDb = android.database.sqlite.SQLiteDatabase.openDatabase(
                     dbFile.path,
                     null,
-                    android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+                    android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
                 )
+                try {
+                    rwDb.rawQuery("PRAGMA wal_checkpoint(FULL)", null).use { it.moveToFirst() }
+                } finally {
+                    rwDb.close()
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to open legacy database with raw SQLite", e)
-                null
-            } ?: return
+                Log.w(TAG, "WAL checkpoint before FocusDatabase migration failed (proceeding read-only)", e)
+            }
+        }
 
+        Log.i(TAG, "Legacy unencrypted FocusDatabase detected. Starting verified migration to SQLCipher vault...")
+
+        var rawDb: android.database.sqlite.SQLiteDatabase? = null
+        try {
+            rawDb = android.database.sqlite.SQLiteDatabase.openDatabase(
+                dbFile.path,
+                null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open legacy database with raw SQLite", e)
+            return
+        }
+
+        try {
+            val db = rawDb ?: return
             runBlocking(Dispatchers.IO) {
                 encryptedDb.withTransaction {
                     // 1. Migrate AppRestrictions
-                try {
-                    val cursor = rawDb.rawQuery("SELECT * FROM app_restrictions", null)
-                    val restrictions = mutableListOf<AppRestriction>()
-                    cursor.use { c ->
-                        val pkgIdx = c.getColumnIndex("packageName")
-                        val appNameIdx = c.getColumnIndex("appName")
-                        val isRestrictedIdx = c.getColumnIndex("isRestricted")
-                        val modeIdx = c.getColumnIndex("mode")
-                        val restrictionModeIdx = c.getColumnIndex("restrictionMode")
-                        val timeLimitIdx = c.getColumnIndex("timeLimitMinutes")
-                        val clickLimitIdx = c.getColumnIndex("clickLimitCount")
-                        val customQuoteIdx = c.getColumnIndex("customQuote")
+                    if (tableExists(db, "app_restrictions")) {
+                        var sourceCount = 0
+                        val countCursor = db.rawQuery("SELECT COUNT(*) FROM app_restrictions", null)
+                        countCursor.use { if (it.moveToFirst()) sourceCount = it.getInt(0) }
 
-                        while (c.moveToNext()) {
-                            if (pkgIdx != -1) {
-                                val pkg = c.getString(pkgIdx) ?: continue
-                                val appName = if (appNameIdx != -1) c.getString(appNameIdx) ?: "" else ""
-                                val isRestricted = if (isRestrictedIdx != -1) c.getInt(isRestrictedIdx) == 1 else false
-                                val mode = if (modeIdx != -1) c.getString(modeIdx) ?: "HARD" else "HARD"
-                                val rMode = if (restrictionModeIdx != -1) c.getString(restrictionModeIdx) ?: "SIMPLE" else "SIMPLE"
-                                val timeLimit = if (timeLimitIdx != -1) c.getInt(timeLimitIdx) else 0
-                                val clickLimit = if (clickLimitIdx != -1) c.getInt(clickLimitIdx) else 0
-                                val customQuote = if (customQuoteIdx != -1) c.getString(customQuoteIdx) ?: "" else ""
+                        val cursor = db.rawQuery("SELECT * FROM app_restrictions", null)
+                        val restrictions = mutableListOf<AppRestriction>()
+                        cursor.use { c ->
+                            val pkgIdx = c.getColumnIndex("packageName")
+                            val appNameIdx = c.getColumnIndex("appName")
+                            val isRestrictedIdx = c.getColumnIndex("isRestricted")
+                            val modeIdx = c.getColumnIndex("mode")
+                            val restrictionModeIdx = c.getColumnIndex("restrictionMode")
+                            val timeLimitIdx = c.getColumnIndex("timeLimitMinutes")
+                            val clickLimitIdx = c.getColumnIndex("clickLimitCount")
+                            val customQuoteIdx = c.getColumnIndex("customQuote")
 
-                                restrictions.add(
-                                    AppRestriction(
-                                        packageName = pkg,
-                                        appName = appName,
-                                        isRestricted = isRestricted,
-                                        mode = mode,
-                                        restrictionMode = rMode,
-                                        timeLimitMinutes = timeLimit,
-                                        clickLimitCount = clickLimit,
-                                        customQuote = customQuote.ifBlank { "Is this urgent, or are you chasing cheap dopamine?" }
+                            while (c.moveToNext()) {
+                                if (pkgIdx != -1) {
+                                    val pkg = c.getString(pkgIdx) ?: continue
+                                    val appName = if (appNameIdx != -1) c.getString(appNameIdx) ?: "" else ""
+                                    val isRestricted = if (isRestrictedIdx != -1) c.getInt(isRestrictedIdx) == 1 else false
+                                    val mode = if (modeIdx != -1) c.getString(modeIdx) ?: "HARD" else "HARD"
+                                    val rMode = if (restrictionModeIdx != -1) c.getString(restrictionModeIdx) ?: "SIMPLE" else "SIMPLE"
+                                    val timeLimit = if (timeLimitIdx != -1) c.getInt(timeLimitIdx) else 0
+                                    val clickLimit = if (clickLimitIdx != -1) c.getInt(clickLimitIdx) else 0
+                                    val customQuote = if (customQuoteIdx != -1) c.getString(customQuoteIdx) ?: "" else ""
+
+                                    restrictions.add(
+                                        AppRestriction(
+                                            packageName = pkg,
+                                            appName = appName,
+                                            isRestricted = isRestricted,
+                                            mode = mode,
+                                            restrictionMode = rMode,
+                                            timeLimitMinutes = timeLimit,
+                                            clickLimitCount = clickLimit,
+                                            customQuote = customQuote.ifBlank { "Is this urgent, or are you chasing cheap dopamine?" }
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        if (restrictions.size != sourceCount) {
+                            throw IllegalStateException("AppRestrictions count mismatch: read ${restrictions.size} of $sourceCount expected")
+                        }
+                        if (restrictions.isNotEmpty()) {
+                            encryptedDb.appRestrictionDao().insertRestrictions(restrictions)
+                            Log.i(TAG, "Migrated ${restrictions.size} app restrictions to encrypted vault.")
+                        }
+                    }
+
+                    // 2. Migrate FocusSchedules
+                    if (tableExists(db, "focus_schedules")) {
+                        var sourceCount = 0
+                        val countCursor = db.rawQuery("SELECT COUNT(*) FROM focus_schedules", null)
+                        countCursor.use { if (it.moveToFirst()) sourceCount = it.getInt(0) }
+
+                        val cursor = db.rawQuery("SELECT * FROM focus_schedules", null)
+                        val schedules = mutableListOf<FocusSchedule>()
+                        cursor.use { c ->
+                            val idIdx = c.getColumnIndex("id")
+                            val nameIdx = c.getColumnIndex("name")
+                            val startHIdx = c.getColumnIndex("startHour")
+                            val startMIdx = c.getColumnIndex("startMinute")
+                            val endHIdx = c.getColumnIndex("endHour")
+                            val endMIdx = c.getColumnIndex("endMinute")
+                            val daysIdx = c.getColumnIndex("daysOfWeek")
+                            val modeIdx = c.getColumnIndex("mode")
+                            val rModeIdx = c.getColumnIndex("restrictionMode")
+                            val timeLimitIdx = c.getColumnIndex("timeLimitMinutes")
+                            val clickLimitIdx = c.getColumnIndex("clickLimitCount")
+                            val appsToBlockIdx = c.getColumnIndex("appsToBlock")
+                            val isEnabledIdx = c.getColumnIndex("isEnabled")
+
+                            while (c.moveToNext()) {
+                                schedules.add(
+                                    FocusSchedule(
+                                        id = if (idIdx != -1) c.getInt(idIdx) else 0,
+                                        name = if (nameIdx != -1) c.getString(nameIdx) ?: "Schedule" else "Schedule",
+                                        startHour = if (startHIdx != -1) c.getInt(startHIdx) else 9,
+                                        startMinute = if (startMIdx != -1) c.getInt(startMIdx) else 0,
+                                        endHour = if (endHIdx != -1) c.getInt(endHIdx) else 17,
+                                        endMinute = if (endMIdx != -1) c.getInt(endMIdx) else 0,
+                                        daysOfWeek = if (daysIdx != -1) c.getString(daysIdx) ?: "" else "",
+                                        mode = if (modeIdx != -1) c.getString(modeIdx) ?: "HARD" else "HARD",
+                                        restrictionMode = if (rModeIdx != -1) c.getString(rModeIdx) ?: "SIMPLE" else "SIMPLE",
+                                        timeLimitMinutes = if (timeLimitIdx != -1) c.getInt(timeLimitIdx) else 0,
+                                        clickLimitCount = if (clickLimitIdx != -1) c.getInt(clickLimitIdx) else 0,
+                                        appsToBlock = if (appsToBlockIdx != -1) c.getString(appsToBlockIdx) ?: "" else "",
+                                        isEnabled = if (isEnabledIdx != -1) c.getInt(isEnabledIdx) == 1 else true
                                     )
                                 )
                             }
                         }
-                    }
-                    if (restrictions.isNotEmpty()) {
-                        encryptedDb.appRestrictionDao().insertRestrictions(restrictions)
-                        Log.i(TAG, "Migrated ${restrictions.size} app restrictions to encrypted vault.")
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "App restrictions table migration skipped or failed", e)
-                }
-
-                // 2. Migrate FocusSchedules
-                try {
-                    val cursor = rawDb.rawQuery("SELECT * FROM focus_schedules", null)
-                    cursor.use { c ->
-                        val idIdx = c.getColumnIndex("id")
-                        val nameIdx = c.getColumnIndex("name")
-                        val startHIdx = c.getColumnIndex("startHour")
-                        val startMIdx = c.getColumnIndex("startMinute")
-                        val endHIdx = c.getColumnIndex("endHour")
-                        val endMIdx = c.getColumnIndex("endMinute")
-                        val daysIdx = c.getColumnIndex("daysOfWeek")
-                        val modeIdx = c.getColumnIndex("mode")
-                        val rModeIdx = c.getColumnIndex("restrictionMode")
-                        val timeLimitIdx = c.getColumnIndex("timeLimitMinutes")
-                        val clickLimitIdx = c.getColumnIndex("clickLimitCount")
-                        val appsToBlockIdx = c.getColumnIndex("appsToBlock")
-                        val isEnabledIdx = c.getColumnIndex("isEnabled")
-
-                        while (c.moveToNext()) {
-                            val schedule = FocusSchedule(
-                                id = if (idIdx != -1) c.getInt(idIdx) else 0,
-                                name = if (nameIdx != -1) c.getString(nameIdx) ?: "Schedule" else "Schedule",
-                                startHour = if (startHIdx != -1) c.getInt(startHIdx) else 9,
-                                startMinute = if (startMIdx != -1) c.getInt(startMIdx) else 0,
-                                endHour = if (endHIdx != -1) c.getInt(endHIdx) else 17,
-                                endMinute = if (endMIdx != -1) c.getInt(endMIdx) else 0,
-                                daysOfWeek = if (daysIdx != -1) c.getString(daysIdx) ?: "" else "",
-                                mode = if (modeIdx != -1) c.getString(modeIdx) ?: "HARD" else "HARD",
-                                restrictionMode = if (rModeIdx != -1) c.getString(rModeIdx) ?: "SIMPLE" else "SIMPLE",
-                                timeLimitMinutes = if (timeLimitIdx != -1) c.getInt(timeLimitIdx) else 0,
-                                clickLimitCount = if (clickLimitIdx != -1) c.getInt(clickLimitIdx) else 0,
-                                appsToBlock = if (appsToBlockIdx != -1) c.getString(appsToBlockIdx) ?: "" else "",
-                                isEnabled = if (isEnabledIdx != -1) c.getInt(isEnabledIdx) == 1 else true
-                            )
+                        if (schedules.size != sourceCount) {
+                            throw IllegalStateException("FocusSchedules count mismatch: read ${schedules.size} of $sourceCount expected")
+                        }
+                        for (schedule in schedules) {
                             encryptedDb.scheduleDao().insertSchedule(schedule)
                         }
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Focus schedules table migration skipped or failed", e)
-                }
 
-                // 3. Migrate Tasks
-                try {
-                    val cursor = rawDb.rawQuery("SELECT * FROM tasks", null)
-                    cursor.use { c ->
-                        val idIdx = c.getColumnIndex("id")
-                        val titleIdx = c.getColumnIndex("title")
-                        val detailsIdx = c.getColumnIndex("details")
-                        val dueDateIdx = c.getColumnIndex("dueDate")
-                        val isCompletedIdx = c.getColumnIndex("isCompleted")
-                        val typeIdx = c.getColumnIndex("type")
-                        val recurrenceIdx = c.getColumnIndex("recurrence")
-                        val isPersistentIdx = c.getColumnIndex("isPersistent")
-                        val isPriorityIdx = c.getColumnIndex("isPriority")
-                        val completedAtIdx = c.getColumnIndex("completedAt")
-                        val updatedAtIdx = c.getColumnIndex("updatedAt")
-                        val isTrashedIdx = c.getColumnIndex("isTrashed")
-                        val trashedAtIdx = c.getColumnIndex("trashedAt")
-                        val deletedAtIdx = c.getColumnIndex("deletedAt")
-                        val subtasksJsonIdx = c.getColumnIndex("subtasksJson")
+                    // 3. Migrate Tasks
+                    if (tableExists(db, "tasks")) {
+                        val cursor = db.rawQuery("SELECT * FROM tasks", null)
+                        val tasks = mutableListOf<Task>()
+                        cursor.use { c ->
+                            val idIdx = c.getColumnIndex("id")
+                            val titleIdx = c.getColumnIndex("title")
+                            val detailsIdx = c.getColumnIndex("details")
+                            val dueDateIdx = c.getColumnIndex("dueDate")
+                            val isCompletedIdx = c.getColumnIndex("isCompleted")
+                            val typeIdx = c.getColumnIndex("type")
+                            val recurrenceIdx = c.getColumnIndex("recurrence")
+                            val isPersistentIdx = c.getColumnIndex("isPersistent")
+                            val isPriorityIdx = c.getColumnIndex("isPriority")
+                            val completedAtIdx = c.getColumnIndex("completedAt")
+                            val updatedAtIdx = c.getColumnIndex("updatedAt")
+                            val isTrashedIdx = c.getColumnIndex("isTrashed")
+                            val trashedAtIdx = c.getColumnIndex("trashedAt")
+                            val deletedAtIdx = c.getColumnIndex("deletedAt")
+                            val subtasksJsonIdx = c.getColumnIndex("subtasksJson")
 
-                        while (c.moveToNext()) {
-                            val title = if (titleIdx != -1) c.getString(titleIdx) ?: "" else ""
-                            if (title.isBlank()) continue
-                            val task = Task(
-                                id = if (idIdx != -1) c.getLong(idIdx) else 0L,
-                                title = title,
-                                details = if (detailsIdx != -1) c.getString(detailsIdx) ?: "" else "",
-                                dueDate = if (dueDateIdx != -1 && !c.isNull(dueDateIdx)) c.getLong(dueDateIdx) else null,
-                                isCompleted = if (isCompletedIdx != -1) c.getInt(isCompletedIdx) == 1 else false,
-                                type = try {
-                                    if (typeIdx != -1 && !c.isNull(typeIdx)) TaskType.valueOf(c.getString(typeIdx)) else TaskType.TASK
-                                } catch (_: Exception) { TaskType.TASK },
-                                recurrence = try {
-                                    if (recurrenceIdx != -1 && !c.isNull(recurrenceIdx)) RecurrencePattern.valueOf(c.getString(recurrenceIdx)) else RecurrencePattern.NONE
-                                } catch (_: Exception) { RecurrencePattern.NONE },
-                                isPersistent = if (isPersistentIdx != -1) c.getInt(isPersistentIdx) == 1 else false,
-                                isPriority = if (isPriorityIdx != -1) c.getInt(isPriorityIdx) == 1 else false,
-                                completedAt = if (completedAtIdx != -1 && !c.isNull(completedAtIdx)) c.getLong(completedAtIdx) else null,
-                                subtasksJson = if (subtasksJsonIdx != -1 && !c.isNull(subtasksJsonIdx)) c.getString(subtasksJsonIdx) ?: "[]" else "[]",
-                                updatedAt = if (updatedAtIdx != -1 && !c.isNull(updatedAtIdx)) c.getLong(updatedAtIdx) else System.currentTimeMillis(),
-                                isTrashed = if (isTrashedIdx != -1) c.getInt(isTrashedIdx) == 1 else false,
-                                trashedAt = if (trashedAtIdx != -1 && !c.isNull(trashedAtIdx)) c.getLong(trashedAtIdx) else null,
-                                deletedAt = if (deletedAtIdx != -1 && !c.isNull(deletedAtIdx)) c.getLong(deletedAtIdx) else null
-                            )
+                            while (c.moveToNext()) {
+                                val title = if (titleIdx != -1) c.getString(titleIdx) ?: "" else ""
+                                if (title.isBlank()) continue
+                                tasks.add(
+                                    Task(
+                                        id = if (idIdx != -1) c.getLong(idIdx) else 0L,
+                                        title = title,
+                                        details = if (detailsIdx != -1) c.getString(detailsIdx) ?: "" else "",
+                                        dueDate = if (dueDateIdx != -1 && !c.isNull(dueDateIdx)) c.getLong(dueDateIdx) else null,
+                                        isCompleted = if (isCompletedIdx != -1) c.getInt(isCompletedIdx) == 1 else false,
+                                        type = try {
+                                            if (typeIdx != -1 && !c.isNull(typeIdx)) TaskType.valueOf(c.getString(typeIdx)) else TaskType.TASK
+                                        } catch (_: Exception) { TaskType.TASK },
+                                        recurrence = try {
+                                            if (recurrenceIdx != -1 && !c.isNull(recurrenceIdx)) RecurrencePattern.valueOf(c.getString(recurrenceIdx)) else RecurrencePattern.NONE
+                                        } catch (_: Exception) { RecurrencePattern.NONE },
+                                        isPersistent = if (isPersistentIdx != -1) c.getInt(isPersistentIdx) == 1 else false,
+                                        isPriority = if (isPriorityIdx != -1) c.getInt(isPriorityIdx) == 1 else false,
+                                        completedAt = if (completedAtIdx != -1 && !c.isNull(completedAtIdx)) c.getLong(completedAtIdx) else null,
+                                        subtasksJson = if (subtasksJsonIdx != -1 && !c.isNull(subtasksJsonIdx)) c.getString(subtasksJsonIdx) ?: "[]" else "[]",
+                                        updatedAt = if (updatedAtIdx != -1 && !c.isNull(updatedAtIdx)) c.getLong(updatedAtIdx) else System.currentTimeMillis(),
+                                        isTrashed = if (isTrashedIdx != -1) c.getInt(isTrashedIdx) == 1 else false,
+                                        trashedAt = if (trashedAtIdx != -1 && !c.isNull(trashedAtIdx)) c.getLong(trashedAtIdx) else null,
+                                        deletedAt = if (deletedAtIdx != -1 && !c.isNull(deletedAtIdx)) c.getLong(deletedAtIdx) else null
+                                    )
+                                )
+                            }
+                        }
+                        for (task in tasks) {
                             encryptedDb.taskDao().insertTask(task)
                         }
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Tasks table migration skipped or failed", e)
-                }
 
-                // 4. Migrate Habits
-                try {
-                    val cursor = rawDb.rawQuery("SELECT * FROM habits", null)
-                    cursor.use { c ->
-                        val idIdx = c.getColumnIndex("id")
-                        val titleIdx = c.getColumnIndex("title")
-                        val descIdx = c.getColumnIndex("description")
-                        val iconIdx = c.getColumnIndex("iconEmoji")
-                        val colorIdx = c.getColumnIndex("colorHex")
-                        val typeIdx = c.getColumnIndex("type")
-                        val targetIdx = c.getColumnIndex("targetPerDay")
-                        val intHIdx = c.getColumnIndex("intervalHours")
-                        val intMIdx = c.getColumnIndex("intervalMinutes")
-                        val winSHIdx = c.getColumnIndex("windowStartHour")
-                        val winSMIdx = c.getColumnIndex("windowStartMinute")
-                        val winEHIdx = c.getColumnIndex("windowEndHour")
-                        val winEMIdx = c.getColumnIndex("windowEndMinute")
-                        val fixHIdx = c.getColumnIndex("fixedReminderHour")
-                        val fixMIdx = c.getColumnIndex("fixedReminderMinute")
-                        val isRemIdx = c.getColumnIndex("isReminderEnabled")
-                        val soundIdx = c.getColumnIndex("reminderSound")
-                        val createdIdx = c.getColumnIndex("createdAt")
-                        val archivedIdx = c.getColumnIndex("isArchived")
+                    // 4. Migrate Habits
+                    if (tableExists(db, "habits")) {
+                        val cursor = db.rawQuery("SELECT * FROM habits", null)
+                        val habits = mutableListOf<Habit>()
+                        cursor.use { c ->
+                            val idIdx = c.getColumnIndex("id")
+                            val titleIdx = c.getColumnIndex("title")
+                            val descIdx = c.getColumnIndex("description")
+                            val iconIdx = c.getColumnIndex("iconEmoji")
+                            val colorIdx = c.getColumnIndex("colorHex")
+                            val typeIdx = c.getColumnIndex("type")
+                            val targetIdx = c.getColumnIndex("targetPerDay")
+                            val intHIdx = c.getColumnIndex("intervalHours")
+                            val intMIdx = c.getColumnIndex("intervalMinutes")
+                            val winSHIdx = c.getColumnIndex("windowStartHour")
+                            val winSMIdx = c.getColumnIndex("windowStartMinute")
+                            val winEHIdx = c.getColumnIndex("windowEndHour")
+                            val winEMIdx = c.getColumnIndex("windowEndMinute")
+                            val fixHIdx = c.getColumnIndex("fixedReminderHour")
+                            val fixMIdx = c.getColumnIndex("fixedReminderMinute")
+                            val isRemIdx = c.getColumnIndex("isReminderEnabled")
+                            val soundIdx = c.getColumnIndex("reminderSound")
+                            val createdIdx = c.getColumnIndex("createdAt")
+                            val archivedIdx = c.getColumnIndex("isArchived")
 
-                        while (c.moveToNext()) {
-                            val title = if (titleIdx != -1) c.getString(titleIdx) ?: "" else ""
-                            if (title.isBlank()) continue
-                            val habit = Habit(
-                                id = if (idIdx != -1) c.getLong(idIdx) else 0L,
-                                title = title,
-                                description = if (descIdx != -1) c.getString(descIdx) ?: "" else "",
-                                iconEmoji = if (iconIdx != -1) c.getString(iconIdx) ?: "✨" else "✨",
-                                colorHex = if (colorIdx != -1) c.getString(colorIdx) ?: "#3B82F6" else "#3B82F6",
-                                type = try {
-                                    if (typeIdx != -1 && !c.isNull(typeIdx)) HabitType.valueOf(c.getString(typeIdx)) else HabitType.ONCE_DAILY
-                                } catch (_: Exception) { HabitType.ONCE_DAILY },
-                                targetPerDay = if (targetIdx != -1) c.getInt(targetIdx) else 1,
-                                intervalHours = if (intHIdx != -1) c.getInt(intHIdx) else 2,
-                                intervalMinutes = if (intMIdx != -1) c.getInt(intMIdx) else 0,
-                                windowStartHour = if (winSHIdx != -1) c.getInt(winSHIdx) else 8,
-                                windowStartMinute = if (winSMIdx != -1) c.getInt(winSMIdx) else 0,
-                                windowEndHour = if (winEHIdx != -1) c.getInt(winEHIdx) else 20,
-                                windowEndMinute = if (winEMIdx != -1) c.getInt(winEMIdx) else 0,
-                                fixedReminderHour = if (fixHIdx != -1) c.getInt(fixHIdx) else 9,
-                                fixedReminderMinute = if (fixMIdx != -1) c.getInt(fixMIdx) else 0,
-                                isReminderEnabled = if (isRemIdx != -1) c.getInt(isRemIdx) == 1 else true,
-                                reminderSound = if (soundIdx != -1) c.getString(soundIdx) ?: "ZEN" else "ZEN",
-                                createdAt = if (createdIdx != -1) c.getLong(createdIdx) else System.currentTimeMillis(),
-                                isArchived = if (archivedIdx != -1) c.getInt(archivedIdx) == 1 else false
-                            )
+                            while (c.moveToNext()) {
+                                val title = if (titleIdx != -1) c.getString(titleIdx) ?: "" else ""
+                                if (title.isBlank()) continue
+                                habits.add(
+                                    Habit(
+                                        id = if (idIdx != -1) c.getLong(idIdx) else 0L,
+                                        title = title,
+                                        description = if (descIdx != -1) c.getString(descIdx) ?: "" else "",
+                                        iconEmoji = if (iconIdx != -1) c.getString(iconIdx) ?: "✨" else "✨",
+                                        colorHex = if (colorIdx != -1) c.getString(colorIdx) ?: "#3B82F6" else "#3B82F6",
+                                        type = try {
+                                            if (typeIdx != -1 && !c.isNull(typeIdx)) HabitType.valueOf(c.getString(typeIdx)) else HabitType.ONCE_DAILY
+                                        } catch (_: Exception) { HabitType.ONCE_DAILY },
+                                        targetPerDay = if (targetIdx != -1) c.getInt(targetIdx) else 1,
+                                        intervalHours = if (intHIdx != -1) c.getInt(intHIdx) else 2,
+                                        intervalMinutes = if (intMIdx != -1) c.getInt(intMIdx) else 0,
+                                        windowStartHour = if (winSHIdx != -1) c.getInt(winSHIdx) else 9,
+                                        windowStartMinute = if (winSMIdx != -1) c.getInt(winSMIdx) else 0,
+                                        windowEndHour = if (winEHIdx != -1) c.getInt(winEHIdx) else 21,
+                                        windowEndMinute = if (winEMIdx != -1) c.getInt(winEMIdx) else 0,
+                                        fixedReminderHour = if (fixHIdx != -1) c.getInt(fixHIdx) else 9,
+                                        fixedReminderMinute = if (fixMIdx != -1) c.getInt(fixMIdx) else 0,
+                                        isReminderEnabled = if (isRemIdx != -1) c.getInt(isRemIdx) == 1 else true,
+                                        reminderSound = if (soundIdx != -1) c.getString(soundIdx) ?: "ZEN" else "ZEN",
+                                        createdAt = if (createdIdx != -1) c.getLong(createdIdx) else System.currentTimeMillis(),
+                                        isArchived = if (archivedIdx != -1) c.getInt(archivedIdx) == 1 else false
+                                    )
+                                )
+                            }
+                        }
+                        for (habit in habits) {
                             encryptedDb.habitDao().insertHabit(habit)
                         }
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Habits table migration skipped or failed", e)
-                }
 
-                // 5. Migrate Habit Logs
-                try {
-                    val cursor = rawDb.rawQuery("SELECT * FROM habit_logs", null)
-                    cursor.use { c ->
-                        val idIdx = c.getColumnIndex("id")
-                        val habitIdIdx = c.getColumnIndex("habitId")
-                        val dateIdx = c.getColumnIndex("date")
-                        val completedCountIdx = c.getColumnIndex("completedCount")
-                        val targetCountIdx = c.getColumnIndex("targetCount")
-                        val lastCompletedIdx = c.getColumnIndex("lastCompletedTimestamp")
+                    // 5. Migrate Habit Logs
+                    if (tableExists(db, "habit_logs")) {
+                        val cursor = db.rawQuery("SELECT * FROM habit_logs", null)
+                        val logs = mutableListOf<HabitLog>()
+                        cursor.use { c ->
+                            val idIdx = c.getColumnIndex("id")
+                            val habitIdIdx = c.getColumnIndex("habitId")
+                            val dateIdx = c.getColumnIndex("date")
+                            val completedCountIdx = c.getColumnIndex("completedCount")
+                            val targetCountIdx = c.getColumnIndex("targetCount")
+                            val lastCompletedIdx = c.getColumnIndex("lastCompletedTimestamp")
 
-                        while (c.moveToNext()) {
-                            if (habitIdIdx != -1 && dateIdx != -1) {
-                                val habitId = c.getLong(habitIdIdx)
-                                val date = c.getString(dateIdx) ?: continue
-                                val log = HabitLog(
-                                    id = if (idIdx != -1) c.getLong(idIdx) else 0L,
-                                    habitId = habitId,
-                                    date = date,
-                                    completedCount = if (completedCountIdx != -1) c.getInt(completedCountIdx) else 0,
-                                    targetCount = if (targetCountIdx != -1) c.getInt(targetCountIdx) else 1,
-                                    lastCompletedTimestamp = if (lastCompletedIdx != -1 && !c.isNull(lastCompletedIdx)) c.getLong(lastCompletedIdx) else null
-                                )
-                                encryptedDb.habitDao().insertOrUpdateLog(log)
+                            while (c.moveToNext()) {
+                                if (habitIdIdx != -1 && dateIdx != -1) {
+                                    val habitId = c.getLong(habitIdIdx)
+                                    val date = c.getString(dateIdx) ?: continue
+                                    logs.add(
+                                        HabitLog(
+                                            id = if (idIdx != -1) c.getLong(idIdx) else 0L,
+                                            habitId = habitId,
+                                            date = date,
+                                            completedCount = if (completedCountIdx != -1) c.getInt(completedCountIdx) else 0,
+                                            targetCount = if (targetCountIdx != -1) c.getInt(targetCountIdx) else 1,
+                                            lastCompletedTimestamp = if (lastCompletedIdx != -1 && !c.isNull(lastCompletedIdx)) c.getLong(lastCompletedIdx) else null
+                                        )
+                                    )
+                                }
                             }
                         }
+                        for (log in logs) {
+                            encryptedDb.habitDao().insertOrUpdateLog(log)
+                        }
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Habit logs migration skipped or failed", e)
-                }
                 }
             }
 
-            rawDb.close()
+            try { rawDb.close() } catch (_: Exception) {}
+
+            // Durably record migration completion BEFORE wiping legacy files
+            val committed = prefs.edit()
+                .putBoolean("focus_legacy_plaintext_migrated", true)
+                .putLong("focus_migrated_at", System.currentTimeMillis())
+                .commit()
+            if (!committed) {
+                Log.e(TAG, "Failed to commit migration flag to SharedPreferences. Aborting file cleanup.")
+                return
+            }
 
             // Securely zero-wipe and delete legacy plaintext database files so unencrypted data never lingers on disk
             try {
-                val walFile = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME-wal")
-                val shmFile = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME-shm")
-                val legacyMigrated = File(dbFile.parentFile, "$PLAINTEXT_DB_NAME.migrated")
                 if (legacyMigrated.exists()) secureWipeAndDelete(legacyMigrated)
                 secureWipeAndDelete(dbFile)
                 secureWipeAndDelete(walFile)
@@ -318,7 +427,8 @@ object FocusDatabaseMigrationHelper {
                 Log.w(TAG, "Failed to securely wipe old database files after migration", e)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error in checkAndMigrateIfLegacyPlaintextExists", e)
+            try { rawDb?.close() } catch (_: Exception) {}
+            Log.e(TAG, "Error during legacy FocusDatabase migration. Legacy database preserved intact.", e)
         }
     }
 

@@ -635,8 +635,10 @@ object ArticleExporter {
                 checklistItems = checklistItems
             )
 
-            val fileName = sanitizeFileName(title, format.fileExtension)
             val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+            ArticleExporterHelper.pruneStaleExportFiles(exportDir)
+
+            val fileName = ArticleExporterHelper.generateShareFileName(title, format.fileExtension)
             val file = File(exportDir, fileName)
             FileOutputStream(file).use { it.write(bytes) }
 

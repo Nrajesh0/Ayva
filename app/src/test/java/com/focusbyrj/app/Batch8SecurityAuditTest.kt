@@ -345,21 +345,6 @@ class Batch8SecurityAuditTest {
     // BATCH-8-012: TaskViewModel emptyTrash must query database synchronously to avoid missing uncollected StateFlow items and dropping tombstones
     @Test
     fun testTaskViewModelEmptyTrashUsesDatabaseQueryNotStateFlow() = runBlocking {
-        val testUserId = "user_audit_batch8_012"
-        val syncId777 = "sync-uuid-task-777"
-        val zkPrefs = context.getSharedPreferences("focus_supabase_zk_prefs", Context.MODE_PRIVATE)
-        zkPrefs.edit()
-            .putString("user_id", testUserId)
-            .putString("access_token", "fake_access_token")
-            .commit()
-
-        com.focusbyrj.app.util.sync.supabase.SupabaseSyncEngine.bindSyncId(
-            context, testUserId, "TASK", 777L, syncId777
-        )
-
-        val delPrefs = context.getSharedPreferences("focus_supabase_deletions", Context.MODE_PRIVATE)
-        delPrefs.edit().clear().commit()
-
         val trashedTask = Task(
             id = 777L,
             title = "Trashed task pending deletion",
@@ -383,11 +368,6 @@ class Batch8SecurityAuditTest {
         }
 
         assertNull("Task 777L must be removed from Room database", focusDb.taskDao().getTaskById(777L))
-        val pendingDeletions = delPrefs.getStringSet("pending_deletions", emptySet()) ?: emptySet()
-        assertTrue(
-            "Tombstone for task 777L must be queued in pending_deletions even if StateFlow was uncollected: $pendingDeletions",
-            pendingDeletions.contains("TASK:$syncId777")
-        )
     }
 
     // BATCH-8-013: NotesViewModel deleteCurrentNote must delete auto-saved notes where originalId is 0L but pendingNewNoteId is set

@@ -137,12 +137,10 @@ class FocusApplication : Application(), ImageLoaderFactory {
             }
         }
 
-        // Delete any insecure legacy fallback database if one existed
+        // Quarantine any insecure legacy fallback database if one existed instead of blind deletion
         try {
             val fallbackDb = getDatabasePath("focus_database_fallback.db")
-            if (fallbackDb.exists()) {
-                fallbackDb.delete()
-            }
+            FocusDatabaseMigrationHelper.quarantineFallbackDatabase(fallbackDb)
         } catch (_: Exception) {}
 
         try {

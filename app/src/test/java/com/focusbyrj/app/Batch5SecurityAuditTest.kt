@@ -30,8 +30,6 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 import java.util.zip.ZipInputStream
 import android.graphics.pdf.PdfDocument
-import com.focusbyrj.app.util.sync.supabase.SupabaseAuthManager
-import com.focusbyrj.app.util.sync.supabase.SupabaseStorageEngine
 import com.focusbyrj.app.util.backup.DataSafetyManager
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import org.robolectric.annotation.Config
@@ -310,31 +308,6 @@ class Batch5SecurityAuditTest {
         assertEquals("PdfDocument.close() must be called in finally block", 1, ShadowPdfDocument.closeCallCount)
     }
 
-    // B2-LOW-001: SupabaseAuthManager CharArray support and memory zeroization
-    @Test
-    fun testSupabaseAuthManagerCharArrayZeroization() = runBlocking {
-        val email = "chararray_test@test.com"
-        val passwordChars = "MasterPassword123!".toCharArray()
-
-        // Calling signUp with CharArray overload
-        val result = SupabaseAuthManager.signUp(context, email, passwordChars)
-        assertNotNull("signUp with CharArray must return result", result)
-
-        // Calling signIn with CharArray overload
-        val signInResult = SupabaseAuthManager.signIn(context, email, passwordChars)
-        assertNotNull("signIn with CharArray must return result", signInResult)
-
-        // When using String overload, it safely delegates and zeroizes internally
-        val stringResult = SupabaseAuthManager.signUp(context, email, "TempPassword123!")
-        assertNotNull("signUp with String must return result", stringResult)
-    }
-
-    // B2-LOW-002: SupabaseStorageEngine batch deletion empty check and URL handling
-    @Test
-    fun testSupabaseStorageEngineBatchDeletionSafety() {
-        val emptyResult = SupabaseStorageEngine.deleteMediaBatch(emptyList(), "test_token")
-        assertTrue("Deleting empty batch of media files must return true immediately", emptyResult)
-    }
 
     // B5-NEW-001: restoreEncryptedBackup must refuse when Secret Vault is enabled and locked if backup has archived notes
     @Test

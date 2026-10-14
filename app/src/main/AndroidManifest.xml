@@ -20,6 +20,16 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Strict Air-Gapped / Zero Network Policy: Completely remove and forbid all network permissions -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" tools:node="remove" />
+
     
     <queries>
         <package android:name="com.google.android.googlequicksearchbox" />
@@ -36,6 +46,7 @@
         android:name=".FocusApplication"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:enableOnBackInvokedCallback="true"
@@ -271,6 +282,11 @@
         <receiver android:name=".service.AptitudeReminderReceiver" android:exported="false" />
         <receiver android:name=".service.HabitReceiver" android:exported="false" />
         <receiver android:name=".service.HabitActionReceiver" android:exported="false" />
+
+        <!-- Remove WorkManager NetworkStateProxy since this app is 100% offline and has zero network permissions -->
+        <receiver
+            android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$NetworkStateProxy"
+            tools:node="remove" />
 
         <!-- Floating Task Reminder Popup Activity -->
         <activity

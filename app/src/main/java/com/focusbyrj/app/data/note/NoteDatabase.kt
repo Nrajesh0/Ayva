@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import net.sqlcipher.database.SQLiteDatabase
 import net.sqlcipher.database.SupportFactory
 
-@Database(entities = [NoteEntity::class], version = 7, exportSchema = false)
+@Database(entities = [NoteEntity::class], version = 7, exportSchema = true)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -344,12 +344,10 @@ abstract class NoteDatabase : RoomDatabase() {
                     }
                 }
 
-                // Delete any insecure legacy fallback database if one existed
+                // Quarantine any insecure legacy fallback database if one existed instead of blind deletion
                 try {
                     val fallbackDb = appContext.getDatabasePath("keep_notes_fallback.db")
-                    if (fallbackDb.exists()) {
-                        fallbackDb.delete()
-                    }
+                    com.focusbyrj.app.data.FocusDatabaseMigrationHelper.quarantineFallbackDatabase(fallbackDb)
                 } catch (_: Exception) {}
 
                 // Check and migrate legacy unencrypted notes if any exist

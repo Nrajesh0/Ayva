@@ -47,9 +47,14 @@ object VaultSyncManager {
             throw IllegalStateException("Cannot export vault: Secret Archive Vault is locked. Please unlock your secret vault first.")
         }
 
+        val subKey = com.focusbyrj.app.data.note.ArchiveVaultSecurity.getActiveVaultSubKey()
         val notes = rawNotes.map { rawNote ->
             if (rawNote.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
-                com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(rawNote)
+                if (subKey != null) {
+                    com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(rawNote, subKey)
+                } else {
+                    rawNote
+                }
             } else {
                 rawNote
             }
@@ -126,16 +131,16 @@ object VaultSyncManager {
             val notesArray = root.optJSONArray("notes") ?: JSONArray()
             val tasksArray = root.optJSONArray("tasks") ?: JSONArray()
 
-            var importedNotesCount = 0
-            var importedTasksCount = 0
-
-            // If replace mode (mergeMode == false), wipe existing local records first
-            if (!mergeMode) {
-                noteDao.deleteAllNotes()
-                taskDao.deleteAllTasks()
+            // 1. Pre-validation: parse and validate all notes and tasks before any database mutation
+            val hasArchivedNotes = (0 until notesArray.length()).any {
+                notesArray.getJSONObject(it).optBoolean("isArchived", false)
+            }
+            val activeSubKey = com.focusbyrj.app.data.note.ArchiveVaultSecurity.getActiveVaultSubKey()
+            if (hasArchivedNotes && activeSubKey == null) {
+                throw IllegalStateException("Cannot import vault notes: Secret Archive Vault is locked. Please unlock your secret vault first.")
             }
 
-            // Restore Notes
+            val notesToInsert = mutableListOf<NoteEntity>()
             for (i in 0 until notesArray.length()) {
                 val nObj = notesArray.getJSONObject(i)
                 val isTrashed = nObj.optBoolean("isTrashed", false)
@@ -161,13 +166,17 @@ object VaultSyncManager {
                     updatedAt = nObj.optLong("updatedAt", System.currentTimeMillis())
                 )
                 if (note.isArchived) {
-                    note = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(note)
+                    if (activeSubKey == null) {
+                        throw SecurityException("Security violation: Vault sub-key unavailable for archived note.")
+                    }
+                    if (!com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                        note = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(note, activeSubKey)
+                    }
                 }
-                noteDao.insertNote(note)
-                importedNotesCount++
+                notesToInsert.add(note)
             }
 
-            // Restore Tasks
+            val tasksToInsert = mutableListOf<Task>()
             for (i in 0 until tasksArray.length()) {
                 val tObj = tasksArray.getJSONObject(i)
                 val typeName = tObj.optString("type", TaskType.TASK.name)
@@ -192,11 +201,23 @@ object VaultSyncManager {
                     deletedAt = deletedAt,
                     subtasksJson = tObj.optString("subtasksJson", "[]")
                 )
-                taskDao.insertTask(task)
-                importedTasksCount++
+                tasksToInsert.add(task)
             }
 
-            Result.success(Pair(importedNotesCount, importedTasksCount))
+            // 2. Perform database mutations only AFTER full pre-validation passes
+            if (context != null) {
+                com.focusbyrj.app.util.backup.DataSafetyManager.writePreOpSnapshot(context, noteDao, "pre_vault_sync_restore")
+            }
+
+            if (!mergeMode) {
+                noteDao.deleteAllNotes()
+                taskDao.deleteAllTasks()
+            }
+
+            notesToInsert.forEach { noteDao.insertNote(it) }
+            tasksToInsert.forEach { taskDao.insertTask(it) }
+
+            Result.success(Pair(notesToInsert.size, tasksToInsert.size))
         } catch (e: Exception) {
             Log.e(TAG, "Error restoring vault from JSON", e)
             Result.failure(e)

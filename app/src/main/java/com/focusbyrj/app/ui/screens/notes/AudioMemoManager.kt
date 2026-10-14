@@ -118,7 +118,13 @@ class AudioMemoManager(private val context: Context) {
         }
 
         try {
-            val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
+            val recognizer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+            ) {
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            } else {
+                SpeechRecognizer.createSpeechRecognizer(context)
+            }
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     Log.d(tag, "SpeechRecognizer: Ready for speech")
@@ -181,7 +187,7 @@ class AudioMemoManager(private val context: Context) {
                     isListeningActive = false
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull()?.trim().orEmpty()
-                    Log.d(tag, "SpeechRecognizer onResults: $text")
+                    Log.d(tag, "SpeechRecognizer onResults: segment received (length: ${text.length})")
 
                     if (text.isNotBlank()) {
                         val formatted = text.replaceFirstChar {

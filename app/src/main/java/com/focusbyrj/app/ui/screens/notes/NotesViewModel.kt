@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -114,9 +114,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val status = ArchiveVaultSecurity.getVaultStatus(getApplication())
         _vaultStatus.value = status
         _isRecoveryPhraseBackedUp.value = ArchiveVaultSecurity.isRecoveryPhraseBackedUp(getApplication())
-        if (status == ArchiveVaultSecurity.VaultStatus.ENABLED) {
-            _isVaultUnlocked.value = !ArchiveVaultSecurity.isVaultLocked(getApplication())
-        }
+        _isVaultUnlocked.value = (status == ArchiveVaultSecurity.VaultStatus.ENABLED && !ArchiveVaultSecurity.isVaultLocked(getApplication()))
     }
 
     private fun triggerOrphanMediaCleanup() {
@@ -202,6 +200,46 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun lockVault() {
+        val current = _editingState.value
+        if (current != null && current.isArchived) {
+            autoSaveJob?.cancel()
+            undoPushJob?.cancel()
+            _editingState.value = null
+            resetUndoHistory()
+            audioMemoManager.stopPlayback()
+            audioMemoManager.cancelRecording()
+
+            val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
+            if (subKey != null) {
+                val modified = isNoteModified(current, initialSnapshot)
+                if (modified || current.originalId == 0L) {
+                    val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
+                    val resolvedCurrent = if (effectiveId != current.originalId) current.copy(originalId = effectiveId) else current
+                    val entity = buildEntityFromState(resolvedCurrent, isModified = modified)
+                    if (!entity.isEmptyNote()) {
+                        try {
+                            val encrypted = VaultPayloadEncryptor.encryptNotePayload(entity, vaultSubKey = subKey, context = getApplication())
+                            viewModelScope.launch(Dispatchers.IO) {
+                                persistMutex.withLock {
+                                    try {
+                                        val savedId = repository.saveNote(encrypted)
+                                        latestNotesCache[savedId] = encrypted
+                                    } catch (e: Exception) {
+                                        if (e is kotlinx.coroutines.CancellationException) throw e
+                                        Log.e("NotesViewModel", "Failed to save locked vault note", e)
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("NotesViewModel", "Failed to encrypt note payload before locking vault", e)
+                        }
+                    }
+                }
+            }
+            initialSnapshot = null
+            pendingNewNoteId = 0L
+        }
+
         ArchiveVaultSecurity.lockVault()
         latestNotesCache.clear()
         _isVaultUnlocked.value = false
@@ -226,7 +264,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private val vaultPrefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        refreshVaultStatus()
+    }
+
     init {
+        try {
+            val vaultPrefs = application.getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE)
+            vaultPrefs.registerOnSharedPreferenceChangeListener(vaultPrefsListener)
+        } catch (_: Exception) {}
+
         val db = NoteDatabase.getInstance(application)
         repository = NoteRepository(db.noteDao(), application)
 
@@ -248,8 +295,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setFolder(folder: NoteFolder) {
         if (folder != NoteFolder.ARCHIVE) {
-            ArchiveVaultSecurity.lockVault()
-            _isVaultUnlocked.value = false
+            lockVault()
+        } else {
+            refreshVaultStatus()
         }
         _currentFolder.value = folder
         _selectedColorFilter.value = null
@@ -393,24 +441,42 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     note.checklistJson
                 }
                 val newImages = note.getImageUris().mapNotNull { path ->
-                    NoteImageHelper.copyImageFile(context, path) ?: path
+                    val copied = NoteImageHelper.copyImageFile(context, path)
+                    if (copied == null) {
+                        Log.e("NotesViewModel", "Failed to duplicate image file $path: refusing to reuse original path")
+                    }
+                    copied
                 }
                 val newAudios = note.getAudioUris().mapNotNull { path ->
-                    AudioMemoManager.copyAudioFile(context, path) ?: path
+                    val copied = AudioMemoManager.copyAudioFile(context, path)
+                    if (copied == null) {
+                        Log.e("NotesViewModel", "Failed to duplicate audio file $path: refusing to reuse original path")
+                    }
+                    copied
                 }
                 // Isolate embedded NotesnookBlock.Image and NotesnookBlock.Attachment files in note.content
                 val newContent = if (note.content.contains(NotesnookBlockManager.BLOCKS_PREFIX)) {
                     try {
                         val blocks = NotesnookBlockManager.parse(note.content)
-                        val clonedBlocks = blocks.map { block ->
+                        val clonedBlocks = blocks.mapNotNull { block ->
                             when (block) {
                                 is NotesnookBlock.Image -> {
-                                    val copiedUri = NoteImageHelper.copyImageFile(context, block.uri) ?: block.uri
-                                    block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                    val copiedUri = NoteImageHelper.copyImageFile(context, block.uri)
+                                    if (copiedUri != null) {
+                                        block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                    } else {
+                                        Log.e("NotesViewModel", "Failed to duplicate block image ${block.uri}: refusing to reuse original path")
+                                        null
+                                    }
                                 }
                                 is NotesnookBlock.Attachment -> {
-                                    val copiedUri = NoteImageHelper.copyImageFile(context, block.uri) ?: block.uri
-                                    block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                    val copiedUri = NoteImageHelper.copyImageFile(context, block.uri)
+                                    if (copiedUri != null) {
+                                        block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                    } else {
+                                        Log.e("NotesViewModel", "Failed to duplicate block attachment ${block.uri}: refusing to reuse original path")
+                                        null
+                                    }
                                 }
                                 else -> block
                             }
@@ -654,6 +720,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     // ==========================================
     // EDITOR STATE (Live editing in full-screen)
     // ==========================================
+    sealed class NoteSaveStatus {
+        object Idle : NoteSaveStatus()
+        object Saving : NoteSaveStatus()
+        data class Saved(val noteId: Long) : NoteSaveStatus()
+        data class Error(val message: String, val failedDraft: EditingNoteState? = null) : NoteSaveStatus()
+    }
+
+    private val _saveStatus = MutableStateFlow<NoteSaveStatus>(NoteSaveStatus.Idle)
+    val saveStatus: StateFlow<NoteSaveStatus> = _saveStatus.asStateFlow()
+
     data class EditingNoteState(
         val sessionId: String = java.util.UUID.randomUUID().toString(),
         val originalId: Long = 0L,
@@ -1091,7 +1167,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val updated = current.imageUris.filter { it != imageUri }
         _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
         persistCurrentEditorState()
-        NoteMediaManager.secureDeleteMediaFile(imageUri)
+        // Do NOT delete physical file immediately — preserve for undo, draft recovery, and save error recovery.
         triggerAutoSync()
     }
 
@@ -1224,10 +1300,18 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val copyTitle = if (current.title.isBlank()) "Note (copy)" else "${current.title} (copy)"
             val newImages = current.imageUris.mapNotNull { path ->
-                NoteImageHelper.copyImageFile(context, path) ?: path
+                val copied = NoteImageHelper.copyImageFile(context, path)
+                if (copied == null) {
+                    Log.e("NotesViewModel", "Failed to duplicate image file $path: refusing to reuse original path")
+                }
+                copied
             }
             val newAudios = current.audioUris.mapNotNull { path ->
-                AudioMemoManager.copyAudioFile(context, path) ?: path
+                val copied = AudioMemoManager.copyAudioFile(context, path)
+                if (copied == null) {
+                    Log.e("NotesViewModel", "Failed to duplicate audio file $path: refusing to reuse original path")
+                }
+                copied
             }
             val newChecklistItems = current.checklistItems.map { it.copy(id = UUID.randomUUID().toString()) }
 
@@ -1236,15 +1320,25 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 current.content.contains(NotesnookBlockManager.BLOCKS_SUFFIX)) {
                 try {
                     val originalBlocks = NotesnookBlockManager.parse(current.content)
-                    val duplicatedBlocks = originalBlocks.map { block ->
+                    val duplicatedBlocks = originalBlocks.mapNotNull { block ->
                         when (block) {
                             is NotesnookBlock.Image -> {
-                                val copiedUri = NoteImageHelper.copyImageFile(context, block.uri) ?: block.uri
-                                block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                val copiedUri = NoteImageHelper.copyImageFile(context, block.uri)
+                                if (copiedUri != null) {
+                                    block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                } else {
+                                    Log.e("NotesViewModel", "Failed to duplicate block image ${block.uri}: refusing to reuse original path")
+                                    null
+                                }
                             }
                             is NotesnookBlock.Attachment -> {
-                                val copiedUri = NoteImageHelper.copyImageFile(context, block.uri) ?: block.uri
-                                block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                val copiedUri = NoteImageHelper.copyImageFile(context, block.uri)
+                                if (copiedUri != null) {
+                                    block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
+                                } else {
+                                    Log.e("NotesViewModel", "Failed to duplicate block attachment ${block.uri}: refusing to reuse original path")
+                                    null
+                                }
                             }
                             else -> block
                         }
@@ -1478,7 +1572,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         if (playbackState.value.currentPath == audioUri) {
             audioMemoManager.stopPlayback()
         }
-        NoteMediaManager.secureDeleteMediaFile(audioUri)
+        // Do NOT delete physical file immediately — preserve for undo, draft recovery, and save error recovery.
         triggerAutoSync()
     }
 
@@ -1622,22 +1716,21 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun deleteNoteMediaFiles(note: NoteEntity) {
-        NoteMediaManager.deleteNoteMediaFiles(note)
+    private suspend fun deleteNoteMediaFiles(note: NoteEntity) {
+        val allNotes = repository.getAllNotesList()
+        NoteMediaManager.deleteNoteMediaFiles(note, allNotes)
     }
 
     fun deletePermanently(note: NoteEntity) {
         latestNotesCache.remove(note.id)
         viewModelScope.launch(Dispatchers.IO) {
-            // Decrypt vault-encrypted note if possible so media cleanup and cloud deletion
-            // receive real attachment URIs instead of empty [] lists.
             val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
                 com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
             } else {
                 note
             }
-            deleteNoteMediaFiles(targetNote)
             repository.deletePermanently(targetNote)
+            deleteNoteMediaFiles(targetNote)
             triggerAutoSync()
         }
     }
@@ -1645,17 +1738,31 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun emptyTrash() {
         latestNotesCache.clear()
         viewModelScope.launch(Dispatchers.IO) {
-            val trashedNotes = repository.getTrashedNotesSync()
-            trashedNotes.forEach { note ->
-                val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                    com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
-                } else {
-                    note
+            try {
+                val trashedNotes = repository.getTrashedNotesSync()
+                if (trashedNotes.isEmpty()) return@launch
+
+                // 1. Take snapshot and delete DB rows atomically first via repository
+                repository.emptyTrash(getApplication())
+
+                // 2. Only after database rows are safely removed and pre-op snapshot verified, delete media
+                val remainingNotes = repository.getAllNotesList()
+                trashedNotes.forEach { note ->
+                    val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                        com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
+                    } else {
+                        note
+                    }
+                    NoteMediaManager.deleteNoteMediaFiles(targetNote, remainingNotes)
                 }
-                deleteNoteMediaFiles(targetNote)
+                triggerAutoSync()
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.e("NotesViewModel", "Failed to empty trash", e)
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(getApplication(), "Failed to empty trash: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                }
             }
-            repository.emptyTrash(getApplication())
-            triggerAutoSync()
         }
     }
 
@@ -1748,50 +1855,59 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         autoSaveJob?.cancel()
         undoPushJob?.cancel()
         val current = _editingState.value ?: return
-        _editingState.value = null
 
         val initial = initialSnapshot
-        initialSnapshot = null
         val modified = isNoteModified(current, initial)
 
         // If existing note is unmodified, do NOT overwrite timestamp or re-save
         if (!modified && current.originalId != 0L) {
+            _editingState.value = null
+            initialSnapshot = null
             pendingNewNoteId = 0L
             return
         }
 
         // If a brand-new note was not modified at all, discard immediately without saving
         if (!modified && current.originalId == 0L && pendingNewNoteId == 0L) {
+            _editingState.value = null
+            initialSnapshot = null
             return
         }
 
+        _saveStatus.value = NoteSaveStatus.Saving
         viewModelScope.launch(Dispatchers.IO) {
             persistMutex.withLock {
-                // Promote originalId from pendingNewNoteId if persistCurrentEditorState() already
-                // inserted this note before or during this close call.
-                // Re-checking inside withLock ensures that if persistCurrentEditorState() was mid-flight,
-                // its returned ID is observed and we UPDATE instead of doing a second INSERT (duplicate).
                 val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
-                pendingNewNoteId = 0L
                 val resolvedCurrent = if (effectiveId != current.originalId) current.copy(originalId = effectiveId) else current
-
                 val entity = buildEntityFromState(resolvedCurrent, isModified = modified)
-                if (entity.isEmptyNote()) {
-                    if (entity.id != 0L) {
-                        // Accidental clear protection: An existing note was cleared of content.
-                        // Do NOT permanently purge the note or destroy its media attachments.
-                        // Instead, capture a safety snapshot and soft-delete it to Trash with 30-day retention.
-                        val noteDao = NoteDatabase.getInstance(getApplication()).noteDao()
-                        DataSafetyManager.writePreOpSnapshot(getApplication(), noteDao, "empty_note_soft_delete")
-                        latestNotesCache.remove(entity.id)
-                        repository.moveToTrash(entity.id)
-                        Log.i("NotesViewModel", "Existing note ${entity.id} was cleared to empty — moved to Trash safely (soft-delete).")
+
+                try {
+                    if (entity.isEmptyNote()) {
+                        if (entity.id != 0L) {
+                            val noteDao = NoteDatabase.getInstance(getApplication()).noteDao()
+                            DataSafetyManager.writePreOpSnapshot(getApplication(), noteDao, "empty_note_soft_delete")
+                            latestNotesCache.remove(entity.id)
+                            repository.moveToTrash(entity.id)
+                            Log.i("NotesViewModel", "Existing note ${entity.id} was cleared to empty — moved to Trash safely (soft-delete).")
+                        }
+                    } else {
+                        val savedId = repository.saveNote(entity)
+                        val finalEntity = if (entity.id == 0L) entity.copy(id = savedId) else entity
+                        latestNotesCache[savedId] = finalEntity
                     }
-                    // For new empty drafts (entity.id == 0L), discard quietly
-                } else {
-                    val savedId = repository.saveNote(entity)
-                    val finalEntity = if (entity.id == 0L) entity.copy(id = savedId) else entity
-                    latestNotesCache[savedId] = finalEntity
+                    pendingNewNoteId = 0L
+                    initialSnapshot = null
+                    withContext(Dispatchers.Main) {
+                        _editingState.value = null
+                        _saveStatus.value = NoteSaveStatus.Saved(entity.id)
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Log.e("NotesViewModel", "Failed to persist note on close", e)
+                    withContext(Dispatchers.Main) {
+                        _saveStatus.value = NoteSaveStatus.Error(e.message ?: "Failed to save note", failedDraft = resolvedCurrent)
+                        android.widget.Toast.makeText(getApplication(), "Failed to save note: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                    }
                 }
             }
             triggerAutoSync()
@@ -1811,10 +1927,15 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             if (!immediate) {
                 delay(300L)
             }
+            _saveStatus.value = NoteSaveStatus.Saving
             persistMutex.withLock {
                 val latest = _editingState.value ?: return@withLock
-                // Resolve the effective originalId — pendingNewNoteId may have been set by a
-                // prior iteration of this coroutine and the Main callback may not have fired yet.
+                // Session epoch guard: reject stale writes if editor session switched
+                if (latest.sessionId != current.sessionId) {
+                    Log.d("NotesViewModel", "Stale autosave rejected: session changed")
+                    return@withLock
+                }
+
                 val effectiveId = if (latest.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else latest.originalId
                 val resolvedLatest = if (effectiveId != latest.originalId) latest.copy(originalId = effectiveId) else latest
 
@@ -1824,17 +1945,22 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 val entity = buildEntityFromState(resolvedLatest, isModified = true)
                 if (entity.isEmptyNote() && resolvedLatest.originalId == 0L) return@withLock
 
-                val savedId = repository.saveNote(entity)
-                val finalEntity = if (entity.id == 0L) entity.copy(id = savedId) else entity
-                latestNotesCache[savedId] = finalEntity
+                try {
+                    val savedId = repository.saveNote(entity)
+                    val finalEntity = if (entity.id == 0L) entity.copy(id = savedId) else entity
+                    latestNotesCache[savedId] = finalEntity
 
-                // Set pendingNewNoteId BEFORE releasing the mutex so that any concurrent
-                // closeEditor() call will see the assigned ID and use UPDATE, not INSERT.
-                if (resolvedLatest.originalId == 0L && savedId != 0L) {
-                    pendingNewNoteId = savedId
-                    withContext(Dispatchers.Main) {
-                        _editingState.value = _editingState.value?.copy(originalId = savedId)
+                    if (resolvedLatest.originalId == 0L && savedId != 0L) {
+                        pendingNewNoteId = savedId
+                        withContext(Dispatchers.Main) {
+                            _editingState.value = _editingState.value?.copy(originalId = savedId)
+                        }
                     }
+                    _saveStatus.value = NoteSaveStatus.Saved(savedId)
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Log.e("NotesViewModel", "Failed to autosave note", e)
+                    _saveStatus.value = NoteSaveStatus.Error(e.message ?: "Failed to autosave note", failedDraft = resolvedLatest)
                 }
             }
             triggerAutoSync()
@@ -1923,6 +2049,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        try {
+            val vaultPrefs = getApplication<android.app.Application>().getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE)
+            vaultPrefs.unregisterOnSharedPreferenceChangeListener(vaultPrefsListener)
+        } catch (_: Exception) {}
         ArchiveVaultSecurity.lockVault()
         latestNotesCache.clear()
         audioMemoManager.release()

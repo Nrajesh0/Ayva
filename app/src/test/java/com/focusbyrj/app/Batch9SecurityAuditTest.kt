@@ -198,11 +198,12 @@ class Batch9SecurityAuditTest {
         FocusStatsManager.refreshStats(context)
         val stats = FocusStatsManager.statsFlow.value
         val pastDayOfYear = calPast.get(Calendar.DAY_OF_YEAR)
+        val compositeKey = calPast.get(Calendar.YEAR) * 1000 + pastDayOfYear
 
         assertEquals(
             "FocusStatsManager must include days up to 126 days ago for the 18-week heatmap",
             testDurationMs,
-            stats.dailyFocusMinutes[pastDayOfYear]
+            stats.dailyFocusMinutes[compositeKey]
         )
     }
 
@@ -482,13 +483,13 @@ class Batch9SecurityAuditTest {
      */
     @Test
     fun batch9_p3_006_widgetConfigHelperSafeClassCastExceptionHandling() {
-        val prefs = context.getSharedPreferences("todo_widget_prefs", Context.MODE_PRIVATE)
-        // Intentionally corrupt opacity_percent with a String instead of an Int
-        prefs.edit().putString("opacity_percent_0", "not_an_int").commit()
+        val prefs = context.getSharedPreferences("todo_widget_theme_prefs", Context.MODE_PRIVATE)
+        // Intentionally corrupt opacity with a String instead of an Int
+        prefs.edit().putString("opacity_default", "not_an_int").commit()
 
         val config = com.focusbyrj.app.widget.WidgetConfigHelper.getConfig(context, 0)
         assertNotNull("WidgetConfig must not crash on ClassCastException", config)
-        assertEquals("Should fallback to default opacity 90%", 90, config.opacityPercent)
+        assertEquals("Should fallback to default opacity 95%", 95, config.opacityPercent)
     }
 
     /**

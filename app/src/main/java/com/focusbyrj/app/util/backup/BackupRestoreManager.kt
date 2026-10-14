@@ -479,16 +479,32 @@ object BackupRestoreManager {
                                 if (mediaDir.exists() && mediaDir.isDirectory) {
                                     mediaDir.listFiles()?.forEach { file ->
                                         if (file.isFile && file.length() > 0) {
-                                            zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
-                                            val mediaStream = EncryptedMediaStorage.openDecryptedInputStream(file) ?: FileInputStream(file)
-                                            mediaStream.use { input ->
-                                                var read = input.read(buffer)
-                                                while (read != -1) {
-                                                    zipOut.write(buffer, 0, read)
-                                                    read = input.read(buffer)
+                                            if (EncryptedMediaStorage.isEncrypted(file)) {
+                                                val mediaStream = EncryptedMediaStorage.openDecryptedInputStream(file)
+                                                if (mediaStream != null) {
+                                                    zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
+                                                    mediaStream.use { input ->
+                                                        var read = input.read(buffer)
+                                                        while (read != -1) {
+                                                            zipOut.write(buffer, 0, read)
+                                                            read = input.read(buffer)
+                                                        }
+                                                    }
+                                                    zipOut.closeEntry()
+                                                } else {
+                                                    Log.w(TAG, "Omitting unreadable encrypted media file ${file.name} to avoid corrupting portable backup with raw KeyStore bytes.")
                                                 }
+                                            } else {
+                                                zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
+                                                FileInputStream(file).use { input ->
+                                                    var read = input.read(buffer)
+                                                    while (read != -1) {
+                                                        zipOut.write(buffer, 0, read)
+                                                        read = input.read(buffer)
+                                                    }
+                                                }
+                                                zipOut.closeEntry()
                                             }
-                                            zipOut.closeEntry()
                                         }
                                     }
                                 }
@@ -499,7 +515,27 @@ object BackupRestoreManager {
                 } ?: throw IOException("Could not open destination file stream.")
             }
 
-            Log.i(TAG, "Encrypted backup created successfully: ${metadata.noteCount} notes, ${metadata.taskCount} tasks.")
+            // 4. Verify & Authenticate created backup before reporting success (WP5 requirement 7)
+            app.contentResolver.openInputStream(destinationUri)?.use { verifyInStream ->
+                CryptoBackupEngine.openDecryptingStream(verifyInStream, password.toCharArray()).use { decryptedStream ->
+                    ZipInputStream(BufferedInputStream(decryptedStream)).use { zipIn ->
+                        var foundManifest = false
+                        var entry = zipIn.nextEntry
+                        while (entry != null) {
+                            if (entry.name == "data.json") {
+                                foundManifest = true
+                            }
+                            zipIn.closeEntry()
+                            entry = zipIn.nextEntry
+                        }
+                        if (!foundManifest) {
+                            throw IOException("Backup verification failed: data.json manifest missing from created archive.")
+                        }
+                    }
+                }
+            } ?: throw IOException("Could not open destination backup stream for post-creation verification.")
+
+            Log.i(TAG, "Encrypted backup created and verified successfully: ${metadata.noteCount} notes, ${metadata.taskCount} tasks.")
             Result.success(metadata)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create encrypted backup", e)
@@ -551,9 +587,15 @@ object BackupRestoreManager {
                         while (entry != null) {
                             if (!entry.isDirectory) {
                                 if (entry.name == "data.json") {
+                                    val maxManifestSize = 50L * 1024L * 1024L
+                                    var totalManifestBytes = 0L
                                     val baos = ByteArrayOutputStream()
                                     var read = zipIn.read(buffer)
                                     while (read != -1) {
+                                        totalManifestBytes += read
+                                        if (totalManifestBytes > maxManifestSize) {
+                                            throw SecurityException("Backup manifest exceeds maximum allowed size (50MB).")
+                                        }
                                         baos.write(buffer, 0, read)
                                         read = zipIn.read(buffer)
                                     }
@@ -924,6 +966,10 @@ object BackupRestoreManager {
                 val keys = prefsObj.keys()
                 while (keys.hasNext()) {
                     val prefName = keys.next()
+                    if (prefName !in PREF_FILES) {
+                        Log.w(TAG, "Skipping disallowed preference file from archive: $prefName")
+                        continue
+                    }
                     val pObj = prefsObj.getJSONObject(prefName)
                     val tObj = prefTypesObj?.optJSONObject(prefName)
                     val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
@@ -1044,6 +1090,11 @@ object BackupRestoreManager {
                 TodoWidgetProvider.updateAllWidgets(app)
             } catch (_: Exception) {}
 
+            // Lock Secret Archive Vault post-restore so newly restored private notes are immediately protected
+            if (ArchiveVaultSecurity.getVaultStatus(app) == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                ArchiveVaultSecurity.lockVault()
+            }
+
             val metadata = BackupMetadata(
                 version = version,
                 createdAt = createdAt,
@@ -1073,6 +1124,9 @@ object BackupRestoreManager {
             try {
                 stagingDir.deleteRecursively()
             } catch (_: Exception) {}
+            if (ArchiveVaultSecurity.getVaultStatus(app) == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                ArchiveVaultSecurity.lockVault()
+            }
         }
     }
 

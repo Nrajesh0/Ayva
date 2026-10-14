@@ -136,15 +136,20 @@ object DiagnosticManager {
         val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
 
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val activeNet = cm?.activeNetwork
-        val caps = cm?.getNetworkCapabilities(activeNet)
-        val netType = when {
-            caps == null -> "OFFLINE"
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "CELLULAR"
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ETHERNET"
-            else -> "OTHER"
+        val (netType, isMetered) = try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val activeNet = cm?.activeNetwork
+            val caps = cm?.getNetworkCapabilities(activeNet)
+            val type = when {
+                caps == null -> "OFFLINE"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WIFI"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "CELLULAR"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ETHERNET"
+                else -> "OTHER"
+            }
+            Pair(type, cm?.isActiveNetworkMetered == true)
+        } catch (_: Throwable) {
+            Pair("BLOCKED / AIR-GAPPED (Zero Network Permissions)", false)
         }
 
         val internalFiles = context.filesDir
@@ -180,7 +185,7 @@ object DiagnosticManager {
             appendLine("RAM Available / Tot: ${memInfo.availMem / (1024 * 1024)} MB / ${memInfo.totalMem / (1024 * 1024)} MB")
             appendLine("Low Memory Warning : ${memInfo.lowMemory} (Threshold: ${memInfo.threshold / (1024 * 1024)} MB)")
             appendLine("Internal Storage   : $freeInternalMB MB free / $totalInternalMB MB total")
-            appendLine("Network Connection : $netType (Metered: ${cm?.isActiveNetworkMetered == true})")
+            appendLine("Network Connection : $netType (Metered: $isMetered)")
             appendLine("Battery Level / Pwr: $batteryPct% (Charging: $isCharging, PowerSave: $isPowerSave)")
             appendLine("=================================================================")
         }

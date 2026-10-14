@@ -221,20 +221,26 @@ fun NotesScreen(
         viewModel.lockVault()
     }
 
-    // Auto-lock vault when screen goes into background or is disposed
+    LaunchedEffect(Unit) {
+        viewModel.refreshVaultStatus()
+    }
+
+    // Auto-lock vault when screen goes into background or is disposed; refresh status on resume
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
-                if (viewModel.currentFolder.value == NoteFolder.ARCHIVE) {
+                if (viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
                     viewModel.lockVault()
                 }
+            } else if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshVaultStatus()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            if (viewModel.currentFolder.value == NoteFolder.ARCHIVE) {
+            if (viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
                 viewModel.lockVault()
             }
         }
@@ -574,12 +580,13 @@ fun NotesScreen(
                     selected = isArchiveSelected,
                     onClick = {
                         coroutineScope.launch { drawerState.close() }
-                        when (vaultStatus) {
+                        viewModel.refreshVaultStatus()
+                        when (viewModel.vaultStatus.value) {
                             ArchiveVaultSecurity.VaultStatus.NOT_CONFIGURED -> {
                                 showVaultFirstTimeDialog = true
                             }
                             ArchiveVaultSecurity.VaultStatus.ENABLED -> {
-                                if (isVaultUnlocked) {
+                                if (viewModel.isVaultUnlocked.value) {
                                     viewModel.setFolder(NoteFolder.ARCHIVE)
                                 } else {
                                     showVaultUnlockDialog = true

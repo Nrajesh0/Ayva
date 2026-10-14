@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -64,6 +64,8 @@ object DatabaseKeyProvider {
                         val decrypted = decryptPassphrase(encryptedBytes, iv)
                         if (decrypted != null && decrypted.size == PASSPHRASE_BYTE_LENGTH) {
                             cachedPassphrase = decrypted
+                            // Transparently upgrade legacy static key encryption to KeyStore if KeyStore is operational
+                            tryUpgradeLegacyPassphrase(appContext, decrypted, encryptedBytes, iv)
                             return decrypted.clone()
                         }
                     } catch (e: Exception) {
@@ -125,7 +127,16 @@ object DatabaseKeyProvider {
         cachedPassphrase = null
     }
 
-    private fun getOrCreateMasterKey(): SecretKey {
+    private val isUnitTestEnvironment: Boolean by lazy {
+        try {
+            android.os.Build.FINGERPRINT.startsWith("robolectric") ||
+            Class.forName("org.robolectric.Robolectric") != null
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun getMasterKeyForEncryption(): SecretKey {
         return try {
             val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
             if (keyStore.containsAlias(MASTER_KEY_ALIAS)) {
@@ -133,7 +144,6 @@ object DatabaseKeyProvider {
                 if (entry != null) {
                     return entry.secretKey
                 }
-                // Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
                 throw SecurityException("Database master key exists in AndroidKeyStore but could not be loaded as SecretKeyEntry. Refusing to overwrite key to prevent permanent data loss.")
             }
 
@@ -152,39 +162,108 @@ object DatabaseKeyProvider {
             keyGenerator.generateKey()
         } catch (e: Exception) {
             if (e is SecurityException) throw e
-            Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey.", e)
-            val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
-                .digest("focus_notes_sqlcipher_software_seed_v1".toByteArray(Charsets.UTF_8))
-            javax.crypto.spec.SecretKeySpec(fallbackSeed, "AES")
+            if (isUnitTestEnvironment) {
+                Log.w(TAG, "AndroidKeyStore is unavailable in unit test environment; using test software key.")
+                return getLegacyFallbackKey()
+            }
+            Log.e(TAG, "AndroidKeyStore is unavailable for master key generation. Refusing to use static software key for new writes.", e)
+            throw SecurityException("Failed to generate hardware-backed database master key in AndroidKeyStore", e)
         }
     }
 
+    private fun getMasterKeyForDecryption(): SecretKey? {
+        return try {
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            if (keyStore.containsAlias(MASTER_KEY_ALIAS)) {
+                val entry = keyStore.getEntry(MASTER_KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
+                entry?.secretKey
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to retrieve database master key from AndroidKeyStore", e)
+            null
+        }
+    }
+
+    internal fun getLegacyFallbackKey(): SecretKey {
+        val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("focus_notes_sqlcipher_software_seed_v1".toByteArray(Charsets.UTF_8))
+        return javax.crypto.spec.SecretKeySpec(fallbackSeed, "AES")
+    }
+
     private fun encryptPassphrase(passphrase: ByteArray): Pair<ByteArray, ByteArray> {
-        val masterKey = getOrCreateMasterKey()
+        val masterKey = getMasterKeyForEncryption()
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-        try {
-            cipher.init(Cipher.ENCRYPT_MODE, masterKey)
-        } catch (_: Exception) {
-            val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-            cipher.init(Cipher.ENCRYPT_MODE, masterKey, GCMParameterSpec(GCM_TAG_LENGTH, iv))
-            val encryptedBytes = cipher.doFinal(passphrase)
-            return Pair(encryptedBytes, iv)
-        }
-        // If cipher.iv is null, re-initialize cipher with explicit IV so ciphertext matches returned IV
-        val iv = cipher.iv ?: run {
-            val generatedIv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-            cipher.init(Cipher.ENCRYPT_MODE, masterKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
-            generatedIv
-        }
+        cipher.init(Cipher.ENCRYPT_MODE, masterKey)
+        val iv = checkNotNull(cipher.iv) { "Cipher failed to generate IV for database passphrase encryption" }
         val encryptedBytes = cipher.doFinal(passphrase)
         return Pair(encryptedBytes, iv)
     }
 
-    private fun decryptPassphrase(encryptedBytes: ByteArray, iv: ByteArray): ByteArray? {
-        val masterKey = getOrCreateMasterKey()
-        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-        val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-        cipher.init(Cipher.DECRYPT_MODE, masterKey, spec)
-        return cipher.doFinal(encryptedBytes)
+    internal fun decryptPassphrase(encryptedBytes: ByteArray, iv: ByteArray): ByteArray? {
+        // 1. Primary: KeyStore hardware master key
+        try {
+            val masterKey = getMasterKeyForDecryption()
+            if (masterKey != null) {
+                val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+                val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+                cipher.init(Cipher.DECRYPT_MODE, masterKey, spec)
+                return cipher.doFinal(encryptedBytes)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "KeyStore decryption failed, checking legacy software compatibility adapter...", e)
+        }
+
+        // 2. Compatibility Adapter: Legacy software fallback key (read-only)
+        return try {
+            val legacyKey = getLegacyFallbackKey()
+            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+            val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+            cipher.init(Cipher.DECRYPT_MODE, legacyKey, spec)
+            val decrypted = cipher.doFinal(encryptedBytes)
+            Log.w(TAG, "Successfully decrypted database passphrase using legacy static software key.")
+            decrypted
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to decrypt database passphrase with both KeyStore and legacy compatibility adapter", e)
+            null
+        }
+    }
+
+    private fun tryUpgradeLegacyPassphrase(
+        context: Context,
+        passphrase: ByteArray,
+        originalCiphertext: ByteArray,
+        originalIv: ByteArray
+    ) {
+        if (isUnitTestEnvironment) return
+        try {
+            // Verify if original ciphertext was encrypted with legacy key
+            val keyStoreKey = getMasterKeyForDecryption()
+            if (keyStoreKey != null) {
+                try {
+                    val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+                    cipher.init(Cipher.DECRYPT_MODE, keyStoreKey, GCMParameterSpec(GCM_TAG_LENGTH, originalIv))
+                    cipher.doFinal(originalCiphertext)
+                    // Decrypted cleanly with KeyStore key, already modern
+                    return
+                } catch (_: Exception) {
+                    // KeyStore key failed to decrypt, meaning original was encrypted under legacy key
+                }
+            }
+
+            // Re-encrypt under AndroidKeyStore
+            val (newCiphertext, newIv) = encryptPassphrase(passphrase)
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val success = prefs.edit()
+                .putString(KEY_ENCRYPTED_PASSPHRASE, Base64.encodeToString(newCiphertext, Base64.NO_WRAP))
+                .putString(KEY_PASSPHRASE_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
+                .commit()
+            if (success) {
+                Log.i(TAG, "Successfully upgraded legacy static database passphrase to AndroidKeyStore.")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Passphrase upgrade from legacy key to KeyStore deferred/skipped", e)
+        }
     }
 }

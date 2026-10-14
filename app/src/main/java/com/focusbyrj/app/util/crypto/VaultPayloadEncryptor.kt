@@ -7,6 +7,7 @@
 
 package com.focusbyrj.app.util.crypto
 
+import android.content.Context
 import android.util.Base64
 import android.util.Log
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
@@ -141,8 +142,23 @@ object VaultPayloadEncryptor {
      * The envelope includes the current [CURRENT_KEY_VERSION] so future decryptors
      * can detect key version mismatches instead of silently failing.
      */
-    fun encryptNotePayload(note: NoteEntity, vaultSubKey: ByteArray? = ArchiveVaultSecurity.getActiveVaultSubKey()): NoteEntity {
-        if (!note.isArchived || isVaultEncrypted(note) || vaultSubKey == null) {
+    fun encryptNotePayload(
+        note: NoteEntity,
+        vaultSubKey: ByteArray? = ArchiveVaultSecurity.getActiveVaultSubKey(),
+        context: Context? = null
+    ): NoteEntity {
+        if (!note.isArchived || isVaultEncrypted(note)) {
+            return note
+        }
+        if (vaultSubKey == null) {
+            val isEnabled = if (context != null) {
+                ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED
+            } else {
+                false
+            }
+            if (isEnabled) {
+                throw IllegalStateException("Cannot persist archived note in plaintext: Secret Archive Vault is enabled and locked.")
+            }
             return note
         }
 

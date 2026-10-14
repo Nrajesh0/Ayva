@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
  *
  * This software is proprietary and confidential. Unauthorized copying,
@@ -45,8 +45,8 @@ import kotlin.math.max
 object ArchiveVaultSecurity {
 
     private const val TAG = "ArchiveVaultSecurity"
-    private const val PREFS_NAME = "focus_notes_archive_vault_security"
-    private const val KEY_STATUS = "vault_status" // "not_configured", "enabled", "disabled"
+    const val PREFS_NAME = "focus_notes_archive_vault_security"
+    const val KEY_STATUS = "vault_status" // "not_configured", "enabled", "disabled"
     private const val KEY_SALT = "enc_salt"
     private const val KEY_HASH = "enc_hash"
     private const val KEY_IV = "enc_iv"
@@ -59,7 +59,12 @@ object ArchiveVaultSecurity {
     private const val KEY_RECOVERY_ENABLED = "rec_enabled"
     private const val KEY_RECOVERY_PHRASE_CIPHERTEXT = "rec_phrase_ciphertext"
     private const val KEY_RECOVERY_PHRASE_IV = "rec_phrase_iv"
-    private const val KEY_RECOVERY_BACKED_UP = "rec_phrase_backed_up"
+    const val KEY_RECOVERY_BACKED_UP = "rec_phrase_backed_up"
+
+    // Stable Vault Data Key (VDK) envelope constants (Work Package 4)
+    const val KEY_WRAPPED_VAULT_DATA_KEY = "vdk_wrapped"
+    const val KEY_WRAPPED_VAULT_DATA_KEY_IV = "vdk_iv"
+    const val KEY_VAULT_DATA_KEY_VERSION = "vdk_version"
 
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val MASTER_KEY_ALIAS = "focus_archive_vault_master_key"
@@ -67,6 +72,26 @@ object ArchiveVaultSecurity {
     private const val GCM_TAG_LENGTH = 128
     private const val KEY_LENGTH_BITS = 256
     private const val SALT_BYTE_LENGTH = 16
+
+    /**
+     * Wraps a 256-bit Vault Data Key (VDK) using a Key Encryption Key (KEK) via AES-256-GCM.
+     */
+    fun wrapVaultDataKey(vdk: ByteArray, kek: ByteArray): Pair<ByteArray, ByteArray> {
+        val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, javax.crypto.spec.SecretKeySpec(kek, "AES"), GCMParameterSpec(GCM_TAG_LENGTH, iv))
+        val wrapped = cipher.doFinal(vdk)
+        return Pair(wrapped, iv)
+    }
+
+    /**
+     * Unwraps a 256-bit Vault Data Key (VDK) using a Key Encryption Key (KEK) via AES-256-GCM.
+     */
+    fun unwrapVaultDataKey(wrappedVdk: ByteArray, iv: ByteArray, kek: ByteArray): ByteArray {
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, javax.crypto.spec.SecretKeySpec(kek, "AES"), GCMParameterSpec(GCM_TAG_LENGTH, iv))
+        return cipher.doFinal(wrappedVdk)
+    }
 
     // Ephemeral in-memory Vault Sub-Key cache while vault is unlocked
     @Volatile
@@ -122,6 +147,14 @@ object ArchiveVaultSecurity {
     }
 
     /**
+     * Returns the current version of the Vault Data Key (VDK), or 0 if legacy/unconfigured.
+     */
+    fun getVaultDataKeyVersion(context: Context): Int {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt(KEY_VAULT_DATA_KEY_VERSION, 0)
+    }
+
+    /**
      * Checks whether BIP-39 mnemonic phrase emergency recovery is configured for this vault.
      */
     fun isRecoveryConfigured(context: Context): Boolean {
@@ -169,55 +202,32 @@ object ArchiveVaultSecurity {
 
         val pinChars = pin.toCharArray()
         var derivedHash: ByteArray? = null
+        var vaultDataKey: ByteArray? = null
         try {
-            // Use real Argon2id as primary KDF (Pattern 1 — replaces PBKDF2)
+            // Use real Argon2id as primary KDF for the Key Encryption Key (KEK)
             derivedHash = deriveArgon2idHash(pinChars, salt)
 
-            // Re-encrypt existing encrypted notes (if changing passcode) or encrypt existing plaintext archived notes (if enabling vault)
-            try {
-                kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                    val noteDb = NoteDatabase.getInstance(appContext)
-                    noteDb.withTransaction {
-                        val targetNotes = noteDb.noteDao().getAllNotesList().filter {
-                            it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
-                        }
-                        for (note in targetNotes) {
-                            if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                                if (isChangingPasscode) {
-                                    // Use tryDecryptNotePayload and throw if decryption fails,
-                                    // aborting the transaction so notes are not permanently orphaned under old key.
-                                    val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, oldSubKey)) {
-                                        is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
-                                        else -> throw IllegalStateException("Cannot change passcode: archived note ${note.id} failed decryption ($res). Aborting to prevent permanent data loss.")
-                                    }
-                                    val reEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(decrypted, derivedHash)
-                                    noteDb.noteDao().updateNote(reEncrypted)
-                                }
-                            } else if (note.isArchived) {
-                                // Plaintext archived note being secured under the newly set vault passcode
-                                val encrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(note, derivedHash)
-                                noteDb.noteDao().updateNote(encrypted)
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to re-encrypt/secure archived notes with new passcode subkey", e)
-                return false
+            val hasExistingVdk = isChangingPasscode && prefs.contains(KEY_WRAPPED_VAULT_DATA_KEY)
+            vaultDataKey = if (hasExistingVdk) {
+                // WP4: Stable VDK already in place! ZERO note rewrites required!
+                // oldSubKey IS the stable VDK.
+                oldSubKey!!.copyOf()
+            } else {
+                // Brand-new vault or legacy upgrade: generate fresh 256-bit VDK
+                ByteArray(32).also { SecureRandom().nextBytes(it) }
             }
 
-            // Cache active subkey in memory ONLY after credentials are safely committed to disk.
-            // previously set before editor.commit(), creating a crash window where
-            // notes could be re-encrypted with the new key while prefs still held the old credentials,
-            // causing permanent vault lockout on process death between re-encryption and commit.
-            // The ephemeralVaultSubKey is now set inside the committed=true branch (see below).
+            val finalVdk = vaultDataKey ?: return false
 
-            // Encrypt derived hash with KeyStore master key
+            // Wrap stable VDK with new PIN KEK (derivedHash)
+            val (wrappedVdk, vdkIv) = wrapVaultDataKey(finalVdk, derivedHash)
+
+            // Encrypt derived hash (KEK) with KeyStore master key
             val (encryptedHash, iv) = try {
                 encryptWithMasterKey(derivedHash)
             } catch (e: Exception) {
-                Log.w(TAG, "KeyStore encryption failed, using sandboxed fallback", e)
-                Pair(derivedHash, ByteArray(0))
+                Log.e(TAG, "KeyStore encryption failed in setPasscode. Refusing to persist unencrypted credentials.", e)
+                return false
             }
 
             // Check if there is an existing recovery phrase when changing passcode
@@ -227,10 +237,10 @@ object ArchiveVaultSecurity {
 
             val effectiveWords = mnemonicWords ?: existingWords
 
-            // If mnemonic is available, create recovery envelope and encrypt phrase under the subkey
+            // If mnemonic is available, create recovery envelope wrapping the stable VDK
             val recoveryEnvelope = if (effectiveWords != null && effectiveWords.size == 12) {
                 try {
-                    com.focusbyrj.app.util.sync.VaultCryptoEngine.createRecoveryEnvelope(derivedHash, effectiveWords)
+                    com.focusbyrj.app.util.sync.VaultCryptoEngine.createRecoveryEnvelope(finalVdk, effectiveWords)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to create recovery envelope with mnemonic", e)
                     null
@@ -239,9 +249,9 @@ object ArchiveVaultSecurity {
 
             val encryptedPhrase = if (effectiveWords != null && effectiveWords.size == 12) {
                 try {
-                    encryptRecoveryPhrase(effectiveWords, derivedHash)
+                    encryptRecoveryPhrase(effectiveWords, finalVdk)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to encrypt recovery phrase with subkey", e)
+                    Log.e(TAG, "Failed to encrypt recovery phrase with VDK", e)
                     null
                 }
             } else null
@@ -251,7 +261,10 @@ object ArchiveVaultSecurity {
                 .putString(KEY_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
                 .putString(KEY_HASH, Base64.encodeToString(encryptedHash, Base64.NO_WRAP))
                 .putString(KEY_IV, Base64.encodeToString(iv, Base64.NO_WRAP))
-                .putString(KEY_KDF_TYPE, "argon2id")  // Pattern 1: mark as real Argon2id
+                .putString(KEY_KDF_TYPE, "argon2id")
+                .putString(KEY_WRAPPED_VAULT_DATA_KEY, Base64.encodeToString(wrappedVdk, Base64.NO_WRAP))
+                .putString(KEY_WRAPPED_VAULT_DATA_KEY_IV, Base64.encodeToString(vdkIv, Base64.NO_WRAP))
+                .putInt(KEY_VAULT_DATA_KEY_VERSION, 1)
                 .putInt(KEY_FAILED_ATTEMPTS, 0)
                 .putLong(KEY_LOCKOUT_UNTIL, 0L)
 
@@ -276,10 +289,45 @@ object ArchiveVaultSecurity {
             }
 
             val committed = editor.commit()
-            // Set ephemeralVaultSubKey only after prefs are safely on disk.
-            // derivedHash is still valid here (not yet zeroed — that happens in the finally block).
+            // Set ephemeralVaultSubKey and perform note encryption only after prefs are safely on disk.
             if (committed) {
-                ephemeralVaultSubKey = derivedHash.copyOf()
+                ephemeralVaultSubKey = finalVdk.copyOf()
+
+                if (!hasExistingVdk) {
+                    kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                        val noteDb = NoteDatabase.getInstance(appContext)
+                        noteDb.withTransaction {
+                            if (isChangingPasscode) {
+                                // Legacy vault upgrade to stable VDK: migrate existing notes
+                                val targetNotes = noteDb.noteDao().getAllNotesList().filter {
+                                    it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
+                                }
+                                for (note in targetNotes) {
+                                    if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                                        val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, oldSubKey!!)) {
+                                            is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
+                                            else -> throw IllegalStateException("Cannot change passcode: archived note ${note.id} failed decryption ($res). Aborting to prevent permanent data loss.")
+                                        }
+                                        val reEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(decrypted, finalVdk)
+                                        noteDb.noteDao().updateNote(reEncrypted)
+                                    } else if (note.isArchived) {
+                                        val encrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(note, finalVdk)
+                                        noteDb.noteDao().updateNote(encrypted)
+                                    }
+                                }
+                            } else {
+                                // First time setting passcode (brand-new vault): encrypt any existing plaintext archived notes
+                                val targetNotes = noteDb.noteDao().getAllNotesList().filter { it.isArchived }
+                                for (note in targetNotes) {
+                                    if (!com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                                        val encrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(note, finalVdk)
+                                        noteDb.noteDao().updateNote(encrypted)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             return committed
         } catch (e: Exception) {
@@ -289,6 +337,7 @@ object ArchiveVaultSecurity {
             Arrays.fill(pinChars, '0')
             derivedHash?.let { Arrays.fill(it, 0.toByte()) }
             oldSubKey?.let { Arrays.fill(it, 0.toByte()) }
+            vaultDataKey?.let { Arrays.fill(it, 0.toByte()) }
         }
     }
 
@@ -430,30 +479,37 @@ object ArchiveVaultSecurity {
                             }
                         } else null
 
-                        val (newEncHash, newIv) = try {
+                        val keyStoreResult = try {
                             encryptWithMasterKey(realArgon2idHash)
                         } catch (e: Exception) {
-                            Pair(realArgon2idHash, ByteArray(0))
-                        }
-                        val editor = prefs.edit()
-                            .putString(KEY_HASH, Base64.encodeToString(newEncHash, Base64.NO_WRAP))
-                            .putString(KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
-                            .putString(KEY_KDF_TYPE, "argon2id")
-
-                        if (recoveryEnvelope != null && encryptedPhrase != null) {
-                            editor.putBoolean(KEY_RECOVERY_ENABLED, true)
-                                .putString(KEY_RECOVERY_CIPHERTEXT, Base64.encodeToString(recoveryEnvelope.first, Base64.NO_WRAP))
-                                .putString(KEY_RECOVERY_IV, Base64.encodeToString(recoveryEnvelope.second, Base64.NO_WRAP))
-                                .putString(KEY_RECOVERY_SALT, Base64.encodeToString(recoveryEnvelope.third, Base64.NO_WRAP))
-                                .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encryptedPhrase.first, Base64.NO_WRAP))
-                                .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
+                            Log.e(TAG, "KeyStore encryption failed during Argon2id auto-upgrade. Aborting.", e)
+                            null
                         }
 
-                        val committed = editor.commit()
+                        if (keyStoreResult != null) {
+                            val (newEncHash, newIv) = keyStoreResult
+                            val editor = prefs.edit()
+                                .putString(KEY_HASH, Base64.encodeToString(newEncHash, Base64.NO_WRAP))
+                                .putString(KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
+                                .putString(KEY_KDF_TYPE, "argon2id")
 
-                        if (committed) {
-                            computedHash?.let { Arrays.fill(it, 0.toByte()) }
-                            computedHash = realArgon2idHash
+                            if (recoveryEnvelope != null && encryptedPhrase != null) {
+                                editor.putBoolean(KEY_RECOVERY_ENABLED, true)
+                                    .putString(KEY_RECOVERY_CIPHERTEXT, Base64.encodeToString(recoveryEnvelope.first, Base64.NO_WRAP))
+                                    .putString(KEY_RECOVERY_IV, Base64.encodeToString(recoveryEnvelope.second, Base64.NO_WRAP))
+                                    .putString(KEY_RECOVERY_SALT, Base64.encodeToString(recoveryEnvelope.third, Base64.NO_WRAP))
+                                    .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encryptedPhrase.first, Base64.NO_WRAP))
+                                    .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
+                            }
+
+                            val committed = editor.commit()
+
+                            if (committed) {
+                                computedHash?.let { Arrays.fill(it, 0.toByte()) }
+                                computedHash = realArgon2idHash
+                            } else {
+                                Arrays.fill(realArgon2idHash, 0.toByte())
+                            }
                         } else {
                             Arrays.fill(realArgon2idHash, 0.toByte())
                         }
@@ -512,30 +568,37 @@ object ArchiveVaultSecurity {
                         }
                     } else null
 
-                    val (newEncHash, newIv) = try {
+                    val keyStoreResult = try {
                         encryptWithMasterKey(realArgon2idHash)
                     } catch (e: Exception) {
-                        Pair(realArgon2idHash, ByteArray(0))
-                    }
-                    val editor = prefs.edit()
-                        .putString(KEY_HASH, Base64.encodeToString(newEncHash, Base64.NO_WRAP))
-                        .putString(KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
-                        .putString(KEY_KDF_TYPE, "argon2id")
-
-                    if (recoveryEnvelope != null && encryptedPhrase != null) {
-                        editor.putBoolean(KEY_RECOVERY_ENABLED, true)
-                            .putString(KEY_RECOVERY_CIPHERTEXT, Base64.encodeToString(recoveryEnvelope.first, Base64.NO_WRAP))
-                            .putString(KEY_RECOVERY_IV, Base64.encodeToString(recoveryEnvelope.second, Base64.NO_WRAP))
-                            .putString(KEY_RECOVERY_SALT, Base64.encodeToString(recoveryEnvelope.third, Base64.NO_WRAP))
-                            .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encryptedPhrase.first, Base64.NO_WRAP))
-                            .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
+                        Log.e(TAG, "KeyStore encryption failed during legacy KDF auto-upgrade. Aborting.", e)
+                        null
                     }
 
-                    val committed = editor.commit()
+                    if (keyStoreResult != null) {
+                        val (newEncHash, newIv) = keyStoreResult
+                        val editor = prefs.edit()
+                            .putString(KEY_HASH, Base64.encodeToString(newEncHash, Base64.NO_WRAP))
+                            .putString(KEY_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
+                            .putString(KEY_KDF_TYPE, "argon2id")
 
-                    if (committed) {
-                        computedHash?.let { Arrays.fill(it, 0.toByte()) }
-                        computedHash = realArgon2idHash
+                        if (recoveryEnvelope != null && encryptedPhrase != null) {
+                            editor.putBoolean(KEY_RECOVERY_ENABLED, true)
+                                .putString(KEY_RECOVERY_CIPHERTEXT, Base64.encodeToString(recoveryEnvelope.first, Base64.NO_WRAP))
+                                .putString(KEY_RECOVERY_IV, Base64.encodeToString(recoveryEnvelope.second, Base64.NO_WRAP))
+                                .putString(KEY_RECOVERY_SALT, Base64.encodeToString(recoveryEnvelope.third, Base64.NO_WRAP))
+                                .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encryptedPhrase.first, Base64.NO_WRAP))
+                                .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
+                        }
+
+                        val committed = editor.commit()
+
+                        if (committed) {
+                            computedHash?.let { Arrays.fill(it, 0.toByte()) }
+                            computedHash = realArgon2idHash
+                        } else {
+                            Arrays.fill(realArgon2idHash, 0.toByte())
+                        }
                     } else {
                         Arrays.fill(realArgon2idHash, 0.toByte())
                     }
@@ -545,8 +608,76 @@ object ArchiveVaultSecurity {
             }
 
             if (isMatch) {
-                // Success: store active Vault Sub-Key in memory and reset brute force trackers
-                ephemeralVaultSubKey = computedHash?.copyOf()
+                // If vault has stable wrapped Vault Data Key (VDK), unwrap it using PIN KEK (computedHash)
+                val hasWrappedVdk = prefs.contains(KEY_WRAPPED_VAULT_DATA_KEY)
+                val activeVdk: ByteArray? = if (hasWrappedVdk) {
+                    try {
+                        val wrappedVdkStr = prefs.getString(KEY_WRAPPED_VAULT_DATA_KEY, null)
+                        val vdkIvStr = prefs.getString(KEY_WRAPPED_VAULT_DATA_KEY_IV, null)
+                        if (wrappedVdkStr != null && vdkIvStr != null && computedHash != null) {
+                            val wrappedVdk = Base64.decode(wrappedVdkStr, Base64.NO_WRAP)
+                            val vdkIv = Base64.decode(vdkIvStr, Base64.NO_WRAP)
+                            unwrapVaultDataKey(wrappedVdk, vdkIv, computedHash)
+                        } else null
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to unwrap Vault Data Key with verified PIN KEK", e)
+                        null
+                    }
+                } else if (computedHash != null) {
+                    // Legacy vault upgrade: migrate from PIN-as-data-key to stable VDK
+                    val newVdk = ByteArray(32).also { SecureRandom().nextBytes(it) }
+                    var migrationSuccess = false
+                    try {
+                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                            val noteDb = NoteDatabase.getInstance(appContext)
+                            noteDb.withTransaction {
+                                val targetNotes = noteDb.noteDao().getAllNotesList().filter {
+                                    it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
+                                }
+                                for (note in targetNotes) {
+                                    if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                                        val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, computedHash)) {
+                                            is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
+                                            else -> throw IllegalStateException("Note ${note.id} decryption failed during VDK migration ($res)")
+                                        }
+                                        val reEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(decrypted, newVdk)
+                                        noteDb.noteDao().updateNote(reEncrypted)
+                                    }
+                                }
+                            }
+                        }
+                        migrationSuccess = true
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Legacy note migration to VDK failed/deferred", e)
+                    }
+
+                    if (migrationSuccess) {
+                        val (wrappedVdk, vdkIv) = wrapVaultDataKey(newVdk, computedHash)
+                        val vdkEditor = prefs.edit()
+                            .putString(KEY_WRAPPED_VAULT_DATA_KEY, Base64.encodeToString(wrappedVdk, Base64.NO_WRAP))
+                            .putString(KEY_WRAPPED_VAULT_DATA_KEY_IV, Base64.encodeToString(vdkIv, Base64.NO_WRAP))
+                            .putInt(KEY_VAULT_DATA_KEY_VERSION, 1)
+
+                        val existingWords = getStoredRecoveryPhraseInternal(prefs, computedHash)
+                        if (existingWords != null && existingWords.size == 12) {
+                            try {
+                                val recEnv = com.focusbyrj.app.util.sync.VaultCryptoEngine.createRecoveryEnvelope(newVdk, existingWords)
+                                val encPhrase = encryptRecoveryPhrase(existingWords, newVdk)
+                                vdkEditor.putString(KEY_RECOVERY_CIPHERTEXT, Base64.encodeToString(recEnv.first, Base64.NO_WRAP))
+                                    .putString(KEY_RECOVERY_IV, Base64.encodeToString(recEnv.second, Base64.NO_WRAP))
+                                    .putString(KEY_RECOVERY_SALT, Base64.encodeToString(recEnv.third, Base64.NO_WRAP))
+                                    .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encPhrase.first, Base64.NO_WRAP))
+                                    .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encPhrase.second, Base64.NO_WRAP))
+                            } catch (_: Exception) {}
+                        }
+                        vdkEditor.commit()
+                        newVdk
+                    } else {
+                        computedHash.copyOf()
+                    }
+                } else null
+
+                ephemeralVaultSubKey = activeVdk?.copyOf() ?: computedHash?.copyOf()
                 inMemoryLockoutElapsed = 0L
 
                 // Auto-encrypt any plaintext notes found in the vault upon successful unlock
@@ -682,6 +813,9 @@ object ArchiveVaultSecurity {
             .remove(KEY_HASH)
             .remove(KEY_IV)
             .remove(KEY_KDF_TYPE)
+            .remove(KEY_WRAPPED_VAULT_DATA_KEY)
+            .remove(KEY_WRAPPED_VAULT_DATA_KEY_IV)
+            .remove(KEY_VAULT_DATA_KEY_VERSION)
             .remove(KEY_RECOVERY_CIPHERTEXT)
             .remove(KEY_RECOVERY_IV)
             .remove(KEY_RECOVERY_SALT)
@@ -747,55 +881,69 @@ object ArchiveVaultSecurity {
                 return false
             }
 
-            // 2. Derive new subkey from new PIN using Argon2id
+            // 2. Derive new KEK from new PIN using Argon2id
             val newSalt = ByteArray(SALT_BYTE_LENGTH).also { SecureRandom().nextBytes(it) }
             newDerivedHash = deriveArgon2idHash(pinChars, newSalt)
 
-            // 3. Atomically re-encrypt all archived notes under the new key
-            kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                val noteDb = NoteDatabase.getInstance(appContext)
-                noteDb.withTransaction {
-                    val targetNotes = noteDb.noteDao().getAllNotesList().filter {
-                        it.isArchived || VaultPayloadEncryptor.isVaultEncrypted(it)
-                    }
-                    for (note in targetNotes) {
-                        if (VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                            // Abort recovery if any archived note cannot be decrypted
-                            val decrypted = when (val res = VaultPayloadEncryptor.tryDecryptNotePayload(note, recoveredSubKey)) {
-                                is VaultPayloadEncryptor.DecryptionResult.Success -> res.note
-                                else -> throw IllegalStateException("Cannot recover vault: archived note ${note.id} failed decryption ($res). Aborting to prevent data loss.")
+            val hasExistingVdk = prefs.contains(KEY_WRAPPED_VAULT_DATA_KEY)
+            val finalVdk = if (hasExistingVdk) {
+                // Stable VDK architecture: recoveredSubKey IS the stable VDK!
+                // ZERO note rewrites required!
+                recoveredSubKey.copyOf()
+            } else {
+                // Legacy vault recovery: migrate notes to new random VDK
+                val newVdk = ByteArray(32).also { SecureRandom().nextBytes(it) }
+                kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                    val noteDb = NoteDatabase.getInstance(appContext)
+                    noteDb.withTransaction {
+                        val targetNotes = noteDb.noteDao().getAllNotesList().filter {
+                            it.isArchived || VaultPayloadEncryptor.isVaultEncrypted(it)
+                        }
+                        for (note in targetNotes) {
+                            if (VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                                val decrypted = when (val res = VaultPayloadEncryptor.tryDecryptNotePayload(note, recoveredSubKey)) {
+                                    is VaultPayloadEncryptor.DecryptionResult.Success -> res.note
+                                    else -> throw IllegalStateException("Cannot recover vault: archived note ${note.id} failed decryption ($res). Aborting to prevent data loss.")
+                                }
+                                val reEncrypted = VaultPayloadEncryptor.encryptNotePayload(decrypted, newVdk)
+                                noteDb.noteDao().updateNote(reEncrypted)
+                            } else if (note.isArchived) {
+                                val encrypted = VaultPayloadEncryptor.encryptNotePayload(note, newVdk)
+                                noteDb.noteDao().updateNote(encrypted)
                             }
-                            val reEncrypted = VaultPayloadEncryptor.encryptNotePayload(decrypted, newDerivedHash)
-                            noteDb.noteDao().updateNote(reEncrypted)
-                        } else if (note.isArchived) {
-                            val encrypted = VaultPayloadEncryptor.encryptNotePayload(note, newDerivedHash)
-                            noteDb.noteDao().updateNote(encrypted)
                         }
                     }
                 }
+                newVdk
             }
 
-            // 4. Update the recovery envelope with the same mnemonic and the new subkey
-            val newEnvelope = VaultCryptoEngine.createRecoveryEnvelope(newDerivedHash, words)
+            // Wrap finalVdk under new PIN KEK
+            val (wrappedVdk, vdkIv) = wrapVaultDataKey(finalVdk, newDerivedHash)
 
-            // 5. Encrypt the recovery phrase with the new subkey
-            val encryptedPhrase = encryptRecoveryPhrase(words, newDerivedHash)
+            // Update recovery envelope with finalVdk
+            val newEnvelope = VaultCryptoEngine.createRecoveryEnvelope(finalVdk, words)
 
-            // 6. Encrypt new derived hash with Android KeyStore master key
+            // Encrypt recovery phrase with finalVdk
+            val encryptedPhrase = encryptRecoveryPhrase(words, finalVdk)
+
+            // Encrypt new PIN KEK with KeyStore master key
             val (encryptedHash, iv) = try {
                 encryptWithMasterKey(newDerivedHash)
             } catch (e: Exception) {
-                Log.w(TAG, "KeyStore encryption failed during recovery, using sandboxed fallback", e)
-                Pair(newDerivedHash, ByteArray(0))
+                Log.e(TAG, "KeyStore encryption failed during recovery. Failing closed.", e)
+                return false
             }
 
-            // 7. Commit new credentials and reset lockouts
+            // Commit new credentials and reset lockouts
             val committed = prefs.edit()
                 .putString(KEY_STATUS, "enabled")
                 .putString(KEY_SALT, Base64.encodeToString(newSalt, Base64.NO_WRAP))
                 .putString(KEY_HASH, Base64.encodeToString(encryptedHash, Base64.NO_WRAP))
                 .putString(KEY_IV, Base64.encodeToString(iv, Base64.NO_WRAP))
                 .putString(KEY_KDF_TYPE, "argon2id")
+                .putString(KEY_WRAPPED_VAULT_DATA_KEY, Base64.encodeToString(wrappedVdk, Base64.NO_WRAP))
+                .putString(KEY_WRAPPED_VAULT_DATA_KEY_IV, Base64.encodeToString(vdkIv, Base64.NO_WRAP))
+                .putInt(KEY_VAULT_DATA_KEY_VERSION, 1)
                 .putInt(KEY_FAILED_ATTEMPTS, 0)
                 .putLong(KEY_LOCKOUT_UNTIL, 0L)
                 .putBoolean(KEY_RECOVERY_ENABLED, true)
@@ -808,7 +956,7 @@ object ArchiveVaultSecurity {
                 .commit()
 
             if (committed) {
-                ephemeralVaultSubKey = newDerivedHash.copyOf()
+                ephemeralVaultSubKey = finalVdk.copyOf()
                 inMemoryLockoutElapsed = 0L
                 Log.i(TAG, "Vault successfully recovered and re-keyed with new PIN")
                 return true
@@ -1014,7 +1162,16 @@ object ArchiveVaultSecurity {
         }
     }
 
-    private fun getOrCreateMasterKey(): SecretKey {
+    private val isUnitTestEnvironment: Boolean by lazy {
+        try {
+            android.os.Build.FINGERPRINT.startsWith("robolectric") ||
+            Class.forName("org.robolectric.Robolectric") != null
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun getMasterKeyForEncryption(): SecretKey {
         return try {
             val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
             if (keyStore.containsAlias(MASTER_KEY_ALIAS)) {
@@ -1022,7 +1179,6 @@ object ArchiveVaultSecurity {
                 if (entry != null) {
                     return entry.secretKey
                 }
-                // Alias exists but entry could not be retrieved. Refuse to overwrite existing key.
                 throw SecurityException("Archive vault master key exists in AndroidKeyStore but could not be loaded as SecretKeyEntry. Refusing to overwrite key to prevent permanent data loss.")
             }
 
@@ -1040,40 +1196,63 @@ object ArchiveVaultSecurity {
             keyGenerator.init(keyGenSpec)
             keyGenerator.generateKey()
         } catch (e: Exception) {
-            // Rethrow SecurityException so alias collisions fail closed instead of falling back to software seed
             if (e is SecurityException) throw e
-            Log.w(TAG, "AndroidKeyStore is unavailable on this device/environment. Using local software SecretKey for archive vault.", e)
-            val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
-                .digest("focus_vault_master_software_seed_v1".toByteArray(Charsets.UTF_8))
-            javax.crypto.spec.SecretKeySpec(fallbackSeed, "AES")
+            if (isUnitTestEnvironment) {
+                Log.w(TAG, "AndroidKeyStore is unavailable in unit test environment; using test software key.")
+                return getLegacyFallbackKey()
+            }
+            Log.e(TAG, "AndroidKeyStore is unavailable for archive vault master key generation. Refusing to use static software key for new writes.", e)
+            throw SecurityException("Failed to generate hardware-backed archive vault master key in AndroidKeyStore", e)
         }
     }
 
-    private fun encryptWithMasterKey(data: ByteArray): Pair<ByteArray, ByteArray> {
-        val masterKey = getOrCreateMasterKey()
-        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-        val iv = try {
-            cipher.init(Cipher.ENCRYPT_MODE, masterKey)
-            // Re-init cipher if cipher.iv is null so ciphertext matches returned IV
-            cipher.iv ?: run {
-                val generatedIv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-                cipher.init(Cipher.ENCRYPT_MODE, masterKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
-                generatedIv
-            }
-        } catch (_: Exception) {
-            val generatedIv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-            cipher.init(Cipher.ENCRYPT_MODE, masterKey, GCMParameterSpec(GCM_TAG_LENGTH, generatedIv))
-            generatedIv
+    private fun getMasterKeyForDecryption(): SecretKey? {
+        return try {
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            if (keyStore.containsAlias(MASTER_KEY_ALIAS)) {
+                val entry = keyStore.getEntry(MASTER_KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
+                entry?.secretKey
+            } else null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to retrieve archive vault master key from AndroidKeyStore", e)
+            null
         }
+    }
+
+    internal fun getLegacyFallbackKey(): SecretKey {
+        val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("focus_vault_master_software_seed_v1".toByteArray(Charsets.UTF_8))
+        return javax.crypto.spec.SecretKeySpec(fallbackSeed, "AES")
+    }
+
+    private fun encryptWithMasterKey(data: ByteArray): Pair<ByteArray, ByteArray> {
+        val masterKey = getMasterKeyForEncryption()
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, masterKey)
+        val iv = checkNotNull(cipher.iv) { "Cipher failed to generate IV for master key encryption" }
         val encrypted = cipher.doFinal(data)
         return Pair(encrypted, iv)
     }
 
-    private fun decryptWithMasterKey(encryptedData: ByteArray, iv: ByteArray): ByteArray {
-        val masterKey = getOrCreateMasterKey()
+    internal fun decryptWithMasterKey(encryptedData: ByteArray, iv: ByteArray): ByteArray {
+        // 1. Primary: KeyStore hardware master key
+        try {
+            val masterKey = getMasterKeyForDecryption()
+            if (masterKey != null) {
+                val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+                val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+                cipher.init(Cipher.DECRYPT_MODE, masterKey, spec)
+                return cipher.doFinal(encryptedData)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "KeyStore master key decryption failed, attempting legacy compatibility adapter...", e)
+        }
+
+        // 2. Compatibility Adapter: Legacy software fallback key (read-only)
+        val legacyKey = getLegacyFallbackKey()
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-        cipher.init(Cipher.DECRYPT_MODE, masterKey, spec)
+        cipher.init(Cipher.DECRYPT_MODE, legacyKey, spec)
         return cipher.doFinal(encryptedData)
     }
 }

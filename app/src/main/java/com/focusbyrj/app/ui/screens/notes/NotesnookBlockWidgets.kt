@@ -1003,8 +1003,11 @@ fun NotesnookAttachmentWidget(
                             val srcFile = File(block.uri)
                             if (srcFile.exists()) {
                                 val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+                                ArticleExporterHelper.pruneStaleExportFiles(exportDir)
                                 val safeName = block.fileName.replace(Regex("[^a-zA-Z0-9._-]"), "_").ifEmpty { srcFile.name }
-                                val exportFile = File(exportDir, safeName)
+                                val baseName = safeName.substringBeforeLast('.', safeName)
+                                val ext = safeName.substringAfterLast('.', "")
+                                val exportFile = File(exportDir, ArticleExporterHelper.generateShareFileName(baseName, ext))
                                 val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(srcFile)
                                 if (decryptedBytes != null) {
                                     exportFile.writeBytes(decryptedBytes)

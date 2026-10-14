@@ -442,6 +442,11 @@ class BackupRestoreHardeningTest {
         assertTrue("Imported note must be encrypted with vault envelope", VaultPayloadEncryptor.isVaultEncrypted(importedNote))
         assertNotEquals("Content must be encrypted, not raw plaintext", "Encrypted Confidential Info", importedNote.content)
 
+        // Verify vault is safely locked post-restore and unlocks with the configured PIN
+        assertTrue("Vault must be locked after restore for fail-closed security", ArchiveVaultSecurity.isVaultLocked(context))
+        val unlockResult = ArchiveVaultSecurity.verifyPasscode(context, vaultPin)
+        assertTrue("Vault must unlock with provided PIN", unlockResult is ArchiveVaultSecurity.VerifyResult.Success)
+
         backupFile.delete()
     }
 }

@@ -120,33 +120,27 @@ class HabitRepository(private val habitDao: HabitDao) {
     }
 
     suspend fun deleteHabit(habit: Habit) = withContext(Dispatchers.IO) {
-        habitDao.deleteLogsForHabit(habit.id)
-        habitDao.deleteHabit(habit)
+        habitDao.deleteHabitWithLogsTransactional(habit.id, habit)
     }
 
     suspend fun incrementHabitProgress(habitId: Long): HabitLog = withContext(Dispatchers.IO) {
         val today = getTodayDateString()
         val habit = habitDao.getHabitById(habitId) ?: throw IllegalArgumentException("Habit not found")
-        val existingLog = habitDao.getLogForHabitAndDate(habitId, today)
         val now = System.currentTimeMillis()
 
-        val updatedLog = if (existingLog != null) {
-            existingLog.copy(
-                completedCount = existingLog.completedCount + 1,
-                lastCompletedTimestamp = now
-            )
-        } else {
-            HabitLog(
-                habitId = habitId,
-                date = today,
-                completedCount = 1,
-                targetCount = habit.targetPerDay,
-                lastCompletedTimestamp = now
-            )
-        }
+        // 1. Ensure log row exists atomically without overwriting concurrent progress
+        val initialLog = HabitLog(
+            habitId = habitId,
+            date = today,
+            completedCount = 0,
+            targetCount = habit.targetPerDay,
+            lastCompletedTimestamp = now
+        )
+        habitDao.insertOrIgnoreLog(initialLog)
 
-        habitDao.insertOrUpdateLog(updatedLog)
-        updatedLog
+        // 2. Perform atomic SQL increment directly in SQLite
+        habitDao.atomicIncrementLog(habitId, today, now)
+        habitDao.getLogForHabitAndDate(habitId, today) ?: initialLog.copy(completedCount = 1)
     }
 
     suspend fun decrementHabitProgress(habitId: Long): HabitLog? = withContext(Dispatchers.IO) {
@@ -154,11 +148,8 @@ class HabitRepository(private val habitDao: HabitDao) {
         val existingLog = habitDao.getLogForHabitAndDate(habitId, today) ?: return@withContext null
         if (existingLog.completedCount <= 0) return@withContext existingLog
 
-        val updatedLog = existingLog.copy(
-            completedCount = (existingLog.completedCount - 1).coerceAtLeast(0)
-        )
-        habitDao.insertOrUpdateLog(updatedLog)
-        updatedLog
+        habitDao.atomicDecrementLog(habitId, today)
+        habitDao.getLogForHabitAndDate(habitId, today)
     }
 
     suspend fun setHabitProgress(habitId: Long, count: Int): HabitLog = withContext(Dispatchers.IO) {
