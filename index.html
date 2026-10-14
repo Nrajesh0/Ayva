@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RuN — Zero-Network App Locker & Offline Focus Suite for Android</title>
+  
+  <!-- Meta & SEO -->
+  <meta name="description" content="RuN is a strictly offline, privacy-first Android app locker, habit tracker, and focus suite. 0 trackers, 0 network requests, and BAL-proof direct overlay blocking.">
+  <meta name="keywords" content="RuN, App Locker, Focus Tracker, Android App Blocker, Offline, Privacy First, Zero Network, Open Source, F-Droid">
+  <meta name="author" content="Nrajesh0">
+  
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://Nrajesh0.github.io/Ayva/">
+  <meta property="og:title" content="RuN — Zero-Network App Locker & Focus Suite">
+  <meta property="og:description" content="100% offline, privacy-first Android app blocker with direct window overlay bypass for Android 14+ / 16+. Zero telemetry.">
+  <meta property="og:image" content="app_icon.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="apple-touch-icon" href="app_icon.png">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Ambient Glow & Micro Grid Background -->
+  <div class="ambient-glow">
+    <div class="glow-orb glow-orb-1"></div>
+    <div class="glow-orb glow-orb-2"></div>
+    <div class="glow-orb glow-orb-3"></div>
+  </div>
+  <div class="bg-grid"></div>
+
+  <!-- Header Navigation -->
+  <header class="site-header">
+    <div class="container nav-container">
+      <a href="#" class="brand-link">
+        <img src="icon.svg" alt="RuN Logo" class="brand-icon">
+        <span class="brand-name">RuN</span>
+        <span class="brand-badge dynamic-version">v2.0.0</span>
+      </a>
+
+      <nav>
+        <ul class="nav-links">
+          <li><a href="#features">Features</a></li>
+          <li><a href="#architecture">Architecture</a></li>
+          <li><a href="#comparison">Why RuN</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="https://github.com/Nrajesh0/Ayva" target="_blank" rel="noopener">GitHub</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="https://github.com/Nrajesh0/Ayva" class="btn btn-secondary btn-sm" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+          </svg>
+          Star
+        </a>
+        <a href="#download" class="btn btn-primary btn-sm dynamic-download-link">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Download APK
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="container hero-grid">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="pulse-dot"></span>
+          <span>Version <strong class="dynamic-version">v2.0.0</strong> is now live</span>
+          <span style="color: rgba(255,255,255,0.2)">•</span>
+          <span>Zero Network</span>
+        </div>
+
+        <h1 class="hero-title">
+          Master your focus.<br>
+          <span class="gradient-text">Keep your privacy.</span>
+        </h1>
+
+        <p class="hero-lead">
+          The strictly offline Android app blocker and digital wellbeing suite. 
+          Zero trackers, zero telemetry, and BAL-proof direct window overlay blocking built for modern Android.
+        </p>
+
+        <div class="hero-cta-group">
+          <a href="#download" class="btn btn-primary btn-glow dynamic-download-link">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Download APK (<span class="dynamic-version">v2.0.0</span>)
+          </a>
+          <a href="https://github.com/Nrajesh0/Ayva/releases" class="btn btn-secondary" target="_blank" rel="noopener">
+            View Releases
+          </a>
+        </div>
+
+        <div class="hero-meta">
+          <div class="hero-meta-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span>100% Offline</span>
+          </div>
+          <div class="hero-meta-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+            <span>BAL-Proof (Android 14–16+)</span>
+          </div>
+          <div class="hero-meta-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span>Zero Trackers / Ads</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive 3D Phone Mockup -->
+      <div class="phone-mockup-wrap">
+        <div class="phone-mockup">
+          <div class="phone-island">
+            <div class="island-camera"></div>
+            <div class="island-sensor"></div>
+          </div>
+
+          <div class="phone-screen">
+            <!-- Status Bar -->
+            <div class="phone-status-bar">
+              <span>12:00</span>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="1" y1="1" x2="23" y2="23"></line>
+                  <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+                  <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+                  <path d="M10.71 5.05A16 16 0 0 1 22.56 9"></path>
+                </svg>
+                <span>100%</span>
+              </div>
+            </div>
+
+            <!-- App Top Header -->
+            <div class="phone-app-header">
+              <div class="phone-brand">
+                <img src="icon.svg" id="phone-app-logo" alt="RuN Icon" class="phone-logo">
+                <span class="phone-title">RuN</span>
+              </div>
+              <div class="phone-offline-badge">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                OFFLINE
+              </div>
+            </div>
+
+            <!-- Interactive Focus Dial -->
+            <div class="phone-timer-card">
+              <div class="timer-circle-wrap">
+                <svg class="timer-svg" viewBox="0 0 150 150">
+                  <circle class="timer-bg-circle" cx="75" cy="75" r="65"></circle>
+                  <circle class="timer-progress-circle" cx="75" cy="75" r="65"></circle>
+                </svg>
+                <div class="timer-center-text">
+                  <div class="timer-clock" id="timer-clock">24:59</div>
+                  <div class="timer-label">Deep Focus</div>
+                </div>
+              </div>
+
+              <button class="timer-toggle-btn" id="timer-toggle-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="4" width="4" height="16" rx="1"/>
+                  <rect x="14" y="4" width="4" height="16" rx="1"/>
+                </svg>
+                Pause
+              </button>
+            </div>
+
+            <!-- Mini Stats Row -->
+            <div class="phone-stats-grid">
+              <div class="phone-stat-card">
+                <div class="stat-header">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" color="var(--accent-amber)">
+                    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+                  </svg>
+                  Streak
+                </div>
+                <div class="stat-value">14 Days</div>
+              </div>
+              <div class="phone-stat-card">
+                <div class="stat-header">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" color="var(--accent-cyan)">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                  Saved
+                </div>
+                <div class="stat-value">3h 45m</div>
+              </div>
+            </div>
+
+            <!-- Block Overlay Simulation Layer (Direct Window Overlay Demo) -->
+            <div class="block-overlay-simulation" id="phone-block-overlay">
+              <div class="block-icon-badge">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-rose)" stroke-width="2.5">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                </svg>
+              </div>
+              <div class="block-title">App Blocked</div>
+              <div class="block-desc">Instagram is restricted during your Deep Work session.</div>
+              <div class="block-quote">
+                "Discipline is choosing between what you want now and what you want most."
+              </div>
+              <button class="dismiss-block-btn" id="dismiss-block-btn">Return to Focus</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- External Interactive Controls -->
+        <div class="mockup-controls">
+          <button class="sim-btn" id="sim-block-trigger">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Test App Blocker Overlay
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Key Metrics Strip -->
+  <section class="container" style="margin-bottom: 80px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; background: rgba(14, 20, 32, 0.5); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 32px; backdrop-filter: blur(12px);">
+      <div>
+        <div style="font-size: 2.25rem; font-weight: 900; font-family: var(--font-mono); color: var(--accent-cyan);">0 KB</div>
+        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px;">Outbound Data Transferred</div>
+      </div>
+      <div>
+        <div style="font-size: 2.25rem; font-weight: 900; font-family: var(--font-mono); color: var(--accent-emerald);">0</div>
+        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px;">Trackers, SDKs, or Telemetry</div>
+      </div>
+      <div>
+        <div style="font-size: 2.25rem; font-weight: 900; font-family: var(--font-mono); color: #fff;">&lt; 15ms</div>
+        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px;">Direct Overlay Interception</div>
+      </div>
+      <div>
+        <div style="font-size: 2.25rem; font-weight: 900; font-family: var(--font-mono); color: var(--accent-indigo);">100%</div>
+        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px;">On-Device Local Storage</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bento Grid Features Section -->
+  <section class="features-section" id="features">
+    <div class="container">
+      <div style="text-align: center; margin-bottom: 60px;">
+        <span class="section-label">Engineered for Freedom</span>
+        <h2 class="section-title">Built differently from the ground up.</h2>
+        <p class="section-subtitle" style="margin: 0 auto;">No subscriptions, no accounts, no data harvesting. A precision productivity tool designed solely for you.</p>
+      </div>
+
+      <div class="bento-grid">
+        <!-- Card 1: Direct Overlay Blocker -->
+        <div class="bento-card bento-span-2">
+          <div>
+            <div class="bento-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+              </svg>
+            </div>
+            <h3 class="bento-card-title">BAL-Proof Direct Window Overlay</h3>
+            <p class="bento-card-desc">
+              Android 14, 15, and 16 introduced strict Background Activity Launch (BAL) restrictions that break conventional app lockers that rely on <code>startActivity</code>. RuN renders its blocker via direct system window management (<code>WindowManager.addView</code> with <code>TYPE_APPLICATION_OVERLAY</code>) guaranteeing instant, unbypassable interception.
+            </p>
+          </div>
+          <div class="bento-visual">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">
+              <span>Android BAL Enforcement</span>
+              <span style="color:var(--accent-emerald);">BYPASSED VIA DIRECT OVERLAY</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Zero-Network Guarantee -->
+        <div class="bento-card" id="architecture">
+          <div>
+            <div class="bento-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 1l22 22"></path>
+                <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+                <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+                <path d="M10.71 5.05A16 16 0 0 1 22.56 9"></path>
+              </svg>
+            </div>
+            <h3 class="bento-card-title">Zero Network Guarantee</h3>
+            <p class="bento-card-desc">
+              Your focus habits, notes, and screen time belong to you alone. RuN contains no network stack or background telemetry.
+            </p>
+          </div>
+          <div class="bento-visual">
+            <div class="packet-monitor">
+              <div class="packet-row">
+                <span>DNS Queries:</span>
+                <span class="packet-zero">0</span>
+              </div>
+              <div class="packet-row">
+                <span>Cloud Syncs:</span>
+                <span class="packet-zero">0 (Local Only)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Encrypted Vault & Private Notes -->
+        <div class="bento-card">
+          <div>
+            <div class="bento-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </div>
+            <h3 class="bento-card-title">Encrypted Private Vault</h3>
+            <p class="bento-card-desc">
+              Integrated encrypted markdown notes and thought-dump vault with AES-256-GCM encryption, Argon2id key derivation, and SQLCipher storage.
+            </p>
+          </div>
+        </div>
+
+        <!-- Card 4: Floating Focus Bubble -->
+        <div class="bento-card">
+          <div>
+            <div class="bento-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <h3 class="bento-card-title">Floating Bubble Multitasking</h3>
+            <p class="bento-card-desc">
+              A minimalist floating bubble widget that stays accessible across any application, enabling instant timer toggling, quick todo checks, and note captures.
+            </p>
+          </div>
+        </div>
+
+        <!-- Card 5: Dynamic Launcher Avatars (Interactive) -->
+        <div class="bento-card">
+          <div>
+            <div class="bento-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="8" r="5"></circle>
+                <path d="M20 21a8 8 0 1 0-16 0"></path>
+              </svg>
+            </div>
+            <h3 class="bento-card-title">Customizable Profile Avatars</h3>
+            <p class="bento-card-desc">
+              Unlock distinct profile emblems (Wanderer, Knight, Emperor, Inferno) as you build your streak, and customize your launcher icon dynamically.
+            </p>
+          </div>
+          <div class="bento-visual">
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;" id="avatar-active-desc">Default RuN (Classic Emblem)</div>
+            <div class="avatar-selector">
+              <div class="avatar-pill active" data-img="icon.svg" data-name="Default RuN" data-tier="Classic Emblem">
+                <img src="icon.svg" alt="Default">
+                <span>Default</span>
+              </div>
+              <div class="avatar-pill" data-img="avatars/avatar_wanderer.webp" data-name="The Wanderer" data-tier="Tier 1 • Explorer">
+                <img src="avatars/avatar_wanderer.webp" alt="Wanderer">
+                <span>Wanderer</span>
+              </div>
+              <div class="avatar-pill" data-img="avatars/avatar_knight.webp" data-name="The Knight" data-tier="Tier 3 • Iron Will">
+                <img src="avatars/avatar_knight.webp" alt="Knight">
+                <span>Knight</span>
+              </div>
+              <div class="avatar-pill" data-img="avatars/avatar_emperor.webp" data-name="The Emperor" data-tier="Tier 5 • Sovereign">
+                <img src="avatars/avatar_emperor.webp" alt="Emperor">
+                <span>Emperor</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Comparison Section -->
+  <section class="comparison-section" id="comparison">
+    <div class="container">
+      <div style="text-align: center; margin-bottom: 56px;">
+        <span class="section-label">Privacy Comparison</span>
+        <h2 class="section-title">Why RuN is fundamentally different.</h2>
+      </div>
+
+      <div class="table-wrap">
+        <table class="comp-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>RuN (This App)</th>
+              <th>Cloud Focus Apps (Opal, Freedom)</th>
+              <th>Standard App Lockers</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="highlight-row">
+              <td class="col-brand">
+                <img src="icon.svg" width="22" height="22" alt="RuN">
+                <span>RuN</span>
+                <span class="comp-badge-pill">v2.0</span>
+              </td>
+              <td style="color:var(--accent-cyan); font-weight:700;">100% Free &amp; Offline</td>
+              <td>$40–$100 / Year Subscription</td>
+              <td>Ad-supported / Cluttered</td>
+            </tr>
+            <tr>
+              <td><strong>Network Connection</strong></td>
+              <td><span class="check-icon">✓</span> <strong>Zero Network (0 Packets)</strong></td>
+              <td><span class="cross-icon">✗</span> Continuous Cloud Telemetry</td>
+              <td><span class="cross-icon">✗</span> Ad Networks / Tracking SDKs</td>
+            </tr>
+            <tr>
+              <td><strong>Account &amp; Registration</strong></td>
+              <td><span class="check-icon">✓</span> <strong>None Required (Instant Use)</strong></td>
+              <td><span class="cross-icon">✗</span> Mandatory Email / OAuth</td>
+              <td>Varies</td>
+            </tr>
+            <tr>
+              <td><strong>Android 14–16+ Compatibility</strong></td>
+              <td><span class="check-icon">✓</span> <strong>BAL-Proof Direct Overlay</strong></td>
+              <td>VPN Tunnel / Accessibility Latency</td>
+              <td><span class="cross-icon">✗</span> Broken by Android 14+ BAL</td>
+            </tr>
+            <tr>
+              <td><strong>Encrypted Note Vault</strong></td>
+              <td><span class="check-icon">✓</span> <strong>AES-256-GCM + SQLCipher</strong></td>
+              <td><span class="cross-icon">✗</span> None or Plaintext Cloud</td>
+              <td><span class="cross-icon">✗</span> None</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download & QR Code Section -->
+  <section class="download-section" id="download">
+    <div class="container">
+      <div class="download-card">
+        <div>
+          <span class="section-label" style="background: rgba(255,255,255,0.06); color:#fff; border-color:rgba(255,255,255,0.2);">Official Release</span>
+          <h2 style="font-size: 2.5rem; font-weight: 800; line-height: 1.15; margin-bottom: 16px;">
+            Get RuN for Android
+          </h2>
+          <p style="color: var(--text-secondary); margin-bottom: 32px; font-size: 1.0625rem; line-height: 1.6;">
+            Download the standalone APK directly from GitHub Releases. Compatible with phones and tablets running Android 7.0 and up (including Android 15 &amp; 16).
+          </p>
+
+          <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 24px;">
+            <a href="https://github.com/Nrajesh0/Ayva/releases/latest" class="btn btn-primary btn-glow dynamic-download-link" style="padding: 14px 28px; font-size: 1.0625rem;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download APK (<span class="dynamic-version">v2.0.0</span>)
+            </a>
+            <a href="https://github.com/Nrajesh0/Ayva/releases" class="btn btn-secondary" target="_blank" rel="noopener">
+              Release Notes
+            </a>
+          </div>
+
+          <div style="display: flex; gap: 24px; font-family: var(--font-mono); font-size: 0.8125rem; color: var(--text-muted);">
+            <div>Release: <span id="release-date" style="color: #fff;">Latest</span></div>
+            <div>Package: <span style="color: #fff;">com.focusbyrj.app</span></div>
+            <div>Size: <span id="apk-size" style="color: #fff;">~12 MB</span></div>
+          </div>
+        </div>
+
+        <!-- Standalone Mobile QR Code Card -->
+        <div class="qr-card-box">
+          <div class="qr-canvas-holder" id="qr-code-target">
+            <!-- Rendered via inline SVG -->
+          </div>
+          <div class="qr-label">
+            <strong>Scan to Download on Phone</strong><br>
+            Point your Android camera to download the APK directly.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ Accordion -->
+  <section class="faq-section" id="faq">
+    <div class="container">
+      <div style="text-align: center; margin-bottom: 56px;">
+        <span class="section-label">Questions &amp; Answers</span>
+        <h2 class="section-title">Frequently Asked Questions</h2>
+      </div>
+
+      <div class="faq-list">
+        <div class="faq-item">
+          <button class="faq-trigger">
+            <span>How does RuN block apps without an internet connection?</span>
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-content">
+            <div class="faq-body">
+              RuN operates as a local Android accessibility / usage-stats overlay service. It monitors foreground package events entirely locally on your processor. When a restricted app is launched, RuN renders a secure system window overlay directly via <code>WindowManager</code> in less than 15 milliseconds, without ever querying an external server.
+            </div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-trigger">
+            <span>What makes RuN "BAL-Proof" on Android 14+ and 16?</span>
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-content">
+            <div class="faq-body">
+              Modern Android releases heavily restrict Background Activity Launches (BAL), causing traditional app blockers (which try to launch an activity screen over the target app) to fail with security exceptions. RuN uses the direct <code>WindowManager.addView</code> overlay method (<code>TYPE_APPLICATION_OVERLAY</code>), which bypasses BAL constraints and works smoothly across all modern Android versions.
+            </div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-trigger">
+            <span>Can RuN be bypassed by killing it in Recent Apps?</span>
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-content">
+            <div class="faq-body">
+              RuN includes device administrator protections, biometric authentication locks, and sticky foreground service execution with auto-restart receivers, preventing circumvention during active focus sessions.
+            </div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-trigger">
+            <span>Can I export or backup my notes and habits?</span>
+            <span class="faq-icon">+</span>
+          </button>
+          <div class="faq-content">
+            <div class="faq-body">
+              Yes. RuN provides an encrypted local backup engine (V4 Encrypted Snapshot) allowing you to export your data to a password-protected file on your internal storage or SD card. No cloud sync is ever required.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <img src="icon.svg" width="28" height="28" alt="RuN">
+            <strong style="font-size:1.125rem; color:#fff;">RuN</strong>
+          </div>
+          <p>
+            The strictly offline, privacy-first Android App Locker &amp; Focus Tracker. Built for deep work without compromise.
+          </p>
+        </div>
+
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#architecture">Architecture</a></li>
+            <li><a href="#comparison">Comparison</a></li>
+            <li><a href="#download">Download APK</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Development</h4>
+          <ul>
+            <li><a href="https://github.com/Nrajesh0/Ayva" target="_blank" rel="noopener">GitHub Repository</a></li>
+            <li><a href="https://github.com/Nrajesh0/Ayva/releases" target="_blank" rel="noopener">Releases &amp; Changelog</a></li>
+            <li><a href="https://github.com/Nrajesh0/Ayva/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Brand &amp; Legal</h4>
+          <ul>
+            <li><a href="https://github.com/Nrajesh0/Ayva/blob/main/TRADEMARK.md" target="_blank" rel="noopener">Trademark Policy</a></li>
+            <li><span style="color:var(--text-muted);">Zero Data Collected</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>
+          © 2024–2026 Focus by Rj / RuN Project. All rights reserved.
+        </div>
+        <div style="font-size: 0.8125rem;">
+          RuN™, Ayva™, and the runner emblem are official trademarks. See <a href="https://github.com/Nrajesh0/Ayva/blob/main/TRADEMARK.md" style="color:var(--accent-cyan); text-decoration:none;">TRADEMARK.md</a>.
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
