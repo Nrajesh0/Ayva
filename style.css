@@ -557,15 +557,15 @@ body {
 }
 
 .bento-title {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin-bottom: 8px;
 }
 
 .bento-desc {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
+  font-size: 0.98rem;
+  color: #94a3b8;
   line-height: 1.6;
 }
 
@@ -666,30 +666,36 @@ body {
 .vault-features-list {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-top: 16px;
+  gap: 14px;
+  margin-top: 20px;
 }
 
 .vault-feat-card {
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
-  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.vault-feat-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .vault-feat-title {
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: #ffffff;
 }
 
 .vault-feat-desc {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  line-height: 1.4;
+  font-size: 0.86rem;
+  color: #94a3b8;
+  line-height: 1.5;
 }
 
 /* Matrix Showcase snippet */
