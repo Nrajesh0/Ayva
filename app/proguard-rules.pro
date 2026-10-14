@@ -121,3 +121,16 @@
 -dontwarn okio.**
 -dontwarn okhttp3.**
 -dontwarn org.checkerframework.**
+-dontwarn org.robolectric.**
+-dontwarn org.junit.**
+
+# ------------------------------------------------------------------------------
+# 7. Application Components, Receivers, Widgets & Serialized Data Models
+# ------------------------------------------------------------------------------
+-keep class com.focusbyrj.app.data.** { *; }
+-keep class com.focusbyrj.app.service.** { *; }
+-keep class com.focusbyrj.app.receiver.** { *; }
+-keep class com.focusbyrj.app.widget.** { *; }
+-keep class com.focusbyrj.app.overlay.** { *; }
+-keep class com.focusbyrj.app.util.** { *; }
+
