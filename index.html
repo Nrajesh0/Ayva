@@ -3,841 +3,688 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RuN — Zero-Network App Locker & Offline Focus Suite for Android</title>
-  
-  <!-- Meta & SEO -->
-  <meta name="description" content="RuN is a strictly offline, privacy-first Android app locker, habit tracker, and encrypted focus suite. 0 trackers, 0 network requests, and BAL-proof direct window overlay blocking.">
-  <meta name="keywords" content="RuN, App Locker, Focus Tracker, Android App Blocker, Offline, Privacy First, Zero Network, Open Source, F-Droid">
-  <meta name="author" content="Nrajesh0">
-  
-  <!-- Open Graph -->
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://Nrajesh0.github.io/Ayva/">
-  <meta property="og:title" content="RuN — Zero-Network App Locker & Focus Suite">
-  <meta property="og:description" content="100% offline, privacy-first Android app blocker with direct window overlay bypass for Android 14+ / 16+. Zero telemetry.">
-  <meta property="og:image" content="app_icon.png">
-
-  <!-- Favicon -->
+  <title>Ayva — Sovereign Offline AI Focus Companion & Productivity OS</title>
+  <meta name="description" content="Ayva is a strictly offline, privacy-first Android OS companion. Manage tasks in natural conversation, block distractions via BAL-immune overlays, track habits, and secure notes with zero internet permissions.">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="apple-touch-icon" href="app_icon.png">
-
-  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&family=Newsreader:ital,wght@1,500;1,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- Ambient Glow & Micro Grid Background -->
-  <div class="ambient-glow">
-    <div class="glow-orb glow-orb-1"></div>
-    <div class="glow-orb glow-orb-2"></div>
-    <div class="glow-orb glow-orb-3"></div>
-  </div>
-  <div class="bg-grid"></div>
+  <!-- Ambient Dynamic Grid Background -->
+  <div class="ambient-grid"></div>
 
-  <!-- Header Navigation -->
-  <header class="site-header">
-    <div class="container nav-container">
-      <a href="#" class="brand-link">
-        <img src="icon.svg" alt="RuN Logo" class="brand-icon">
-        <span class="brand-name">RuN</span>
-        <span class="brand-badge dynamic-version">v2.0.0</span>
+  <!-- Navigation Bar -->
+  <nav class="site-nav">
+    <div class="container">
+      <a href="#" class="nav-brand">
+        <img src="app_icon.png" alt="Ayva Logo" class="nav-brand-logo">
+        <div class="brand-text">
+          <span class="brand-title">Ayva</span>
+          <span class="brand-subtitle">Focus OS</span>
+        </div>
       </a>
 
-      <nav>
-        <ul class="nav-links">
-          <li><a href="#screens">App Interface</a></li>
-          <li><a href="#architecture">Architecture</a></li>
-          <li><a href="#comparison">Comparison</a></li>
-          <li><a href="#faq">FAQ</a></li>
-          <li><a href="https://github.com/Nrajesh0/Ayva" target="_blank" rel="noopener">GitHub</a></li>
-        </ul>
-      </nav>
+      <ul class="nav-links">
+        <li><a href="#bubble-chat" class="nav-link">Bubble Chat</a></li>
+        <li><a href="#tasks" class="nav-link">Tasks & Todos</a></li>
+        <li><a href="#blocker" class="nav-link">App Blocker</a></li>
+        <li><a href="#notes" class="nav-link">Notes Vault</a></li>
+        <li><a href="#habits" class="nav-link">Habits & Alerts</a></li>
+        <li><a href="#security" class="nav-link">Snapshots & Security</a></li>
+      </ul>
 
       <div class="nav-actions">
-        <a href="https://github.com/Nrajesh0/Ayva" class="btn btn-secondary btn-sm" target="_blank" rel="noopener">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-          </svg>
-          Star
+        <a href="https://github.com/Nrajesh0/Ayva" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
         </a>
-        <a href="#download" class="btn btn-primary btn-sm dynamic-download-link">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="7 10 12 15 17 10"></polyline>
-            <line x1="12" y1="15" x2="12" y2="3"></line>
-          </svg>
+        <a href="#download" class="btn btn-primary btn-sm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download APK
         </a>
       </div>
     </div>
-  </header>
+  </nav>
 
   <!-- Hero Section -->
-  <section class="hero-section" id="screens">
+  <section class="hero-section">
     <div class="container hero-grid">
+      <!-- Left Column: Copy & Value Proposition -->
       <div class="hero-content">
-        <div class="hero-badge">
-          <span class="pulse-dot"></span>
-          <span>Version <strong class="dynamic-version">v2.0.0</strong> is now live</span>
-          <span style="color: rgba(255,255,255,0.2)">•</span>
-          <span>Zero Network</span>
+        <div class="hero-pill-badge">
+          <span style="font-size: 1rem;">⚡</span>
+          <span>Strictly Offline • Zero-Network Sovereign Companion • Android 14+ Ready</span>
         </div>
 
         <h1 class="hero-title">
-          Master your focus.<br>
-          <span class="gradient-text">Keep your privacy.</span>
+          The Sovereign Focus OS &amp; <span class="gradient-text">Intelligent Chat Companion</span>
         </h1>
 
         <p class="hero-lead">
-          The strictly offline Android app blocker and digital wellbeing OS. 
-          Unbypassable direct window overlay blocking, encrypted note vault, and habit loops that never send a single byte over the internet.
+          Meet <b>Ayva</b>: the local-first Android companion that turns conversational thoughts into scheduled tasks, enforces hardware-level app blocks, protects habits with streak shields, and secures private notes in an offline Keystore vault—with <b>zero internet permissions</b>.
         </p>
 
         <div class="hero-cta-group">
-          <a href="#download" class="btn btn-primary btn-glow dynamic-download-link">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            Download APK (<span class="dynamic-version">v2.0.0</span>)
+          <a href="https://github.com/Nrajesh0/Ayva/releases/tag/v2.0.0" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download APK v2.0.0
           </a>
-          <a href="https://github.com/Nrajesh0/Ayva/releases" class="btn btn-secondary" target="_blank" rel="noopener">
-            View Releases
+          <a href="#features-bento" class="btn btn-secondary">
+            Explore Architecture
           </a>
         </div>
 
-        <div class="hero-meta">
-          <div class="hero-meta-item">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-            </svg>
-            <span>100% Offline (No Internet Req.)</span>
+        <div class="hero-trust-badges">
+          <div class="trust-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>BAL-Immune Direct Blocker</span>
           </div>
-          <div class="hero-meta-item">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            </svg>
-            <span>BAL-Proof (Android 14–16+)</span>
+          <div class="trust-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>AES-256-GCM Keystore Vault</span>
           </div>
-          <div class="hero-meta-item">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-            </svg>
-            <span>Zero Trackers or Ads</span>
+          <div class="trust-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span>Instant Offline NLU Chat</span>
+          </div>
+          <div class="trust-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            <span>Automated Hourly Snapshots</span>
           </div>
         </div>
       </div>
 
-      <!-- TRUE-TO-APP INTERACTIVE PHONE SHOWCASE -->
-      <div class="phone-showcase-column">
-        <!-- Interactive Screen Switcher Bar -->
+      <!-- Right Column: Interactive Phone Mockup with Authentic Android Replicas -->
+      <div class="hero-phone-container">
+        <!-- Screen Switcher Pills -->
         <div class="screen-switcher-bar">
-          <button class="screen-switch-btn active" data-screen="screen-dashboard">
-            <span>🎯 Focus</span>
-          </button>
-          <button class="screen-switch-btn" data-screen="screen-blocker">
-            <span>🛑 Block Overlay</span>
-          </button>
-          <button class="screen-switch-btn" data-screen="screen-notes">
-            <span>🔐 Notes Vault</span>
-          </button>
-          <button class="screen-switch-btn" data-screen="screen-habits">
-            <span>⚡ Habits</span>
-          </button>
+          <button class="screen-tab-btn active" data-screen="chat">💬 Ayva Bubble</button>
+          <button class="screen-tab-btn" data-screen="todos">📋 Tasks</button>
+          <button class="screen-tab-btn" data-screen="block">🛑 Blocker</button>
+          <button class="screen-tab-btn" data-screen="notes">📝 Notes</button>
+          <button class="screen-tab-btn" data-screen="habits">⚡ Habits</button>
+          <button class="screen-tab-btn" data-screen="security">🛡️ Security</button>
         </div>
 
-        <!-- Phone Frame with Real App Interfaces -->
-        <div class="phone-mockup-wrap">
-          <div class="phone-mockup">
-            <div class="phone-island">
-              <div class="island-camera"></div>
-              <div class="island-sensor"></div>
+        <!-- Phone Chassis -->
+        <div class="phone-mockup">
+          <!-- Dynamic Island / Punch Hole -->
+          <div class="phone-punch-hole">
+            <div class="camera-lens"></div>
+            <div class="camera-sensor"></div>
+          </div>
+
+          <!-- Phone Status Bar -->
+          <div class="phone-status-bar">
+            <span>9:41</span>
+            <div class="phone-status-icons">
+              <span>5G</span>
+              <span>100%</span>
+            </div>
+          </div>
+
+          <!-- Main Screen Viewport -->
+          <div class="phone-screen-host">
+
+            <!-- ==========================================================
+                 SCREEN 1: AYVA BUBBLE CHAT (Active by Default)
+                 ========================================================== -->
+            <div class="phone-screen-view active" id="view-chat">
+              <div class="chat-screen-header">
+                <div class="chat-header-user">
+                  <div class="chat-avatar-pill">
+                    🐱
+                    <div class="chat-online-dot"></div>
+                  </div>
+                  <div class="chat-header-info">
+                    <span class="chat-header-name">Ayva <span style="font-size:0.68rem; color:#10b981;">• Sovereign Companion</span></span>
+                    <span class="chat-status-pill">● Offline Sovereign • 0KB Network</span>
+                  </div>
+                </div>
+                <div style="color:var(--text-muted); font-size:1rem; cursor:pointer;" onclick="alert('Ayva Settings: Font size, notification colors, bubble behavior')">⚙️</div>
+              </div>
+
+              <!-- Chat Timeline -->
+              <div class="chat-timeline" id="chatTimeline">
+                <!-- Welcome Bot Message -->
+                <div class="chat-msg bot">
+                  <div class="msg-bubble">
+                    👋 <b>Good afternoon!</b> Fresh slate. What are we conquering next?<br>
+                    <span style="font-size:0.75rem; color:#94a3b8;">Type a task below to lock it in, or try these quick actions:</span>
+                    <div class="chat-suggestions-deck">
+                      <div class="suggestion-pill" data-prompt="Buy organic coffee tomorrow at 9am priority">+ "Buy organic coffee tomorrow at 9am priority"</div>
+                      <div class="suggestion-pill" data-prompt="Remind me to review contracts Monday 10am persistent">+ "Remind me to review contracts Monday 10am"</div>
+                      <div class="suggestion-pill" data-prompt="/tasks">+ "/tasks" (View active checklist)</div>
+                      <div class="suggestion-pill" data-prompt="/habit">+ "/habit" (Check daily routines)</div>
+                      <div class="suggestion-pill" data-prompt="/drill">+ "/drill" (Quick focus math quiz)</div>
+                    </div>
+                  </div>
+                  <div class="msg-time">09:41 AM</div>
+                </div>
+              </div>
+
+              <!-- Peeking Cat Companion (AyvaCatPeekingHost.kt) -->
+              <div class="peeking-cat-container" id="peekingCat" title="Tap Ayva Cat!">
+                <svg class="cat-svg-art" viewBox="0 0 100 60" fill="none">
+                  <!-- Cat Ears -->
+                  <polygon points="20,40 10,12 35,28" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+                  <polygon points="18,36 14,18 30,28" fill="#f43f5e" opacity="0.6"/>
+                  <polygon points="80,40 90,12 65,28" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+                  <polygon points="82,36 86,18 70,28" fill="#f43f5e" opacity="0.6"/>
+                  <!-- Cat Head -->
+                  <ellipse cx="50" cy="44" rx="36" ry="24" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+                  <!-- Glowing Eyes -->
+                  <ellipse cx="38" cy="40" rx="4" ry="6" fill="#10b981"/>
+                  <ellipse cx="62" cy="40" rx="4" ry="6" fill="#10b981"/>
+                  <circle cx="39" cy="38" r="1.5" fill="#ffffff"/>
+                  <circle cx="63" cy="38" r="1.5" fill="#ffffff"/>
+                  <!-- Cute Nose -->
+                  <polygon points="50,47 47,44 53,44" fill="#f43f5e"/>
+                  <!-- Paws peeking over composer -->
+                  <ellipse cx="32" cy="56" rx="8" ry="5" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+                  <ellipse cx="68" cy="56" rx="8" ry="5" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+                </svg>
+              </div>
+
+              <!-- Composer Bar (AyvaComposerBar.kt) -->
+              <div class="chat-composer-bar">
+                <!-- Horizontal scrollable quick action commands -->
+                <div class="quick-commands-row">
+                  <div class="quick-cmd-chip" data-cmd="/tasks">📋 /tasks</div>
+                  <div class="quick-cmd-chip" data-cmd="/habit">🎯 /habit</div>
+                  <div class="quick-cmd-chip" data-cmd="/drill">⚡ /drill</div>
+                  <div class="quick-cmd-chip" data-cmd="/freeze">🛡️ /freeze</div>
+                  <div class="quick-cmd-chip" data-cmd="/summary">📊 /summary</div>
+                  <div class="quick-cmd-chip" data-cmd="/clear">🧹 /clear</div>
+                </div>
+
+                <div class="composer-input-row">
+                  <div class="composer-toggles">
+                    <button class="toggle-chip" id="togglePriorityBtn" title="Toggle High Priority">🔥</button>
+                    <button class="toggle-chip" id="togglePersistentBtn" title="Toggle Persistent Alarm">🔔</button>
+                  </div>
+                  <input type="text" class="chat-input-field" id="chatInputField" placeholder="Type a task, routine, or talk to Ayva...">
+                  <button class="btn-chat-mic" id="chatMicBtn" title="Live Voice Transcription">🎙️</button>
+                  <button class="btn-chat-send" id="chatSendBtn" title="Send">➤</button>
+                </div>
+              </div>
             </div>
 
-            <div class="phone-screen">
-              <!-- Real MainTopBar.kt -->
-              <div class="real-top-bar">
-                <div class="top-bar-brand">
-                  <img src="icon.svg" alt="RuN Logo" class="top-bar-app-icon">
-                  <span class="top-bar-title">RuN</span>
+            <!-- ==========================================================
+                 SCREEN 2: TODOS & TASKS (TodosScreen.kt)
+                 ========================================================== -->
+            <div class="phone-screen-view" id="view-todos">
+              <div class="screen-header-bar">
+                <div>
+                  <div class="screen-header-title">Tasks &amp; Todos</div>
+                  <div class="screen-header-meta">3 pending • 1 high priority</div>
                 </div>
-                <div class="top-bar-actions">
-                  <div class="streak-pill">
-                    <span>🔥</span>
-                    <span>14d</span>
-                  </div>
-                  <div class="profile-avatar-ring">
-                    <img src="avatars/avatar_knight.webp" id="phone-avatar-img" alt="Profile Avatar">
-                  </div>
-                </div>
+                <div style="font-size:1.2rem; cursor:pointer;" onclick="alert('Quick Add Task modal opened')">＋</div>
               </div>
 
-              <!-- ==============================================================
-                   SCREEN 1: REAL DASHBOARD SCREEN (DashboardScreen.kt)
-                   ============================================================== -->
-              <div class="real-screen-view active" id="screen-dashboard">
-                <!-- Top Row: Deep Work & Habits Glance -->
-                <div class="dashboard-top-row">
-                  <div class="real-deep-work-card">
-                    <div>
-                      <div class="card-label-small">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <polyline points="12 6 12 12 16 14"></polyline>
-                        </svg>
-                        Deep Work
+              <div class="todos-filter-tabs">
+                <button class="todo-tab active">Today</button>
+                <button class="todo-tab">Upcoming</button>
+                <button class="todo-tab">All</button>
+                <button class="todo-tab">Occasions</button>
+              </div>
+
+              <div class="todos-list-view">
+                <!-- Task 1: Priority with Subtasks -->
+                <div class="task-item-card priority-card">
+                  <div class="task-top-row">
+                    <div class="task-checkbox-round"></div>
+                    <div class="task-content-col">
+                      <div class="task-title-text">Finish Q3 Client Deliverable</div>
+                      <div class="task-chips-row">
+                        <span class="meta-chip due">⏰ Today, 5:00 PM</span>
+                        <span class="meta-chip priority">🔥 High Priority</span>
                       </div>
-                      <div class="deep-work-time" id="deep-work-time">25:00</div>
                     </div>
-                    <button class="deep-work-btn" id="deep-work-btn">Start Focus</button>
                   </div>
+                  <!-- Subtasks hierarchy -->
+                  <div class="subtasks-box">
+                    <div class="subtask-line">
+                      <span style="color:#10b981;">✓</span>
+                      <span style="text-decoration:line-through; color:var(--text-muted);">Compile revenue graphs</span>
+                    </div>
+                    <div class="subtask-line">
+                      <span style="color:#10b981;">✓</span>
+                      <span style="text-decoration:line-through; color:var(--text-muted);">Draft executive summary</span>
+                    </div>
+                    <div class="subtask-line">
+                      <span style="color:var(--text-muted);">○</span>
+                      <span>Export encrypted PDF package</span>
+                    </div>
+                  </div>
+                </div>
 
-                  <div class="real-habits-glance-card">
-                    <div>
-                      <div class="card-label-small">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
-                        </svg>
-                        Today's Habits
+                <!-- Task 2: Recurring Task -->
+                <div class="task-item-card">
+                  <div class="task-top-row">
+                    <div class="task-checkbox-round"></div>
+                    <div class="task-content-col">
+                      <div class="task-title-text">Buy Organic Coffee Beans</div>
+                      <div class="task-chips-row">
+                        <span class="meta-chip due">⏰ Tomorrow, 9:00 AM</span>
+                        <span class="meta-chip" style="background:rgba(16,185,129,0.15); color:#34d399;">↻ Weekly</span>
                       </div>
-                      <div class="habit-glance-summary">3 of 4 Done</div>
-                    </div>
-                    <div class="habit-progress-line">
-                      <div class="habit-dot completed"></div>
-                      <div class="habit-dot completed"></div>
-                      <div class="habit-dot completed"></div>
-                      <div class="habit-dot"></div>
                     </div>
                   </div>
                 </div>
 
-                <!-- Routines & Shielded Section -->
-                <div class="routine-shield-banner">
-                  <div class="routine-info-left">
-                    <div class="routine-icon-box">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="16" y1="2" x2="16" y2="6"></line>
-                        <line x1="8" y1="2" x2="8" y2="6"></line>
-                        <line x1="3" y1="10" x2="21" y2="10"></line>
-                      </svg>
+                <!-- Task 3: Persistent Alarm Task -->
+                <div class="task-item-card">
+                  <div class="task-top-row">
+                    <div class="task-checkbox-round"></div>
+                    <div class="task-content-col">
+                      <div class="task-title-text">Call Mom &amp; Wish Anniversary</div>
+                      <div class="task-chips-row">
+                        <span class="meta-chip due">⏰ Friday, 8:00 PM</span>
+                        <span class="meta-chip alarm">🔔 Persistent Alarm</span>
+                      </div>
                     </div>
-                    <div>
-                      <div class="routine-name">Work Routine</div>
-                      <div class="routine-time">9:00 AM – 5:00 PM</div>
-                    </div>
-                  </div>
-                  <div class="shield-count-badge">6 Shielded</div>
-                </div>
-
-                <!-- Boundaries Header -->
-                <div class="boundaries-header">
-                  <span>Your boundaries</span>
-                  <span style="font-size:0.6875rem; color:var(--text-muted);">Toggle or edit</span>
-                </div>
-
-                <!-- App Restriction Items (SwipeableAppRestrictionCard.kt) -->
-                <div class="app-restriction-card">
-                  <div class="app-info-left">
-                    <div class="app-glyph-icon app-glyph-instagram">IG</div>
-                    <div>
-                      <div class="app-title-line">Instagram</div>
-                      <div class="app-status-sub" style="color:var(--accent-rose);">BLOCKED • Hard Lock</div>
-                    </div>
-                  </div>
-                  <div class="material-switch checked">
-                    <div class="switch-thumb"></div>
                   </div>
                 </div>
 
-                <div class="app-restriction-card">
-                  <div class="app-info-left">
-                    <div class="app-glyph-icon app-glyph-youtube">YT</div>
-                    <div>
-                      <div class="app-title-line">YouTube</div>
-                      <div class="app-status-sub" style="color:var(--accent-amber);">30m Daily • 12m left</div>
-                    </div>
-                  </div>
-                  <div class="material-switch checked">
-                    <div class="switch-thumb"></div>
-                  </div>
-                </div>
-
-                <div class="app-restriction-card">
-                  <div class="app-info-left">
-                    <div class="app-glyph-icon app-glyph-x">𝕏</div>
-                    <div>
-                      <div class="app-title-line">X (Twitter)</div>
-                      <div class="app-status-sub" style="color:var(--accent-cyan);">Active Routine Lock</div>
-                    </div>
-                  </div>
-                  <div class="material-switch checked">
-                    <div class="switch-thumb"></div>
-                  </div>
+                <!-- 4-Second Undo Banner -->
+                <div class="undo-alert-banner">
+                  <span>🗑️ Task archived. Reverting in 3s...</span>
+                  <button class="undo-btn" onclick="this.parentElement.style.display='none'">UNDO</button>
                 </div>
               </div>
+            </div>
 
-              <!-- ==============================================================
-                   SCREEN 2: REAL BLOCK SCREEN OVERLAY (BlockOverlayManager.kt)
-                   ============================================================== -->
-              <div class="real-screen-view" id="screen-blocker">
-                <div class="real-blocker-overlay-view">
-                  <div class="block-single-card">
-                    <div class="block-target-app-icon">
-                      <div class="app-glyph-icon app-glyph-instagram" style="width:40px; height:40px; border-radius:12px; font-size:1rem;">IG</div>
-                    </div>
-                    <div class="block-target-app-name">Instagram</div>
-                    <div class="block-main-title">Mindful Pause</div>
-                    
-                    <div class="block-quote-box">
-                      “Discipline is choosing between what you want now and what you want most.”
-                    </div>
-
-                    <div class="block-countdown-clock" id="block-countdown">00:15</div>
-                    <div class="block-progress-strip">
-                      <div class="block-progress-fill"></div>
-                    </div>
-                    <div class="block-subtext">Take a deep breath...</div>
-
-                    <button class="block-exit-btn" id="block-exit-home-btn">Exit to Home</button>
+            <!-- ==========================================================
+                 SCREEN 3: APP BLOCKER & MINDFUL PAUSE (BlockOverlayManager.kt)
+                 ========================================================== -->
+            <div class="phone-screen-view" id="view-block">
+              <div class="block-screen-body">
+                <div class="block-card-80px">
+                  <div class="blocked-app-badge">📷</div>
+                  <div class="block-pause-title">Mindful Pause</div>
+                  <div class="block-quote-text">
+                    "The ability to choose what to ignore is your greatest superpower."
                   </div>
-                </div>
-              </div>
 
-              <!-- ==============================================================
-                   SCREEN 3: REAL ENCRYPTED NOTES (NotesScreen.kt)
-                   ============================================================== -->
-              <div class="real-screen-view" id="screen-notes">
-                <div class="notes-search-bar">
-                  <div style="display:flex; align-items:center; gap:8px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  <!-- 15s Countdown Ring -->
+                  <div class="block-timer-svg-box">
+                    <svg class="block-timer-svg" viewBox="0 0 80 80">
+                      <circle class="block-timer-bg" cx="40" cy="40" r="36" />
+                      <circle class="block-timer-progress" id="blockTimerProgress" cx="40" cy="40" r="36" />
                     </svg>
-                    <span>Search notes</span>
+                    <div class="block-timer-label" id="blockTimerLabel">00:15</div>
                   </div>
-                  <span style="color:var(--accent-emerald); font-weight:700;">🔒 Vault</span>
+
+                  <div class="block-action-stack">
+                    <button class="btn-exit-home" id="btnExitHome">Exit to Home</button>
+                    <button class="btn-drill-unlock" onclick="window.navigateToAppScreen('chat')">Answer Math Drill to Unlock</button>
+                  </div>
                 </div>
 
-                <div class="notes-chips-row">
-                  <div class="note-filter-chip active">All (12)</div>
-                  <div class="note-filter-chip">Pinned (2)</div>
-                  <div class="note-filter-chip">Checklists (5)</div>
-                  <div class="note-filter-chip">Audio (3)</div>
-                </div>
-
-                <div class="notes-grid-layout">
-                  <div class="keep-note-card keep-amber">
-                    <div class="note-card-title">
-                      <span>Weekly Focus Sprint</span>
-                      <span style="font-size:0.6875rem; color:var(--accent-amber);">📌 Pinned</span>
-                    </div>
-                    <div class="note-checklist-item">
-                      <div class="note-check-box checked">✓</div>
-                      <span style="text-decoration: line-through; opacity: 0.6;">Zero network audit</span>
-                    </div>
-                    <div class="note-checklist-item">
-                      <div class="note-check-box checked">✓</div>
-                      <span style="text-decoration: line-through; opacity: 0.6;">Direct overlay BAL verification</span>
-                    </div>
-                    <div class="note-checklist-item">
-                      <div class="note-check-box"></div>
-                      <span>Ship RuN v2.0 update</span>
-                    </div>
-                  </div>
-
-                  <div class="keep-note-card keep-cyan">
-                    <div class="note-card-title">
-                      <span>Audio Memo</span>
-                      <span>🎙️ 0:42</span>
-                    </div>
-                    <div style="font-size:0.6875rem; color:var(--text-secondary); line-height: 1.4;">
-                      “Key idea: replace social scrolling urges with 2-minute aptitude drills...”
-                    </div>
-                  </div>
-
-                  <div class="keep-note-card keep-purple">
-                    <div class="note-card-title">
-                      <span>Private Recovery Seed</span>
-                      <span style="color:var(--accent-rose);">🔒 AES-GCM</span>
-                    </div>
-                    <div style="font-size:0.6875rem; color:var(--text-muted); font-family:var(--font-mono);">
-                      ••••••••••••••••••••••••••••••••
-                    </div>
-                  </div>
+                <div style="font-size:0.68rem; color:var(--text-muted); margin-top:16px;">
+                  🛡️ Hardware-bypassing WindowManager overlay (BAL Immune)
                 </div>
               </div>
+            </div>
 
-              <!-- ==============================================================
-                   SCREEN 4: REAL HABITS & APTITUDE (HabitsScreen.kt)
-                   ============================================================== -->
-              <div class="real-screen-view" id="screen-habits">
-                <div class="habits-hero-card">
-                  <div class="level-row">
-                    <div class="level-badge">Level 7 • Mindful Scholar</div>
-                    <div class="energy-badge">⚡ 120 Energy</div>
-                  </div>
-                  <div class="xp-bar-bg">
-                    <div class="xp-bar-fill"></div>
-                  </div>
-                  <div class="xp-caption">
-                    <span>1,450 / 2,000 XP</span>
-                    <span>72%</span>
-                  </div>
-                </div>
-
-                <div class="quests-section-title">Today's Quests</div>
-                
-                <div class="quest-item-card">
-                  <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="color:var(--accent-emerald);">✓</span>
-                    <span>Complete 2 Deep Work sessions</span>
-                  </div>
-                  <span style="color:var(--accent-amber);">+50 XP</span>
-                </div>
-
-                <div class="quest-item-card">
-                  <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="color:var(--accent-emerald);">✓</span>
-                    <span>Solve 5 Aptitude Math Drills</span>
-                  </div>
-                  <span style="color:var(--accent-amber);">+40 XP</span>
-                </div>
-
-                <div class="quest-item-card">
-                  <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="color:var(--text-muted);">○</span>
-                    <span>Bedtime lock honored</span>
-                  </div>
-                  <span style="color:var(--text-muted);">+60 XP</span>
-                </div>
-
-                <div class="quests-section-title" style="margin-top:10px;">Active Habits</div>
-                <div class="app-restriction-card" style="margin-bottom:6px;">
+            <!-- ==========================================================
+                 SCREEN 4: NOTES VAULT (NotesScreen.kt)
+                 ========================================================== -->
+            <div class="phone-screen-view" id="view-notes">
+              <div class="notes-vault-body">
+                <div class="screen-header-bar" style="padding:0 0 10px 0;">
                   <div>
-                    <div class="app-title-line">Morning 20m Reading</div>
-                    <div class="app-status-sub">🔥 14 day streak</div>
+                    <div class="screen-header-title">Encrypted Notes</div>
+                    <div class="screen-header-meta">AES-256-GCM Hardware Vault</div>
                   </div>
-                  <div class="note-check-box checked" style="width:18px; height:18px; font-size:0.75rem;">✓</div>
+                  <div style="font-size:1.1rem; color:var(--accent-emerald);">🔐</div>
+                </div>
+
+                <div class="notes-search-bar">
+                  <span>🔍</span>
+                  <span>Search notes, checklists, memos...</span>
+                </div>
+
+                <div class="notes-grid">
+                  <!-- Note 1: Keep Amber Card with Checklist -->
+                  <div class="keep-card amber">
+                    <div class="keep-card-title">Sprint Objectives</div>
+                    <div class="keep-card-body">
+                      ☑ Refactor compose dock<br>
+                      ☑ Audit Keystore keys<br>
+                      ☐ Benchmark cold boot
+                    </div>
+                  </div>
+
+                  <!-- Note 2: Obsidian Vault Encrypted Note -->
+                  <div class="keep-card obsidian">
+                    <div class="keep-card-title">🔐 Private Seeds</div>
+                    <div class="keep-card-body" style="font-family:var(--font-mono); font-size:0.65rem;">
+                      [AES-GCM Protected]<br>
+                      • Vault Key #4<br>
+                      • Hardware enclave
+                    </div>
+                  </div>
+
+                  <!-- Note 3: Audio Memo with Waveform Player -->
+                  <div class="keep-card cyan" style="grid-column: span 2;">
+                    <div class="keep-card-title">🎙️ Audio Memo: Product Vision</div>
+                    <div class="audio-memo-widget">
+                      <button class="audio-play-btn" id="audioMemoPlayBtn">▶</button>
+                      <div class="audio-waveform-bars">
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                      </div>
+                      <span class="audio-time-label" id="audioMemoTimeLabel">0:14 / 0:42</span>
+                    </div>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <!-- Real App Floating Bottom Dock (FocusBottomBar.kt) -->
-              <div class="real-floating-dock">
-                <button class="dock-tab-btn active" data-screen="screen-dashboard">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
-                  </svg>
-                  <span>Focus</span>
-                </button>
-                <button class="dock-tab-btn" data-screen="screen-blocker">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h2v-2h-2v2zm0-4h2V7h-2v6z"/>
-                  </svg>
-                  <span>Pause</span>
-                </button>
-                <button class="dock-tab-btn" data-screen="screen-notes">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M3 18h12v-2H3v2zM3 6v2h18V6H3zm0 7h18v-2H3v2z"/>
-                  </svg>
-                  <span>Notes</span>
-                </button>
-                <button class="dock-tab-btn" data-screen="screen-habits">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                  </svg>
-                  <span>Habits</span>
+            <!-- ==========================================================
+                 SCREEN 5: HABITS & NOTIFICATIONS (HabitsScreen.kt)
+                 ========================================================== -->
+            <div class="phone-screen-view" id="view-habits">
+              <div class="habits-screen-body">
+                <div class="screen-header-bar" style="padding:0 0 10px 0;">
+                  <div>
+                    <div class="screen-header-title">Habits &amp; Rhythms</div>
+                    <div class="screen-header-meta" id="habitsCompletedCount">4 of 6 completed today</div>
+                  </div>
+                  <div style="font-size:1.1rem; color:#f59e0b;">🔥 14d</div>
+                </div>
+
+                <!-- Habits Summary & Ring -->
+                <div class="habits-summary-banner">
+                  <div>
+                    <div style="font-size:0.85rem; font-weight:700;">Daily Discipline Ratio</div>
+                    <div style="font-size:0.72rem; color:var(--text-secondary); margin-top:2px;">Consistent momentum active</div>
+                  </div>
+                  <div class="habits-ring-container">
+                    <svg class="habits-ring-svg" viewBox="0 0 60 60">
+                      <circle cx="30" cy="30" r="25" stroke="rgba(255,255,255,0.1)" stroke-width="5" fill="none" />
+                      <circle class="habits-ring-progress" id="habitsRingProgress" cx="30" cy="30" r="25" />
+                    </svg>
+                    <div class="habits-ring-text" id="habitsRingText">70%</div>
+                  </div>
+                </div>
+
+                <!-- Interactive Habit Notification Alert Preview -->
+                <div class="habit-notif-preview">
+                  <div class="habit-notif-bell">🔔</div>
+                  <div>
+                    <div style="font-weight:700; font-size:0.75rem; color:#ffffff;">Ayva Smart Habit Nudge</div>
+                    <div style="font-size:0.7rem; color:#c7d2fe; margin-top:2px;">Time for 15m Offline Reading! Protect your 8-day streak 🔥</div>
+                  </div>
+                </div>
+
+                <!-- Habit Row 1 -->
+                <div class="habit-card-row">
+                  <div>
+                    <div style="font-weight:700; font-size:0.82rem;">🌅 Morning Meditation (15m)</div>
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">Build Habit • 🔥 14-day streak</div>
+                  </div>
+                  <div class="habit-check-trigger done">✓</div>
+                </div>
+
+                <!-- Habit Row 2 -->
+                <div class="habit-card-row">
+                  <div>
+                    <div style="font-weight:700; font-size:0.82rem;">📚 Offline Reading (30m)</div>
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">Build Habit • 🔥 8-day streak</div>
+                  </div>
+                  <div class="habit-check-trigger"></div>
+                </div>
+
+                <!-- Habit Row 3 -->
+                <div class="habit-card-row">
+                  <div>
+                    <div style="font-weight:700; font-size:0.82rem;">📵 Zero Doomscrolling</div>
+                    <div style="font-size:0.7rem; color:var(--text-secondary);">Quit Habit • Shield active</div>
+                  </div>
+                  <div class="habit-check-trigger done">✓</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ==========================================================
+                 SCREEN 6: SNAPSHOTS & SECURITY (SecurityScreen.kt)
+                 ========================================================== -->
+            <div class="phone-screen-view" id="view-security">
+              <div class="security-screen-body">
+                <div class="screen-header-bar" style="padding:0 0 10px 0;">
+                  <div>
+                    <div class="screen-header-title">Security &amp; Snapshots</div>
+                    <div class="screen-header-meta">Zero-Knowledge Offline Fortress</div>
+                  </div>
+                  <div style="font-size:1.1rem; color:#10b981;">🛡️</div>
+                </div>
+
+                <div class="security-hero-shield">
+                  <div class="shield-icon-box">🛡️</div>
+                  <div>
+                    <div style="font-weight:700; font-size:0.82rem; color:#34d399;">Zero-Network Guarantee</div>
+                    <div style="font-size:0.7rem; color:#94a3b8;">INTERNET permission omitted from AndroidManifest. 0 bytes leave your hardware.</div>
+                  </div>
+                </div>
+
+                <!-- Hourly Snapshots Timeline -->
+                <div style="font-size:0.78rem; font-weight:700; color:var(--text-secondary); margin-top:4px;">Rolling Point-in-Time Snapshots</div>
+                <div class="security-feature-item">
+                  <div>
+                    <div style="font-size:0.8rem; font-weight:700;">Snapshot #104 (Automatic)</div>
+                    <div style="font-size:0.68rem; color:var(--text-muted);">Today 09:00 AM • 42 tasks, 6 habits, 12 notes</div>
+                  </div>
+                  <button style="padding:4px 8px; border-radius:6px; background:rgba(16,185,129,0.15); border:1px solid #10b981; color:#34d399; font-size:0.68rem; font-weight:700; cursor:pointer;" onclick="alert('Instant 1-Tap Snapshot Rollback Complete!')">Restore</button>
+                </div>
+
+                <!-- 12-Word BIP-39 Seed Card -->
+                <div style="font-size:0.78rem; font-weight:700; color:var(--text-secondary); margin-top:4px;">12-Word Vault Recovery Seed</div>
+                <div class="mnemonic-preview-box">
+                  <div class="mnemonic-chips-grid">
+                    <span class="word-chip">1. orbit</span>
+                    <span class="word-chip">2. silent</span>
+                    <span class="word-chip">3. velvet</span>
+                    <span class="word-chip">4. cipher</span>
+                    <span class="word-chip">5. alpine</span>
+                    <span class="word-chip">6. fortress</span>
+                  </div>
+                  <div style="font-size:0.65rem; color:var(--text-muted); text-align:center; margin-top:2px;">BIP-39 Encrypted Sovereign Seed Phrase</div>
+                </div>
+
+                <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="alert('Exporting Encrypted .focusbak file using Argon2id + AES-256-GCM...')">
+                  📦 Export Encrypted .focusbak
                 </button>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- Interactive Avatar Selector Strip -->
-        <div class="avatar-showcase-panel">
-          <div class="avatar-panel-header">
-            <span class="avatar-panel-title">Choose Launcher Profile Avatar</span>
-            <span style="font-size:0.6875rem; color:var(--accent-cyan); font-family:var(--font-mono);" id="active-avatar-name">The Knight</span>
           </div>
-          <div class="avatar-scroll-row">
-            <div class="avatar-thumb-card" data-img="icon.svg" data-name="Default RuN" data-tier="Classic Emblem">
-              <img src="icon.svg" alt="Default">
-              <span class="avatar-thumb-name">Default</span>
-            </div>
-            <div class="avatar-thumb-card" data-img="avatars/avatar_wanderer.webp" data-name="The Wanderer" data-tier="Tier 1 • Explorer">
-              <img src="avatars/avatar_wanderer.webp" alt="Wanderer">
-              <span class="avatar-thumb-name">Wanderer</span>
-            </div>
-            <div class="avatar-thumb-card" data-img="avatars/avatar_scholar.webp" data-name="The Scholar" data-tier="Tier 2 • Knowledge">
-              <img src="avatars/avatar_scholar.webp" alt="Scholar">
-              <span class="avatar-thumb-name">Scholar</span>
-            </div>
-            <div class="avatar-thumb-card active" data-img="avatars/avatar_knight.webp" data-name="The Knight" data-tier="Tier 3 • Iron Will">
-              <img src="avatars/avatar_knight.webp" alt="Knight">
-              <span class="avatar-thumb-name">Knight</span>
-            </div>
-            <div class="avatar-thumb-card" data-img="avatars/avatar_noble.webp" data-name="The Noble" data-tier="Tier 4 • High Prestige">
-              <img src="avatars/avatar_noble.webp" alt="Noble">
-              <span class="avatar-thumb-name">Noble</span>
-            </div>
-            <div class="avatar-thumb-card" data-img="avatars/avatar_emperor.webp" data-name="The Emperor" data-tier="Tier 5 • Sovereign">
-              <img src="avatars/avatar_emperor.webp" alt="Emperor">
-              <span class="avatar-thumb-name">Emperor</span>
-            </div>
-            <div class="avatar-thumb-card" data-img="avatars/avatar_inferno.webp" data-name="Inferno" data-tier="Blazing Will">
-              <img src="avatars/avatar_inferno.webp" alt="Inferno">
-              <span class="avatar-thumb-name">Inferno</span>
-            </div>
-            <div class="avatar-thumb-card" data-img="avatars/avatar_champion.webp" data-name="Champion" data-tier="Trophy Winner">
-              <img src="avatars/avatar_champion.webp" alt="Champion">
-              <span class="avatar-thumb-name">Champion</span>
-            </div>
+
+          <!-- Floating Bottom Navigation Dock (FocusBottomBar.kt Replica) -->
+          <div class="phone-floating-dock">
+            <button class="dock-item active" data-screen="chat">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span>Chat</span>
+            </button>
+            <button class="dock-item" data-screen="todos">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              <span>Tasks</span>
+            </button>
+            <button class="dock-item" data-screen="block">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              <span>Block</span>
+            </button>
+            <button class="dock-item" data-screen="notes">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <span>Notes</span>
+            </button>
+            <button class="dock-item" data-screen="habits">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span>Habits</span>
+            </button>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Key Metrics Strip -->
-  <section class="container" style="margin-bottom: 80px;">
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; background: rgba(14, 20, 32, 0.5); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 32px; backdrop-filter: blur(12px);">
-      <div>
-        <div style="font-size: 2.25rem; font-weight: 900; font-family: var(--font-mono); color: var(--accent-cyan);">0 KB</div>
-        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px;">Outbound Data Transferred</div>
-      </div>
-      <div>
-        <div style="font-size: 2.25rem; font-weight: 900; font-family: var(--font-mono); color: var(--accent-emerald);">0</div>
-        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px;">Trackers, SDKs, or Telemetry</div>
-      </div>
-      <div>
-        <div style="font-size: 2.25rem; font-weight: 900; font-family: var(--font-mono); color: #fff;">&lt; 15ms</div>
-        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px;">Direct Overlay Interception</div>
-      </div>
-      <div>
-        <div style="font-size: 2.25rem; font-weight: 900; font-family: var(--font-mono); color: var(--accent-indigo);">100%</div>
-        <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px;">On-Device Local Storage</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Deep Architecture Explanation (The 4 Pillars) -->
-  <section class="pillars-section" id="architecture">
+  <!-- Bento Grid Core Functions Section -->
+  <section class="features-section" id="features-bento">
     <div class="container">
-      <div style="text-align: center; margin-bottom: 60px;">
-        <span class="section-label">Architecture &amp; Philosophy</span>
-        <h2 class="section-title">How RuN is actually built.</h2>
-        <p class="section-subtitle" style="margin: 0 auto;">Most focus apps require accounts, cloud sync, and expensive subscriptions, while leaking your app usage to third-party ad networks. RuN is an entirely offline personal focus operating system.</p>
-      </div>
+      <div class="section-tag">2026 Core Architecture</div>
+      <h2 class="section-title">Built for Sovereign Focus &amp; Uncompromising Privacy</h2>
+      <p class="section-desc">
+        Ayva unites high-discipline time-management, natural conversational task capture, and hardware-level cryptography into one single, self-contained Android engine.
+      </p>
 
-      <div class="pillars-grid">
-        <!-- Pillar 1: BAL-Proof Direct Overlay -->
-        <div class="pillar-card">
-          <div class="pillar-number">01 / OVERLAY ENGINE</div>
-          <h3 class="pillar-title">Direct Window Overlay (BAL-Proof)</h3>
-          <p class="pillar-desc">
-            Traditional app lockers rely on <code>startActivity()</code> to pop up a blocking screen. On Android 14, 15, and 16, Google's strict <strong>Background Activity Launch (BAL)</strong> security rules completely break this approach, resulting in blocked intents and security exceptions.
+      <div class="bento-grid">
+        <!-- Card 1: Ayva Bubble Chat (Span 2) -->
+        <div class="bento-card span-2" id="bubble-chat">
+          <div class="bento-card-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">💬</div>
+          <h3 class="bento-card-title">Ayva Bubble Chat &amp; Effortless Task Creation</h3>
+          <p class="bento-card-desc">
+            Never context-switch again. Ayva lives in a lightweight floating overlay accessible across any screen. Simply speak or type natural phrasing like <i>"Buy organic coffee tomorrow at 9am priority"</i>—Ayva's offline NLU automatically extracts the date, time, priority flags, and recurring patterns without sending a single byte to any cloud.
           </p>
-          <p class="pillar-desc">
-            RuN solves this by injecting a direct <code>TYPE_APPLICATION_OVERLAY</code> view straight into the Android <code>WindowManager</code> in under 15ms. It runs completely outside activity stacks, providing smooth, unbypassable interception across all modern Android versions.
-          </p>
-          <div class="bal-diagram-box">
-            <div class="diagram-row">
-              <span>Standard App Lockers:</span>
-              <span style="color:var(--accent-rose);">❌ Crashed by Android 14+ BAL</span>
+          <div class="bento-chat-demo">
+            <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">
+              $ ayva --intent-detect "Review contracts Monday 10am persistent"
             </div>
-            <div class="diagram-row">
-              <span>RuN Direct Overlay:</span>
-              <span style="color:var(--accent-emerald);">✅ Native WindowManager Bypass</span>
+            <div style="font-size:0.8rem; color:#34d399; font-weight:600;">
+              ✓ Parsed: Title="Review contracts", Due="Next Monday, 10:00 AM", Alarm="Persistent Ringing"
             </div>
           </div>
-        </div>
-
-        <!-- Pillar 2: Zero-Network Privacy -->
-        <div class="pillar-card">
-          <div class="pillar-number">02 / PRIVACY DESIGN</div>
-          <h3 class="pillar-title">Strict Zero-Network Guarantee</h3>
-          <p class="pillar-desc">
-            RuN does not request internet permission for its core functions. Your habits, restricted app packages, private notes, and screen time statistics are stored exclusively in an encrypted local SQLite database on your device.
-          </p>
-          <p class="pillar-desc">
-            There are zero remote telemetry SDKs, zero crash reporters sending stack traces, and zero analytics pings. We cannot see your data even if we wanted to.
-          </p>
-          <div class="tech-tag-row">
-            <span class="tech-tag">Zero Telemetry</span>
-            <span class="tech-tag">No Cloud Accounts</span>
-            <span class="tech-tag">Offline-First</span>
-            <span class="tech-tag">F-Droid Ready</span>
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="window.navigateToAppScreen('chat'); window.scrollTo({top:0, behavior:'smooth'});">Test Interactive Chat Mockup →</button>
           </div>
         </div>
 
-        <!-- Pillar 3: Encrypted Note Vault -->
-        <div class="pillar-card">
-          <div class="pillar-number">03 / MIND VAULT</div>
-          <h3 class="pillar-title">Encrypted Note Vault &amp; Thought Capture</h3>
-          <p class="pillar-desc">
-            When you stop mindless scrolling, you need an intentional place to put your thoughts. RuN integrates a full-featured markdown and audio note-taking system styled after Google Keep and Notesnook.
+        <!-- Card 2: Tasks & Todos -->
+        <div class="bento-card" id="tasks">
+          <div class="bento-card-icon" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">📋</div>
+          <h3 class="bento-card-title">Intelligent Tasks &amp; Subtasks</h3>
+          <p class="bento-card-desc">
+            Organized across Today, Upcoming, All, and Occasions. Features full hierarchical subtask checklists, 4-second safety undo banners, and home-screen Android widgets with zero battery overhead.
           </p>
-          <p class="pillar-desc">
-            Private notes are secured with <strong>AES-256-GCM</strong> encryption and Argon2id key derivation. Features voice memos, checklists, tables, and encrypted local backup snapshots.
-          </p>
-          <div class="tech-tag-row">
-            <span class="tech-tag">AES-256-GCM</span>
-            <span class="tech-tag">Argon2id</span>
-            <span class="tech-tag">Voice Memos</span>
-            <span class="tech-tag">Encrypted V4 Snapshots</span>
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="window.navigateToAppScreen('todos'); window.scrollTo({top:0, behavior:'smooth'});">View Todos Interface →</button>
           </div>
         </div>
 
-        <!-- Pillar 4: Habits & Brain Drills -->
-        <div class="pillar-card">
-          <div class="pillar-number">04 / FOCUS ECONOMY</div>
-          <h3 class="pillar-title">Habit Loops &amp; Mental Sharpening</h3>
-          <p class="pillar-desc">
-            Dopamine cravings can't just be suppressed—they must be redirected. RuN features daily streak tracking, daily quest milestones, and gamified brain drills (mental arithmetic and aptitude puzzles).
+        <!-- Card 3: App Blocker (Span 1) -->
+        <div class="bento-card" id="blocker">
+          <div class="bento-card-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">🛑</div>
+          <h3 class="bento-card-title">Hardware BAL-Immune Blocker</h3>
+          <p class="bento-card-desc">
+            Standard blockers break on Android 14+ due to Background Activity Launch (BAL) restrictions. Ayva uses direct <code>WindowManager.addView(TYPE_APPLICATION_OVERLAY)</code> to project an impenetrable 80px curved mindful pause barrier with ticking countdowns and arithmetic unlock drills.
           </p>
-          <p class="pillar-desc">
-            Instead of opening TikTok out of boredom, solve a quick 60-second math drill or complete a habit loop to earn XP, level up your profile, and unlock new profile emblems.
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="window.navigateToAppScreen('block'); window.scrollTo({top:0, behavior:'smooth'});">See Overlay Replica →</button>
+          </div>
+        </div>
+
+        <!-- Card 4: Notes Vault (Span 1) -->
+        <div class="bento-card" id="notes">
+          <div class="bento-card-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">📝</div>
+          <h3 class="bento-card-title">Encrypted Notes &amp; Voice Vault</h3>
+          <p class="bento-card-desc">
+            Google Keep-inspired aesthetic meets zero-knowledge cryptography. Features colored note cards, embedded checklists, and an on-device audio memo recorder with animated waveform playback.
           </p>
-          <div class="tech-tag-row">
-            <span class="tech-tag">Streak Flames</span>
-            <span class="tech-tag">Aptitude Drills</span>
-            <span class="tech-tag">Daily Quests</span>
-            <span class="tech-tag">Avatar Unlocks</span>
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="window.navigateToAppScreen('notes'); window.scrollTo({top:0, behavior:'smooth'});">Explore Notes Screen →</button>
+          </div>
+        </div>
+
+        <!-- Card 5: Habits & Smart Alerts (Span 1) -->
+        <div class="bento-card" id="habits">
+          <div class="bento-card-icon" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">⚡</div>
+          <h3 class="bento-card-title">Habits &amp; Smart Notifications</h3>
+          <p class="bento-card-desc">
+            Build positive rhythms and break compulsive habits with streak multipliers and equipped Streak Freezes. Precise notifications via Android's native <code>AlarmManager</code> with zero telemetry.
+          </p>
+          <div>
+            <button class="btn btn-secondary btn-sm" onclick="window.navigateToAppScreen('habits'); window.scrollTo({top:0, behavior:'smooth'});">Test Habit Rhythms →</button>
+          </div>
+        </div>
+
+        <!-- Card 6: Snapshots & Security (Span 3) -->
+        <div class="bento-card span-2" id="security" style="grid-column: span 3;">
+          <div class="bento-card-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">🛡️</div>
+          <h3 class="bento-card-title">Point-in-Time Snapshots, Cryptographic Backups &amp; Sovereign Security</h3>
+          <p class="bento-card-desc">
+            Your data never leaves your silicon. Ayva takes automated hourly and daily snapshots for instant 1-tap state rollbacks. Export password-protected offline backups encrypted with <b>Argon2id KDF</b> and <b>AES-256-GCM</b>. Recover your private vault anytime with an industry-standard <b>12-word BIP-39 mnemonic seed phrase</b>.
+          </p>
+          <div style="display:flex; gap:12px; margin-top:8px; flex-wrap:wrap;">
+            <span class="meta-chip" style="background:rgba(255,255,255,0.06); color:#f8fafc;">🔒 FLAG_SECURE Window Protection</span>
+            <span class="meta-chip" style="background:rgba(255,255,255,0.06); color:#f8fafc;">🛡️ Device Administrator Anti-Tamper</span>
+            <span class="meta-chip" style="background:rgba(255,255,255,0.06); color:#f8fafc;">📦 Offline .focusbak Portability</span>
+            <span class="meta-chip" style="background:rgba(16,185,129,0.15); color:#34d399;">🚫 Zero INTERNET Permission</span>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Comparison Section -->
-  <section class="comparison-section" id="comparison">
-    <div class="container">
-      <div style="text-align: center; margin-bottom: 56px;">
-        <span class="section-label">Honest Comparison</span>
-        <h2 class="section-title">How RuN compares to other blockers.</h2>
-      </div>
-
-      <div class="table-wrap">
-        <table class="comp-table">
-          <thead>
-            <tr>
-              <th>Feature</th>
-              <th>RuN</th>
-              <th>Opal / Freedom</th>
-              <th>Generic App Lockers</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="highlight-row">
-              <td class="col-brand">
-                <img src="icon.svg" width="22" height="22" alt="RuN">
-                <span>RuN</span>
-                <span class="brand-badge">v2.0</span>
-              </td>
-              <td style="color:var(--accent-cyan); font-weight:700;">100% Free &amp; Offline</td>
-              <td>$40–$100 / Year Subscription</td>
-              <td>Ad-supported / Cluttered</td>
-            </tr>
-            <tr>
-              <td><strong>Network Requirements</strong></td>
-              <td><span class="check-icon">✓</span> <strong>0 Packets (Completely Offline)</strong></td>
-              <td><span class="cross-icon">✗</span> Continuous Cloud Telemetry</td>
-              <td><span class="cross-icon">✗</span> Constant Ad Pings</td>
-            </tr>
-            <tr>
-              <td><strong>Account &amp; Registration</strong></td>
-              <td><span class="check-icon">✓</span> <strong>None Required (Instant Use)</strong></td>
-              <td><span class="cross-icon">✗</span> Mandatory Email / Social Login</td>
-              <td>Varies</td>
-            </tr>
-            <tr>
-              <td><strong>Android 14–16+ Compatibility</strong></td>
-              <td><span class="check-icon">✓</span> <strong>Direct Overlay (BAL-Proof)</strong></td>
-              <td>Local VPN / Accessibility latency</td>
-              <td><span class="cross-icon">✗</span> Broken by Android 14+ BAL</td>
-            </tr>
-            <tr>
-              <td><strong>Encrypted Note Vault</strong></td>
-              <td><span class="check-icon">✓</span> <strong>AES-256-GCM + SQLCipher</strong></td>
-              <td><span class="cross-icon">✗</span> None</td>
-              <td><span class="cross-icon">✗</span> None</td>
-            </tr>
-            <tr>
-              <td><strong>Habits &amp; Aptitude Drills</strong></td>
-              <td><span class="check-icon">✓</span> <strong>Integrated Focus Economy</strong></td>
-              <td><span class="cross-icon">✗</span> Basic Charts Only</td>
-              <td><span class="cross-icon">✗</span> None</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <!-- Download & QR Code Section -->
+  <!-- Download & Open Source Verification Section -->
   <section class="download-section" id="download">
     <div class="container">
       <div class="download-card">
         <div>
-          <span class="section-label" style="background: rgba(255,255,255,0.06); color:#fff; border-color:rgba(255,255,255,0.2);">Official Release</span>
-          <h2 style="font-size: 2.5rem; font-weight: 800; line-height: 1.15; margin-bottom: 16px;">
-            Download RuN for Android
+          <div class="section-tag" style="background:rgba(16,185,129,0.15); color:#10b981;">Release v2.0.0 Ready</div>
+          <h2 style="font-size:2.2rem; font-weight:800; letter-spacing:-0.03em; margin-bottom:14px;">
+            Claim Sovereign Control of Your Attention
           </h2>
-          <p style="color: var(--text-secondary); margin-bottom: 32px; font-size: 1.0625rem; line-height: 1.6;">
-            Get the standalone release APK directly from GitHub Releases. Compatible with Android 7.0 through Android 15 &amp; 16+.
+          <p style="font-size:1rem; color:var(--text-secondary); margin-bottom:28px; line-height:1.6;">
+            Ayva is open-source, reproducible, and free from surveillance capitalism. Download the standalone signed APK or inspect the full Kotlin codebase on GitHub.
           </p>
-
-          <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 24px;">
-            <a href="https://github.com/Nrajesh0/Ayva/releases/latest" class="btn btn-primary btn-glow dynamic-download-link" style="padding: 14px 28px; font-size: 1.0625rem;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-              Download APK (<span class="dynamic-version">v2.0.0</span>)
+          <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+            <a href="https://github.com/Nrajesh0/Ayva/releases/tag/v2.0.0" class="btn btn-primary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download APK (v2.0.0)
             </a>
-            <a href="https://github.com/Nrajesh0/Ayva/releases" class="btn btn-secondary" target="_blank" rel="noopener">
-              Release Notes
+            <a href="https://github.com/Nrajesh0/Ayva" target="_blank" rel="noopener" class="btn btn-secondary">
+              View Repository
             </a>
-          </div>
-
-          <div style="display: flex; gap: 24px; font-family: var(--font-mono); font-size: 0.8125rem; color: var(--text-muted);">
-            <div>Release: <span id="release-date" style="color: #fff;">Latest</span></div>
-            <div>Package: <span style="color: #fff;">com.focusbyrj.app</span></div>
-            <div>Size: <span id="apk-size" style="color: #fff;">~12 MB</span></div>
           </div>
         </div>
 
-        <!-- Standalone Mobile QR Code Card -->
-        <div class="qr-card-box">
-          <div class="qr-canvas-holder" id="qr-code-target">
-            <!-- Rendered via inline SVG -->
-          </div>
-          <div class="qr-label">
-            <strong>Scan to Install on Android</strong><br>
-            Point your camera to download the APK directly.
+        <div class="qr-box-container">
+          <div id="releaseQrContainer"></div>
+          <div style="font-size:0.75rem; color:var(--text-secondary); text-align:center;">
+            Scan to download APK on your Android device
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- FAQ Accordion -->
-  <section class="faq-section" id="faq">
-    <div class="container">
-      <div style="text-align: center; margin-bottom: 56px;">
-        <span class="section-label">Questions &amp; Answers</span>
-        <h2 class="section-title">Frequently Asked Questions</h2>
-      </div>
-
-      <div class="faq-list">
-        <div class="faq-item">
-          <button class="faq-trigger">
-            <span>How does RuN block apps without an internet connection?</span>
-            <span class="faq-icon">+</span>
-          </button>
-          <div class="faq-content">
-            <div class="faq-body">
-              RuN monitors foreground package usage events entirely locally on your processor via Android's local UsageStats and Accessibility APIs. When a restricted app is launched, RuN injects a system window overlay directly into the window compositor in under 15 milliseconds, without ever querying an external server.
-            </div>
-          </div>
-        </div>
-
-        <div class="faq-item">
-          <button class="faq-trigger">
-            <span>What makes RuN "BAL-Proof" on Android 14+ and 16?</span>
-            <span class="faq-icon">+</span>
-          </button>
-          <div class="faq-content">
-            <div class="faq-body">
-              Modern Android releases heavily restrict Background Activity Launches (BAL), causing traditional app blockers (which try to launch an activity screen over the target app) to fail with security exceptions. RuN uses the direct <code>WindowManager.addView</code> overlay method (<code>TYPE_APPLICATION_OVERLAY</code>), which bypasses BAL constraints and works smoothly across all modern Android versions.
-            </div>
-          </div>
-        </div>
-
-        <div class="faq-item">
-          <button class="faq-trigger">
-            <span>Can RuN be bypassed by killing it in Recent Apps?</span>
-            <span class="faq-icon">+</span>
-          </button>
-          <div class="faq-content">
-            <div class="faq-body">
-              RuN includes device administrator protections, biometric authentication locks, and sticky foreground service execution with auto-restart receivers, preventing circumvention during active focus sessions.
-            </div>
-          </div>
-        </div>
-
-        <div class="faq-item">
-          <button class="faq-trigger">
-            <span>Can I export or backup my notes and habits?</span>
-            <span class="faq-icon">+</span>
-          </button>
-          <div class="faq-content">
-            <div class="faq-body">
-              Yes. RuN provides an encrypted local backup engine (V4 Encrypted Snapshot) allowing you to export your data to a password-protected file on your internal storage or SD card. No cloud sync is ever required.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <!-- Floating Ayva Bubble on Website -->
+  <div class="website-ayva-bubble" id="websiteFloatingBubble" title="Tap to talk to Ayva!">
+    🐱
+    <div class="bubble-tooltip">Try Ayva Bubble Chat!</div>
+  </div>
 
   <!-- Footer -->
   <footer class="site-footer">
-    <div class="container">
-      <div class="footer-top">
-        <div class="footer-brand">
-          <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-            <img src="icon.svg" width="28" height="28" alt="RuN">
-            <strong style="font-size:1.125rem; color:#fff;">RuN</strong>
-          </div>
-          <p>
-            The strictly offline, privacy-first Android App Locker &amp; Focus Suite. Built for deep work without compromise.
-          </p>
-        </div>
-
-        <div class="footer-col">
-          <h4>Product</h4>
-          <ul>
-            <li><a href="#screens">App Interface</a></li>
-            <li><a href="#architecture">Architecture</a></li>
-            <li><a href="#comparison">Comparison</a></li>
-            <li><a href="#download">Download APK</a></li>
-          </ul>
-        </div>
-
-        <div class="footer-col">
-          <h4>Development</h4>
-          <ul>
-            <li><a href="https://github.com/Nrajesh0/Ayva" target="_blank" rel="noopener">GitHub Repository</a></li>
-            <li><a href="https://github.com/Nrajesh0/Ayva/releases" target="_blank" rel="noopener">Releases &amp; Changelog</a></li>
-            <li><a href="https://github.com/Nrajesh0/Ayva/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
-          </ul>
-        </div>
-
-        <div class="footer-col">
-          <h4>Brand &amp; Legal</h4>
-          <ul>
-            <li><a href="https://github.com/Nrajesh0/Ayva/blob/main/TRADEMARK.md" target="_blank" rel="noopener">Trademark Policy</a></li>
-            <li><span style="color:var(--text-muted);">Zero Data Collected</span></li>
-          </ul>
-        </div>
+    <div class="container footer-content">
+      <div>
+        <b>Ayva</b> • The Sovereign Focus Operating System by FocusByRj.
       </div>
-
-      <div class="footer-bottom">
-        <div>
-          © 2024–2026 Focus by Rj / RuN Project. All rights reserved.
-        </div>
-        <div style="font-size: 0.8125rem;">
-          RuN™, Ayva™, and the runner emblem are official trademarks. See <a href="https://github.com/Nrajesh0/Ayva/blob/main/TRADEMARK.md" style="color:var(--accent-cyan); text-decoration:none;">TRADEMARK.md</a>.
-        </div>
-      </div>
+      <ul class="footer-links">
+        <li><a href="https://github.com/Nrajesh0/Ayva/blob/main/TRADEMARK.md">Trademark Policy</a></li>
+        <li><a href="https://github.com/Nrajesh0/Ayva/blob/main/LICENSE">Apache 2.0 License</a></li>
+        <li><a href="https://github.com/Nrajesh0/Ayva">GitHub</a></li>
+      </ul>
     </div>
   </footer>
 
