@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/Nrajesh0/Ayva/releases/latest"><img src="https://img.shields.io/github/v/release/Nrajesh0/Ayva?style=flat-square&color=black" alt="Latest Release"></a>
   <a href="https://github.com/Nrajesh0/Ayva/releases"><img src="https://img.shields.io/github/downloads/Nrajesh0/Ayva/total?style=flat-square&color=blue" alt="Downloads"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-All%20Rights%20Reserved-lightgrey?style=flat-square" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GNU%20AGPLv3-blue?style=flat-square" alt="License: AGPLv3"></a>
   <a href="TRADEMARK.md"><img src="https://img.shields.io/badge/trademark-Brand%20Policy-orange?style=flat-square" alt="Trademark Policy"></a>
 </p>
 
@@ -53,4 +53,6 @@ The **RuN** name, logo, app icon designs, and visual branding are official brand
 
 ## License
 
-Copyright (c) 2024-2026 Focus by Rj. All rights reserved. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU Affero General Public License v3.0 (GNU AGPLv3)**. See the [LICENSE](LICENSE) file for the full license terms, disclaimer of warranty, and limitation of liability.
+
+All brand names, trademarks, logos, and app icon artwork remain proprietary under our [**Trademark Policy & Brand Guidelines**](TRADEMARK.md).
