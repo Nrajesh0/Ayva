@@ -33,6 +33,7 @@
         <li><a href="#matrix" class="nav-link">365D Matrix</a></li>
         <li><a href="#routines" class="nav-link">Routines</a></li>
         <li><a href="#tasks" class="nav-link">Tasks</a></li>
+        <li><a href="#notes" class="nav-link">Notes &amp; Vault</a></li>
         <li><a href="#security" class="nav-link">Security</a></li>
       </ul>
 
@@ -107,13 +108,28 @@
           <button class="phone-tab-btn" data-screen="todos">📋 Tasks</button>
         </div>
 
-        <!-- Phone Device Frame -->
-        <div class="phone-device-frame">
-          <!-- Floating "RN" Bubble (Matches real screenshot) -->
-          <div class="real-floating-bubble" id="phoneFloatingBubble" title="Tap to open Ayva Chat">
-            <span class="rn-bubble-text">RN</span>
+        <!-- Sub-Views Selector (Outside phone frame so it never blocks the phone UI) -->
+        <div class="sub-views-container">
+          <div class="screenshot-sub-selector" id="sub-chat">
+            <button class="sub-pill-btn active" data-target="img-chat-added">View 1</button>
+            <button class="sub-pill-btn" data-target="img-chat-welcome">View 2</button>
+            <button class="sub-pill-btn" data-target="img-chat-typing">View 3</button>
           </div>
 
+          <div class="screenshot-sub-selector" id="sub-routines" style="display: none;">
+            <button class="sub-pill-btn active" data-target="img-routines-overview">View 1</button>
+            <button class="sub-pill-btn" data-target="img-routines-modes">View 2</button>
+            <button class="sub-pill-btn" data-target="img-routines-apps">View 3</button>
+          </div>
+
+          <div class="screenshot-sub-selector" id="sub-todos" style="display: none;">
+            <button class="sub-pill-btn active" data-target="img-todos-list">View 1</button>
+            <button class="sub-pill-btn" data-target="img-todos-new">View 2</button>
+          </div>
+        </div>
+
+        <!-- Phone Device Frame (100% Clean Unobstructed Display) -->
+        <div class="phone-device-frame">
           <!-- Screen Display with Real Screenshots -->
           <div class="phone-screen-display">
             <!-- 1. Chat Screens -->
@@ -135,24 +151,6 @@
             <!-- 5. Todos & New Task Screens -->
             <img src="screenshots/todos_tasks.jpg" id="img-todos-list" class="real-screenshot-img" alt="Todos List Screen">
             <img src="screenshots/new_task_nlu.jpg" id="img-todos-new" class="real-screenshot-img" alt="New Task with NLU Detection">
-          </div>
-
-          <!-- Sub-screen variants selectors -->
-          <div class="screenshot-sub-selector" id="sub-chat">
-            <button class="sub-pill-btn active" data-target="img-chat-added">Task on Radar</button>
-            <button class="sub-pill-btn" data-target="img-chat-welcome">Goldfish Cat</button>
-            <button class="sub-pill-btn" data-target="img-chat-typing">Blunng Cat</button>
-          </div>
-
-          <div class="screenshot-sub-selector" id="sub-routines" style="display: none;">
-            <button class="sub-pill-btn active" data-target="img-routines-overview">Focus Windows</button>
-            <button class="sub-pill-btn" data-target="img-routines-modes">Hard/Soft Modes</button>
-            <button class="sub-pill-btn" data-target="img-routines-apps">Select Apps</button>
-          </div>
-
-          <div class="screenshot-sub-selector" id="sub-todos" style="display: none;">
-            <button class="sub-pill-btn active" data-target="img-todos-list">Todos List</button>
-            <button class="sub-pill-btn" data-target="img-todos-new">New Task NLU</button>
           </div>
         </div>
       </div>
@@ -260,13 +258,57 @@
           </p>
         </div>
 
-        <!-- 6. Snapshots & Encrypted Vault -->
-        <div class="bento-box span-2">
-          <div class="bento-icon-badge" style="background: rgba(102, 187, 151, 0.12); color: var(--ayva-green);">📦</div>
-          <h3 class="bento-title">Rolling Snapshots &amp; Offline Vault</h3>
-          <p class="bento-desc">
-            Never lose your workflow. Ayva records rolling point-in-time state snapshots for 1-tap recovery. Export password-protected offline backups encrypted with <b>Argon2id KDF</b> and <b>AES-256-GCM</b>, backed by a 12-word BIP-39 mnemonic phrase.
+        <!-- 6. Encrypted Notes & Secret Vault (Span 3 Full Showcase) -->
+        <div class="bento-box span-3" id="notes">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div class="bento-icon-badge" style="background: rgba(56, 189, 248, 0.12); color: var(--ayva-cyan);">📝</div>
+              <div>
+                <h3 class="bento-title" style="margin-bottom: 2px;">Encrypted Notes &amp; Secret Vault</h3>
+                <span style="font-size: 0.78rem; color: var(--ayva-green); font-weight: 600;">Zero-Leakage Architecture • Anti-Screenshot (FLAG_SECURE) Protected</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <span class="trust-badge" style="margin: 0; padding: 4px 10px; font-size: 0.72rem;">Argon2id + AES-256-GCM</span>
+              <span class="trust-badge" style="margin: 0; padding: 4px 10px; font-size: 0.72rem;">BIP-39 Mnemonic Recovery</span>
+            </div>
+          </div>
+          
+          <p class="bento-desc" style="margin-top: 14px;">
+            Ayva features a modular Notesnook-grade block editor designed for high-focus writing, structured data, and private journaling. <b>Why no screenshots?</b> Ayva actively applies <code>WindowManager.LayoutParams.FLAG_SECURE</code> to sensitive surfaces—intercepting OS screenshot capture, screen recording, and system app switcher thumbnails at the Linux display server boundary.
           </p>
+
+          <div class="vault-features-list">
+            <div class="vault-feat-card">
+              <span class="vault-feat-title">🧱 Notesnook Block Engine</span>
+              <span class="vault-feat-desc">Modular blocks for Headings, Checklists, Syntax-highlighted Code (Kotlin, Python, Java), LaTeX Math Formulas (\(E = mc^2\)), and Callout alert boxes (Note, Warning, Tip, Success).</span>
+            </div>
+
+            <div class="vault-feat-card">
+              <span class="vault-feat-title">📊 Interactive Tables</span>
+              <span class="vault-feat-desc">Native multi-column spreadsheet tables with dynamic row/column addition, column width dragging, and structured markdown serialization.</span>
+            </div>
+
+            <div class="vault-feat-card">
+              <span class="vault-feat-title">🎨 Vector Sketch Canvas</span>
+              <span class="vault-feat-desc">Freehand sketching with Pen, Brush, Highlighter, Eraser, stroke weight controls, and rule/grid overlays embedded directly into notes.</span>
+            </div>
+
+            <div class="vault-feat-card">
+              <span class="vault-feat-title">🎙️ Encrypted Audio Memos</span>
+              <span class="vault-feat-desc">Built-in audio memo recording with real-time amplitude waveforms and playback scrubbing, stored in encrypted local storage.</span>
+            </div>
+
+            <div class="vault-feat-card">
+              <span class="vault-feat-title">📄 Word (.docx) &amp; Print PDF</span>
+              <span class="vault-feat-desc">Native export to Microsoft Word .docx (clean OpenXML) and print-ready PDF with automatic Table of Contents and document reading statistics.</span>
+            </div>
+
+            <div class="vault-feat-card">
+              <span class="vault-feat-title">🔐 Hardware Keystore &amp; Recovery</span>
+              <span class="vault-feat-desc">Protected by 6-digit PIN with native Argon2id KDF, AES-256-GCM Keystore hardware encryption, rate-limiting escalation, and 12-word BIP-39 phrase disaster recovery.</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -304,12 +346,6 @@
       </div>
     </div>
   </section>
-
-  <!-- Floating "RN" Bubble on Website (Bottom-Right) -->
-  <div class="website-ayva-bubble" id="websiteFloatingBubble" title="Tap to view Ayva Bubble Chat">
-    <span class="rn-bubble-text" style="font-size: 1.1rem;">RN</span>
-    <div class="website-bubble-tooltip">Try Ayva Bubble Chat!</div>
-  </div>
 
   <!-- Footer -->
   <footer class="site-footer">

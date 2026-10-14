@@ -1,13 +1,12 @@
 /**
  * AYVA (FocusByRj) — 2026 Minimalist Engine
- * Coordinates real screenshot switching, smooth tab transitions,
- * floating bubble animations, and release QR generator.
+ * Coordinates real screenshot switching, smooth View 1/2/3 transitions,
+ * and release QR generator.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
   initRealScreenshotSwitcher();
   initSubPillSwitchers();
-  initFloatingBubbles();
   initReleaseQrCode();
 });
 
@@ -64,7 +63,7 @@ function initRealScreenshotSwitcher() {
 }
 
 // ==========================================================================
-// 2. SUB-PILL SWITCHERS (Within screens like Chat, Routines, Tasks)
+// 2. SUB-PILL SWITCHERS (View 1 / View 2 / View 3)
 // ==========================================================================
 function initSubPillSwitchers() {
   const subPills = document.querySelectorAll('.sub-pill-btn');
@@ -86,28 +85,7 @@ function initSubPillSwitchers() {
 }
 
 // ==========================================================================
-// 3. FLOATING BUBBLES INTERACTION
-// ==========================================================================
-function initFloatingBubbles() {
-  const phoneBubble = document.getElementById('phoneFloatingBubble');
-  const websiteBubble = document.getElementById('websiteFloatingBubble');
-
-  if (phoneBubble) {
-    phoneBubble.addEventListener('click', () => {
-      if (window.navigateToScreen) window.navigateToScreen('chat');
-    });
-  }
-
-  if (websiteBubble) {
-    websiteBubble.addEventListener('click', () => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      if (window.navigateToScreen) window.navigateToScreen('chat');
-    });
-  }
-}
-
-// ==========================================================================
-// 4. STANDALONE SVG QR CODE GENERATOR (GitHub Releases v2.0.0)
+// 3. STANDALONE SVG QR CODE GENERATOR (GitHub Releases v2.0.0)
 // ==========================================================================
 function initReleaseQrCode() {
   const qrFrame = document.getElementById('qrCodeSlot');

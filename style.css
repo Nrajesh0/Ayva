@@ -1,7 +1,7 @@
 /* ==========================================================================
    AYVA (FocusByRj) — 2026 Minimalist & Cool Style System
    Inspired by Linear, Vercel & Nothing OS
-   OLED Dark • Authentic Jetpack Compose Android Replicas
+   OLED Dark • Authentic Jetpack Compose Android Architecture
    ========================================================================== */
 
 :root {
@@ -26,6 +26,7 @@
   --ayva-gold: #e5a93c;
   --ayva-gold-glow: rgba(229, 169, 60, 0.2);
   --ayva-purple: #a882dd;
+  --ayva-cyan: #38bdf8;
   --ayva-red: #ea5b5b;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
@@ -84,7 +85,7 @@ body {
 }
 
 /* ==========================================================================
-   Navigation Bar (Ultra-Minimalist Floating Glass)
+   Navigation Bar (Floating Minimalist Glass)
    ========================================================================== */
 .site-nav {
   position: sticky;
@@ -288,15 +289,8 @@ body {
   margin-bottom: 22px;
 }
 
-.hero-title span.highlight {
-  background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
 .hero-title span.accent-text {
   color: var(--ayva-green);
-  -webkit-text-fill-color: var(--ayva-green);
 }
 
 .hero-lead {
@@ -349,7 +343,7 @@ body {
   position: relative;
 }
 
-/* Screen Switcher Pills */
+/* Main Top Screen Switcher Tabs */
 .phone-tab-bar {
   display: flex;
   gap: 5px;
@@ -358,7 +352,7 @@ body {
   backdrop-filter: blur(20px);
   border: 1px solid var(--border-subtle);
   border-radius: 9999px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   max-width: 100%;
   overflow-x: auto;
@@ -391,6 +385,48 @@ body {
   color: #000000;
 }
 
+/* Sub-Views Selector (OUTSIDE the phone screen so it NEVER blocks the phone UI!) */
+.sub-views-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  min-height: 32px;
+}
+
+.screenshot-sub-selector {
+  display: flex;
+  gap: 6px;
+  padding: 3px 6px;
+  background: rgba(14, 18, 26, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 9999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.sub-pill-btn {
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sub-pill-btn:hover {
+  color: var(--text-secondary);
+}
+
+.sub-pill-btn.active {
+  background: var(--ayva-green);
+  color: #000000;
+  font-weight: 700;
+}
+
 /* Phone Mockup Frame */
 .phone-device-frame {
   width: var(--phone-width);
@@ -406,38 +442,6 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-/* The Real Floating "RN" Bubble Icon (matches app screenshot) */
-.real-floating-bubble {
-  position: absolute;
-  top: 60px;
-  left: 12px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: #000000;
-  border: 1.5px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 40;
-  cursor: pointer;
-  transition: transform 0.2s ease;
-}
-
-.real-floating-bubble:hover {
-  transform: scale(1.08);
-}
-
-.rn-bubble-text {
-  font-weight: 900;
-  font-size: 0.95rem;
-  letter-spacing: -0.04em;
-  color: #ffffff;
-  font-style: italic;
-  line-height: 1;
 }
 
 /* Phone Display Area */
@@ -465,44 +469,6 @@ body {
   opacity: 1;
   transform: scale(1);
   pointer-events: auto;
-}
-
-/* Sub-screen variant buttons (Floating pill bottom bar) */
-.screenshot-sub-selector {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: rgba(10, 14, 20, 0.92);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 9999px;
-  z-index: 35;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
-}
-
-.sub-pill-btn {
-  padding: 4px 10px;
-  border-radius: 9999px;
-  background: transparent;
-  color: var(--text-muted);
-  border: none;
-  font-size: 0.68rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.sub-pill-btn:hover {
-  color: var(--text-secondary);
-}
-
-.sub-pill-btn.active {
-  background: var(--ayva-green);
-  color: #000000;
 }
 
 /* ==========================================================================
@@ -540,7 +506,7 @@ body {
 .section-subhead {
   font-size: 1.05rem;
   color: var(--text-secondary);
-  max-width: 580px;
+  max-width: 600px;
   margin-bottom: 50px;
 }
 
@@ -696,6 +662,36 @@ body {
   color: #000000;
 }
 
+/* Notes & Vault Spotlight Grid */
+.vault-features-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.vault-feat-card {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vault-feat-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.vault-feat-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 /* Matrix Showcase snippet */
 .matrix-stats-strip {
   display: flex;
@@ -762,53 +758,6 @@ body {
 }
 
 /* ==========================================================================
-   Interactive Floating Ayva Bubble (Matches Real App Icon)
-   ========================================================================== */
-.website-ayva-bubble {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: #000000;
-  border: 2px solid var(--ayva-green);
-  box-shadow: 0 8px 30px var(--ayva-green-glow);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  z-index: 999;
-  transition: all 0.3s var(--ease-spring);
-  animation: floatBubble 3s infinite ease-in-out;
-}
-
-.website-ayva-bubble:hover {
-  transform: scale(1.12);
-  box-shadow: 0 12px 40px rgba(102, 187, 151, 0.5);
-}
-
-@keyframes floatBubble {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
-}
-
-.website-bubble-tooltip {
-  position: absolute;
-  right: 64px;
-  white-space: nowrap;
-  background: #0f1420;
-  border: 1px solid var(--border-subtle);
-  padding: 6px 14px;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
-}
-
-/* ==========================================================================
    Footer
    ========================================================================== */
 .site-footer {
@@ -861,11 +810,11 @@ body {
   .bento-grid {
     grid-template-columns: 1fr 1fr;
   }
-  .bento-box.span-2 {
+  .bento-box.span-2, .bento-box.span-3 {
     grid-column: span 2;
   }
-  .bento-box.span-3 {
-    grid-column: span 2;
+  .vault-features-list {
+    grid-template-columns: 1fr 1fr;
   }
   .download-card {
     grid-template-columns: 1fr;
@@ -888,6 +837,9 @@ body {
   }
   .bento-box.span-2, .bento-box.span-3 {
     grid-column: span 1;
+  }
+  .vault-features-list {
+    grid-template-columns: 1fr;
   }
   :root {
     --phone-width: 320px;
