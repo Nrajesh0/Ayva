@@ -6,7 +6,7 @@
   <title>RuN — Zero-Network App Locker & Offline Focus Suite for Android</title>
   
   <!-- Meta & SEO -->
-  <meta name="description" content="RuN is a strictly offline, privacy-first Android app locker, habit tracker, and focus suite. 0 trackers, 0 network requests, and BAL-proof direct overlay blocking.">
+  <meta name="description" content="RuN is a strictly offline, privacy-first Android app locker, habit tracker, and encrypted focus suite. 0 trackers, 0 network requests, and BAL-proof direct window overlay blocking.">
   <meta name="keywords" content="RuN, App Locker, Focus Tracker, Android App Blocker, Offline, Privacy First, Zero Network, Open Source, F-Droid">
   <meta name="author" content="Nrajesh0">
   
@@ -49,9 +49,9 @@
 
       <nav>
         <ul class="nav-links">
-          <li><a href="#features">Features</a></li>
+          <li><a href="#screens">App Interface</a></li>
           <li><a href="#architecture">Architecture</a></li>
-          <li><a href="#comparison">Why RuN</a></li>
+          <li><a href="#comparison">Comparison</a></li>
           <li><a href="#faq">FAQ</a></li>
           <li><a href="https://github.com/Nrajesh0/Ayva" target="_blank" rel="noopener">GitHub</a></li>
         </ul>
@@ -77,7 +77,7 @@
   </header>
 
   <!-- Hero Section -->
-  <section class="hero-section">
+  <section class="hero-section" id="screens">
     <div class="container hero-grid">
       <div class="hero-content">
         <div class="hero-badge">
@@ -93,8 +93,8 @@
         </h1>
 
         <p class="hero-lead">
-          The strictly offline Android app blocker and digital wellbeing suite. 
-          Zero trackers, zero telemetry, and BAL-proof direct window overlay blocking built for modern Android.
+          The strictly offline Android app blocker and digital wellbeing OS. 
+          Unbypassable direct window overlay blocking, encrypted note vault, and habit loops that never send a single byte over the internet.
         </p>
 
         <div class="hero-cta-group">
@@ -117,7 +117,7 @@
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
             </svg>
-            <span>100% Offline</span>
+            <span>100% Offline (No Internet Req.)</span>
           </div>
           <div class="hero-meta-item">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -129,119 +129,376 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
             </svg>
-            <span>Zero Trackers / Ads</span>
+            <span>Zero Trackers or Ads</span>
           </div>
         </div>
       </div>
 
-      <!-- Interactive 3D Phone Mockup -->
-      <div class="phone-mockup-wrap">
-        <div class="phone-mockup">
-          <div class="phone-island">
-            <div class="island-camera"></div>
-            <div class="island-sensor"></div>
-          </div>
+      <!-- TRUE-TO-APP INTERACTIVE PHONE SHOWCASE -->
+      <div class="phone-showcase-column">
+        <!-- Interactive Screen Switcher Bar -->
+        <div class="screen-switcher-bar">
+          <button class="screen-switch-btn active" data-screen="screen-dashboard">
+            <span>🎯 Focus</span>
+          </button>
+          <button class="screen-switch-btn" data-screen="screen-blocker">
+            <span>🛑 Block Overlay</span>
+          </button>
+          <button class="screen-switch-btn" data-screen="screen-notes">
+            <span>🔐 Notes Vault</span>
+          </button>
+          <button class="screen-switch-btn" data-screen="screen-habits">
+            <span>⚡ Habits</span>
+          </button>
+        </div>
 
-          <div class="phone-screen">
-            <!-- Status Bar -->
-            <div class="phone-status-bar">
-              <span>12:00</span>
-              <div style="display:flex; gap:6px; align-items:center;">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="1" y1="1" x2="23" y2="23"></line>
-                  <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
-                  <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
-                  <path d="M10.71 5.05A16 16 0 0 1 22.56 9"></path>
-                </svg>
-                <span>100%</span>
-              </div>
+        <!-- Phone Frame with Real App Interfaces -->
+        <div class="phone-mockup-wrap">
+          <div class="phone-mockup">
+            <div class="phone-island">
+              <div class="island-camera"></div>
+              <div class="island-sensor"></div>
             </div>
 
-            <!-- App Top Header -->
-            <div class="phone-app-header">
-              <div class="phone-brand">
-                <img src="icon.svg" id="phone-app-logo" alt="RuN Icon" class="phone-logo">
-                <span class="phone-title">RuN</span>
-              </div>
-              <div class="phone-offline-badge">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                OFFLINE
-              </div>
-            </div>
-
-            <!-- Interactive Focus Dial -->
-            <div class="phone-timer-card">
-              <div class="timer-circle-wrap">
-                <svg class="timer-svg" viewBox="0 0 150 150">
-                  <circle class="timer-bg-circle" cx="75" cy="75" r="65"></circle>
-                  <circle class="timer-progress-circle" cx="75" cy="75" r="65"></circle>
-                </svg>
-                <div class="timer-center-text">
-                  <div class="timer-clock" id="timer-clock">24:59</div>
-                  <div class="timer-label">Deep Focus</div>
+            <div class="phone-screen">
+              <!-- Real MainTopBar.kt -->
+              <div class="real-top-bar">
+                <div class="top-bar-brand">
+                  <img src="icon.svg" alt="RuN Logo" class="top-bar-app-icon">
+                  <span class="top-bar-title">RuN</span>
+                </div>
+                <div class="top-bar-actions">
+                  <div class="streak-pill">
+                    <span>🔥</span>
+                    <span>14d</span>
+                  </div>
+                  <div class="profile-avatar-ring">
+                    <img src="avatars/avatar_knight.webp" id="phone-avatar-img" alt="Profile Avatar">
+                  </div>
                 </div>
               </div>
 
-              <button class="timer-toggle-btn" id="timer-toggle-btn">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="4" width="4" height="16" rx="1"/>
-                  <rect x="14" y="4" width="4" height="16" rx="1"/>
-                </svg>
-                Pause
-              </button>
-            </div>
+              <!-- ==============================================================
+                   SCREEN 1: REAL DASHBOARD SCREEN (DashboardScreen.kt)
+                   ============================================================== -->
+              <div class="real-screen-view active" id="screen-dashboard">
+                <!-- Top Row: Deep Work & Habits Glance -->
+                <div class="dashboard-top-row">
+                  <div class="real-deep-work-card">
+                    <div>
+                      <div class="card-label-small">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        Deep Work
+                      </div>
+                      <div class="deep-work-time" id="deep-work-time">25:00</div>
+                    </div>
+                    <button class="deep-work-btn" id="deep-work-btn">Start Focus</button>
+                  </div>
 
-            <!-- Mini Stats Row -->
-            <div class="phone-stats-grid">
-              <div class="phone-stat-card">
-                <div class="stat-header">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" color="var(--accent-amber)">
-                    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+                  <div class="real-habits-glance-card">
+                    <div>
+                      <div class="card-label-small">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+                        </svg>
+                        Today's Habits
+                      </div>
+                      <div class="habit-glance-summary">3 of 4 Done</div>
+                    </div>
+                    <div class="habit-progress-line">
+                      <div class="habit-dot completed"></div>
+                      <div class="habit-dot completed"></div>
+                      <div class="habit-dot completed"></div>
+                      <div class="habit-dot"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Routines & Shielded Section -->
+                <div class="routine-shield-banner">
+                  <div class="routine-info-left">
+                    <div class="routine-icon-box">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                      </svg>
+                    </div>
+                    <div>
+                      <div class="routine-name">Work Routine</div>
+                      <div class="routine-time">9:00 AM – 5:00 PM</div>
+                    </div>
+                  </div>
+                  <div class="shield-count-badge">6 Shielded</div>
+                </div>
+
+                <!-- Boundaries Header -->
+                <div class="boundaries-header">
+                  <span>Your boundaries</span>
+                  <span style="font-size:0.6875rem; color:var(--text-muted);">Toggle or edit</span>
+                </div>
+
+                <!-- App Restriction Items (SwipeableAppRestrictionCard.kt) -->
+                <div class="app-restriction-card">
+                  <div class="app-info-left">
+                    <div class="app-glyph-icon app-glyph-instagram">IG</div>
+                    <div>
+                      <div class="app-title-line">Instagram</div>
+                      <div class="app-status-sub" style="color:var(--accent-rose);">BLOCKED • Hard Lock</div>
+                    </div>
+                  </div>
+                  <div class="material-switch checked">
+                    <div class="switch-thumb"></div>
+                  </div>
+                </div>
+
+                <div class="app-restriction-card">
+                  <div class="app-info-left">
+                    <div class="app-glyph-icon app-glyph-youtube">YT</div>
+                    <div>
+                      <div class="app-title-line">YouTube</div>
+                      <div class="app-status-sub" style="color:var(--accent-amber);">30m Daily • 12m left</div>
+                    </div>
+                  </div>
+                  <div class="material-switch checked">
+                    <div class="switch-thumb"></div>
+                  </div>
+                </div>
+
+                <div class="app-restriction-card">
+                  <div class="app-info-left">
+                    <div class="app-glyph-icon app-glyph-x">𝕏</div>
+                    <div>
+                      <div class="app-title-line">X (Twitter)</div>
+                      <div class="app-status-sub" style="color:var(--accent-cyan);">Active Routine Lock</div>
+                    </div>
+                  </div>
+                  <div class="material-switch checked">
+                    <div class="switch-thumb"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ==============================================================
+                   SCREEN 2: REAL BLOCK SCREEN OVERLAY (BlockOverlayManager.kt)
+                   ============================================================== -->
+              <div class="real-screen-view" id="screen-blocker">
+                <div class="real-blocker-overlay-view">
+                  <div class="block-single-card">
+                    <div class="block-target-app-icon">
+                      <div class="app-glyph-icon app-glyph-instagram" style="width:40px; height:40px; border-radius:12px; font-size:1rem;">IG</div>
+                    </div>
+                    <div class="block-target-app-name">Instagram</div>
+                    <div class="block-main-title">Mindful Pause</div>
+                    
+                    <div class="block-quote-box">
+                      “Discipline is choosing between what you want now and what you want most.”
+                    </div>
+
+                    <div class="block-countdown-clock" id="block-countdown">00:15</div>
+                    <div class="block-progress-strip">
+                      <div class="block-progress-fill"></div>
+                    </div>
+                    <div class="block-subtext">Take a deep breath...</div>
+
+                    <button class="block-exit-btn" id="block-exit-home-btn">Exit to Home</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ==============================================================
+                   SCREEN 3: REAL ENCRYPTED NOTES (NotesScreen.kt)
+                   ============================================================== -->
+              <div class="real-screen-view" id="screen-notes">
+                <div class="notes-search-bar">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <span>Search notes</span>
+                  </div>
+                  <span style="color:var(--accent-emerald); font-weight:700;">🔒 Vault</span>
+                </div>
+
+                <div class="notes-chips-row">
+                  <div class="note-filter-chip active">All (12)</div>
+                  <div class="note-filter-chip">Pinned (2)</div>
+                  <div class="note-filter-chip">Checklists (5)</div>
+                  <div class="note-filter-chip">Audio (3)</div>
+                </div>
+
+                <div class="notes-grid-layout">
+                  <div class="keep-note-card keep-amber">
+                    <div class="note-card-title">
+                      <span>Weekly Focus Sprint</span>
+                      <span style="font-size:0.6875rem; color:var(--accent-amber);">📌 Pinned</span>
+                    </div>
+                    <div class="note-checklist-item">
+                      <div class="note-check-box checked">✓</div>
+                      <span style="text-decoration: line-through; opacity: 0.6;">Zero network audit</span>
+                    </div>
+                    <div class="note-checklist-item">
+                      <div class="note-check-box checked">✓</div>
+                      <span style="text-decoration: line-through; opacity: 0.6;">Direct overlay BAL verification</span>
+                    </div>
+                    <div class="note-checklist-item">
+                      <div class="note-check-box"></div>
+                      <span>Ship RuN v2.0 update</span>
+                    </div>
+                  </div>
+
+                  <div class="keep-note-card keep-cyan">
+                    <div class="note-card-title">
+                      <span>Audio Memo</span>
+                      <span>🎙️ 0:42</span>
+                    </div>
+                    <div style="font-size:0.6875rem; color:var(--text-secondary); line-height: 1.4;">
+                      “Key idea: replace social scrolling urges with 2-minute aptitude drills...”
+                    </div>
+                  </div>
+
+                  <div class="keep-note-card keep-purple">
+                    <div class="note-card-title">
+                      <span>Private Recovery Seed</span>
+                      <span style="color:var(--accent-rose);">🔒 AES-GCM</span>
+                    </div>
+                    <div style="font-size:0.6875rem; color:var(--text-muted); font-family:var(--font-mono);">
+                      ••••••••••••••••••••••••••••••••
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ==============================================================
+                   SCREEN 4: REAL HABITS & APTITUDE (HabitsScreen.kt)
+                   ============================================================== -->
+              <div class="real-screen-view" id="screen-habits">
+                <div class="habits-hero-card">
+                  <div class="level-row">
+                    <div class="level-badge">Level 7 • Mindful Scholar</div>
+                    <div class="energy-badge">⚡ 120 Energy</div>
+                  </div>
+                  <div class="xp-bar-bg">
+                    <div class="xp-bar-fill"></div>
+                  </div>
+                  <div class="xp-caption">
+                    <span>1,450 / 2,000 XP</span>
+                    <span>72%</span>
+                  </div>
+                </div>
+
+                <div class="quests-section-title">Today's Quests</div>
+                
+                <div class="quest-item-card">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="color:var(--accent-emerald);">✓</span>
+                    <span>Complete 2 Deep Work sessions</span>
+                  </div>
+                  <span style="color:var(--accent-amber);">+50 XP</span>
+                </div>
+
+                <div class="quest-item-card">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="color:var(--accent-emerald);">✓</span>
+                    <span>Solve 5 Aptitude Math Drills</span>
+                  </div>
+                  <span style="color:var(--accent-amber);">+40 XP</span>
+                </div>
+
+                <div class="quest-item-card">
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="color:var(--text-muted);">○</span>
+                    <span>Bedtime lock honored</span>
+                  </div>
+                  <span style="color:var(--text-muted);">+60 XP</span>
+                </div>
+
+                <div class="quests-section-title" style="margin-top:10px;">Active Habits</div>
+                <div class="app-restriction-card" style="margin-bottom:6px;">
+                  <div>
+                    <div class="app-title-line">Morning 20m Reading</div>
+                    <div class="app-status-sub">🔥 14 day streak</div>
+                  </div>
+                  <div class="note-check-box checked" style="width:18px; height:18px; font-size:0.75rem;">✓</div>
+                </div>
+              </div>
+
+              <!-- Real App Floating Bottom Dock (FocusBottomBar.kt) -->
+              <div class="real-floating-dock">
+                <button class="dock-tab-btn active" data-screen="screen-dashboard">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
                   </svg>
-                  Streak
-                </div>
-                <div class="stat-value">14 Days</div>
-              </div>
-              <div class="phone-stat-card">
-                <div class="stat-header">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" color="var(--accent-cyan)">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
+                  <span>Focus</span>
+                </button>
+                <button class="dock-tab-btn" data-screen="screen-blocker">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h2v-2h-2v2zm0-4h2V7h-2v6z"/>
                   </svg>
-                  Saved
-                </div>
-                <div class="stat-value">3h 45m</div>
+                  <span>Pause</span>
+                </button>
+                <button class="dock-tab-btn" data-screen="screen-notes">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3 18h12v-2H3v2zM3 6v2h18V6H3zm0 7h18v-2H3v2z"/>
+                  </svg>
+                  <span>Notes</span>
+                </button>
+                <button class="dock-tab-btn" data-screen="screen-habits">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                  </svg>
+                  <span>Habits</span>
+                </button>
               </div>
-            </div>
-
-            <!-- Block Overlay Simulation Layer (Direct Window Overlay Demo) -->
-            <div class="block-overlay-simulation" id="phone-block-overlay">
-              <div class="block-icon-badge">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-rose)" stroke-width="2.5">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-                </svg>
-              </div>
-              <div class="block-title">App Blocked</div>
-              <div class="block-desc">Instagram is restricted during your Deep Work session.</div>
-              <div class="block-quote">
-                "Discipline is choosing between what you want now and what you want most."
-              </div>
-              <button class="dismiss-block-btn" id="dismiss-block-btn">Return to Focus</button>
             </div>
           </div>
         </div>
 
-        <!-- External Interactive Controls -->
-        <div class="mockup-controls">
-          <button class="sim-btn" id="sim-block-trigger">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            Test App Blocker Overlay
-          </button>
+        <!-- Interactive Avatar Selector Strip -->
+        <div class="avatar-showcase-panel">
+          <div class="avatar-panel-header">
+            <span class="avatar-panel-title">Choose Launcher Profile Avatar</span>
+            <span style="font-size:0.6875rem; color:var(--accent-cyan); font-family:var(--font-mono);" id="active-avatar-name">The Knight</span>
+          </div>
+          <div class="avatar-scroll-row">
+            <div class="avatar-thumb-card" data-img="icon.svg" data-name="Default RuN" data-tier="Classic Emblem">
+              <img src="icon.svg" alt="Default">
+              <span class="avatar-thumb-name">Default</span>
+            </div>
+            <div class="avatar-thumb-card" data-img="avatars/avatar_wanderer.webp" data-name="The Wanderer" data-tier="Tier 1 • Explorer">
+              <img src="avatars/avatar_wanderer.webp" alt="Wanderer">
+              <span class="avatar-thumb-name">Wanderer</span>
+            </div>
+            <div class="avatar-thumb-card" data-img="avatars/avatar_scholar.webp" data-name="The Scholar" data-tier="Tier 2 • Knowledge">
+              <img src="avatars/avatar_scholar.webp" alt="Scholar">
+              <span class="avatar-thumb-name">Scholar</span>
+            </div>
+            <div class="avatar-thumb-card active" data-img="avatars/avatar_knight.webp" data-name="The Knight" data-tier="Tier 3 • Iron Will">
+              <img src="avatars/avatar_knight.webp" alt="Knight">
+              <span class="avatar-thumb-name">Knight</span>
+            </div>
+            <div class="avatar-thumb-card" data-img="avatars/avatar_noble.webp" data-name="The Noble" data-tier="Tier 4 • High Prestige">
+              <img src="avatars/avatar_noble.webp" alt="Noble">
+              <span class="avatar-thumb-name">Noble</span>
+            </div>
+            <div class="avatar-thumb-card" data-img="avatars/avatar_emperor.webp" data-name="The Emperor" data-tier="Tier 5 • Sovereign">
+              <img src="avatars/avatar_emperor.webp" alt="Emperor">
+              <span class="avatar-thumb-name">Emperor</span>
+            </div>
+            <div class="avatar-thumb-card" data-img="avatars/avatar_inferno.webp" data-name="Inferno" data-tier="Blazing Will">
+              <img src="avatars/avatar_inferno.webp" alt="Inferno">
+              <span class="avatar-thumb-name">Inferno</span>
+            </div>
+            <div class="avatar-thumb-card" data-img="avatars/avatar_champion.webp" data-name="Champion" data-tier="Trophy Winner">
+              <img src="avatars/avatar_champion.webp" alt="Champion">
+              <span class="avatar-thumb-name">Champion</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -269,135 +526,89 @@
     </div>
   </section>
 
-  <!-- Bento Grid Features Section -->
-  <section class="features-section" id="features">
+  <!-- Deep Architecture Explanation (The 4 Pillars) -->
+  <section class="pillars-section" id="architecture">
     <div class="container">
       <div style="text-align: center; margin-bottom: 60px;">
-        <span class="section-label">Engineered for Freedom</span>
-        <h2 class="section-title">Built differently from the ground up.</h2>
-        <p class="section-subtitle" style="margin: 0 auto;">No subscriptions, no accounts, no data harvesting. A precision productivity tool designed solely for you.</p>
+        <span class="section-label">Architecture &amp; Philosophy</span>
+        <h2 class="section-title">How RuN is actually built.</h2>
+        <p class="section-subtitle" style="margin: 0 auto;">Most focus apps require accounts, cloud sync, and expensive subscriptions, while leaking your app usage to third-party ad networks. RuN is an entirely offline personal focus operating system.</p>
       </div>
 
-      <div class="bento-grid">
-        <!-- Card 1: Direct Overlay Blocker -->
-        <div class="bento-card bento-span-2">
-          <div>
-            <div class="bento-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="9" y1="3" x2="9" y2="21"></line>
-              </svg>
+      <div class="pillars-grid">
+        <!-- Pillar 1: BAL-Proof Direct Overlay -->
+        <div class="pillar-card">
+          <div class="pillar-number">01 / OVERLAY ENGINE</div>
+          <h3 class="pillar-title">Direct Window Overlay (BAL-Proof)</h3>
+          <p class="pillar-desc">
+            Traditional app lockers rely on <code>startActivity()</code> to pop up a blocking screen. On Android 14, 15, and 16, Google's strict <strong>Background Activity Launch (BAL)</strong> security rules completely break this approach, resulting in blocked intents and security exceptions.
+          </p>
+          <p class="pillar-desc">
+            RuN solves this by injecting a direct <code>TYPE_APPLICATION_OVERLAY</code> view straight into the Android <code>WindowManager</code> in under 15ms. It runs completely outside activity stacks, providing smooth, unbypassable interception across all modern Android versions.
+          </p>
+          <div class="bal-diagram-box">
+            <div class="diagram-row">
+              <span>Standard App Lockers:</span>
+              <span style="color:var(--accent-rose);">❌ Crashed by Android 14+ BAL</span>
             </div>
-            <h3 class="bento-card-title">BAL-Proof Direct Window Overlay</h3>
-            <p class="bento-card-desc">
-              Android 14, 15, and 16 introduced strict Background Activity Launch (BAL) restrictions that break conventional app lockers that rely on <code>startActivity</code>. RuN renders its blocker via direct system window management (<code>WindowManager.addView</code> with <code>TYPE_APPLICATION_OVERLAY</code>) guaranteeing instant, unbypassable interception.
-            </p>
-          </div>
-          <div class="bento-visual">
-            <div style="display:flex; justify-content:space-between; align-items:center; font-family:var(--font-mono); font-size:0.75rem; color:var(--text-muted);">
-              <span>Android BAL Enforcement</span>
-              <span style="color:var(--accent-emerald);">BYPASSED VIA DIRECT OVERLAY</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 2: Zero-Network Guarantee -->
-        <div class="bento-card" id="architecture">
-          <div>
-            <div class="bento-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 1l22 22"></path>
-                <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
-                <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
-                <path d="M10.71 5.05A16 16 0 0 1 22.56 9"></path>
-              </svg>
-            </div>
-            <h3 class="bento-card-title">Zero Network Guarantee</h3>
-            <p class="bento-card-desc">
-              Your focus habits, notes, and screen time belong to you alone. RuN contains no network stack or background telemetry.
-            </p>
-          </div>
-          <div class="bento-visual">
-            <div class="packet-monitor">
-              <div class="packet-row">
-                <span>DNS Queries:</span>
-                <span class="packet-zero">0</span>
-              </div>
-              <div class="packet-row">
-                <span>Cloud Syncs:</span>
-                <span class="packet-zero">0 (Local Only)</span>
-              </div>
+            <div class="diagram-row">
+              <span>RuN Direct Overlay:</span>
+              <span style="color:var(--accent-emerald);">✅ Native WindowManager Bypass</span>
             </div>
           </div>
         </div>
 
-        <!-- Card 3: Encrypted Vault & Private Notes -->
-        <div class="bento-card">
-          <div>
-            <div class="bento-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-              </svg>
-            </div>
-            <h3 class="bento-card-title">Encrypted Private Vault</h3>
-            <p class="bento-card-desc">
-              Integrated encrypted markdown notes and thought-dump vault with AES-256-GCM encryption, Argon2id key derivation, and SQLCipher storage.
-            </p>
+        <!-- Pillar 2: Zero-Network Privacy -->
+        <div class="pillar-card">
+          <div class="pillar-number">02 / PRIVACY DESIGN</div>
+          <h3 class="pillar-title">Strict Zero-Network Guarantee</h3>
+          <p class="pillar-desc">
+            RuN does not request internet permission for its core functions. Your habits, restricted app packages, private notes, and screen time statistics are stored exclusively in an encrypted local SQLite database on your device.
+          </p>
+          <p class="pillar-desc">
+            There are zero remote telemetry SDKs, zero crash reporters sending stack traces, and zero analytics pings. We cannot see your data even if we wanted to.
+          </p>
+          <div class="tech-tag-row">
+            <span class="tech-tag">Zero Telemetry</span>
+            <span class="tech-tag">No Cloud Accounts</span>
+            <span class="tech-tag">Offline-First</span>
+            <span class="tech-tag">F-Droid Ready</span>
           </div>
         </div>
 
-        <!-- Card 4: Floating Focus Bubble -->
-        <div class="bento-card">
-          <div>
-            <div class="bento-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-            </div>
-            <h3 class="bento-card-title">Floating Bubble Multitasking</h3>
-            <p class="bento-card-desc">
-              A minimalist floating bubble widget that stays accessible across any application, enabling instant timer toggling, quick todo checks, and note captures.
-            </p>
+        <!-- Pillar 3: Encrypted Note Vault -->
+        <div class="pillar-card">
+          <div class="pillar-number">03 / MIND VAULT</div>
+          <h3 class="pillar-title">Encrypted Note Vault &amp; Thought Capture</h3>
+          <p class="pillar-desc">
+            When you stop mindless scrolling, you need an intentional place to put your thoughts. RuN integrates a full-featured markdown and audio note-taking system styled after Google Keep and Notesnook.
+          </p>
+          <p class="pillar-desc">
+            Private notes are secured with <strong>AES-256-GCM</strong> encryption and Argon2id key derivation. Features voice memos, checklists, tables, and encrypted local backup snapshots.
+          </p>
+          <div class="tech-tag-row">
+            <span class="tech-tag">AES-256-GCM</span>
+            <span class="tech-tag">Argon2id</span>
+            <span class="tech-tag">Voice Memos</span>
+            <span class="tech-tag">Encrypted V4 Snapshots</span>
           </div>
         </div>
 
-        <!-- Card 5: Dynamic Launcher Avatars (Interactive) -->
-        <div class="bento-card">
-          <div>
-            <div class="bento-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="8" r="5"></circle>
-                <path d="M20 21a8 8 0 1 0-16 0"></path>
-              </svg>
-            </div>
-            <h3 class="bento-card-title">Customizable Profile Avatars</h3>
-            <p class="bento-card-desc">
-              Unlock distinct profile emblems (Wanderer, Knight, Emperor, Inferno) as you build your streak, and customize your launcher icon dynamically.
-            </p>
-          </div>
-          <div class="bento-visual">
-            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;" id="avatar-active-desc">Default RuN (Classic Emblem)</div>
-            <div class="avatar-selector">
-              <div class="avatar-pill active" data-img="icon.svg" data-name="Default RuN" data-tier="Classic Emblem">
-                <img src="icon.svg" alt="Default">
-                <span>Default</span>
-              </div>
-              <div class="avatar-pill" data-img="avatars/avatar_wanderer.webp" data-name="The Wanderer" data-tier="Tier 1 • Explorer">
-                <img src="avatars/avatar_wanderer.webp" alt="Wanderer">
-                <span>Wanderer</span>
-              </div>
-              <div class="avatar-pill" data-img="avatars/avatar_knight.webp" data-name="The Knight" data-tier="Tier 3 • Iron Will">
-                <img src="avatars/avatar_knight.webp" alt="Knight">
-                <span>Knight</span>
-              </div>
-              <div class="avatar-pill" data-img="avatars/avatar_emperor.webp" data-name="The Emperor" data-tier="Tier 5 • Sovereign">
-                <img src="avatars/avatar_emperor.webp" alt="Emperor">
-                <span>Emperor</span>
-              </div>
-            </div>
+        <!-- Pillar 4: Habits & Brain Drills -->
+        <div class="pillar-card">
+          <div class="pillar-number">04 / FOCUS ECONOMY</div>
+          <h3 class="pillar-title">Habit Loops &amp; Mental Sharpening</h3>
+          <p class="pillar-desc">
+            Dopamine cravings can't just be suppressed—they must be redirected. RuN features daily streak tracking, daily quest milestones, and gamified brain drills (mental arithmetic and aptitude puzzles).
+          </p>
+          <p class="pillar-desc">
+            Instead of opening TikTok out of boredom, solve a quick 60-second math drill or complete a habit loop to earn XP, level up your profile, and unlock new profile emblems.
+          </p>
+          <div class="tech-tag-row">
+            <span class="tech-tag">Streak Flames</span>
+            <span class="tech-tag">Aptitude Drills</span>
+            <span class="tech-tag">Daily Quests</span>
+            <span class="tech-tag">Avatar Unlocks</span>
           </div>
         </div>
       </div>
@@ -408,8 +619,8 @@
   <section class="comparison-section" id="comparison">
     <div class="container">
       <div style="text-align: center; margin-bottom: 56px;">
-        <span class="section-label">Privacy Comparison</span>
-        <h2 class="section-title">Why RuN is fundamentally different.</h2>
+        <span class="section-label">Honest Comparison</span>
+        <h2 class="section-title">How RuN compares to other blockers.</h2>
       </div>
 
       <div class="table-wrap">
@@ -417,9 +628,9 @@
           <thead>
             <tr>
               <th>Feature</th>
-              <th>RuN (This App)</th>
-              <th>Cloud Focus Apps (Opal, Freedom)</th>
-              <th>Standard App Lockers</th>
+              <th>RuN</th>
+              <th>Opal / Freedom</th>
+              <th>Generic App Lockers</th>
             </tr>
           </thead>
           <tbody>
@@ -427,34 +638,40 @@
               <td class="col-brand">
                 <img src="icon.svg" width="22" height="22" alt="RuN">
                 <span>RuN</span>
-                <span class="comp-badge-pill">v2.0</span>
+                <span class="brand-badge">v2.0</span>
               </td>
               <td style="color:var(--accent-cyan); font-weight:700;">100% Free &amp; Offline</td>
               <td>$40–$100 / Year Subscription</td>
               <td>Ad-supported / Cluttered</td>
             </tr>
             <tr>
-              <td><strong>Network Connection</strong></td>
-              <td><span class="check-icon">✓</span> <strong>Zero Network (0 Packets)</strong></td>
+              <td><strong>Network Requirements</strong></td>
+              <td><span class="check-icon">✓</span> <strong>0 Packets (Completely Offline)</strong></td>
               <td><span class="cross-icon">✗</span> Continuous Cloud Telemetry</td>
-              <td><span class="cross-icon">✗</span> Ad Networks / Tracking SDKs</td>
+              <td><span class="cross-icon">✗</span> Constant Ad Pings</td>
             </tr>
             <tr>
               <td><strong>Account &amp; Registration</strong></td>
               <td><span class="check-icon">✓</span> <strong>None Required (Instant Use)</strong></td>
-              <td><span class="cross-icon">✗</span> Mandatory Email / OAuth</td>
+              <td><span class="cross-icon">✗</span> Mandatory Email / Social Login</td>
               <td>Varies</td>
             </tr>
             <tr>
               <td><strong>Android 14–16+ Compatibility</strong></td>
-              <td><span class="check-icon">✓</span> <strong>BAL-Proof Direct Overlay</strong></td>
-              <td>VPN Tunnel / Accessibility Latency</td>
+              <td><span class="check-icon">✓</span> <strong>Direct Overlay (BAL-Proof)</strong></td>
+              <td>Local VPN / Accessibility latency</td>
               <td><span class="cross-icon">✗</span> Broken by Android 14+ BAL</td>
             </tr>
             <tr>
               <td><strong>Encrypted Note Vault</strong></td>
               <td><span class="check-icon">✓</span> <strong>AES-256-GCM + SQLCipher</strong></td>
-              <td><span class="cross-icon">✗</span> None or Plaintext Cloud</td>
+              <td><span class="cross-icon">✗</span> None</td>
+              <td><span class="cross-icon">✗</span> None</td>
+            </tr>
+            <tr>
+              <td><strong>Habits &amp; Aptitude Drills</strong></td>
+              <td><span class="check-icon">✓</span> <strong>Integrated Focus Economy</strong></td>
+              <td><span class="cross-icon">✗</span> Basic Charts Only</td>
               <td><span class="cross-icon">✗</span> None</td>
             </tr>
           </tbody>
@@ -470,10 +687,10 @@
         <div>
           <span class="section-label" style="background: rgba(255,255,255,0.06); color:#fff; border-color:rgba(255,255,255,0.2);">Official Release</span>
           <h2 style="font-size: 2.5rem; font-weight: 800; line-height: 1.15; margin-bottom: 16px;">
-            Get RuN for Android
+            Download RuN for Android
           </h2>
           <p style="color: var(--text-secondary); margin-bottom: 32px; font-size: 1.0625rem; line-height: 1.6;">
-            Download the standalone APK directly from GitHub Releases. Compatible with phones and tablets running Android 7.0 and up (including Android 15 &amp; 16).
+            Get the standalone release APK directly from GitHub Releases. Compatible with Android 7.0 through Android 15 &amp; 16+.
           </p>
 
           <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 24px;">
@@ -503,8 +720,8 @@
             <!-- Rendered via inline SVG -->
           </div>
           <div class="qr-label">
-            <strong>Scan to Download on Phone</strong><br>
-            Point your Android camera to download the APK directly.
+            <strong>Scan to Install on Android</strong><br>
+            Point your camera to download the APK directly.
           </div>
         </div>
       </div>
@@ -527,7 +744,7 @@
           </button>
           <div class="faq-content">
             <div class="faq-body">
-              RuN operates as a local Android accessibility / usage-stats overlay service. It monitors foreground package events entirely locally on your processor. When a restricted app is launched, RuN renders a secure system window overlay directly via <code>WindowManager</code> in less than 15 milliseconds, without ever querying an external server.
+              RuN monitors foreground package usage events entirely locally on your processor via Android's local UsageStats and Accessibility APIs. When a restricted app is launched, RuN injects a system window overlay directly into the window compositor in under 15 milliseconds, without ever querying an external server.
             </div>
           </div>
         </div>
@@ -581,14 +798,14 @@
             <strong style="font-size:1.125rem; color:#fff;">RuN</strong>
           </div>
           <p>
-            The strictly offline, privacy-first Android App Locker &amp; Focus Tracker. Built for deep work without compromise.
+            The strictly offline, privacy-first Android App Locker &amp; Focus Suite. Built for deep work without compromise.
           </p>
         </div>
 
         <div class="footer-col">
           <h4>Product</h4>
           <ul>
-            <li><a href="#features">Features</a></li>
+            <li><a href="#screens">App Interface</a></li>
             <li><a href="#architecture">Architecture</a></li>
             <li><a href="#comparison">Comparison</a></li>
             <li><a href="#download">Download APK</a></li>

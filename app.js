@@ -1,21 +1,22 @@
 /**
  * RuN — Official Interactive Landing Page Controller
- * Zero-Network App Locker & Offline Focus Suite
+ * True-to-App Interface Simulator & Real-time Release Manager
  */
 
 document.addEventListener('DOMContentLoaded', () => {
   initReleaseData();
-  initPhoneDemo();
+  initScreenSwitcher();
+  initDashboardInteractions();
+  initBlockerCountdown();
   initAvatarSelector();
   initFaqAccordion();
   generateQrCode();
 });
 
-// GitHub Release Constants
+// GitHub Repo Configuration
 const GITHUB_REPO = 'Nrajesh0/Ayva';
 const DEFAULT_VERSION = 'v2.0.0';
 const DEFAULT_DOWNLOAD_URL = `https://github.com/${GITHUB_REPO}/releases/latest/download/app-release.apk`;
-const RELEASES_PAGE_URL = `https://github.com/${GITHUB_REPO}/releases/tag/${DEFAULT_VERSION}`;
 
 /**
  * Fetch latest release from GitHub API
@@ -31,10 +32,8 @@ async function initReleaseData() {
     if (res.ok) {
       const data = await res.json();
       const tagName = data.tag_name || DEFAULT_VERSION;
-      
       versionTags.forEach(el => el.textContent = tagName);
 
-      // Find APK asset
       const apkAsset = data.assets && data.assets.find(a => a.name.endsWith('.apk'));
       const downloadUrl = apkAsset ? apkAsset.browser_download_url : `https://github.com/${GITHUB_REPO}/releases/download/${tagName}/app-release.apk`;
 
@@ -69,117 +68,180 @@ function fallbackReleaseData(versionTags, downloadBtns) {
 }
 
 /**
- * Interactive Phone Focus Timer & Blocker Simulation
+ * Real App Screen Switcher (Syncs both the top switcher and phone floating dock)
  */
-function initPhoneDemo() {
-  const timerClock = document.getElementById('timer-clock');
-  const timerCircle = document.querySelector('.timer-progress-circle');
-  const toggleBtn = document.getElementById('timer-toggle-btn');
-  const triggerBlockBtn = document.getElementById('sim-block-trigger');
-  const blockOverlay = document.getElementById('phone-block-overlay');
-  const dismissBlockBtn = document.getElementById('dismiss-block-btn');
+function initScreenSwitcher() {
+  const switcherBtns = document.querySelectorAll('.screen-switch-btn');
+  const dockTabs = document.querySelectorAll('.dock-tab-btn');
+  const screenViews = document.querySelectorAll('.real-screen-view');
 
-  let totalSeconds = 25 * 60; // 25:00
-  let currentSeconds = 24 * 60 + 59; // 24:59
-  let isRunning = true;
-  let timerInterval = null;
-  const circumference = 408;
-
-  function updateClockDisplay() {
-    const mins = Math.floor(currentSeconds / 60);
-    const secs = currentSeconds % 60;
-    if (timerClock) {
-      timerClock.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    }
-    if (timerCircle) {
-      const progress = currentSeconds / totalSeconds;
-      const offset = circumference * (1 - progress);
-      timerCircle.style.strokeDashoffset = offset;
-    }
-  }
-
-  function startTimer() {
-    if (timerInterval) clearInterval(timerInterval);
-    timerInterval = setInterval(() => {
-      if (currentSeconds > 0) {
-        currentSeconds--;
-        updateClockDisplay();
-      } else {
-        currentSeconds = totalSeconds;
+  window.activateScreen = function(targetScreenId) {
+    // Hide all screens
+    screenViews.forEach(view => {
+      view.classList.remove('active');
+      if (view.id === targetScreenId) {
+        view.classList.add('active');
       }
-    }, 1000);
-    if (toggleBtn) {
-      toggleBtn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <rect x="6" y="4" width="4" height="16" rx="1"/>
-          <rect x="14" y="4" width="4" height="16" rx="1"/>
-        </svg>
-        Pause
-      `;
-    }
-  }
-
-  function pauseTimer() {
-    if (timerInterval) clearInterval(timerInterval);
-    timerInterval = null;
-    if (toggleBtn) {
-      toggleBtn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>
-        Resume
-      `;
-    }
-  }
-
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      isRunning = !isRunning;
-      if (isRunning) startTimer();
-      else pauseTimer();
     });
-  }
 
-  // Blocker Simulation trigger
-  if (triggerBlockBtn && blockOverlay) {
-    triggerBlockBtn.addEventListener('click', () => {
-      blockOverlay.classList.add('active');
+    // Update top switcher bar
+    switcherBtns.forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-screen') === targetScreenId);
     });
-  }
 
-  if (dismissBlockBtn && blockOverlay) {
-    dismissBlockBtn.addEventListener('click', () => {
-      blockOverlay.classList.remove('active');
+    // Update phone floating dock
+    dockTabs.forEach(tab => {
+      tab.classList.toggle('active', tab.getAttribute('data-screen') === targetScreenId);
     });
-  }
+  };
 
-  startTimer();
+  switcherBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const screenId = btn.getAttribute('data-screen');
+      if (screenId) window.activateScreen(screenId);
+    });
+  });
+
+  dockTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const screenId = tab.getAttribute('data-screen');
+      if (screenId) window.activateScreen(screenId);
+    });
+  });
 }
 
 /**
- * Interactive Avatar Selector
+ * Dashboard Screen Interactive Toggles & Deep Work Dial
+ */
+function initDashboardInteractions() {
+  // App restriction switch toggles
+  const switches = document.querySelectorAll('.material-switch');
+  switches.forEach(sw => {
+    sw.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sw.classList.toggle('checked');
+    });
+  });
+
+  // Deep work start/pause toggle
+  const deepWorkBtn = document.getElementById('deep-work-btn');
+  const deepWorkTime = document.getElementById('deep-work-time');
+  let isWorkActive = false;
+  let workSeconds = 25 * 60;
+  let workInterval = null;
+
+  if (deepWorkBtn && deepWorkTime) {
+    deepWorkBtn.addEventListener('click', () => {
+      isWorkActive = !isWorkActive;
+      if (isWorkActive) {
+        deepWorkBtn.textContent = 'Pause';
+        deepWorkBtn.style.background = '#f43f5e';
+        deepWorkBtn.style.color = '#fff';
+        workInterval = setInterval(() => {
+          if (workSeconds > 0) {
+            workSeconds--;
+            const m = Math.floor(workSeconds / 60);
+            const s = workSeconds % 60;
+            deepWorkTime.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+          }
+        }, 1000);
+      } else {
+        deepWorkBtn.textContent = 'Start';
+        deepWorkBtn.style.background = 'var(--accent-cyan)';
+        deepWorkBtn.style.color = '#030508';
+        if (workInterval) clearInterval(workInterval);
+      }
+    });
+  }
+
+  // Interactive habit checkboxes in notes & habits screens
+  const checkBoxes = document.querySelectorAll('.note-check-box');
+  checkBoxes.forEach(cb => {
+    cb.addEventListener('click', (e) => {
+      e.stopPropagation();
+      cb.classList.toggle('checked');
+      cb.textContent = cb.classList.contains('checked') ? '✓' : '';
+    });
+  });
+}
+
+/**
+ * Mindful Pause Blocker Screen Countdown (Real BlockOverlayManager logic)
+ */
+function initBlockerCountdown() {
+  const clockEl = document.getElementById('block-countdown');
+  const exitBtn = document.getElementById('block-exit-home-btn');
+  const progressFill = document.querySelector('.block-progress-fill');
+
+  let remaining = 15;
+  let blockInterval = null;
+
+  function runCountdown() {
+    if (blockInterval) clearInterval(blockInterval);
+    remaining = 15;
+    if (clockEl) clockEl.textContent = '00:15';
+    if (progressFill) progressFill.style.width = '100%';
+
+    blockInterval = setInterval(() => {
+      if (remaining > 0) {
+        remaining--;
+        const pad = remaining < 10 ? `0${remaining}` : `${remaining}`;
+        if (clockEl) clockEl.textContent = `00:${pad}`;
+        if (progressFill) progressFill.style.width = `${(remaining / 15) * 100}%`;
+      } else {
+        clearInterval(blockInterval);
+        if (clockEl) clockEl.textContent = '00:00';
+        if (progressFill) progressFill.style.width = '0%';
+      }
+    }, 1000);
+  }
+
+  // Restart countdown when user navigates to the blocker screen
+  const blockerTabBtn = document.querySelector('[data-screen="screen-blocker"]');
+  if (blockerTabBtn) {
+    blockerTabBtn.addEventListener('click', runCountdown);
+  }
+
+  // "Exit to Home" takes the user back to the Focus Dashboard
+  if (exitBtn) {
+    exitBtn.addEventListener('click', () => {
+      if (window.activateScreen) {
+        window.activateScreen('screen-dashboard');
+      }
+    });
+  }
+
+  runCountdown();
+}
+
+/**
+ * Avatar Selector: Updates Phone Top Bar Ring & Displays Tier Info
  */
 function initAvatarSelector() {
-  const avatarPills = document.querySelectorAll('.avatar-pill');
-  const phoneLogo = document.getElementById('phone-app-logo');
-  const avatarDesc = document.getElementById('avatar-active-desc');
+  const avatarCards = document.querySelectorAll('.avatar-thumb-card');
+  const phoneAvatarImg = document.getElementById('phone-avatar-img');
+  const avatarNameBadge = document.getElementById('active-avatar-name');
+  const avatarTierBadge = document.getElementById('active-avatar-tier');
 
-  avatarPills.forEach(pill => {
-    pill.addEventListener('click', () => {
-      avatarPills.forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
+  avatarCards.forEach(card => {
+    card.addEventListener('click', () => {
+      avatarCards.forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
 
-      const avatarSrc = pill.getAttribute('data-img');
-      const avatarName = pill.getAttribute('data-name');
-      const avatarTier = pill.getAttribute('data-tier');
+      const imgPath = card.getAttribute('data-img');
+      const name = card.getAttribute('data-name');
+      const tier = card.getAttribute('data-tier');
 
-      if (phoneLogo && avatarSrc) {
-        phoneLogo.src = avatarSrc;
+      if (phoneAvatarImg && imgPath) {
+        phoneAvatarImg.src = imgPath;
+        phoneAvatarImg.parentElement.style.animation = 'avatarPulse 0.4s ease';
+        setTimeout(() => {
+          phoneAvatarImg.parentElement.style.animation = '';
+        }, 400);
       }
 
-      if (avatarDesc && avatarName) {
-        avatarDesc.textContent = `${avatarName} (${avatarTier})`;
-      }
+      if (avatarNameBadge && name) avatarNameBadge.textContent = name;
+      if (avatarTierBadge && tier) avatarTierBadge.textContent = tier;
     });
   });
 }
@@ -198,7 +260,6 @@ function initFaqAccordion() {
       trigger.addEventListener('click', () => {
         const isActive = item.classList.contains('active');
 
-        // Close all others
         faqItems.forEach(other => {
           other.classList.remove('active');
           const otherContent = other.querySelector('.faq-content');
@@ -215,24 +276,18 @@ function initFaqAccordion() {
 }
 
 /**
- * Generate a standalone crisp SVG QR Code for Android download
- * Direct download target without external tracking services
+ * Crisp Standalone SVG QR Code
  */
 function generateQrCode() {
   const qrContainer = document.getElementById('qr-code-target');
   if (!qrContainer) return;
 
-  // Ultra-clean SVG QR Code representation linking to the latest release
   const qrSvg = `
     <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
       <rect width="100" height="100" fill="#ffffff"/>
-      <!-- Top Left Position Finder -->
       <path fill="#000000" d="M10,10 h24 v24 h-24 z M14,14 v16 h16 v-16 z M18,18 h8 v8 h-8 z"/>
-      <!-- Top Right Position Finder -->
       <path fill="#000000" d="M66,10 h24 v24 h-24 z M70,14 v16 h16 v-16 z M74,18 h8 v8 h-8 z"/>
-      <!-- Bottom Left Position Finder -->
       <path fill="#000000" d="M10,66 h24 v24 h-24 z M14,70 v16 h16 v-16 z M18,74 h8 v8 h-8 z"/>
-      <!-- Timing Pattern & Data Blocks -->
       <path fill="#000000" d="
         M38,10 h4 v4 h-4 z M46,10 h4 v4 h-4 z M54,10 h4 v4 h-4 z
         M38,18 h8 v4 h-8 z M50,18 h4 v4 h-4 z M58,18 h4 v4 h-4 z
