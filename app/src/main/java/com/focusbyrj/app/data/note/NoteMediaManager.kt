@@ -107,48 +107,65 @@ object NoteMediaManager {
      * Securely deletes all media files attached to a note, including header images, voice memos,
      * and embedded Notesnook block images/attachments.
      */
-    fun deleteNoteMediaFiles(note: NoteEntity, allNotes: List<NoteEntity>? = null) {
-        try {
-            val otherReferencedPaths = if (allNotes != null) {
-                val set = HashSet<String>()
-                allNotes.filter { it.id != note.id }.forEach { other ->
-                    set.addAll(other.getImageUris())
-                    set.addAll(other.getAudioUris())
+    fun deleteNoteMediaFiles(note: NoteEntity, allNotes: List<NoteEntity>? = null): Boolean {
+        return try {
+            // Physical deletion is safe only with a complete, readable reference set.
+            if (allNotes == null) {
+                Log.w(TAG, "Refusing media deletion for note ${note.id}: complete note set was not supplied")
+                return false
+            }
+            val target = decryptForReferenceScan(note) ?: return false
+            val otherReferencedPaths = HashSet<String>()
+            allNotes.filter { it.id != note.id }.forEach { rawOther ->
+                val other = decryptForReferenceScan(rawOther) ?: run {
+                    Log.w(TAG, "Refusing media deletion: note ${rawOther.id} references cannot be read")
+                    return false
                 }
-                set
-            } else {
-                emptySet<String>()
+                collectReferences(other).forEach { addPathVariants(otherReferencedPaths, it) }
             }
 
-            note.getImageUris().forEach { path ->
-                if (!otherReferencedPaths.contains(path)) {
-                    secureDeleteMediaFile(path)
-                }
+            collectReferences(target).forEach { path ->
+                val variants = HashSet<String>().also { addPathVariants(it, path) }
+                if (variants.none { it in otherReferencedPaths }) secureDeleteMediaFile(path)
             }
-            note.getAudioUris().forEach { path ->
-                if (!otherReferencedPaths.contains(path)) {
-                    secureDeleteMediaFile(path)
-                }
-            }
-            if (note.content.contains(com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.BLOCKS_PREFIX)) {
-                try {
-                    val blocks = com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.parse(note.content)
-                    for (b in blocks) {
-                        when (b) {
-                            is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Image -> {
-                                if (b.uri.isNotBlank() && !otherReferencedPaths.contains(b.uri)) secureDeleteMediaFile(b.uri)
-                            }
-                            is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Attachment -> {
-                                if (b.uri.isNotBlank() && !otherReferencedPaths.contains(b.uri)) secureDeleteMediaFile(b.uri)
-                            }
-                            else -> {}
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting note media files for note ${note.id}", e)
+            false
         }
+    }
+
+    private fun decryptForReferenceScan(note: NoteEntity): NoteEntity? {
+        if (!com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) return note
+        val key = ArchiveVaultSecurity.getActiveVaultSubKey() ?: return null
+        return when (val result = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, key)) {
+            is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> result.note
+            else -> {
+                Log.w(TAG, "Could not decrypt note ${note.id} while building media reference set: $result")
+                null
+            }
+        }
+    }
+
+    private fun collectReferences(note: NoteEntity): Set<String> {
+        val paths = linkedSetOf<String>()
+        paths.addAll(note.getImageUris())
+        paths.addAll(note.getAudioUris())
+        if (note.content.contains(com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.BLOCKS_PREFIX)) {
+            com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.parse(note.content).forEach { block ->
+                when (block) {
+                    is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Image -> block.uri.takeIf { it.isNotBlank() }?.let(paths::add)
+                    is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Attachment -> block.uri.takeIf { it.isNotBlank() }?.let(paths::add)
+                    else -> Unit
+                }
+            }
+        }
+        return paths
+    }
+
+    private fun addPathVariants(paths: MutableSet<String>, path: String) {
+        paths.add(path)
+        try { paths.add(File(path).canonicalPath) } catch (_: Exception) {}
     }
 
     /**

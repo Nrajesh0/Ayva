@@ -194,7 +194,7 @@ class Batch6SecurityAuditTest {
             createdAt = System.currentTimeMillis()
         )
 
-        NoteMediaManager.deleteNoteMediaFiles(note)
+        NoteMediaManager.deleteNoteMediaFiles(note, listOf(note))
 
         assertFalse("Block image should be deleted when note media is purged", blockImg.exists())
         assertFalse("Block attachment should be deleted when note media is purged", blockAtt.exists())
@@ -531,7 +531,7 @@ class Batch6SecurityAuditTest {
             content = origContent,
             createdAt = System.currentTimeMillis()
         )
-        NoteMediaManager.deleteNoteMediaFiles(origNote)
+        NoteMediaManager.deleteNoteMediaFiles(origNote, listOf(origNote))
 
         assertFalse("Original image file was deleted", origImg.exists())
         assertFalse("Original attachment file was deleted", origAtt.exists())
@@ -692,7 +692,7 @@ class Batch6SecurityAuditTest {
         assertTrue("Duplicated attachment file must exist", File(dupAtt.uri).exists())
 
         // Purging original note media must NOT delete or zero duplicated note files
-        NoteMediaManager.deleteNoteMediaFiles(origNote)
+        NoteMediaManager.deleteNoteMediaFiles(origNote, listOf(origNote))
         assertFalse("Original image file must be deleted", origImg.exists())
         assertFalse("Original attachment file must be deleted", origAtt.exists())
 

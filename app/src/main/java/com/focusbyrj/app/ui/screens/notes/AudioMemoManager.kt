@@ -118,13 +118,16 @@ class AudioMemoManager(private val context: Context) {
         }
 
         try {
-            val recognizer = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
-                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S ||
+                !SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
             ) {
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-            } else {
-                SpeechRecognizer.createSpeechRecognizer(context)
+                Log.w(tag, "On-device speech recognition is unavailable; refusing network-capable fallback")
+                _recordingState.value = _recordingState.value.copy(
+                    statusMessage = "Offline transcription unavailable on this device"
+                )
+                return
             }
+            val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
             recognizer.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     Log.d(tag, "SpeechRecognizer: Ready for speech")
@@ -232,6 +235,7 @@ class AudioMemoManager(private val context: Context) {
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             }
             recognizer.startListening(intent)
         } catch (e: Exception) {

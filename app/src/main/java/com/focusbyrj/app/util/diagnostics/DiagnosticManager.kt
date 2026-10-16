@@ -191,6 +191,9 @@ object DiagnosticManager {
         }
     }
 
+    /** Compatibility name used by the zero-network audit suite. */
+    fun captureEnvironmentSummary(context: Context): String = captureEnvironmentInfo(context)
+
     /**
      * Reads recent logcat output for this application process.
      */

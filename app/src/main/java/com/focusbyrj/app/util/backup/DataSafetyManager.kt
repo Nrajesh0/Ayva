@@ -319,8 +319,10 @@ object DataSafetyManager {
                 return@withContext Result.failure(IllegalArgumentException("Snapshot file not found: $snapshotPath"))
             }
 
-            // Always capture pre-restore snapshot as fail-safe
-            writePreOpSnapshot(context, noteDao, "pre_restore", focusDb)
+            // A restore is destructive. Do not proceed unless the rollback point is durable.
+            checkNotNull(writePreOpSnapshot(context, noteDao, "pre_restore", focusDb)) {
+                "Could not create the required pre-restore safety snapshot. No data was changed."
+            }
 
             val jsonStr = readAtomically(file)
             val root = JSONObject(jsonStr)
@@ -358,20 +360,42 @@ object DataSafetyManager {
                 if (restoredNotes.isNotEmpty()) {
                     val activeSubKey = com.focusbyrj.app.data.note.ArchiveVaultSecurity.getActiveVaultSubKey()
                     val safeToRestoreNotes = mutableListOf<NoteEntity>()
-                    for (note in restoredNotes) {
-                        if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                            val liveNote = noteDao.getNoteByIdSync(note.id)
-                            if (liveNote != null && activeSubKey != null) {
-                                val liveDec = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(liveNote, activeSubKey)
-                                val restoredDec = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, activeSubKey)
-                                if (liveDec is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success &&
-                                    restoredDec !is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success) {
-                                    Log.w(TAG, "F06 guard: Live note ${note.id} decrypts successfully, but snapshot note uses obsolete key. Preserving live note.")
-                                    continue
-                                }
-                            }
+                    for (snapshotNote in restoredNotes) {
+                        val liveNote = noteDao.getNoteByIdSync(snapshotNote.id)
+                        val liveProtected = liveNote?.let {
+                            it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
+                        } == true
+                        val snapshotEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(snapshotNote)
+                        val snapshotProtected = snapshotNote.isArchived || snapshotEncrypted
+
+                        if (!liveProtected && !snapshotProtected) {
+                            safeToRestoreNotes.add(snapshotNote)
+                            continue
                         }
-                        safeToRestoreNotes.add(note)
+
+                        // Restoring historical content must never downgrade a note's current
+                        // confidentiality. Requiring the active key also makes PIN verification
+                        // an invariant of the data layer rather than a UI-only convention.
+                        val key = activeSubKey ?: throw SecurityException(
+                            "Unlock the Secret Archive Vault before restoring protected note ${snapshotNote.id}."
+                        )
+                        val plaintext = if (snapshotEncrypted) {
+                            when (val result = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(snapshotNote, key)) {
+                                is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> result.note
+                                else -> throw SecurityException(
+                                    "Snapshot note ${snapshotNote.id} is encrypted with an unavailable or obsolete vault key ($result)."
+                                )
+                            }
+                        } else {
+                            snapshotNote
+                        }
+
+                        safeToRestoreNotes.add(
+                            com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(
+                                plaintext.copy(isArchived = true),
+                                key
+                            )
+                        )
                     }
                     if (safeToRestoreNotes.isNotEmpty()) {
                         noteDao.insertNotes(safeToRestoreNotes)
@@ -639,7 +663,8 @@ object DataSafetyManager {
             put("cryptoVersion", "aes-256-gcm-v1")
             put("createdAt", System.currentTimeMillis())
             put("noteCount", notes.size)
-            put("completeness", "COMPLETE")
+            put("completeness", "METADATA_ONLY")
+            put("includesMediaBytes", false)
             if (context != null) {
                 put("vaultKeyVersion", com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultDataKeyVersion(context))
                 put("vaultStatus", com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultStatus(context).name)

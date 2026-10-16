@@ -26,6 +26,8 @@ import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
 import com.focusbyrj.app.util.crypto.EncryptedMediaStorage
 import com.focusbyrj.app.ui.screens.notes.NotesViewModel
+import com.focusbyrj.app.ui.screens.notes.NotesnookBlock
+import com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager
 import com.focusbyrj.app.widget.NoteWidgetProvider
 import com.focusbyrj.app.widget.TodoWidgetProvider
 import com.focusbyrj.app.util.AptitudeManager
@@ -43,6 +45,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.*
 import java.text.SimpleDateFormat
+import java.security.MessageDigest
 import java.util.*
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -65,7 +68,7 @@ object BackupRestoreManager {
     class RequiresVaultSetupException(message: String) : IllegalStateException(message)
 
     private const val TAG = "BackupRestoreManager"
-    private const val BACKUP_VERSION = 1
+    private const val BACKUP_VERSION = 2
 
     private val PREF_FILES = listOf(
         "focus_prefs",
@@ -104,6 +107,26 @@ object BackupRestoreManager {
         val scheduleCount: Int,
         val drillCount: Int,
         val chatMessageCount: Int = 0
+    )
+
+    private data class MediaManifestEntry(
+        val relativePath: String,
+        val plaintextSize: Long,
+        val sha256: String
+    )
+
+    private data class RestoreRollbackState(
+        val notes: List<NoteEntity>,
+        val restrictions: List<AppRestriction>,
+        val schedules: List<FocusSchedule>,
+        val tasks: List<Task>,
+        val habits: List<Habit>,
+        val habitLogs: List<HabitLog>,
+        val drillSessions: List<DrillSessionEntity>,
+        val idioms: List<Idiom>,
+        val ows: List<Ows>,
+        val chatMessages: List<AyvaChatMessageEntity>,
+        val preferences: Map<String, Map<String, *>>
     )
 
     /**
@@ -167,15 +190,21 @@ object BackupRestoreManager {
             }
             val processedNotes = notes.map { rawNote ->
                 if (rawNote.isArchived || VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
-                    if (subKey != null) {
-                        VaultPayloadEncryptor.decryptNotePayload(rawNote, subKey)
-                    } else {
-                        rawNote
+                    val key = subKey ?: throw IllegalStateException(
+                        "Cannot create backup: Secret Archive Vault is locked."
+                    )
+                    when (val result = VaultPayloadEncryptor.tryDecryptNotePayload(rawNote, key)) {
+                        is VaultPayloadEncryptor.DecryptionResult.Success -> result.note
+                        else -> throw SecurityException(
+                            "Cannot create a complete backup because private note ${rawNote.id} could not be decrypted ($result)."
+                        )
                     }
                 } else {
                     rawNote
                 }
             }
+            val mediaManifest = buildMediaManifest(app, processedNotes)
+            val mediaManifestPaths = mediaManifest.mapTo(hashSetOf()) { it.relativePath }
             val drillSessions = drillDb.drillSessionDao().getAllSessionsSync()
             val learnedIdioms = vocabDb.vocabDao().getAllLearnedIdioms()
             val learnedOws = vocabDb.vocabDao().getAllLearnedOws()
@@ -459,6 +488,16 @@ object BackupRestoreManager {
                 }
                 put("preferences", prefsObj)
                 put("preferenceTypes", prefTypesObj)
+
+                val mediaArray = JSONArray()
+                mediaManifest.forEach { media ->
+                    mediaArray.put(JSONObject().apply {
+                        put("path", media.relativePath)
+                        put("size", media.plaintextSize)
+                        put("sha256", media.sha256)
+                    })
+                }
+                put("mediaManifest", mediaArray)
             }
 
             // 3. Stream unencrypted entries directly into encrypted output stream
@@ -478,7 +517,7 @@ object BackupRestoreManager {
                                 val mediaDir = File(app.filesDir, folderName)
                                 if (mediaDir.exists() && mediaDir.isDirectory) {
                                     mediaDir.listFiles()?.forEach { file ->
-                                        if (file.isFile && file.length() > 0) {
+                                        if (file.isFile && file.length() > 0 && "$folderName/${file.name}" in mediaManifestPaths) {
                                             if (EncryptedMediaStorage.isEncrypted(file)) {
                                                 val mediaStream = EncryptedMediaStorage.openDecryptedInputStream(file)
                                                 if (mediaStream != null) {
@@ -491,9 +530,7 @@ object BackupRestoreManager {
                                                         }
                                                     }
                                                     zipOut.closeEntry()
-                                                } else {
-                                                    Log.w(TAG, "Omitting unreadable encrypted media file ${file.name} to avoid corrupting portable backup with raw KeyStore bytes.")
-                                                }
+                                                } else throw IOException("Cannot create complete backup: media file ${file.name} is unreadable")
                                             } else {
                                                 zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
                                                 FileInputStream(file).use { input ->
@@ -520,16 +557,34 @@ object BackupRestoreManager {
                 CryptoBackupEngine.openDecryptingStream(verifyInStream, password.toCharArray()).use { decryptedStream ->
                     ZipInputStream(BufferedInputStream(decryptedStream)).use { zipIn ->
                         var foundManifest = false
+                        val verifiedMedia = mutableMapOf<String, Pair<Long, String>>()
+                        val verifyBuffer = ByteArray(32 * 1024)
                         var entry = zipIn.nextEntry
                         while (entry != null) {
                             if (entry.name == "data.json") {
                                 foundManifest = true
+                            } else if (entry.name.startsWith("media/")) {
+                                val digest = MessageDigest.getInstance("SHA-256")
+                                var size = 0L
+                                var read = zipIn.read(verifyBuffer)
+                                while (read != -1) {
+                                    digest.update(verifyBuffer, 0, read)
+                                    size += read
+                                    read = zipIn.read(verifyBuffer)
+                                }
+                                verifiedMedia[entry.name.removePrefix("media/")] = size to digest.digest().toHex()
                             }
                             zipIn.closeEntry()
                             entry = zipIn.nextEntry
                         }
                         if (!foundManifest) {
                             throw IOException("Backup verification failed: data.json manifest missing from created archive.")
+                        }
+                        mediaManifest.forEach { expected ->
+                            val actual = verifiedMedia[expected.relativePath]
+                            if (actual == null || actual.first != expected.plaintextSize || actual.second != expected.sha256) {
+                                throw IOException("Backup verification failed for media ${expected.relativePath}")
+                            }
                         }
                     }
                 }
@@ -558,6 +613,10 @@ object BackupRestoreManager {
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
         val app = context.applicationContext as FocusApplication
         val stagingDir = File(app.cacheDir, "restore_media_stage_${System.currentTimeMillis()}").apply { mkdirs() }
+        val mediaDestinations = linkedMapOf<String, File>()
+        var preparedMedia: List<Pair<File, File>> = emptyList()
+        var rollbackState: RestoreRollbackState? = null
+        var mutationStarted = false
         try {
             if (password.isBlank()) {
                 throw IllegalArgumentException("Backup password cannot be empty or blank.")
@@ -566,17 +625,15 @@ object BackupRestoreManager {
             val noteDb = NoteDatabase.getInstance(app)
             val drillDb = DrillDatabase.getDatabase(app)
             val vocabDb = app.vocabDatabase
+            val chatDb = AyvaChatDatabase.getDatabase(app)
             val inStream = app.contentResolver.openInputStream(sourceUri)
                 ?: throw IOException("Could not open backup source stream.")
-
-            // 0. Fail-Safe: capture a pre-restore safety snapshot of live database before applying backup
-            DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "pre_encrypted_restore", focusDb)
 
             var jsonDataStr: String? = null
 
             // 1 & 2. Decrypt & Unpack ZIP into staging directory on-the-fly
             var totalDecompressedMediaBytes = 0L
-            val maxSingleEntrySize = 50L * 1024L * 1024L // 50MB per media file decompression limit
+            val maxSingleEntrySize = 250L * 1024L * 1024L // streamed; bounded against decompression abuse
             val maxTotalMediaSize = 500L * 1024L * 1024L // 500MB total media archive decompression limit
 
             inStream.use { rawInStream ->
@@ -612,6 +669,12 @@ object BackupRestoreManager {
                                         throw SecurityException("Zip Slip directory traversal detected in backup media entry: $normalized")
                                     }
                                     targetFile.parentFile?.mkdirs()
+                                    val importedName = if (cleanRestore) {
+                                        targetFile.name
+                                    } else {
+                                        "import_${UUID.randomUUID()}_${targetFile.name}"
+                                    }
+                                    mediaDestinations[normalized] = File(File(app.filesDir, topFolder), importedName)
                                     var fileBytesWritten = 0L
                                     FileOutputStream(targetFile).use { fos ->
                                         var read = zipIn.read(buffer)
@@ -619,7 +682,7 @@ object BackupRestoreManager {
                                             fileBytesWritten += read
                                             totalDecompressedMediaBytes += read
                                             if (fileBytesWritten > maxSingleEntrySize) {
-                                                throw SecurityException("Backup media entry exceeds maximum allowed size (50MB): $normalized")
+                                                throw SecurityException("Backup media entry exceeds maximum allowed size (250MB): $normalized")
                                             }
                                             if (totalDecompressedMediaBytes > maxTotalMediaSize) {
                                                 throw SecurityException("Backup archive exceeds maximum allowable total media size (500MB).")
@@ -646,6 +709,16 @@ object BackupRestoreManager {
             val createdAt = rootJson.optLong("createdAt", System.currentTimeMillis())
             val appVersion = rootJson.optString("appVersion", "1.0.0")
 
+            // Parse and validate the entire manifest before changing vault settings, databases,
+            // preferences, or live media. This prevents a late malformed entity from producing
+            // a successful partial restore.
+            validateRestoreManifest(rootJson)
+            validateStagedMedia(rootJson, stagingDir)
+            checkNotNull(DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "pre_encrypted_restore", focusDb)) {
+                "Could not create the required pre-restore safety snapshot. No data was changed."
+            }
+            rollbackState = captureRollbackState(app, noteDb, focusDb, drillDb, vocabDb, chatDb)
+
             // 4. Validate Secret Vault State and Build NoteEntities
             val notesArray = rootJson.optJSONArray("notes") ?: JSONArray()
             val hasArchivedNotes = (0 until notesArray.length()).any {
@@ -667,6 +740,7 @@ object BackupRestoreManager {
                 } else {
                     // Vault is NOT configured or disabled on this device!
                     if (vaultPin != null && vaultPin.length == 6) {
+                        mutationStarted = true // setPasscode persists credentials.
                         val setSuccess = ArchiveVaultSecurity.setPasscode(app, vaultPin)
                         if (!setSuccess) {
                             throw IllegalStateException("Failed to configure Secret Archive Vault with provided PIN.")
@@ -684,12 +758,12 @@ object BackupRestoreManager {
                 var note = NoteEntity(
                     id = if (cleanRestore) obj.optLong("id", 0L) else 0L,
                     title = obj.optString("title", ""),
-                    content = obj.optString("content", ""),
+                    content = remapBlockMedia(obj.optString("content", ""), mediaDestinations),
                     isChecklist = obj.optBoolean("isChecklist", false),
                     checklistJson = obj.optString("checklistJson", "[]"),
                     labelsJson = obj.optString("labelsJson", "[]"),
-                    imageUrisJson = obj.optString("imageUrisJson", "[]"),
-                    audioUrisJson = obj.optString("audioUrisJson", "[]"),
+                    imageUrisJson = remapMediaJson(obj.optString("imageUrisJson", "[]"), mediaDestinations),
+                    audioUrisJson = remapMediaJson(obj.optString("audioUrisJson", "[]"), mediaDestinations),
                     colorKey = obj.optString("colorKey", "default"),
                     fontKey = obj.optString("fontKey", "default"),
                     isPinned = obj.optBoolean("isPinned", false),
@@ -713,11 +787,16 @@ object BackupRestoreManager {
                 noteEntities.add(note)
             }
 
+            // Complete all expensive/fallible media decryption and device-key encryption before
+            // any live database is changed. Installation later is rename-only and rollback-safe.
+            preparedMedia = prepareRestoredMedia(stagingDir, mediaDestinations)
+
             NotesViewModel.latestNotesCache.clear()
 
             // Safe transactional swap:
             // Insert all restored notes FIRST, then prune rows not in the backup — all in one transaction.
             // If anything throws, Room rolls back and existing data is completely untouched.
+            mutationStarted = true
             if (cleanRestore) {
                 noteDb.withTransaction {
                     noteEntities.forEach { note -> noteDb.noteDao().insertNote(note) }
@@ -914,7 +993,6 @@ object BackupRestoreManager {
             // 11. Restore Ayva Chat Messages
             val chatArray = rootJson.optJSONArray("chatMessages") ?: JSONArray()
             if (chatArray.length() > 0) {
-                val chatDb = AyvaChatDatabase.getDatabase(app)
                 val chatEntities = mutableListOf<AyvaChatMessageEntity>()
                 for (i in 0 until chatArray.length()) {
                     val obj = chatArray.getJSONObject(i)
@@ -1026,39 +1104,12 @@ object BackupRestoreManager {
                             }
                         }
                     }
-                    editor.commit()
+                    check(editor.commit()) { "Failed to persist restored preferences for $prefName" }
                 }
             }
 
             // 13. Commit Staged Media Files to Internal Storage (re-encrypting with this device's hardware KeyStore key)
-            if (stagingDir.exists() && stagingDir.isDirectory) {
-                val mediaBuffer = ByteArray(32 * 1024)
-                MEDIA_FOLDERS.forEach { folderName ->
-                    val stagedFolder = File(stagingDir, folderName)
-                    if (stagedFolder.exists() && stagedFolder.isDirectory) {
-                        val liveFolder = File(app.filesDir, folderName).apply { mkdirs() }
-                        stagedFolder.listFiles()?.forEach { stagedFile ->
-                            if (stagedFile.isFile && stagedFile.length() > 0) {
-                                val destFile = File(liveFolder, stagedFile.name)
-                                if (EncryptedMediaStorage.isEncrypted(stagedFile)) {
-                                    stagedFile.copyTo(destFile, overwrite = true)
-                                } else {
-                                    FileInputStream(stagedFile).use { fis ->
-                                        EncryptedMediaStorage.openEncryptedOutputStream(destFile).use { eos ->
-                                            var read = fis.read(mediaBuffer)
-                                            while (read != -1) {
-                                                eos.write(mediaBuffer, 0, read)
-                                                read = fis.read(mediaBuffer)
-                                            }
-                                            eos.flush()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            installPreparedMedia(preparedMedia)
 
             // Reload In-Memory Managers
             try { FocusEconomyManager.init(app) } catch (_: Exception) {}
@@ -1112,6 +1163,20 @@ object BackupRestoreManager {
             Result.success(metadata)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to restore encrypted backup", e)
+            if (mutationStarted && rollbackState != null) {
+                try {
+                    restoreRollbackState(app, rollbackState!!)
+                    Log.w(TAG, "Restore failed after mutation; all captured stores were rolled back")
+                } catch (rollbackError: Exception) {
+                    Log.e(TAG, "CRITICAL: automatic restore rollback failed", rollbackError)
+                    return@withContext Result.failure(
+                        IllegalStateException(
+                            "Restore failed and automatic rollback could not be completed. Use the pre-restore safety snapshot before continuing.",
+                            rollbackError
+                        )
+                    )
+                }
+            }
             val friendlyException = when {
                 e is RequiresVaultSetupException -> e
                 e is SecurityException -> e
@@ -1121,6 +1186,7 @@ object BackupRestoreManager {
             }
             Result.failure(friendlyException)
         } finally {
+            preparedMedia.forEach { it.second.delete() }
             try {
                 stagingDir.deleteRecursively()
             } catch (_: Exception) {}
@@ -1143,6 +1209,367 @@ object BackupRestoreManager {
         if (prefName == "bubble_chat_prefs" && key == "last_chat_activity_timestamp") return true
         if (prefName == "auto_backup_scheduler_prefs" && key == "last_backup_timestamp_ms") return true
         return false
+    }
+
+    private fun validateRestoreManifest(root: JSONObject) {
+        fun requireObjects(arrayName: String, requiredFields: List<String> = emptyList()) {
+            val array = root.optJSONArray(arrayName) ?: return
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i)
+                    ?: throw IllegalArgumentException("$arrayName[$i] must be an object")
+                requiredFields.forEach { field ->
+                    if (!obj.has(field) || obj.isNull(field)) {
+                        throw IllegalArgumentException("$arrayName[$i] is missing required field '$field'")
+                    }
+                }
+            }
+        }
+
+        requireObjects("notes")
+        requireObjects("restrictions", listOf("packageName"))
+        requireObjects("schedules")
+        requireObjects("tasks", listOf("title"))
+        requireObjects("habits", listOf("title"))
+        requireObjects("habitLogs", listOf("habitId", "date"))
+        requireObjects("drillSessions", listOf("sessionId"))
+        requireObjects("learnedIdioms", listOf("id"))
+        requireObjects("learnedOws", listOf("id"))
+        requireObjects("chatMessages", listOf("id"))
+
+        fun each(arrayName: String, block: (JSONObject) -> Unit) {
+            val array = root.optJSONArray(arrayName) ?: return
+            for (i in 0 until array.length()) block(array.getJSONObject(i))
+        }
+        each("restrictions") { it.getString("packageName") }
+        each("tasks") { it.getString("title") }
+        each("habits") { it.getString("title") }
+        each("habitLogs") { it.getLong("habitId"); it.getString("date") }
+        each("drillSessions") { it.getString("sessionId") }
+        each("learnedIdioms") { it.getInt("id") }
+        each("learnedOws") { it.getInt("id") }
+        each("chatMessages") { it.getString("id") }
+
+        root.optJSONObject("meta")?.let { meta ->
+            mapOf(
+                "notes" to "notes", "tasks" to "tasks", "habits" to "habits",
+                "restrictions" to "restrictions", "schedules" to "schedules",
+                "drillSessions" to "drillSessions", "chatMessages" to "chatMessages"
+            ).forEach { (metaKey, arrayKey) ->
+                if (meta.has(metaKey)) {
+                    val actual = root.optJSONArray(arrayKey)?.length() ?: 0
+                    require(meta.optInt(metaKey, -1) == actual) {
+                        "Backup manifest count mismatch for $arrayKey"
+                    }
+                }
+            }
+        }
+
+        val prefs = root.optJSONObject("preferences")
+        prefs?.keys()?.forEach { name ->
+            require(prefs.optJSONObject(name) != null) { "Preference file '$name' must be an object" }
+        }
+    }
+
+    private suspend fun captureRollbackState(
+        context: Context,
+        noteDb: NoteDatabase,
+        focusDb: FocusDatabase,
+        drillDb: DrillDatabase,
+        vocabDb: VocabDatabase,
+        chatDb: AyvaChatDatabase
+    ): RestoreRollbackState {
+        val preferenceNames = (PREF_FILES + ArchiveVaultSecurity.PREFS_NAME).distinct()
+        return RestoreRollbackState(
+            notes = noteDb.noteDao().getAllNotesList(),
+            restrictions = focusDb.appRestrictionDao().getAllRestrictionsSync(),
+            schedules = focusDb.scheduleDao().getAllSchedulesSync(),
+            tasks = focusDb.taskDao().getAllTasksList(),
+            habits = focusDb.habitDao().getAllHabitsSync(),
+            habitLogs = focusDb.habitDao().getAllLogsSync(),
+            drillSessions = drillDb.drillSessionDao().getAllSessionsSync(),
+            idioms = vocabDb.vocabDao().getAllIdioms(),
+            ows = vocabDb.vocabDao().getAllOws(),
+            chatMessages = chatDb.chatDao().getAllMessagesSync(),
+            preferences = preferenceNames.associateWith { name ->
+                HashMap(context.getSharedPreferences(name, Context.MODE_PRIVATE).all)
+            }
+        )
+    }
+
+    private suspend fun restoreRollbackState(context: Context, state: RestoreRollbackState) {
+        val app = context.applicationContext as FocusApplication
+        val noteDb = NoteDatabase.getInstance(app)
+        noteDb.withTransaction {
+            noteDb.noteDao().deleteAllNotes()
+            if (state.notes.isNotEmpty()) noteDb.noteDao().insertNotes(state.notes)
+        }
+
+        val focusDb = app.database
+        focusDb.withTransaction {
+            focusDb.habitDao().deleteAllLogs()
+            focusDb.habitDao().deleteAllHabits()
+            focusDb.taskDao().deleteAllTasks()
+            focusDb.scheduleDao().deleteAllSchedules()
+            focusDb.appRestrictionDao().deleteAllRestrictions()
+            if (state.restrictions.isNotEmpty()) focusDb.appRestrictionDao().insertRestrictions(state.restrictions)
+            if (state.schedules.isNotEmpty()) focusDb.scheduleDao().insertSchedules(state.schedules)
+            if (state.tasks.isNotEmpty()) focusDb.taskDao().insertTasks(state.tasks)
+            if (state.habits.isNotEmpty()) focusDb.habitDao().insertHabits(state.habits)
+            state.habitLogs.forEach { focusDb.habitDao().insertOrUpdateLog(it) }
+        }
+
+        val drillDb = DrillDatabase.getDatabase(app)
+        drillDb.withTransaction {
+            drillDb.drillSessionDao().deleteAllSessions()
+            state.drillSessions.forEach { drillDb.drillSessionDao().insertSession(it) }
+        }
+
+        val vocabDb = app.vocabDatabase
+        vocabDb.withTransaction {
+            state.idioms.forEach { vocabDb.vocabDao().updateIdiom(it) }
+            state.ows.forEach { vocabDb.vocabDao().updateOws(it) }
+        }
+
+        AyvaChatDatabase.getDatabase(app).chatDao().syncAllMessages(state.chatMessages)
+        state.preferences.forEach { (name, values) ->
+            val editor = app.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear()
+            values.forEach { (key, value) ->
+                when (value) {
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Float -> editor.putFloat(key, value)
+                    is String -> editor.putString(key, value)
+                    is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                }
+            }
+            check(editor.commit()) { "Could not roll back preferences '$name'" }
+        }
+        ArchiveVaultSecurity.lockVault()
+        NotesViewModel.latestNotesCache.clear()
+    }
+
+    private fun validateStagedMedia(root: JSONObject, stagingDir: File) {
+        val manifest = root.optJSONArray("mediaManifest")
+        if (manifest == null) {
+            require(root.optInt("version", 1) < 2) { "Backup v2 is missing its media inventory" }
+            return // legacy backup
+        }
+        val expectedPaths = mutableSetOf<String>()
+        for (i in 0 until manifest.length()) {
+            val obj = manifest.getJSONObject(i)
+            val relative = obj.getString("path").replace('\\', '/').trimStart('/')
+            require(relative.substringBefore('/') in MEDIA_FOLDERS && !relative.contains("..")) {
+                "Invalid media manifest path: $relative"
+            }
+            require(expectedPaths.add(relative)) { "Duplicate media manifest path: $relative" }
+            val file = File(stagingDir, relative).canonicalFile
+            require(file.toPath().startsWith(stagingDir.canonicalFile.toPath()) && file.isFile) {
+                "Backup is incomplete: media '$relative' is missing"
+            }
+            val digest = MessageDigest.getInstance("SHA-256")
+            var size = 0L
+            FileInputStream(file).use { input ->
+                val buffer = ByteArray(32 * 1024)
+                var read = input.read(buffer)
+                while (read != -1) {
+                    digest.update(buffer, 0, read)
+                    size += read
+                    read = input.read(buffer)
+                }
+            }
+            require(size == obj.getLong("size") && digest.digest().toHex() == obj.getString("sha256")) {
+                "Backup media verification failed for '$relative'"
+            }
+        }
+        val stagedPaths = MEDIA_FOLDERS.flatMap { folder ->
+            File(stagingDir, folder).listFiles()?.filter { it.isFile }?.map { "$folder/${it.name}" } ?: emptyList()
+        }.toSet()
+        require(stagedPaths == expectedPaths) { "Backup media inventory does not match the archive" }
+
+        val notes = root.optJSONArray("notes") ?: JSONArray()
+        for (i in 0 until notes.length()) {
+            val obj = notes.getJSONObject(i)
+            val note = NoteEntity(
+                content = obj.optString("content", ""),
+                imageUrisJson = obj.optString("imageUrisJson", "[]"),
+                audioUrisJson = obj.optString("audioUrisJson", "[]")
+            )
+            collectNoteMediaPaths(note).forEach { path ->
+                val normalized = path.replace('\\', '/')
+                val folder = MEDIA_FOLDERS.firstOrNull {
+                    normalized.contains("/$it/") || normalized.startsWith("$it/")
+                } ?: throw IOException("Backup contains an unsupported attachment path: $path")
+                val relative = "$folder/${normalized.substringAfterLast('/')}"
+                require(relative in expectedPaths) { "Backup is missing referenced media '$relative'" }
+            }
+        }
+    }
+
+    private fun buildMediaManifest(context: Context, notes: List<NoteEntity>): List<MediaManifestEntry> {
+        val referenced = notes.flatMap { collectNoteMediaPaths(it) }.toSet()
+        referenced.forEach { path ->
+            val normalized = path.replace('\\', '/')
+            val folder = MEDIA_FOLDERS.firstOrNull { normalized.contains("/$it/") || normalized.startsWith("$it/") }
+                ?: throw IOException("Cannot create complete backup: unsupported attachment path '$path'")
+            val file = File(path)
+            val allowedRoot = File(context.filesDir, folder).canonicalFile
+            val canonical = file.canonicalFile
+            if (!canonical.toPath().startsWith(allowedRoot.toPath()) || !canonical.isFile) {
+                throw IOException("Cannot create complete backup: referenced media is missing or outside app storage: $path")
+            }
+        }
+
+        val result = mutableListOf<MediaManifestEntry>()
+        val uniqueReferencedFiles = linkedMapOf<String, File>()
+        referenced.forEach { path ->
+            val normalized = path.replace('\\', '/')
+            val folder = MEDIA_FOLDERS.first { normalized.contains("/$it/") || normalized.startsWith("$it/") }
+            uniqueReferencedFiles["$folder/${normalized.substringAfterLast('/')}"] = File(path)
+        }
+        uniqueReferencedFiles.forEach { (relativePath, file) ->
+                val stream = if (EncryptedMediaStorage.isEncrypted(file)) {
+                    EncryptedMediaStorage.openDecryptedInputStream(file)
+                } else FileInputStream(file)
+                stream ?: throw IOException("Cannot create complete backup: media file ${file.name} is unreadable")
+                val digest = MessageDigest.getInstance("SHA-256")
+                var size = 0L
+                stream.use { input ->
+                    val buffer = ByteArray(32 * 1024)
+                    var read = input.read(buffer)
+                    while (read != -1) {
+                        digest.update(buffer, 0, read)
+                        size += read
+                        read = input.read(buffer)
+                    }
+                }
+                result += MediaManifestEntry(relativePath, size, digest.digest().toHex())
+        }
+        return result
+    }
+
+    private fun collectNoteMediaPaths(note: NoteEntity): List<String> {
+        val result = mutableListOf<String>()
+        result += note.getImageUris()
+        result += note.getAudioUris()
+        if (note.content.contains(NotesnookBlockManager.BLOCKS_PREFIX)) {
+            NotesnookBlockManager.parse(note.content).forEach { block ->
+                when (block) {
+                    is NotesnookBlock.Image -> if (block.uri.isNotBlank()) result += block.uri
+                    is NotesnookBlock.Attachment -> if (block.uri.isNotBlank()) result += block.uri
+                    else -> Unit
+                }
+            }
+        }
+        return result
+    }
+
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
+
+    private fun remapMediaPath(path: String, destinations: Map<String, File>): String {
+        val normalized = path.replace('\\', '/')
+        val folder = MEDIA_FOLDERS.firstOrNull { normalized.contains("/$it/") || normalized.startsWith("$it/") }
+            ?: return path
+        val key = "$folder/${normalized.substringAfterLast('/')}"
+        return destinations[key]?.absolutePath ?: path
+    }
+
+    private fun remapMediaJson(json: String, destinations: Map<String, File>): String {
+        val input = try { JSONArray(json) } catch (_: Exception) { return json }
+        val output = JSONArray()
+        for (i in 0 until input.length()) {
+            if (input.isNull(i)) output.put(JSONObject.NULL)
+            else output.put(remapMediaPath(input.optString(i, ""), destinations))
+        }
+        return output.toString()
+    }
+
+    private fun remapBlockMedia(content: String, destinations: Map<String, File>): String {
+        if (!content.contains(NotesnookBlockManager.BLOCKS_PREFIX)) return content
+        val blocks = NotesnookBlockManager.parse(content)
+        var changed = false
+        blocks.forEach { block ->
+            when (block) {
+                is NotesnookBlock.Image -> {
+                    val remapped = remapMediaPath(block.uri, destinations)
+                    if (remapped != block.uri) { block.uri = remapped; changed = true }
+                }
+                is NotesnookBlock.Attachment -> {
+                    val remapped = remapMediaPath(block.uri, destinations)
+                    if (remapped != block.uri) { block.uri = remapped; changed = true }
+                }
+                else -> Unit
+            }
+        }
+        return if (changed) {
+            NotesnookBlockManager.serialize(
+                blocks,
+                isArticle = NotesnookBlockManager.isArticleMode(content),
+                subtitle = NotesnookBlockManager.getSubtitle(content)
+            )
+        } else content
+    }
+
+    private fun prepareRestoredMedia(
+        stagingDir: File,
+        destinations: Map<String, File>
+    ): List<Pair<File, File>> {
+        val prepared = mutableListOf<Pair<File, File>>()
+        val buffer = ByteArray(32 * 1024)
+        try {
+            MEDIA_FOLDERS.forEach { folder ->
+                File(stagingDir, folder).listFiles()?.filter { it.isFile && it.length() > 0L }?.forEach { staged ->
+                    val relative = "$folder/${staged.name}"
+                    val destination = checkNotNull(destinations[relative]) {
+                        "No destination allocated for restored media $relative"
+                    }
+                    destination.parentFile?.mkdirs()
+                    val temp = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.restore")
+                    FileInputStream(staged).use { input ->
+                        EncryptedMediaStorage.openEncryptedOutputStream(temp).use { output ->
+                            var read = input.read(buffer)
+                            while (read != -1) {
+                                output.write(buffer, 0, read)
+                                read = input.read(buffer)
+                            }
+                        }
+                    }
+                    prepared += destination to temp
+                }
+            }
+            return prepared
+        } catch (e: Exception) {
+            prepared.forEach { it.second.delete() }
+            throw e
+        }
+    }
+
+    private fun installPreparedMedia(prepared: List<Pair<File, File>>) {
+        val installed = mutableListOf<Pair<File, File?>>()
+        try {
+            prepared.forEach { (destination, temp) ->
+                val backup = if (destination.exists()) {
+                    File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.old")
+                } else null
+                if (backup != null && !destination.renameTo(backup)) {
+                    throw IOException("Could not stage existing media ${destination.name} for replacement")
+                }
+                if (!temp.renameTo(destination)) {
+                    backup?.renameTo(destination)
+                    throw IOException("Could not atomically install restored media ${destination.name}")
+                }
+                installed += destination to backup
+            }
+            installed.forEach { it.second?.delete() }
+        } catch (e: Exception) {
+            installed.asReversed().forEach { (destination, backup) ->
+                destination.delete()
+                backup?.renameTo(destination)
+            }
+            throw e
+        } finally {
+            prepared.forEach { it.second.delete() }
+        }
     }
 
     private fun isKnownFloatPreference(prefName: String, key: String): Boolean {

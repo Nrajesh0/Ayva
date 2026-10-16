@@ -32,6 +32,7 @@ import java.util.zip.ZipInputStream
 import android.graphics.pdf.PdfDocument
 import com.focusbyrj.app.util.backup.DataSafetyManager
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
+import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
@@ -324,7 +325,11 @@ class Batch5SecurityAuditTest {
         )
         // Unlock temporarily to create backup with archived note
         ArchiveVaultSecurity.verifyPasscode(context, "654321")
-        noteDb.noteDao().insertNote(note)
+        val encryptedNote = VaultPayloadEncryptor.encryptNotePayload(
+            note,
+            ArchiveVaultSecurity.getActiveVaultSubKey()!!
+        )
+        noteDb.noteDao().insertNote(encryptedNote)
 
         val backupFile = File(context.cacheDir, "test_backup_locked_vault.ayva_backup")
         val backupUri = Uri.fromFile(backupFile)

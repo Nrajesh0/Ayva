@@ -101,7 +101,7 @@ class Batch2SecurityAuditTest {
 
         // B2-F-009 fix: only delete physical media files if NO restored copy was made
         if (!hadRestoredCopy) {
-            NoteMediaManager.deleteNoteMediaFiles(originalNote)
+            NoteMediaManager.deleteNoteMediaFiles(originalNote, listOf(originalNote))
         }
 
         // The image file MUST still exist on disk because the restored copy references it

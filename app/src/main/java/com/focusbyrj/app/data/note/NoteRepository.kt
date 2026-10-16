@@ -166,11 +166,7 @@ class NoteRepository(
     }
 
     suspend fun deletePermanently(note: NoteEntity) {
-        try {
-            noteDao.deleteNote(note)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in deletePermanently", e)
-        }
+        noteDao.deleteNote(note)
     }
 
     suspend fun togglePin(id: Long, currentPinned: Boolean) {
@@ -196,6 +192,9 @@ class NoteRepository(
         Log.e(TAG, "Error in getAllNotesList", e)
         emptyList()
     }
+
+    /** Destructive cleanup callers must fail closed when the reference set cannot be read. */
+    suspend fun getAllNotesListOrThrow(): List<NoteEntity> = noteDao.getAllNotesList()
 
     suspend fun setArchived(id: Long, isArchived: Boolean) {
         try {

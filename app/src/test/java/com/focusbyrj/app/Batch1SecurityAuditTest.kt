@@ -870,6 +870,13 @@ class Batch1SecurityAuditTest {
         val testImage = File(mediaDir, "portability_test.jpg")
         val imagePayload = "Cross-Device Media Attachment Content".toByteArray(Charsets.UTF_8)
         EncryptedMediaStorage.writeEncryptedBytes(testImage, imagePayload)
+        val mediaNote = NoteEntity(
+            id = 991040L,
+            title = "Portable media",
+            imageUrisJson = org.json.JSONArray().put(testImage.absolutePath).toString()
+        )
+        val mediaNoteDb = NoteDatabase.getInstance(context)
+        runBlocking { mediaNoteDb.noteDao().insertNote(mediaNote) }
 
         val backupFile = File(context.cacheDir, "media_portability_backup.focusbackup")
         val backupUri = android.net.Uri.fromFile(backupFile)
@@ -877,14 +884,14 @@ class Batch1SecurityAuditTest {
         val backupResult = runBlocking {
             BackupRestoreManager.createEncryptedBackup(context, backupUri, "PortablePass123!")
         }
-        assertTrue("Backup creation must succeed", backupResult.isSuccess)
+        assertTrue("Backup creation must succeed: ${backupResult.exceptionOrNull()}", backupResult.isSuccess)
 
         // Delete local media file to simulate restoring on a clean/new device
         testImage.delete()
         assertFalse("Local image must be deleted", testImage.exists())
 
         val restoreResult = runBlocking {
-            BackupRestoreManager.restoreEncryptedBackup(context, backupUri, "PortablePass123!")
+            BackupRestoreManager.restoreEncryptedBackup(context, backupUri, "PortablePass123!", cleanRestore = true)
         }
         assertTrue("Backup restore must succeed", restoreResult.isSuccess)
 
@@ -896,6 +903,7 @@ class Batch1SecurityAuditTest {
 
         // Clean up
         testImage.delete()
+        runBlocking { mediaNoteDb.noteDao().deleteNote(mediaNote) }
         backupFile.delete()
     }
 }

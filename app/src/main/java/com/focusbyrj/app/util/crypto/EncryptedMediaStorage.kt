@@ -267,11 +267,31 @@ object EncryptedMediaStorage {
             } catch (_: Exception) { false }
 
             if (isEnc) {
-                // If encrypted, read and decrypt safely (handling both KeyStore and legacy software keys)
-                val decrypted = readDecryptedBytes(file)
-                return if (decrypted != null) {
-                    java.io.ByteArrayInputStream(decrypted)
-                } else {
+                // Keep legacy dual-key compatibility for normal-sized files. Large current-format
+                // media is decrypted as a stream so backups do not silently omit it or allocate a
+                // file-sized heap buffer.
+                if (fileLen <= MAX_DECRYPT_BYTES_LIMIT) {
+                    val decrypted = readDecryptedBytes(file)
+                    return decrypted?.let { java.io.ByteArrayInputStream(it) }
+                }
+                return try {
+                    val fis = FileInputStream(file)
+                    val header = ByteArray(magicBytes.size)
+                    if (fis.read(header) != header.size || !header.contentEquals(magicBytes)) {
+                        fis.close()
+                        return null
+                    }
+                    val iv = ByteArray(GCM_IV_LENGTH)
+                    if (fis.read(iv) != iv.size) {
+                        fis.close()
+                        return null
+                    }
+                    val key = getMasterKeyForDecryption() ?: getLegacyFallbackKey()
+                    val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+                    cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+                    CipherInputStream(fis, cipher)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to open streaming decryptor for ${file.name}", e)
                     null
                 }
             }

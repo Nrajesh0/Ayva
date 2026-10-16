@@ -65,6 +65,9 @@ object ArchiveVaultSecurity {
     const val KEY_WRAPPED_VAULT_DATA_KEY = "vdk_wrapped"
     const val KEY_WRAPPED_VAULT_DATA_KEY_IV = "vdk_iv"
     const val KEY_VAULT_DATA_KEY_VERSION = "vdk_version"
+    private const val KEY_VDK_MIGRATION_PENDING = "vdk_migration_pending"
+    private const val KEY_VDK_MIGRATION_OLD_KEY = "vdk_migration_old_key"
+    private const val KEY_VDK_MIGRATION_OLD_KEY_IV = "vdk_migration_old_key_iv"
 
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val MASTER_KEY_ALIAS = "focus_archive_vault_master_key"
@@ -91,6 +94,39 @@ object ArchiveVaultSecurity {
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, javax.crypto.spec.SecretKeySpec(kek, "AES"), GCMParameterSpec(GCM_TAG_LENGTH, iv))
         return cipher.doFinal(wrappedVdk)
+    }
+
+    /**
+     * Idempotently migrates legacy PIN-keyed notes to a stable VDK. A note may already use
+     * [newVdk] after an interrupted attempt, so both keys are tried before failing closed.
+     */
+    private fun migrateLegacyNotesCrashSafely(context: Context, oldKey: ByteArray, newVdk: ByteArray) {
+        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            val noteDb = NoteDatabase.getInstance(context.applicationContext)
+            noteDb.withTransaction {
+                val targets = noteDb.noteDao().getAllNotesList().filter {
+                    it.isArchived || VaultPayloadEncryptor.isVaultEncrypted(it)
+                }
+                for (note in targets) {
+                    val plaintext = if (VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                        when (val newResult = VaultPayloadEncryptor.tryDecryptNotePayload(note, newVdk)) {
+                            is VaultPayloadEncryptor.DecryptionResult.Success -> newResult.note
+                            else -> when (val oldResult = VaultPayloadEncryptor.tryDecryptNotePayload(note, oldKey)) {
+                                is VaultPayloadEncryptor.DecryptionResult.Success -> oldResult.note
+                                else -> throw IllegalStateException(
+                                    "Note ${note.id} cannot be decrypted with either migration key (new=$newResult, old=$oldResult)"
+                                )
+                            }
+                        }
+                    } else {
+                        note
+                    }
+                    noteDb.noteDao().updateNote(
+                        VaultPayloadEncryptor.encryptNotePayload(plaintext.copy(isArchived = true), newVdk)
+                    )
+                }
+            }
+        }
     }
 
     // Ephemeral in-memory Vault Sub-Key cache while vault is unlocked
@@ -288,34 +324,40 @@ object ArchiveVaultSecurity {
                     .remove(KEY_RECOVERY_BACKED_UP)
             }
 
+            if (isChangingPasscode && !hasExistingVdk) {
+                val legacyKey = checkNotNull(oldSubKey) { "Legacy vault key is unavailable" }
+                val (wrappedOldKey, oldKeyIv) = wrapVaultDataKey(legacyKey, finalVdk)
+                editor.putBoolean(KEY_VDK_MIGRATION_PENDING, true)
+                    .putString(KEY_VDK_MIGRATION_OLD_KEY, Base64.encodeToString(wrappedOldKey, Base64.NO_WRAP))
+                    .putString(KEY_VDK_MIGRATION_OLD_KEY_IV, Base64.encodeToString(oldKeyIv, Base64.NO_WRAP))
+            }
+
             val committed = editor.commit()
             // Set ephemeralVaultSubKey and perform note encryption only after prefs are safely on disk.
             if (committed) {
                 ephemeralVaultSubKey = finalVdk.copyOf()
 
                 if (!hasExistingVdk) {
-                    kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                        val noteDb = NoteDatabase.getInstance(appContext)
-                        noteDb.withTransaction {
-                            if (isChangingPasscode) {
-                                // Legacy vault upgrade to stable VDK: migrate existing notes
-                                val targetNotes = noteDb.noteDao().getAllNotesList().filter {
-                                    it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
-                                }
-                                for (note in targetNotes) {
-                                    if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                                        val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, oldSubKey!!)) {
-                                            is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
-                                            else -> throw IllegalStateException("Cannot change passcode: archived note ${note.id} failed decryption ($res). Aborting to prevent permanent data loss.")
-                                        }
-                                        val reEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(decrypted, finalVdk)
-                                        noteDb.noteDao().updateNote(reEncrypted)
-                                    } else if (note.isArchived) {
-                                        val encrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(note, finalVdk)
-                                        noteDb.noteDao().updateNote(encrypted)
-                                    }
-                                }
-                            } else {
+                    if (isChangingPasscode) {
+                        var notesMigrated = false
+                        try {
+                            migrateLegacyNotesCrashSafely(appContext, checkNotNull(oldSubKey), finalVdk)
+                            notesMigrated = true
+                            check(prefs.edit()
+                                .putBoolean(KEY_VDK_MIGRATION_PENDING, false)
+                                .remove(KEY_VDK_MIGRATION_OLD_KEY)
+                                .remove(KEY_VDK_MIGRATION_OLD_KEY_IV)
+                                .commit()) { "Could not durably complete passcode migration" }
+                        } catch (e: Exception) {
+                            // Credentials and both wrapped keys are already durable. Keep the
+                            // key matching the committed database state active and resume later.
+                            ephemeralVaultSubKey = if (notesMigrated) finalVdk.copyOf() else oldSubKey?.copyOf()
+                            Log.w(TAG, "Passcode changed; legacy note migration will resume on next unlock", e)
+                        }
+                    } else {
+                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                            val noteDb = NoteDatabase.getInstance(appContext)
+                            noteDb.withTransaction {
                                 // First time setting passcode (brand-new vault): encrypt any existing plaintext archived notes
                                 val targetNotes = noteDb.noteDao().getAllNotesList().filter { it.isArchived }
                                 for (note in targetNotes) {
@@ -617,46 +659,50 @@ object ArchiveVaultSecurity {
                         if (wrappedVdkStr != null && vdkIvStr != null && computedHash != null) {
                             val wrappedVdk = Base64.decode(wrappedVdkStr, Base64.NO_WRAP)
                             val vdkIv = Base64.decode(vdkIvStr, Base64.NO_WRAP)
-                            unwrapVaultDataKey(wrappedVdk, vdkIv, computedHash)
+                            val unwrapped = unwrapVaultDataKey(wrappedVdk, vdkIv, computedHash)
+                            if (prefs.getBoolean(KEY_VDK_MIGRATION_PENDING, false)) {
+                                val oldWrapped = Base64.decode(
+                                    prefs.getString(KEY_VDK_MIGRATION_OLD_KEY, null)
+                                        ?: throw SecurityException("Missing migration recovery key"),
+                                    Base64.NO_WRAP
+                                )
+                                val oldIv = Base64.decode(
+                                    prefs.getString(KEY_VDK_MIGRATION_OLD_KEY_IV, null)
+                                        ?: throw SecurityException("Missing migration recovery-key IV"),
+                                    Base64.NO_WRAP
+                                )
+                                val oldKey = unwrapVaultDataKey(oldWrapped, oldIv, unwrapped)
+                                migrateLegacyNotesCrashSafely(appContext, oldKey, unwrapped)
+                                Arrays.fill(oldKey, 0.toByte())
+                                check(prefs.edit()
+                                    .putBoolean(KEY_VDK_MIGRATION_PENDING, false)
+                                    .remove(KEY_VDK_MIGRATION_OLD_KEY)
+                                    .remove(KEY_VDK_MIGRATION_OLD_KEY_IV)
+                                    .commit()) {
+                                    "Could not durably complete vault-key migration"
+                                }
+                            }
+                            unwrapped
                         } else null
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to unwrap Vault Data Key with verified PIN KEK", e)
                         null
                     }
                 } else if (computedHash != null) {
-                    // Legacy vault upgrade: migrate from PIN-as-data-key to stable VDK
+                    // Legacy vault upgrade. Persist the recoverable key envelope and a journal
+                    // marker before touching ciphertext. The migration itself is idempotent.
                     val newVdk = ByteArray(32).also { SecureRandom().nextBytes(it) }
-                    var migrationSuccess = false
+                    var notesMigrated = false
                     try {
-                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                            val noteDb = NoteDatabase.getInstance(appContext)
-                            noteDb.withTransaction {
-                                val targetNotes = noteDb.noteDao().getAllNotesList().filter {
-                                    it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
-                                }
-                                for (note in targetNotes) {
-                                    if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                                        val decrypted = when (val res = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, computedHash)) {
-                                            is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> res.note
-                                            else -> throw IllegalStateException("Note ${note.id} decryption failed during VDK migration ($res)")
-                                        }
-                                        val reEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(decrypted, newVdk)
-                                        noteDb.noteDao().updateNote(reEncrypted)
-                                    }
-                                }
-                            }
-                        }
-                        migrationSuccess = true
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Legacy note migration to VDK failed/deferred", e)
-                    }
-
-                    if (migrationSuccess) {
                         val (wrappedVdk, vdkIv) = wrapVaultDataKey(newVdk, computedHash)
+                        val (wrappedOldKey, oldKeyIv) = wrapVaultDataKey(computedHash, newVdk)
                         val vdkEditor = prefs.edit()
                             .putString(KEY_WRAPPED_VAULT_DATA_KEY, Base64.encodeToString(wrappedVdk, Base64.NO_WRAP))
                             .putString(KEY_WRAPPED_VAULT_DATA_KEY_IV, Base64.encodeToString(vdkIv, Base64.NO_WRAP))
                             .putInt(KEY_VAULT_DATA_KEY_VERSION, 1)
+                            .putBoolean(KEY_VDK_MIGRATION_PENDING, true)
+                            .putString(KEY_VDK_MIGRATION_OLD_KEY, Base64.encodeToString(wrappedOldKey, Base64.NO_WRAP))
+                            .putString(KEY_VDK_MIGRATION_OLD_KEY_IV, Base64.encodeToString(oldKeyIv, Base64.NO_WRAP))
 
                         val existingWords = getStoredRecoveryPhraseInternal(prefs, computedHash)
                         if (existingWords != null && existingWords.size == 12) {
@@ -670,13 +716,31 @@ object ArchiveVaultSecurity {
                                     .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encPhrase.second, Base64.NO_WRAP))
                             } catch (_: Exception) {}
                         }
-                        vdkEditor.commit()
+                        check(vdkEditor.commit()) { "Could not persist vault-key migration journal" }
+                        migrateLegacyNotesCrashSafely(appContext, computedHash, newVdk)
+                        notesMigrated = true
+                        check(prefs.edit()
+                            .putBoolean(KEY_VDK_MIGRATION_PENDING, false)
+                            .remove(KEY_VDK_MIGRATION_OLD_KEY)
+                            .remove(KEY_VDK_MIGRATION_OLD_KEY_IV)
+                            .commit()) {
+                            "Could not durably complete vault-key migration"
+                        }
                         newVdk
-                    } else {
-                        computedHash.copyOf()
+                    } catch (e: Exception) {
+                        // The durable pending marker allows the next successful PIN verification
+                        // to resume safely whether zero or all note updates committed.
+                        Log.w(TAG, "Legacy note migration to VDK failed/deferred", e)
+                        if (notesMigrated) newVdk else computedHash.copyOf()
                     }
                 } else null
 
+                if (hasWrappedVdk && activeVdk == null) {
+                    ephemeralVaultSubKey = null
+                    return VerifyResult.Error(
+                        "Vault key migration or recovery could not be completed safely. No private data was opened."
+                    )
+                }
                 ephemeralVaultSubKey = activeVdk?.copyOf() ?: computedHash?.copyOf()
                 inMemoryLockoutElapsed = 0L
 
@@ -891,30 +955,9 @@ object ArchiveVaultSecurity {
                 // ZERO note rewrites required!
                 recoveredSubKey.copyOf()
             } else {
-                // Legacy vault recovery: migrate notes to new random VDK
-                val newVdk = ByteArray(32).also { SecureRandom().nextBytes(it) }
-                kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                    val noteDb = NoteDatabase.getInstance(appContext)
-                    noteDb.withTransaction {
-                        val targetNotes = noteDb.noteDao().getAllNotesList().filter {
-                            it.isArchived || VaultPayloadEncryptor.isVaultEncrypted(it)
-                        }
-                        for (note in targetNotes) {
-                            if (VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                                val decrypted = when (val res = VaultPayloadEncryptor.tryDecryptNotePayload(note, recoveredSubKey)) {
-                                    is VaultPayloadEncryptor.DecryptionResult.Success -> res.note
-                                    else -> throw IllegalStateException("Cannot recover vault: archived note ${note.id} failed decryption ($res). Aborting to prevent data loss.")
-                                }
-                                val reEncrypted = VaultPayloadEncryptor.encryptNotePayload(decrypted, newVdk)
-                                noteDb.noteDao().updateNote(reEncrypted)
-                            } else if (note.isArchived) {
-                                val encrypted = VaultPayloadEncryptor.encryptNotePayload(note, newVdk)
-                                noteDb.noteDao().updateNote(encrypted)
-                            }
-                        }
-                    }
-                }
-                newVdk
+                // The old recovery key remains wrapped in a durable migration journal below.
+                // This makes the subsequent database rewrite resumable after process death.
+                ByteArray(32).also { SecureRandom().nextBytes(it) }
             }
 
             // Wrap finalVdk under new PIN KEK
@@ -935,7 +978,7 @@ object ArchiveVaultSecurity {
             }
 
             // Commit new credentials and reset lockouts
-            val committed = prefs.edit()
+            val credentialEditor = prefs.edit()
                 .putString(KEY_STATUS, "enabled")
                 .putString(KEY_SALT, Base64.encodeToString(newSalt, Base64.NO_WRAP))
                 .putString(KEY_HASH, Base64.encodeToString(encryptedHash, Base64.NO_WRAP))
@@ -953,9 +996,35 @@ object ArchiveVaultSecurity {
                 .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encryptedPhrase.first, Base64.NO_WRAP))
                 .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
                 .putBoolean(KEY_RECOVERY_BACKED_UP, true)
-                .commit()
+
+            if (!hasExistingVdk) {
+                val (wrappedOldKey, oldKeyIv) = wrapVaultDataKey(recoveredSubKey, finalVdk)
+                credentialEditor
+                    .putBoolean(KEY_VDK_MIGRATION_PENDING, true)
+                    .putString(KEY_VDK_MIGRATION_OLD_KEY, Base64.encodeToString(wrappedOldKey, Base64.NO_WRAP))
+                    .putString(KEY_VDK_MIGRATION_OLD_KEY_IV, Base64.encodeToString(oldKeyIv, Base64.NO_WRAP))
+            }
+
+            val committed = credentialEditor.commit()
 
             if (committed) {
+                if (!hasExistingVdk) {
+                    var notesMigrated = false
+                    try {
+                        migrateLegacyNotesCrashSafely(appContext, recoveredSubKey, finalVdk)
+                        notesMigrated = true
+                        check(prefs.edit()
+                            .putBoolean(KEY_VDK_MIGRATION_PENDING, false)
+                            .remove(KEY_VDK_MIGRATION_OLD_KEY)
+                            .remove(KEY_VDK_MIGRATION_OLD_KEY_IV)
+                            .commit()) { "Could not durably complete recovered vault migration" }
+                    } catch (e: Exception) {
+                        ephemeralVaultSubKey = if (notesMigrated) finalVdk.copyOf() else recoveredSubKey.copyOf()
+                        Log.w(TAG, "Vault recovered; legacy note migration will resume on next unlock", e)
+                        inMemoryLockoutElapsed = 0L
+                        return true
+                    }
+                }
                 ephemeralVaultSubKey = finalVdk.copyOf()
                 inMemoryLockoutElapsed = 0L
                 Log.i(TAG, "Vault successfully recovered and re-keyed with new PIN")

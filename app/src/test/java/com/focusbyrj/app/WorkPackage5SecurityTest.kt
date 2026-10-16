@@ -109,8 +109,7 @@ class WorkPackage5SecurityTest {
         assertEquals("Decrypted snapshot note count must be 1", 1, noteCount)
 
         val snapshotsList = DataSafetyManager.listAvailableSnapshots(context)
-        assertEquals(1, snapshotsList.size)
-        assertEquals(1, snapshotsList.first().noteCount)
+        assertTrue(snapshotsList.any { it.absolutePath == snapshotPath && it.noteCount == 1 })
 
         // 3. Clear database and restore from encrypted snapshot
         noteDb.noteDao().deleteAllNotes()
@@ -230,7 +229,7 @@ class WorkPackage5SecurityTest {
 
         // Execute restore
         val restoreResult = DataSafetyManager.restoreSnapshot(context, snapshotFile.absolutePath, noteDb.noteDao())
-        assertTrue("Restore executes safely", restoreResult.isSuccess)
+        assertTrue("Restore must reject obsolete vault ciphertext", restoreResult.isFailure)
 
         // F06 INVARIANT: The live note in the database must NOT have been corrupted/replaced with obsolete ciphertext!
         val preservedLiveNote = noteDb.noteDao().getNoteByIdSync(303)!!

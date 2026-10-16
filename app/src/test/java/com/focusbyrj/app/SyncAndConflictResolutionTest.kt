@@ -48,7 +48,7 @@ class SyncAndConflictResolutionTest {
         )
 
         // Perform media deletion as executed when purging a deleted note
-        NoteMediaManager.deleteNoteMediaFiles(note)
+        NoteMediaManager.deleteNoteMediaFiles(note, listOf(note))
 
         // Both files should be wiped and unlinked from the filesystem
         assertFalse("Image file should be deleted on tombstone", imageFile.exists())

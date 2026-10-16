@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
@@ -69,6 +71,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
      * Reset to 0L at the start of every new-note session.
      */
     @Volatile private var pendingNewNoteId: Long = 0L
+    @Volatile private var pendingVaultDraftInMemory: NoteEntity? = null
 
     /** Debounce job for undo snapshot pushes during continuous text typing. */
     private var undoPushJob: Job? = null
@@ -134,6 +137,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             _isVaultUnlocked.value = true
             _currentFolder.value = NoteFolder.ARCHIVE
             refreshVaultStatus()
+            recoverPendingVaultDraft()
             triggerOrphanMediaCleanup()
         }
         return result
@@ -149,6 +153,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             _isVaultUnlocked.value = true
             _currentFolder.value = NoteFolder.ARCHIVE
             refreshVaultStatus()
+            recoverPendingVaultDraft()
             triggerOrphanMediaCleanup()
         }
         return success
@@ -175,6 +180,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             _isVaultUnlocked.value = true
             _currentFolder.value = NoteFolder.ARCHIVE
             refreshVaultStatus()
+            recoverPendingVaultDraft()
             triggerOrphanMediaCleanup()
         }
         return success
@@ -189,6 +195,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         _isVaultUnlocked.value = true
         _currentFolder.value = NoteFolder.ARCHIVE
         refreshVaultStatus()
+        recoverPendingVaultDraft()
     }
 
     fun disableVaultPasscode(): Boolean {
@@ -204,8 +211,6 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         if (current != null && current.isArchived) {
             autoSaveJob?.cancel()
             undoPushJob?.cancel()
-            _editingState.value = null
-            resetUndoHistory()
             audioMemoManager.stopPlayback()
             audioMemoManager.cancelRecording()
 
@@ -219,16 +224,21 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     if (!entity.isEmptyNote()) {
                         try {
                             val encrypted = VaultPayloadEncryptor.encryptNotePayload(entity, vaultSubKey = subKey, context = getApplication())
-                            viewModelScope.launch(Dispatchers.IO) {
+                            try {
+                                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
                                 persistMutex.withLock {
-                                    try {
                                         val savedId = repository.saveNote(encrypted)
                                         latestNotesCache[savedId] = encrypted
-                                    } catch (e: Exception) {
-                                        if (e is kotlinx.coroutines.CancellationException) throw e
-                                        Log.e("NotesViewModel", "Failed to save locked vault note", e)
                                     }
                                 }
+                                pendingVaultDraftFile().delete()
+                            } catch (saveError: Exception) {
+                                // Persist the already-vault-encrypted entity under device encryption.
+                                // This survives process death and is retried after the next unlock.
+                                pendingVaultDraftInMemory = encrypted
+                                persistPendingVaultDraft(encrypted)
+                                pendingVaultDraftInMemory = null
+                                Log.e("NotesViewModel", "Database save failed; vault draft queued for recovery", saveError)
                             }
                         } catch (e: Exception) {
                             Log.e("NotesViewModel", "Failed to encrypt note payload before locking vault", e)
@@ -236,6 +246,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+            _editingState.value = null
+            resetUndoHistory()
             initialSnapshot = null
             pendingNewNoteId = 0L
         }
@@ -247,6 +259,54 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             _currentFolder.value = NoteFolder.NOTES
         }
         refreshVaultStatus()
+    }
+
+    private fun pendingVaultDraftFile(): File = File(getApplication<Application>().filesDir, "pending_vault_draft.enc")
+
+    private fun persistPendingVaultDraft(note: NoteEntity) {
+        val json = JSONObject().apply {
+            put("id", note.id); put("title", note.title); put("content", note.content)
+            put("isChecklist", note.isChecklist); put("checklistJson", note.checklistJson)
+            put("colorKey", note.colorKey); put("fontKey", note.fontKey); put("isPinned", note.isPinned)
+            put("isArchived", note.isArchived); put("isTrashed", note.isTrashed); put("labelsJson", note.labelsJson)
+            put("imageUrisJson", note.imageUrisJson); put("audioUrisJson", note.audioUrisJson)
+            put("createdAt", note.createdAt); put("updatedAt", note.updatedAt)
+            put("trashedAt", note.trashedAt ?: JSONObject.NULL); put("deletedAt", note.deletedAt ?: JSONObject.NULL)
+        }
+        com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(
+            pendingVaultDraftFile(), json.toString().toByteArray(Charsets.UTF_8)
+        )
+    }
+
+    private fun recoverPendingVaultDraft() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val file = pendingVaultDraftFile()
+            if (!file.exists() && pendingVaultDraftInMemory == null) return@launch
+            try {
+                val memoryDraft = pendingVaultDraftInMemory
+                val note = memoryDraft ?: run {
+                    val bytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
+                        ?: throw java.io.IOException("Pending vault draft could not be decrypted")
+                    val obj = JSONObject(bytes.toString(Charsets.UTF_8))
+                    NoteEntity(
+                    id = obj.optLong("id", 0L), title = obj.optString("title", ""), content = obj.optString("content", ""),
+                    isChecklist = obj.optBoolean("isChecklist"), checklistJson = obj.optString("checklistJson", "[]"),
+                    colorKey = obj.optString("colorKey", "default"), fontKey = obj.optString("fontKey", "default"),
+                    isPinned = obj.optBoolean("isPinned"), isArchived = true, isTrashed = obj.optBoolean("isTrashed"),
+                    labelsJson = obj.optString("labelsJson", "[]"), imageUrisJson = obj.optString("imageUrisJson", "[]"),
+                    audioUrisJson = obj.optString("audioUrisJson", "[]"), createdAt = obj.optLong("createdAt"),
+                    updatedAt = obj.optLong("updatedAt"),
+                    trashedAt = if (obj.isNull("trashedAt")) null else obj.optLong("trashedAt"),
+                    deletedAt = if (obj.isNull("deletedAt")) null else obj.optLong("deletedAt")
+                    )
+                }
+                repository.saveNote(note)
+                pendingVaultDraftInMemory = null
+                file.delete()
+            } catch (e: Exception) {
+                Log.e("NotesViewModel", "Failed to recover pending vault draft; retaining it for retry", e)
+            }
+        }
     }
 
     fun getRemainingLockoutSeconds(): Long {
@@ -1085,14 +1145,36 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 val imagesDir = java.io.File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
-                val ext = fileName.substringAfterLast('.', "").ifEmpty { "bin" }
+                val ext = fileName.substringAfterLast('.', "")
+                    .lowercase(java.util.Locale.ROOT)
+                    .filter { it.isLetterOrDigit() }
+                    .take(10)
+                    .ifEmpty { "bin" }
                 val safeFileName = "att_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext"
                 val destFile = java.io.File(imagesDir, safeFileName)
 
                 try {
-                    context.contentResolver.openInputStream(contentUri)?.use { input ->
+                    val inputStream = context.contentResolver.openInputStream(contentUri)
+                        ?: throw java.io.IOException("Could not open the selected attachment")
+                    inputStream.use { input ->
                         com.focusbyrj.app.util.crypto.EncryptedMediaStorage.openEncryptedOutputStream(destFile).use { output ->
-                            input.copyTo(output, bufferSize = 8192)
+                            val buffer = ByteArray(8192)
+                            var actualBytes = 0L
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read == -1) break
+                                actualBytes += read
+                                if (actualBytes > maxAttachmentBytes) {
+                                    throw java.io.IOException("Attachment exceeds the 50 MB limit")
+                                }
+                                output.write(buffer, 0, read)
+                            }
+                            sizeBytes = actualBytes
+                            fileSize = when {
+                                actualBytes >= 1024 * 1024 -> String.format(java.util.Locale.US, "%.1f MB", actualBytes.toDouble() / (1024 * 1024))
+                                actualBytes >= 1024 -> "${actualBytes / 1024} KB"
+                                else -> "$actualBytes B"
+                            }
                         }
                     }
                 } catch (t: Throwable) {
@@ -1115,7 +1197,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     persistCurrentEditorState()
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("NotesViewModel", "Attachment import failed", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        getApplication(),
+                        e.message ?: "Could not import attachment",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
         }
     }
@@ -1717,7 +1806,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun deleteNoteMediaFiles(note: NoteEntity) {
-        val allNotes = repository.getAllNotesList()
+        val allNotes = repository.getAllNotesListOrThrow()
         NoteMediaManager.deleteNoteMediaFiles(note, allNotes)
     }
 
@@ -1746,7 +1835,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 repository.emptyTrash(getApplication())
 
                 // 2. Only after database rows are safely removed and pre-op snapshot verified, delete media
-                val remainingNotes = repository.getAllNotesList()
+                val remainingNotes = repository.getAllNotesListOrThrow()
                 trashedNotes.forEach { note ->
                     val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
                         com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
