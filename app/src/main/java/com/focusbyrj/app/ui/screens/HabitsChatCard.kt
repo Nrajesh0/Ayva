@@ -147,20 +147,11 @@ fun HabitsChatCard(
                             onLogHabit = { habitId ->
                                 coroutineScope.launch(Dispatchers.IO) {
                                     try {
-                                        val updatedLog = habitRepo.incrementHabitProgress(habitId)
-                                        val habit = habitRepo.getHabitById(habitId)
-                                        if (habit != null) {
-                                            val isGoalMet = updatedLog.completedCount >= habit.targetPerDay
-                                            HabitAlarmScheduler.scheduleHabitReminder(
-                                                context,
-                                                habit,
-                                                updatedLog.lastCompletedTimestamp,
-                                                isGoalCompletedToday = isGoalMet
-                                            )
-                                        }
+                                        val result = com.focusbyrj.app.util.assistant.AssistantActionExecutor.execute(context,
+                                            com.focusbyrj.app.util.assistant.AssistantAction.LogHabit(habitId))
                                         withContext(Dispatchers.Main) {
                                             GamificationHaptics.playSuccess(context)
-                                            FocusEconomyManager.addRewards(baseXp = 15, baseGold = 5)
+                                            Toast.makeText(context, result.text, Toast.LENGTH_SHORT).show()
                                             onHabitLog?.invoke(habitId)
                                         }
                                     } catch (e: Exception) {

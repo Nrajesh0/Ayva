@@ -11,7 +11,8 @@ data class ParseResult(
     val timestamp: Long?,
     val hasTime: Boolean,
     val recurrence: RecurrencePattern = RecurrencePattern.NONE,
-    val note: String? = null
+    val note: String? = null,
+    val hasTaskText: Boolean = true
 )
 
 object SmartDateParser {
@@ -474,6 +475,7 @@ object SmartDateParser {
             .trim()
             .replace("\\s+".toRegex(), " ")
 
+        val hasTaskText = clean.isNotBlank()
         if (clean.isBlank()) {
             clean = input.trim()
         }
@@ -520,6 +522,6 @@ object SmartDateParser {
             detectedNote = if (isLeapYear(curYear)) "Note: Event is on Feb 29th" else "Note: Event is on Feb 29th (reminded on Feb 28th in non-leap years)"
         }
 
-        return ParseResult(clean, cal.timeInMillis, hasExplicitTime, detectedRecurrence, detectedNote)
+        return ParseResult(clean, cal.timeInMillis, hasExplicitTime, detectedRecurrence, detectedNote, hasTaskText)
     }
 }

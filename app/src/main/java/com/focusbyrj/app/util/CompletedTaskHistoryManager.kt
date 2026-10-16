@@ -118,6 +118,12 @@ object CompletedTaskHistoryManager {
         return getTodayCompletedTasks(context).size
     }
 
+    @Synchronized
+    fun removeCompletedTasks(context: Context, ids: Set<Long>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        saveRecords(prefs, loadAllRecords(prefs).filterNot { it.id in ids })
+    }
+
     /**
      * Purges all completed task history records older than 12:00 AM of today.
      */

@@ -139,6 +139,10 @@ class Batch7SecurityAuditTest {
 
         val response = AyvaTalkEngine.answerTalkQueryWithActions("complete all", context)
         assertNotNull(response)
+        assertFalse("Bulk completion waits for confirmation", focusDb.taskDao().getTaskById(id1)!!.isCompleted)
+        assertFalse("Bulk completion waits for confirmation", focusDb.taskDao().getTaskById(id2)!!.isCompleted)
+        val confirm = response.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }
+        AyvaTalkEngine.answerTalkQueryWithActions(confirm.query, context)
 
         val t1 = focusDb.taskDao().getTaskById(id1)
         val t2 = focusDb.taskDao().getTaskById(id2)
@@ -339,7 +343,7 @@ class Batch7SecurityAuditTest {
         )
         assertTrue(
             "Confirmation prompt must offer confirm action chip",
-            unconfirmedResp.actions.any { (it as? TalkAction.AskQuery)?.query?.contains("confirm_delete_all") == true }
+            unconfirmedResp.actions.any { (it as? TalkAction.AskQuery)?.query?.startsWith("/ayva confirm ") == true }
         )
 
         // Tasks must NOT be deleted yet!
@@ -350,8 +354,9 @@ class Batch7SecurityAuditTest {
         assertFalse("Task 1 must not be trashed before confirmation", t1Before!!.isTrashed)
         assertFalse("Task 2 must not be trashed before confirmation", t2Before!!.isTrashed)
 
-        // Second pass: confirmed "/talk confirm_delete_all"
-        val confirmedResp = AyvaTalkEngine.answerTalkQueryWithActions("/talk confirm_delete_all", context)
+        // Confirm the exact stored preview using its scoped nonce.
+        val confirm = unconfirmedResp.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }
+        val confirmedResp = AyvaTalkEngine.answerTalkQueryWithActions(confirm.query, context)
         assertNotNull(confirmedResp)
         assertTrue(
             "Response should indicate tasks were moved to Trash",
@@ -424,8 +429,9 @@ class Batch7SecurityAuditTest {
         assertNotNull(taskBefore)
         assertFalse("Task must not be trashed before confirmation", taskBefore!!.isTrashed)
 
-        // Second pass: confirmed
-        val confirmedResp = AyvaTalkEngine.answerTalkQueryWithActions("/talk confirm_delete_overdue", context)
+        // Confirm the exact overdue targets shown in the preview.
+        val confirm = unconfirmedResp.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }
+        val confirmedResp = AyvaTalkEngine.answerTalkQueryWithActions(confirm.query, context)
         assertNotNull(confirmedResp)
 
         val taskAfter = focusDb.taskDao().getTaskById(overdueId)

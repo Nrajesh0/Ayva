@@ -255,26 +255,7 @@ fun DuolingoFreezeButton(
     }
 }
 
-private val ALLOWED_PREF_ACTIONS = mapOf(
-    "app_theme_color" to "string",
-    "app_theme_mode" to "string",
-    "auto_hide_duration_sec" to "int",
-    "bubble_enabled" to "boolean",
-    "default_start_tab" to "string",
-    "evening_brief_time" to "string",
-    "hide_in_landscape" to "boolean",
-    "morning_brief_time" to "string",
-    "overlay_theme_mode" to "string",
-    "persistent_reminder_interval" to "int",
-    "routine_notifications" to "boolean",
-    "secure_recents" to "boolean",
-    "soft_lock_duration" to "int",
-    "soft_unlock_duration" to "int",
-    "streak_notification_enabled" to "boolean",
-    "streak_notification_time" to "string",
-    "task_notification_style" to "string",
-    "vacation_mode" to "boolean"
-)
+private val ALLOWED_PREF_ACTIONS = com.focusbyrj.app.util.assistant.AssistantPreferences.types
 
 @Composable
 fun PendingActionCard(message: ChatMessage, fontSizeSp: Float, onMessageUpdate: (ChatMessage) -> Unit) {
@@ -305,34 +286,11 @@ fun PendingActionCard(message: ChatMessage, fontSizeSp: Float, onMessageUpdate: 
                     }
                     val value = json.optString("value")
 
-                    val prefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE).edit()
-                    val bubblePrefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE).edit()
-
-                    when (expectedType) {
-                        "int" -> {
-                            val parsedInt = value.toIntOrNull() ?: 0
-                            prefs.putInt(prefKey, parsedInt)
-                            bubblePrefs.putInt(prefKey, parsedInt)
-                        }
-                        "boolean" -> {
-                            val parsedBool = value == "true"
-                            prefs.putBoolean(prefKey, parsedBool)
-                            bubblePrefs.putBoolean(prefKey, parsedBool)
-                        }
-                        "string" -> {
-                            prefs.putString(prefKey, value)
-                            bubblePrefs.putString(prefKey, value)
-                        }
-                    }
-                    prefs.apply()
-                    bubblePrefs.apply()
-
-                    if (prefKey == "streak_notification_time" || prefKey == "streak_notification_enabled") {
-                        com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(context)
-                    } else if (prefKey == "morning_brief_time" || prefKey == "evening_brief_time") {
-                        com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(context)
-                    } else if (prefKey == "vacation_mode") {
-                        com.focusbyrj.app.util.AptitudeManager.setVacationMode(context, value == "true")
+                    try {
+                        com.focusbyrj.app.util.assistant.AssistantPreferences.apply(context, prefKey, expectedType, value)
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, e.message ?: "Couldn't apply setting", android.widget.Toast.LENGTH_LONG).show()
+                        return@Button
                     }
 
                     json.put("status", "executed")

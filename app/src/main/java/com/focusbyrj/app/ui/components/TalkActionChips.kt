@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusbyrj.app.util.TalkAction
 import org.json.JSONObject
+import kotlinx.coroutines.launch
 
 data class ActionColorTheme(
     val faceColor: Color,
@@ -137,6 +138,8 @@ fun TalkActionChips(
     if (talkActionJson.isNullOrBlank()) return
 
     val context = LocalContext.current
+    val actionScope = rememberCoroutineScope()
+    var actionBusy by remember { mutableStateOf(false) }
     var appliedActionKey by remember { mutableStateOf<String?>(null) }
 
     val (topicId, parsedActions) = remember(talkActionJson) {
@@ -191,24 +194,30 @@ fun TalkActionChips(
     val isDark = androidx.compose.foundation.isSystemInDarkTheme()
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    val onActionClick: (TalkAction) -> Unit = { action ->
+    val onActionClick: (TalkAction) -> Unit = actionClick@{ action ->
+        if (actionBusy) return@actionClick
         if (action is TalkAction.AskQuery && onQueryClick != null) {
             onQueryClick(action.query)
         } else {
-            val success = action.execute(context)
-            if (success) {
-                if (action is TalkAction.DirectPrefUpdate) {
-                    appliedActionKey = "${action.prefKey}_${action.targetValue}"
-                    Toast.makeText(context, "Updated: ${action.label} ✅", Toast.LENGTH_SHORT).show()
-                    onActionApplied?.invoke("Updated: ${action.label}")
-                } else if (action is TalkAction.RoutineToggle) {
-                    appliedActionKey = "routine_${action.scheduleId}_${action.isEnabled}"
-                    val statusWord = if (action.isEnabled) "Started" else "Stopped"
-                    Toast.makeText(context, "${action.routineName}: $statusWord ✅", Toast.LENGTH_SHORT).show()
-                    onActionApplied?.invoke("${action.routineName}: $statusWord")
-                } else {
-                    Toast.makeText(context, "Opening ${action.label}...", Toast.LENGTH_SHORT).show()
-                }
+            actionBusy = true
+            actionScope.launch {
+                try {
+                    val success = action.executeAsync(context)
+                    if (success) {
+                        when (action) {
+                            is TalkAction.DirectPrefUpdate -> {
+                                appliedActionKey = "${action.prefKey}_${action.targetValue}"
+                                onActionApplied?.invoke("Updated: ${action.label}")
+                            }
+                            is TalkAction.RoutineToggle -> {
+                                appliedActionKey = "routine_${action.scheduleId}_${action.isEnabled}"
+                                onActionApplied?.invoke("${action.routineName}: ${if (action.isEnabled) "Enabled for its schedule" else "Disabled"}")
+                            }
+                            else -> Unit
+                        }
+                        Toast.makeText(context, if (action is TalkAction.DirectPrefUpdate || action is TalkAction.RoutineToggle) "Applied ${action.label}" else "Opening ${action.label}…", Toast.LENGTH_SHORT).show()
+                    } else Toast.makeText(context, "Couldn't apply that action. The item may have changed or focus protection may prevent it.", Toast.LENGTH_LONG).show()
+                } finally { actionBusy = false }
             }
         }
     }

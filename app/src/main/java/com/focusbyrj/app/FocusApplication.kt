@@ -46,6 +46,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
         com.focusbyrj.app.util.LicenseManager.init(this)
         com.focusbyrj.app.util.FocusStatsManager.init(this)
         com.focusbyrj.app.util.FocusEconomyManager.init(this)
+        com.focusbyrj.app.util.FocusSessionManager.restore(this)
         com.focusbyrj.app.util.AptitudeManager.init(this)
         com.focusbyrj.app.util.DailyQuestManager.init(this)
         com.focusbyrj.app.util.CustomCategoryManager.init(this)

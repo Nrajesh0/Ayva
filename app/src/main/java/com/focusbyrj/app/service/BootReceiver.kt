@@ -21,6 +21,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             val pendingResult = goAsync()
+            com.focusbyrj.app.util.FocusSessionManager.restore(context)
             FocusBlockerService.startService(context)
             com.focusbyrj.app.service.BubbleService.clearSnooze(context)
             com.focusbyrj.app.service.BubbleService.startIfEnabled(context)

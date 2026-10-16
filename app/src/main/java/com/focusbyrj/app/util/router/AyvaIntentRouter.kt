@@ -12,6 +12,7 @@ import com.focusbyrj.app.util.ConflictOption
 import com.focusbyrj.app.util.NluIntent
 import com.focusbyrj.app.util.OfflineNluEngine
 import com.focusbyrj.app.util.SmartDateParser
+import com.focusbyrj.app.util.ChatTaskDraft
 
 sealed class RouterDestination {
     data class DirectCommand(val command: String, val executeImmediately: Boolean = true) : RouterDestination()
@@ -36,20 +37,31 @@ object AyvaIntentRouter {
         knownHabits: List<String> = emptyList(),
         knownRoutines: List<String> = emptyList()
     ): RouterDestination {
-        val trimmed = input.trim()
+        val trimmed = OfflineNluEngine.normalizeRequest(input)
         // Sanitize newlines from user input before embedding in ConflictOption commands.
         // A raw "\n/clear" in trimmed would be split by the compound command handler as two commands (BATCH-9-P2-011).
         val safeTrimmed = trimmed.replace(Regex("[\r\n]+"), " ").trim()
         val lower = trimmed.lowercase()
+        if (trimmed.isBlank()) return RouterDestination.TalkQuery(trimmed)
 
         // 1. Direct Slash Commands
         if (trimmed.startsWith("/")) {
+            val talkContent = trimmed.substringAfter(' ', "").trim()
+            if (trimmed.substringBefore(' ').lowercase() in setOf("/talk", "/ask") && OfflineNluEngine.isExplicitCreation(talkContent)) {
+                return route(talkContent, pendingTasks, knownHabits, knownRoutines)
+            }
             return handleSlashCommand(trimmed)
+        }
+
+        if (lower in setOf("task", "tasks", "todo", "todos", "todo list", "my tasks", "task list")) {
+            return RouterDestination.DirectCommand("/tasks")
         }
 
         // 2. Explicit Task Creation Syntax (e.g. "add buy groceries tomorrow", "remind me to call mom 5pm")
         if (OfflineNluEngine.isExplicitCreation(trimmed)) {
-            val (title, dueDate) = OfflineNluEngine.extractTaskCreationDetails(trimmed)
+            val draft = ChatTaskDraft.parse(trimmed) ?: return RouterDestination.TalkQuery("help adding a task")
+            val title = draft.title
+            val dueDate = draft.dueDate
             // Check for duplicate active task
             val duplicate = findDuplicateTask(title, pendingTasks)
             if (duplicate != null) {
@@ -64,12 +76,12 @@ object AyvaIntentRouter {
                         ConflictOption(
                             label = "Mark Existing Complete",
                             emoji = "✅",
-                            command = "/talk complete ${duplicate.title}"
+                            command = "/talk complete id:${duplicate.id}"
                         ),
                         ConflictOption(
                             label = "Reschedule Existing",
                             emoji = "⏰",
-                            command = "/talk reschedule ${duplicate.title} tomorrow"
+                            command = "/talk reschedule id:${duplicate.id}${if (dueDate != null) " ${SmartDateParser.formatDueDate(dueDate)}" else ""}"
                         )
                     )
                 )
@@ -79,7 +91,7 @@ object AyvaIntentRouter {
 
         // 2.5 Conversational Expressions (e.g. "I am feeling lazy today", "I feel tired")
         val conversationalPrefixes = listOf("i am ", "i'm ", "i feel ", "feeling ", "today is ", "it is ", "it's ", "how is ", "what is ")
-        if (conversationalPrefixes.any { lower.startsWith(it) }) {
+        if (OfflineNluEngine.isConversationalStatement(trimmed) || conversationalPrefixes.any { lower.startsWith(it) }) {
             return RouterDestination.TalkQuery(trimmed)
         }
 
@@ -101,7 +113,7 @@ object AyvaIntentRouter {
                         ConflictOption(
                             label = "Ask Ayva",
                             emoji = "💡",
-                            command = "/talk $trimmed"
+                            command = "/talk $safeTrimmed"
                         )
                     )
                 )
@@ -109,9 +121,39 @@ object AyvaIntentRouter {
             return RouterDestination.TalkQuery(trimmed)
         }
 
+        // Explicit feature requests should execute their feature, not offer to create a task.
+        val featureCommand = when (lower.trimEnd('?', '!')) {
+            "tasks", "my tasks", "todo", "todos", "todo list", "show tasks", "list tasks" -> "/tasks"
+            "all tasks", "show all tasks", "list all tasks" -> "/tasks all"
+            "summary", "daily summary", "briefing", "my day", "recap" -> "/summary"
+            "profile", "my profile", "stats", "xp" -> "/profile"
+            "habit", "habits", "my habits", "show habits", "open habits" -> "/habits"
+            "routine", "routines", "my routines", "show routines", "list routines" -> "/routines"
+            "drill", "math", "quiz", "arithmetic", "start drill", "start math drill" -> "/drill"
+            "daily quests", "quests", "open chest", "mystery box" -> "/quests"
+            else -> null
+        }
+        if (featureCommand != null) return RouterDestination.DirectCommand(featureCommand)
+        if (Regex("^(?:start|stop|enable|disable|pause|resume)\\s+.*\\broutine\\b").containsMatchIn(lower) ||
+            Regex("^(?:start|set)\\s+(?:a\\s+)?(?:timer|focus|pomodoro)\\b").containsMatchIn(lower) ||
+            Regex("^(?:check|get|read)\\s+(?:(?:my|the)\\s+)?(?:permissions?|settings?|status|screen time|usage|notes?)\\b").containsMatchIn(lower) ||
+            Regex("^(?:add|create|new|log)\\s+(?:(?:a|an)\\s+)?(?:habit|note)s?\\b").containsMatchIn(lower) ||
+            Regex("^(?:set|change|turn|enable|disable|toggle|freeze|unfreeze)\\b").containsMatchIn(lower) ||
+            lower.startsWith("reschedule id:") || lower.startsWith("complete id:") || lower.startsWith("delete id:")) {
+            return RouterDestination.DirectCommand("/talk $safeTrimmed")
+        }
+
+        val assistantTopics = listOf("help", "guide", "commands", "features", "options", "settings", "permissions", "notes", "my notes", "open notes", "status", "focus status", "advice", "tips", "motivate me", "joke", "tell me a joke", "breathe", "breathing", "screen time", "screentime", "vacation mode")
+        if (lower in assistantTopics ||
+            Regex("\\b(?:tired|stressed|overwhelmed|exhausted|distracted|procrastinating|usage|permissions?|vacation)\\b").containsMatchIn(lower) ||
+            Regex("^(?:log|complete|done|check|finished)\\s+habit\\b").containsMatchIn(lower) ||
+            Regex("^(?:search|find|read|write|edit|delete)\\s+(?:my\\s+)?notes?\\b").containsMatchIn(lower)) {
+            return RouterDestination.TalkQuery(trimmed)
+        }
+
         // 4. Routine Ambiguity (e.g. "morning exercise", "evening study session", "bedtime reading")
         val routineKeywords = listOf("morning", "evening", "bedtime", "routine", "schedule")
-        val containsRoutineWord = routineKeywords.any { lower.contains(it) }
+        val containsRoutineWord = routineKeywords.any { containsPhrase(lower, it) }
         val isNotPureRoutineCommand = lower != "routine" && lower != "routines" && lower != "schedules" &&
                 !lower.startsWith("start routine") && !lower.startsWith("stop routine")
         if (containsRoutineWord && isNotPureRoutineCommand && trimmed.split(" ").size >= 2) {
@@ -135,7 +177,7 @@ object AyvaIntentRouter {
 
         // 5. Habit Ambiguity (e.g. "drink 2L water", "read 20 pages", "stretch for 10m")
         val habitKeywords = listOf("water", "drink", "hydrate", "read", "stretch", "meditate", "journal", "workout", "exercise", "walk")
-        val matchesHabit = habitKeywords.any { lower.contains(it) } || (lower.contains("drink") && lower.contains("water")) || knownHabits.any { lower.contains(it.lowercase()) }
+        val matchesHabit = habitKeywords.any { containsPhrase(lower, it) } || (lower.contains("drink") && lower.contains("water")) || knownHabits.filter { it.isNotBlank() }.any { containsPhrase(lower, it.lowercase()) }
         if (matchesHabit && trimmed.split(" ").size >= 2 && !lower.startsWith("add habit") && !lower.startsWith("log habit")) {
             val (title, dueDate) = OfflineNluEngine.extractTaskCreationDetails(trimmed)
             return RouterDestination.ConflictCard(
@@ -157,7 +199,7 @@ object AyvaIntentRouter {
 
         // 6. Focus Timer Ambiguity (e.g. "study for 2 hours", "focus 25m", "deep work session")
         val timerKeywords = listOf("focus", "deep work", "study session", "timer", "pomodoro")
-        val matchesTimer = timerKeywords.any { lower.contains(it) } && !lower.startsWith("start timer") && !lower.startsWith("set timer")
+        val matchesTimer = timerKeywords.any { containsPhrase(lower, it) } && !lower.startsWith("start timer") && !lower.startsWith("set timer")
         if (matchesTimer && trimmed.split(" ").size >= 2) {
             val (title, dueDate) = OfflineNluEngine.extractTaskCreationDetails(trimmed)
             return RouterDestination.ConflictCard(
@@ -171,7 +213,7 @@ object AyvaIntentRouter {
                     ConflictOption(
                         label = "Start Focus Mode",
                         emoji = "🎯",
-                        command = "/talk focus"
+                        command = "/focus 25"
                     )
                 )
             )
@@ -179,7 +221,7 @@ object AyvaIntentRouter {
 
         // 7. Math Drill Ambiguity (e.g. "math practice chapter 4", "arithmetic homework", "quiz prep")
         val drillKeywords = listOf("math", "drill", "arithmetic", "calculate", "quiz")
-        val matchesDrill = drillKeywords.any { lower.contains(it) } && lower != "drill" && lower != "math" && lower != "quiz" && lower != "arithmetic"
+        val matchesDrill = drillKeywords.any { containsPhrase(lower, it) } && lower != "drill" && lower != "math" && lower != "quiz" && lower != "arithmetic"
         if (matchesDrill && trimmed.split(" ").size >= 2) {
             val (title, dueDate) = OfflineNluEngine.extractTaskCreationDetails(trimmed)
             return RouterDestination.ConflictCard(
@@ -223,7 +265,7 @@ object AyvaIntentRouter {
 
         // 9. Summary Ambiguity (e.g. "review presentation", "summary for meeting", "recap sales")
         val summaryKeywords = listOf("summary", "review", "recap", "briefing")
-        val matchesSummary = summaryKeywords.any { lower.contains(it) } && lower != "summary" && lower != "recap" && lower != "briefing"
+        val matchesSummary = summaryKeywords.any { containsPhrase(lower, it) } && lower != "summary" && lower != "recap" && lower != "briefing"
         if (matchesSummary && trimmed.split(" ").size >= 2) {
             val (title, dueDate) = OfflineNluEngine.extractTaskCreationDetails(trimmed)
             return RouterDestination.ConflictCard(
@@ -248,7 +290,7 @@ object AyvaIntentRouter {
         when (nluResult.intent) {
             NluIntent.CONFLICT -> {
                 // Ensure Option 1 is ALWAYS the Task Creation option
-                val reorderedOptions = prioritizeTaskOption(trimmed, nluResult.conflictOptions)
+                val reorderedOptions = prioritizeTaskOption(nluResult.conflictOptions)
                 return RouterDestination.ConflictCard(
                     prompt = nluResult.conflictPrompt ?: "🤔 **Conflict Detected:** Please choose your intended action:",
                     options = reorderedOptions
@@ -256,44 +298,18 @@ object AyvaIntentRouter {
             }
             NluIntent.CREATE_TASK -> {
                 val title = nluResult.createdTaskTitle ?: trimmed
+                if (title.isBlank()) return RouterDestination.TalkQuery("help adding a task")
                 return RouterDestination.TaskCreation(title = title, dueDate = nluResult.targetDateMs)
             }
-            NluIntent.LIST_TASKS -> return RouterDestination.DirectCommand("/tasks")
+            NluIntent.LIST_TASKS -> return RouterDestination.DirectCommand(if (nluResult.isAllTasks) "/tasks all" else "/tasks")
             NluIntent.SHOW_PROFILE -> return RouterDestination.DirectCommand("/profile")
             NluIntent.SHOW_SUMMARY -> return RouterDestination.DirectCommand("/summary")
             NluIntent.START_DRILL -> return RouterDestination.DirectCommand("/drill")
             NluIntent.CLEAR_CHAT -> return RouterDestination.DirectCommand("/clear")
             NluIntent.LIST_ROUTINES -> return RouterDestination.DirectCommand("/routines")
-            NluIntent.BLOCK_APP -> return RouterDestination.DirectCommand("/block ${nluResult.targetFilterOrAppName ?: ""}".trim())
-            NluIntent.BLOCK_FILTER -> return RouterDestination.DirectCommand("/block ${nluResult.targetFilterOrAppName ?: ""}".trim())
-            NluIntent.UNBLOCK -> return RouterDestination.DirectCommand("/unblock ${nluResult.targetFilterOrAppName ?: ""}".trim())
-            NluIntent.START_ROUTINE -> return RouterDestination.DirectCommand("/routine start ${nluResult.targetRoutineName ?: ""}".trim())
-            NluIntent.STOP_ROUTINE -> return RouterDestination.DirectCommand("/routine stop ${nluResult.targetRoutineName ?: ""}".trim())
-            NluIntent.COMPLETE -> {
-                val task = nluResult.targetTask
-                return if (task != null) {
-                    RouterDestination.DirectCommand("/talk complete ${task.title}")
-                } else {
-                    RouterDestination.DirectCommand("/tasks")
-                }
-            }
-            NluIntent.DELETE -> {
-                val task = nluResult.targetTask
-                return if (task != null) {
-                    RouterDestination.DirectCommand("/talk delete ${task.title}")
-                } else {
-                    RouterDestination.DirectCommand("/tasks")
-                }
-            }
-            NluIntent.RESCHEDULE -> {
-                val task = nluResult.targetTask
-                val dateStr = if (nluResult.targetDateMs != null) " ${SmartDateParser.formatDueDate(nluResult.targetDateMs)}" else ""
-                return if (task != null) {
-                    RouterDestination.DirectCommand("/talk reschedule ${task.title}$dateStr")
-                } else {
-                    RouterDestination.DirectCommand("/tasks")
-                }
-            }
+            NluIntent.BLOCK_APP, NluIntent.BLOCK_FILTER, NluIntent.UNBLOCK,
+            NluIntent.START_ROUTINE, NluIntent.STOP_ROUTINE, NluIntent.COMPLETE,
+            NluIntent.DELETE, NluIntent.RESCHEDULE -> return RouterDestination.DirectCommand("/talk $safeTrimmed")
             NluIntent.UNKNOWN -> {
                 val conversationalPrefixes = listOf("i am ", "i'm ", "i feel ", "feeling ", "today is ", "it is ", "it's ", "how is ", "what is ")
                 val isConversationalStatement = conversationalPrefixes.any { lower.startsWith(it) }
@@ -303,33 +319,44 @@ object AyvaIntentRouter {
 
                 // Check if date parser extracted a valid time entity (e.g. "meeting with bob 4pm")
                 val parsed = SmartDateParser.parse(trimmed)
-                if (parsed.timestamp != null && parsed.cleanText.isNotBlank()) {
+                if (parsed.timestamp != null && parsed.hasTaskText) {
                     return RouterDestination.TaskCreation(title = parsed.cleanText, dueDate = parsed.timestamp)
                 }
                 // Pure conversation / FAQ / personality query - send to Talk Engine (no phantom tasks!)
-                return RouterDestination.TalkQuery(trimmed)
+                if (parsed.timestamp != null || trimmed.split(Regex("\\s+")).size > 12) {
+                    return RouterDestination.TalkQuery(trimmed)
+                }
+                // Preserve quick capture for bare titles, but require one tap for ambiguous text.
+                return RouterDestination.ConflictCard(
+                    "Would you like to add **'$safeTrimmed'** as a task, or talk about it?",
+                    listOf(
+                        ConflictOption("Add as Todo Task", "➕", "/create $safeTrimmed"),
+                        ConflictOption("Ask Ayva", "💬", "/talk $safeTrimmed")
+                    )
+                )
             }
         }
     }
+
+    private fun containsPhrase(text: String, phrase: String): Boolean =
+        Regex("(?<![\\p{L}\\p{N}])${Regex.escape(phrase)}(?![\\p{L}\\p{N}])").containsMatchIn(text)
 
     private fun handleSlashCommand(commandText: String): RouterDestination {
         val parts = commandText.split(Regex("\\s+"))
         val cmd = parts[0].lowercase()
         return when (cmd) {
-            "/task", "/create" -> {
+            "/task", "/create", "/add", "/todo" -> {
                 val rest = parts.drop(1).joinToString(" ").trim()
-                if (rest.isNotBlank()) {
-                    val (title, dueDate) = if (OfflineNluEngine.isExplicitCreation(rest)) {
-                        OfflineNluEngine.extractTaskCreationDetails(rest)
-                    } else {
-                        val parsed = SmartDateParser.parse(rest)
-                        Pair(parsed.cleanText.ifBlank { rest }, parsed.timestamp)
-                    }
-                    RouterDestination.TaskCreation(title = title, dueDate = dueDate)
-                } else {
-                    RouterDestination.DirectCommand("/task")
+                if (cmd == "/task" && rest.lowercase() in setOf("", "all", "today", "list", "pending", "everything")) {
+                    return RouterDestination.DirectCommand(commandText)
                 }
+                val draft = ChatTaskDraft.parse(rest)
+                    ?: return RouterDestination.TalkQuery("help adding a task")
+                RouterDestination.TaskCreation(draft.title, draft.dueDate)
             }
+            "/habit", "/habits" -> if (parts.size > 1) {
+                RouterDestination.DirectCommand("/talk ${com.focusbyrj.app.util.command.AyvaChatCommands.talkQuery(commandText)}")
+            } else RouterDestination.DirectCommand(commandText)
             else -> RouterDestination.DirectCommand(commandText)
         }
     }
@@ -342,7 +369,7 @@ object AyvaIntentRouter {
         }
     }
 
-    private fun prioritizeTaskOption(rawInput: String, options: List<ConflictOption>): List<ConflictOption> {
+    private fun prioritizeTaskOption(options: List<ConflictOption>): List<ConflictOption> {
         val taskOptionIndex = options.indexOfFirst {
             it.label.contains("New Task", ignoreCase = true) ||
             it.label.contains("Create", ignoreCase = true) ||
@@ -358,12 +385,7 @@ object AyvaIntentRouter {
             mutable.add(0, taskOpt)
             return mutable
         }
-        // If no task option was present, inject it as Option 1!
-        val injected = ConflictOption(
-            label = "Add as Todo Task",
-            emoji = "➕",
-            command = "/create $rawInput"
-        )
-        return listOf(injected) + options
+        // A destructive-action clarification is not an invitation to create a new task.
+        return options
     }
 }

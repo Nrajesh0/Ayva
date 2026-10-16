@@ -77,53 +77,50 @@ object OfflineNluEngine {
     // 2.5 Question Detection
     fun isQuestion(query: String): Boolean {
         val lower = query.lowercase().trim()
-        return lower.startsWith("how") || lower.startsWith("why") ||
-                lower.startsWith("what") || lower.startsWith("where") ||
-                lower.startsWith("who") || lower.startsWith("can") ||
-                lower.startsWith("could") || lower.startsWith("explain") ||
-                lower.startsWith("tell me about") || lower.contains("?")
+        return lower.contains("?") || Regex("^(?:how|why|what|where|who|when|can|could|should|would|is|are|do|does|did|explain|tell me about)\\b").containsMatchIn(lower)
     }
 
-    // 3. Explicit Task Creation Detection
+    /** Remove conversational addressing without changing the user's task content. */
+    fun normalizeRequest(query: String): String = query.trim()
+        .replace('’', '\'')
+        .replace(Regex("(?i)^(?:(?:hey|hi|hello)[, ]+)?ayva[,!: ]+"), "")
+        .replace(Regex("(?i)^(?:(?:can|could|would|will)\\s+you\\s+|please\\s+)"), "")
+        .replace(Regex("(?i)^please\\s+"), "")
+        .replace(Regex("(?i)[, ]+please[.!?]*$"), "")
+        .replace(Regex("(?i)^(?:i\\s+(?:have\\s+)?(?:finished|completed)|i'm done with)\\s+"), "complete ")
+        .trim()
+
+    fun isConversationalStatement(query: String): Boolean {
+        val lower = normalizeRequest(query).lowercase().trimEnd('.', '!', '?')
+        return Regex("^(?:i am|i'm|i feel|i was|i don't|i cannot|i can't|i think|i wish|i love|i hate|i just|feeling|today is|it is|it's|that is|that's|you are|you're|we are|we're)\\b").containsMatchIn(lower) ||
+            lower in setOf("yes", "no", "okay", "ok", "sure", "thanks", "thank you", "thx", "bye", "hi", "hello", "hey", "good morning", "good evening", "good afternoon", "goodnight", "cancel", "never mind", "nevermind", "forget it", "done", "tired", "stressed", "overwhelmed", "tell me more", "more", "why", "how", "where", "it")
+    }
+
+    // Task markers apply to the whole request; feature words inside a title ("appointment",
+    // "app", "notes", "routine") must not suppress an explicit reminder request.
     fun isExplicitCreation(query: String): Boolean {
-        val lower = query.lowercase().trim()
-        val isRoutine = lower.contains("routine") || lower.contains("schedule routine")
-        val isAppOrBlock = lower.contains("block") || lower.contains("app") || lower.contains("filter")
-        val isNoteOrHabit = lower.contains("note") || lower.contains("notes") || lower.contains("habit") || lower.contains("habits")
-        if (isRoutine || isAppOrBlock || isNoteOrHabit) return false
-
-        // Guard: overdue-management and bulk task-management phrases are NEVER task creation
-        // e.g. "clean overdue tasks", "delete all tasks", "confirm_delete_overdue", "reschedule all tasks"
-        val isOverdueManagement = lower.contains("overdue") ||
-                lower.contains("confirm_delete") || lower.contains("confirm delete") ||
-                (lower.contains("all") && (lower.contains("task") || lower.contains("todo"))) ||
-                (lower.startsWith("clean") && lower.contains("task")) ||
-                (lower.startsWith("delete") && lower.contains("task")) ||
-                (lower.startsWith("remove") && lower.contains("task"))
-        if (isOverdueManagement) return false
-
-        // Common action verbs at sentence start (e.g. "check ac prices", "buy groceries", "call dentist", "pay rent")
-        val actionVerbPrefix = Regex("^(?:check|call|buy|email|clean|fix|read|write|order|pay|cook|meet|send|visit|book|study|prep|prepare|get|make|wash|inspect|verify|pick\\s+up|drop\\s+off)\\b\\s+[a-zA-Z0-9]")
-        if (actionVerbPrefix.containsMatchIn(lower) && !lower.startsWith("check off") && !lower.startsWith("check out") && !lower.startsWith("check status") && !lower.startsWith("check in")) {
+        val lower = normalizeRequest(query).lowercase()
+        if (Regex("^(?:add|create|new|schedule|remind me to|remember to|need to|i need to|have to|i have to|must|todo\\b|task\\b|don't forget to)\\b").containsMatchIn(lower)) {
+            if (Regex("^(?:add|create|new|schedule)\\s+(?:(?:a|an)\\s+)?(?:habit|note|routine|block|filter)s?\\b").containsMatchIn(lower)) return false
+            if (Regex("^(?:add|create|schedule)\\s+(?:all|overdue)\\s+(?:tasks|todos)\\b").containsMatchIn(lower)) return false
             return true
         }
-
-        val regex = Regex("(?i)^\\s*(?:(?:add|create|new|schedule)(?:\\s+(?:a\\s+)?(?:task|todo|reminder))?|remind\\s+me\\s+to|please\\s+remind\\s+me\\s+to|remember\\s+to|need\\s+to|i\\s+need\\s+to|have\\s+to|i\\s+have\\s+to|must\\b|todo\\s*:?|task\\s*:?|don't\\s+forget\\s+to|put\\s+(?:my\\s+)?(?:task|todo|it|this)?\\s*.+?\\s+on\\s+(?:my\\s+)?(?:list|radar|agenda))")
-        return regex.containsMatchIn(lower) ||
-               lower.startsWith("todo:") || lower.startsWith("task:") || lower.startsWith("todo ") || lower.startsWith("task ") ||
-               ((lower.startsWith("add ") || lower.startsWith("create ") || lower.startsWith("schedule ")) && !lower.startsWith("add block") && !lower.startsWith("add routine"))
+        if (isQuestion(lower) || isConversationalStatement(lower)) return false
+        // Queries about live app state go to chat, even though "check" and "get" can be task verbs.
+        if (Regex("^(?:check|get|read|write)\\s+(?:(?:my|the)\\s+)?(?:permissions?|settings?|status|screen time|usage|tasks?|habits?|notes?|routines?|profile|stats|help)\\b").containsMatchIn(lower)) return false
+        val actionVerbPrefix = Regex("^(?:check|call|buy|email|clean|fix|read|write|order|pay|cook|meet|send|visit|book|study|prep|prepare|get|make|wash|inspect|verify|take|attend|submit|renew|pick\\s+up|drop\\s+off)\\b\\s+[\\p{L}\\p{N}]")
+        if (Regex("^(?:check (?:off|out|status|in)|clean (?:all|overdue|tasks)|make me (?:laugh|smile))\\b").containsMatchIn(lower)) return false
+        return actionVerbPrefix.containsMatchIn(lower)
     }
 
     fun extractTaskCreationDetails(query: String): Pair<String, Long?> {
-        val parsed = SmartDateParser.parse(query)
-        var title = parsed.cleanText.ifBlank { query }
-        // Clean leading creation prefixes
-        title = title.replace(Regex("(?i)^\\s*(?:(?:add|create|new|schedule)(?:\\s+(?:a\\s+)?(?:task|todo|reminder))?|remind\\s+me\\s+to|please\\s+remind\\s+me\\s+to|remember\\s+to|need\\s+to|i\\s+need\\s+to|have\\s+to|i\\s+have\\s+to|must\\b|todo\\s*:?|task\\s*:?|don't\\s+forget\\s+to)\\s*[,:\\-]?\\s*"), "")
-        // Clean trailing phrases like "on my list", "to my radar"
-        title = title.replace(Regex("(?i)\\s+(?:on\\s+(?:my\\s+)?(?:list|radar|agenda)|to\\s+(?:my\\s+)?(?:list|radar|agenda|tasks))$"), "")
-        title = title.replace(Regex("[\r\n]+"), " ").split(Regex("\\s*/"))[0].trim()
-        title = title.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-        return Pair(title.ifBlank { "New Task" }, parsed.timestamp)
+        val normalized = normalizeRequest(query)
+        var content = normalized.replace(Regex("(?i)^\\s*(?:(?:add|create|new|schedule)\\b(?:\\s+(?:a\\s+)?(?:task|todo|reminder))?|remind\\s+me\\s+to|remember\\s+to|need\\s+to|i\\s+need\\s+to|have\\s+to|i\\s+have\\s+to|must\\b|todo\\b\\s*:?|task\\b\\s*:?|don't\\s+forget\\s+to)\\s*[,:\\-]?\\s*(?:to\\s+)?"), "")
+        content = content.replace(Regex("(?i)\\s+(?:on|to)\\s+(?:my\\s+)?(?:list|radar|agenda|tasks)$"), "")
+        val parsed = SmartDateParser.parse(content.trimEnd('?'))
+        val title = (if (parsed.hasTaskText) parsed.cleanText else "").replace(Regex("[\\r\\n]+"), " ").split(Regex("\\s*/"))[0].trim()
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        return Pair(title, parsed.timestamp)
     }
 
     // 4. Intent Classification
@@ -163,8 +160,10 @@ object OfflineNluEngine {
         if (isStopRoutine) return NluIntent.STOP_ROUTINE
         if (isListRoutines) return NluIntent.LIST_ROUTINES
 
-        val isBlock = matchesAnyFuzzy(tokens, listOf("block", "lock", "restrict", "shield")) && (lower.contains("app") || lower.contains("apps") || lower.contains("filter") || lower.contains("category") || lower.contains("mode") || lower.contains("site") || lower.contains("instagram") || lower.contains("youtube") || lower.contains("social") || lower.contains("game") || lower.contains("games"))
-        val isUnblock = matchesAnyFuzzy(tokens, listOf("unblock", "unlock", "allow", "unshield")) && (lower.contains("app") || lower.contains("apps") || lower.contains("filter") || lower.contains("category") || lower.contains("mode") || lower.contains("site") || lower.contains("instagram") || lower.contains("youtube") || lower.contains("social") || lower.contains("game") || lower.contains("games"))
+        val directBlock = Regex("^(?:(?:soft|hard|strict)\\s+)?(?:block|lock|restrict|shield)\\s+\\S").containsMatchIn(lower)
+        val directUnblock = Regex("^(?:unblock|unlock|allow|unshield)\\s+\\S").containsMatchIn(lower)
+        val isBlock = directBlock || matchesAnyFuzzy(tokens, listOf("block", "lock", "restrict", "shield")) && (lower.contains("app") || lower.contains("apps") || lower.contains("filter") || lower.contains("category") || lower.contains("mode") || lower.contains("site") || lower.contains("instagram") || lower.contains("youtube") || lower.contains("social") || lower.contains("game") || lower.contains("games"))
+        val isUnblock = directUnblock || matchesAnyFuzzy(tokens, listOf("unblock", "unlock", "allow", "unshield")) && (lower.contains("app") || lower.contains("apps") || lower.contains("filter") || lower.contains("category") || lower.contains("mode") || lower.contains("site") || lower.contains("instagram") || lower.contains("youtube") || lower.contains("social") || lower.contains("game") || lower.contains("games"))
         if (isBlock) return if (lower.contains("filter") || lower.contains("category")) NluIntent.BLOCK_FILTER else NluIntent.BLOCK_APP
         if (isUnblock) return NluIntent.UNBLOCK
 
@@ -182,7 +181,7 @@ object OfflineNluEngine {
                          (lower.contains("mark") && (lower.contains("done") || lower.contains("complete") || lower.contains("completed"))) ||
                          lower.startsWith("done with") || lower.startsWith("finished with") || lower.startsWith("completed ") ||
                          lower == "complete" || lower == "done" || lower == "finish" ||
-                         (matchesAnyFuzzy(tokens, listOf("complete", "finish", "done")) && !lower.contains("tomorrow") && !lower.contains("at ") && !lower.contains("by ") && !lower.contains("pm") && !lower.contains("am"))
+                         (matchesAnyFuzzy(tokens, listOf("complete", "finish", "done")) && !lower.contains("tomorrow") && !lower.contains("at ") && !lower.contains("by ") && !Regex("\\b\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)\\b").containsMatchIn(lower))
 
         // Tier 2: Disambiguate Reschedule
         // Pure reschedule words
@@ -210,12 +209,13 @@ object OfflineNluEngine {
     // 4. Time Entity Extraction (NER)
     fun extractTimeEntity(query: String): Pair<Long?, Boolean> {
         // High-precision SmartDateParser handles complex relative & absolute formats
-        val parsed = SmartDateParser.parse(query)
+        val timeQuery = query.replace(Regex("\\bid:\\d+\\b"), "")
+        val parsed = SmartDateParser.parse(timeQuery)
         if (parsed.timestamp != null) {
             return Pair(parsed.timestamp, parsed.hasTime)
         }
 
-        val lower = query.lowercase()
+        val lower = timeQuery.lowercase()
         val now = System.currentTimeMillis()
         
         val startOfDay = Calendar.getInstance().apply {
@@ -229,7 +229,7 @@ object OfflineNluEngine {
         // Time parsing like "9pm" or "at 5"
         var customTimeMs: Long? = null
         var hasTime = false
-        val timeRegex = Regex("(?i)\\b(?:at|by|to|for)?\\s*([1-9]|1[0-2])\\s*(am|pm)?\\b")
+        val timeRegex = Regex("(?i)\\b(?:at|by|to|for)\\s+([1-9]|1[0-2])\\s*(am|pm)?\\b")
         val match = timeRegex.find(lower)
         if (match != null) {
             var hour = match.groupValues[1].toInt()
@@ -279,14 +279,19 @@ object OfflineNluEngine {
     // 5. Target Entity Extraction (Which task?)
     fun extractTargetTaskInfo(query: String, pendingTasks: List<Task>): TargetTaskResult {
         val lower = query.lowercase().trim()
-        val isAll = lower.contains("all") || lower.contains("everything") || 
+        val stableId = Regex("\\bid:(\\d+)\\b").find(lower)?.groupValues?.get(1)?.toLongOrNull()
+        if (stableId != null) {
+            val task = pendingTasks.find { it.id == stableId }
+            return TargetTaskResult(targetTask = task, candidateTasks = listOfNotNull(task), extractedKeyword = "id:$stableId")
+        }
+        val isAll = Regex("\\b(?:all|everything)\\b").containsMatchIn(lower) ||
                     lower.contains("confirm_delete_all") || lower.contains("confirm delete all") ||
                     lower.contains("confirm_delete_overdue") || lower.contains("confirm delete overdue") ||
                     (lower.contains("overdue") && (lower.contains("clean") || lower.contains("clear") || lower.contains("tasks") || lower.contains("push") || lower.contains("postpone") || lower.contains("reschedule") || lower.contains("move") || lower.contains("triage")))
         if (isAll) return TargetTaskResult(targetTask = null, isAll = true)
 
         if (pendingTasks.isEmpty()) return TargetTaskResult(targetTask = null, isAll = false)
-        if (pendingTasks.size == 1 && (lower.contains("it") || lower.contains("that") || lower.contains("the task") || lower == "reschedule" || lower == "complete" || lower == "delete")) {
+        if (pendingTasks.size == 1 && lower in setOf("reschedule", "complete", "delete")) {
             return TargetTaskResult(targetTask = pendingTasks.first(), isAll = false, candidateTasks = listOf(pendingTasks.first()))
         }
 
@@ -415,7 +420,7 @@ object OfflineNluEngine {
 
                 // If only 1 task matched, or top match is overwhelmingly better
                 if (scoredList.size == 1 || (topScore >= 75 && (scoredList.getOrNull(1)?.score ?: 0) < topScore / 2)) {
-                    return TargetTaskResult(targetTask = topTask, candidateTasks = matchingTasks, extractedKeyword = candidateKeyword)
+                    return TargetTaskResult(targetTask = topTask, candidateTasks = listOf(topTask), extractedKeyword = candidateKeyword)
                 } else {
                     // Multiple tasks match user's words (e.g. "Gym Push" and "Gym Legs")
                     return TargetTaskResult(targetTask = null, candidateTasks = matchingTasks, extractedKeyword = candidateKeyword)
@@ -427,7 +432,7 @@ object OfflineNluEngine {
         }
 
         // If no keyword was extracted and there's only 1 pending task, only target that single task if the user explicitly referred to it with pronouns or bare command
-        if (pendingTasks.size == 1 && (lower.contains("it") || lower.contains("that") || lower.contains("the task") || lower == "reschedule" || lower == "complete" || lower == "delete" || lower == "finish" || lower == "done")) {
+        if (pendingTasks.size == 1 && (Regex("\\b(?:it|that|the task)\\b").containsMatchIn(lower) || lower == "reschedule" || lower == "complete" || lower == "delete" || lower == "finish" || lower == "done")) {
             return TargetTaskResult(targetTask = pendingTasks.first(), candidateTasks = pendingTasks)
         }
 
@@ -455,7 +460,7 @@ object OfflineNluEngine {
     // Extractor for Routine Intent
     fun extractRoutineTarget(query: String): Pair<String?, Boolean> {
         val lower = query.lowercase().trim()
-        val isAll = lower.contains("all")
+        val isAll = Regex("\\b(?:all|everything)\\b").containsMatchIn(lower)
         
         val match = Regex("\\b(start|begin|launch|enable|activate|resume|stop|disable|deactivate|pause|halt|end|turn\\s+on|turn\\s+off)\\b\\s+(.*)").find(lower)
         var targetName = match?.groupValues?.get(2) ?: lower
@@ -467,8 +472,13 @@ object OfflineNluEngine {
 
     // Master Parser
     fun parse(query: String, pendingTasks: List<Task>): NluParsedResult {
-        val trimmed = query.trim()
+        val trimmed = normalizeRequest(query)
         val lower = trimmed.lowercase()
+
+        // Questions and casual replies must not trigger keyword-based conflict/action rules.
+        if (!isExplicitCreation(trimmed) && (isQuestion(trimmed) || isConversationalStatement(trimmed))) {
+            return NluParsedResult(NluIntent.UNKNOWN)
+        }
 
         // 1. Check explicit creation prefix
         if (isExplicitCreation(trimmed)) {
@@ -485,12 +495,12 @@ object OfflineNluEngine {
                     ConflictOption(
                         label = if (dueDate != null) "Update Time" else "Reschedule '${matchingExisting.title.take(32)}'",
                         emoji = "⏰",
-                        command = "/talk reschedule ${matchingExisting.title}$dateStr"
+                        command = "/talk reschedule id:${matchingExisting.id}$dateStr"
                     ),
                     ConflictOption(
                         label = "Mark Done: '${matchingExisting.title.take(32)}'",
                         emoji = "✅",
-                        command = "/talk complete ${matchingExisting.title}"
+                        command = "/talk complete id:${matchingExisting.id}"
                     ),
                     ConflictOption(
                         label = "Create Duplicate Task",
@@ -694,6 +704,9 @@ object OfflineNluEngine {
         var intent = classifyIntent(trimmed, pendingTasks)
         val targetInfo = extractTargetTaskInfo(trimmed, pendingTasks)
         val (timeMs, hasTime) = extractTimeEntity(trimmed)
+        if (Regex("\\bid:\\d+\\b").containsMatchIn(lower) && targetInfo.targetTask == null) {
+            return NluParsedResult(intent, filterQuery = targetInfo.extractedKeyword, targetDateMs = timeMs, hasExplicitTimeSpecified = hasTime)
+        }
         
         var targetFilterOrAppName: String? = null
         var blockMode: String? = null
@@ -743,7 +756,7 @@ object OfflineNluEngine {
                     ConflictOption(
                         label = "Reschedule '${t.title.take(32)}'",
                         emoji = "⏰",
-                        command = "/talk reschedule ${t.title}$dateStr"
+                        command = "/talk reschedule id:${t.id}$dateStr"
                     )
                 } + ConflictOption(
                     label = "Create as New Task",
@@ -766,7 +779,7 @@ object OfflineNluEngine {
                         ConflictOption(
                             label = "Reschedule '${targetInfo.targetTask.title.take(32)}'",
                             emoji = "⏰",
-                            command = "/talk reschedule ${targetInfo.targetTask.title} $dateStr"
+                            command = "/talk reschedule id:${targetInfo.targetTask.id} $dateStr"
                         ),
                         ConflictOption(
                             label = "Create New: '${newTitle.take(32)}'",
@@ -836,7 +849,7 @@ object OfflineNluEngine {
                     ConflictOption(
                         label = "Complete '${t.title.take(32)}'",
                         emoji = "✅",
-                        command = "/talk complete ${t.title}"
+                        command = "/talk complete id:${t.id}"
                     )
                 } + ConflictOption(
                     label = "Create as New Task",
@@ -858,12 +871,12 @@ object OfflineNluEngine {
                         ConflictOption(
                             label = "Complete '${targetInfo.targetTask.title.take(32)}'",
                             emoji = "✅",
-                            command = "/talk complete ${targetInfo.targetTask.title}"
+                            command = "/talk complete id:${targetInfo.targetTask.id}"
                         ),
                         ConflictOption(
                             label = "Reschedule '${targetInfo.targetTask.title.take(32)}'",
                             emoji = "⏰",
-                            command = "/talk reschedule ${targetInfo.targetTask.title} $dateStr"
+                            command = "/talk reschedule id:${targetInfo.targetTask.id} $dateStr"
                         ),
                         ConflictOption(
                             label = "Create New: '${newTitle.take(32)}'",
@@ -905,7 +918,7 @@ object OfflineNluEngine {
                     ConflictOption(
                         label = "Delete '${t.title.take(32)}'",
                         emoji = "🗑️",
-                        command = "/talk delete ${t.title}"
+                        command = "/talk delete id:${t.id}"
                     )
                 } + ConflictOption(
                     label = "Cancel",
@@ -924,7 +937,7 @@ object OfflineNluEngine {
                     ConflictOption(
                         label = "Delete '${t.title.take(32)}'",
                         emoji = "🗑️",
-                        command = "/talk delete ${t.title}"
+                        command = "/talk delete id:${t.id}"
                     )
                 } + ConflictOption(
                     label = "Cancel",
@@ -947,12 +960,12 @@ object OfflineNluEngine {
                     ConflictOption(
                         label = "Mark Done: '${targetInfo.targetTask.title.take(32)}'",
                         emoji = "✅",
-                        command = "/talk complete ${targetInfo.targetTask.title}"
+                        command = "/talk complete id:${targetInfo.targetTask.id}"
                     ),
                     ConflictOption(
                         label = "Reschedule '${targetInfo.targetTask.title.take(32)}'",
                         emoji = "⏰",
-                        command = "/talk reschedule ${targetInfo.targetTask.title} tomorrow"
+                        command = "/talk reschedule id:${targetInfo.targetTask.id} tomorrow"
                     ),
                     ConflictOption(
                         label = "Create Duplicate",
@@ -971,14 +984,14 @@ object OfflineNluEngine {
             }
             val conversationalPrefixes = listOf("i am ", "i'm ", "i feel ", "feeling ", "today is ", "it is ", "it's ", "how is ", "what is ")
             val isConversational = conversationalPrefixes.any { lower.startsWith(it) }
-            if (!isQuestionQuery && !isConversational && timeMs != null) {
+            if (!isQuestionQuery && !isConversational && timeMs != null && SmartDateParser.parse(trimmed).hasTaskText) {
                 if (targetInfo.candidateTasks.size > 1) {
                     val dateStr = " ${SmartDateParser.formatDueDate(timeMs)}"
                     val options = targetInfo.candidateTasks.take(3).map { t ->
                         ConflictOption(
                             label = "Reschedule '${t.title.take(32)}'",
                             emoji = "⏰",
-                            command = "/talk reschedule ${t.title}$dateStr"
+                            command = "/talk reschedule id:${t.id}$dateStr"
                         )
                     } + ConflictOption(
                         label = "Create as New Task",
@@ -999,7 +1012,7 @@ object OfflineNluEngine {
                         ConflictOption(
                             label = "Update Time",
                             emoji = "⏰",
-                            command = "/talk reschedule ${targetInfo.targetTask.title} $dateStr"
+                            command = "/talk reschedule id:${targetInfo.targetTask.id} $dateStr"
                         ),
                         ConflictOption(
                             label = "Create New: '${newTitle.take(32)}'",

@@ -515,11 +515,11 @@ object AyvaDialogueEngine {
     fun getFocusSprintGuidance(context: Context, minutes: Int = 25, taskTitle: String? = null): String {
         val taskStr = if (taskTitle != null) " on **$taskTitle**" else ""
         val pool = listOf(
-            "⏱️ **$minutes-Minute Deep Focus Sprint Initiated!**$taskStr\n\n1. 🎯 **Single Objective**: Zero tab/app switching until the block completes.\n2. 🛡️ **App Armor**: Keep distracting apps locked.\n3. 🌊 **Cognitive Flow**: Friction in the first 3 minutes is normal. Breathe through it and momentum will take over.",
-            "🔥 **Laser Mode Activated: $minutes Minutes**$taskStr\n\n• Turn device face-down or enable Do Not Disturb.\n• Eliminate all background audio except binaural beats or brown noise.\n• Lock in until the timer expires!",
-            "⚡ **High-Performance Focus Block ($minutes mins)**$taskStr\n\n\"The ability to perform deep work is becoming increasingly rare at exactly the same time it is becoming increasingly valuable in our economy.\"\nDive in now—you've got this!"
+            "⏱️ **$minutes-Minute Deep Focus Sprint Plan**$taskStr\n\n1. 🎯 **Single Objective**: Zero tab/app switching until the block completes.\n2. 🛡️ **App Armor**: Keep distracting apps locked.\n3. 🌊 **Cognitive Flow**: Friction in the first 3 minutes is normal. Breathe through it and momentum will take over.",
+            "🔥 **Focus Plan: $minutes Minutes**$taskStr\n\n• Turn device face-down or enable Do Not Disturb.\n• Eliminate all background audio except binaural beats or brown noise.\n• Open the Focus Dashboard to configure your session timer.",
+            "⚡ **High-Performance Focus Block ($minutes mins)**$taskStr\n\n\"The ability to perform deep work is becoming increasingly rare at exactly the same time it is becoming increasingly valuable in our economy.\"\nOpen the Focus Dashboard to configure your session. You've got this!"
         )
-        return getNextFromDeck(context, "focus_sprint_pool", pool)
+        return getNextFromDeck(context, "focus_sprint_pool", pool) + "\n\nThis is a focus plan; no countdown or app restrictions have been started from chat."
     }
 
     // =========================================================================

@@ -432,7 +432,8 @@ class Batch9SecurityAuditTest {
 
         FocusStatsManager.refreshStats(context)
         val snapshot = com.focusbyrj.app.util.context.AyvaContextEngine.captureSnapshot(context)
-        assertEquals("AyvaContextEngine must resolve screenTimeMinutesToday as 30", 30L, snapshot.screenTimeMinutesToday)
+        assertEquals("AyvaContextEngine must resolve focus time using the composite date key", 30L, snapshot.focusTimeMinutesToday)
+        assertEquals("Usage availability must reflect the actual permission", com.focusbyrj.app.util.UsageStatsHelper.hasUsageStatsPermission(context), snapshot.usagePermissionGranted)
     }
 
     /**

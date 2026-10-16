@@ -37,7 +37,9 @@ data class AyvaContextSnapshot(
     val habitsCompletedToday: Int = 0,
     val totalHabitsCount: Int = 0,
     val currentStreak: Int = 0,
-    val screenTimeMinutesToday: Long = 0L,
+    val screenTimeMinutesToday: Long = -1L,
+    val focusTimeMinutesToday: Long = 0L,
+    val usagePermissionGranted: Boolean = false,
     val isStrictFocusActive: Boolean = false
 ) {
     val isHighPressure: Boolean
@@ -110,13 +112,19 @@ object AyvaContextEngine {
 
         val dayOfYear = cal.get(Calendar.DAY_OF_YEAR)
         val compositeKey = cal.get(Calendar.YEAR) * 1000 + dayOfYear
-        val screenTimeMinutes = try {
+        val focusTimeMinutes = try {
             val dailyMap = FocusStatsManager.statsFlow.value.dailyFocusMinutes
             // Support composite year*1000+dayOfYear key (BATCH-9-P2-005) with fallback to bare dayOfYear
             ((dailyMap[compositeKey] ?: dailyMap[dayOfYear]) ?: 0L) / (1000L * 60L)
         } catch (_: Exception) {
             0L
         }
+
+        val canReadUsage = com.focusbyrj.app.util.UsageStatsHelper.hasUsageStatsPermission(context)
+        val usageMinutes = if (canReadUsage) try {
+            com.focusbyrj.app.util.UsageStatsHelper.getTodayUsageStats(context).sumOf { it.timeInForegroundMs } / 60_000L
+        } catch (_: Exception) { -1L } else -1L
+        val focusPrefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
 
         return AyvaContextSnapshot(
             timestamp = now,
@@ -132,7 +140,10 @@ object AyvaContextEngine {
             habitsCompletedToday = habitsCompleted,
             totalHabitsCount = habitsTotal,
             currentStreak = streak,
-            screenTimeMinutesToday = screenTimeMinutes
+            screenTimeMinutesToday = usageMinutes,
+            focusTimeMinutesToday = focusTimeMinutes,
+            usagePermissionGranted = canReadUsage,
+            isStrictFocusActive = focusPrefs.getBoolean("isSessionActive", false) && focusPrefs.getString("block_mode", "HARD") == "HARD"
         )
     }
 }

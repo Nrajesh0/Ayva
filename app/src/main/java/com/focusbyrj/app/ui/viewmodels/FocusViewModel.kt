@@ -21,15 +21,6 @@ import kotlinx.coroutines.launch
 import java.util.Calendar
 
 class FocusViewModel(private val repository: AppRepository, application: Application) : AndroidViewModel(application) {
-    override fun onCleared() {
-        super.onCleared()
-        if (_isSessionActive.value) {
-            _isSessionActive.value = false
-            prefs.edit().putBoolean("isSessionActive", false).apply()
-            com.focusbyrj.app.util.DndHelper.setDndMode(getApplication(), false)
-        }
-    }
-
     private val _pendingNavigationRoute = MutableStateFlow<String?>(null)
     val pendingNavigationRoute: StateFlow<String?> = _pendingNavigationRoute
 
@@ -92,6 +83,7 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
     private val prefs = application.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
 
     init {
+        com.focusbyrj.app.util.FocusSessionManager.init(application)
         viewModelScope.launch(Dispatchers.IO) {
             repository.cleanUninstalledPackages(application.packageManager)
         }
@@ -227,79 +219,17 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
         }
     }
 
-    private val _isSessionActive = kotlinx.coroutines.flow.MutableStateFlow(prefs.getBoolean("isSessionActive", false))
-    val isSessionActive: StateFlow<Boolean> = _isSessionActive
+    val isSessionActive = com.focusbyrj.app.util.FocusSessionManager.active
+    val timeRemaining = com.focusbyrj.app.util.FocusSessionManager.remainingSeconds
+    val initialTime = com.focusbyrj.app.util.FocusSessionManager.initialSeconds
 
-    private val _timeRemaining = kotlinx.coroutines.flow.MutableStateFlow(25 * 60L)
-    val timeRemaining: StateFlow<Long> = _timeRemaining
-
-    private val _initialTime = kotlinx.coroutines.flow.MutableStateFlow(25 * 60L)
-    val initialTime: StateFlow<Long> = _initialTime
-
-    private var timerJob: kotlinx.coroutines.Job? = null
-
-    fun setTimeRemaining(minutes: Int) {
-        if (!_isSessionActive.value) {
-            val seconds = minutes * 60L
-            _timeRemaining.value = seconds
-            _initialTime.value = seconds
-        }
-    }
+    fun setTimeRemaining(minutes: Int) = com.focusbyrj.app.util.FocusSessionManager.selectDuration(minutes)
 
     fun toggleFocusSession() {
-        val currentlyActive = _isSessionActive.value
-        timerJob?.cancel()
-        timerJob = null
-
-        if (currentlyActive) {
-            _isSessionActive.value = false
-            _timeRemaining.value = _initialTime.value
-            prefs.edit().putBoolean("isSessionActive", false).apply()
-            com.focusbyrj.app.util.DndHelper.setDndMode(getApplication(), false)
-            com.focusbyrj.app.util.FocusStatsManager.refreshStats(getApplication())
-        } else {
-            _isSessionActive.value = true
-            prefs.edit().putBoolean("isSessionActive", true).apply()
-            timerJob = viewModelScope.launch {
-                var totalElapsedMins = 0
-                var secondsAccumulator = 0
-                var statsSecs = 0
-                
-                try {
-                    while (_timeRemaining.value > 0 && _isSessionActive.value) {
-                        kotlinx.coroutines.delay(1000)
-                        if (!_isSessionActive.value) break
-                        _timeRemaining.value -= 1
-                        secondsAccumulator++
-                        statsSecs++
-                        
-                        if (statsSecs >= 10) {
-                            com.focusbyrj.app.util.FocusStatsManager.addFocusSessionTime(getApplication(), statsSecs.toLong())
-                            statsSecs = 0
-                        }
-                        
-                        if (secondsAccumulator >= 300) { // 5 minutes
-                            secondsAccumulator = 0
-                            totalElapsedMins += 5
-                            com.focusbyrj.app.util.FocusEconomyManager.addDurationBasedRewards(totalElapsedMins)
-                            com.focusbyrj.app.util.FocusEconomyManager.addLifetimeFocusMins(5)
-                        }
-                    }
-                } finally {
-                    if (statsSecs > 0) {
-                        com.focusbyrj.app.util.FocusStatsManager.addFocusSessionTime(getApplication(), statsSecs.toLong())
-                    }
-                }
-                
-                if (_timeRemaining.value <= 0L) {
-                    _isSessionActive.value = false
-                    _timeRemaining.value = _initialTime.value
-                    prefs.edit().putBoolean("isSessionActive", false).apply()
-                    com.focusbyrj.app.util.DndHelper.setDndMode(getApplication(), false)
-                    com.focusbyrj.app.util.FocusStatsManager.refreshStats(getApplication())
-                }
-            }
-        }
+        val manager = com.focusbyrj.app.util.FocusSessionManager
+        manager.refresh(getApplication())
+        if (manager.active.value) manager.stop(getApplication())
+        else manager.start(getApplication(), (manager.initialSeconds.value / 60).toInt())
     }
 
     fun toggleRestriction(app: AppRestriction) {
