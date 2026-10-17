@@ -538,4 +538,296 @@ class OfflineAssistantBatchTest {
         assertTrue(response.formattedText.contains("2/2"))
     }
 
+    @Test fun interruptedReminderResumesWithOriginalDateAndComposerFlags() = runBlocking {
+        say("remind me tomorrow at 6pm", priority = true, persistent = true)
+        say("what time is it")
+        assertNull(AssistantSessionStore(context).load().expected)
+        say("back to that reminder")
+        assertEquals("task_title", AssistantSessionStore(context).load().expected)
+        say("call Mum")
+        val task = allTasks().single()
+        assertEquals("Call Mum", task.title)
+        assertTrue(task.isPriority && task.isPersistent)
+        assertEquals(18, Calendar.getInstance().apply { timeInMillis = task.dueDate!! }.get(Calendar.HOUR_OF_DAY))
+    }
+
+    @Test fun interruptedRescheduleCannotOverwriteAnExternalEdit() = runBlocking {
+        val id = add("Dentist")
+        say("reschedule Dentist")
+        say("what time is it")
+        db.taskDao().updateTask(db.taskDao().getTaskById(id)!!.copy(title = "Changed elsewhere", updatedAt = System.currentTimeMillis() + 1))
+        assertTrue(say("back to that reminder").formattedText.contains("no unfinished"))
+        say("yes")
+        assertNull(db.taskDao().getTaskById(id)!!.dueDate)
+    }
+
+    @Test fun interruptedConfirmationIsNeverResumable() = runBlocking {
+        val id = add("Keep")
+        val preview = say("delete all tasks")
+        say("what time is it")
+        say("back to that reminder")
+        say("yes")
+        say(command(preview, "Confirm"))
+        assertFalse(db.taskDao().getTaskById(id)!!.isTrashed)
+    }
+
+    @Test fun userCanSelectAndCorrectTheReferenceWithoutChangingTasks() = runBlocking {
+        val first = add("Read fiction")
+        val second = add("Read history")
+        say("show my tasks")
+        say("let's work on the first task")
+        assertEquals(first, AssistantSessionStore(context).load().taskId)
+        say("No, the other reading one")
+        assertEquals(second, AssistantSessionStore(context).load().taskId)
+        assertTrue(allTasks().none { it.isCompleted })
+        say("done")
+        assertTrue(db.taskDao().getTaskById(second)!!.isCompleted)
+        assertFalse(db.taskDao().getTaskById(first)!!.isCompleted)
+    }
+
+    @Test fun ambiguousOtherTaskAsksRatherThanGuessing() = runBlocking {
+        repeat(3) { add("Read volume ${it + 1}") }
+        say("show my tasks")
+        say("let's work on the first task")
+        val answer = say("the other one")
+        assertTrue(answer.actions.size >= 2)
+        assertTrue(allTasks().none { it.isCompleted })
+    }
+
+    @Test fun explicitReturnToTaskDoesNotReuseHabitContext() = runBlocking {
+        say("buy milk")
+        val task = allTasks().single()
+        val habit = db.habitDao().insertHabit(Habit(title = "Water", targetPerDay = 4))
+        say("log habit water")
+        assertNull(AssistantSessionStore(context).load().taskId)
+        say("back to the task")
+        assertEquals(task.id, AssistantSessionStore(context).load().taskId)
+        say("done")
+        assertTrue(db.taskDao().getTaskById(task.id)!!.isCompleted)
+        assertEquals(1, db.habitDao().getAllLogsForHabitSync(habit).single().completedCount)
+    }
+
+    @Test fun combinedCorrectionWaitsForTimeAndCanBeUndoneTogether() = runBlocking {
+        say("remind me to call Mum tomorrow at 6pm")
+        val original = allTasks().single()
+        val question = say("Actually, Dad instead of Mum, and after lunch")
+        assertTrue(question.formattedText.contains("exact day and time"))
+        assertEquals(original, db.taskDao().getTaskById(original.id))
+        val preview = say("tomorrow at 3pm")
+        assertTrue(preview.formattedText.contains("Call Dad"))
+        assertEquals(original, db.taskDao().getTaskById(original.id))
+        say("yes")
+        val corrected = allTasks().single()
+        assertEquals(original.id, corrected.id)
+        assertEquals("Call Dad", corrected.title)
+        assertEquals(15, Calendar.getInstance().apply { timeInMillis = corrected.dueDate!! }.get(Calendar.HOUR_OF_DAY))
+        say("undo")
+        val restored = db.taskDao().getTaskById(original.id)!!
+        assertEquals(original.title, restored.title)
+        assertEquals(original.dueDate, restored.dueDate)
+    }
+
+    @Test fun combinedCorrectionRejectsTargetChangesDuringClarification() = runBlocking {
+        say("call Mum tomorrow")
+        val task = allTasks().single()
+        say("Actually, Dad instead of Mum, and after lunch")
+        db.taskDao().updateTask(task.copy(title = "Edited elsewhere", updatedAt = task.updatedAt + 1))
+        assertTrue(say("tomorrow at 3pm").formattedText.contains("changed while"))
+        say("yes")
+        assertEquals("Edited elsewhere", db.taskDao().getTaskById(task.id)!!.title)
+    }
+
+    @Test fun titleCorrectionUsesLiteralReplacementText() = runBlocking {
+        say("call Mum tomorrow")
+        say("Actually, Dad \$5 instead of Mum")
+        assertEquals("Call Dad \$5", allTasks().single().title)
+    }
+
+    @Test fun missingReplacementDoesNotInventANewTask() = runBlocking {
+        say("call Mum tomorrow")
+        assertTrue(say("Actually, Dad instead of Bob").formattedText.contains("Which part"))
+        assertEquals("Call Mum", allTasks().single().title)
+    }
+
+    @Test fun naturalDrillRequestsAndFollowUpsKeepExistingFeatureDispatch() = runBlocking {
+        assertEquals("/drill hard 20", say("Can we do a hard drill with twenty questions?").cliCommandRedirect)
+        assertEquals("/drill medium 20", say("easier, same number of questions").cliCommandRedirect)
+        assertEquals("/drill hard 20", say("give me a harder round").cliCommandRedirect)
+        assertEquals("/drill hard 20", say("another round").cliCommandRedirect)
+        assertEquals("/drill hard 20", say("do it again").cliCommandRedirect)
+        assertTrue(allTasks().isEmpty())
+    }
+
+    @Test fun unsupportedDrillCountsAskInsteadOfSilentlyChangingTheRequest() = runBlocking {
+        val response = say("start a hard drill with 15 questions")
+        assertNull(response.cliCommandRedirect)
+        assertTrue(response.formattedText.contains("10, 20 or unlimited"))
+        assertTrue(allTasks().isEmpty())
+    }
+
+    @Test fun featureFollowUpAfterUnrelatedTopicDoesNotGuess() = runBlocking {
+        say("start drill hard 20")
+        say("what time is it")
+        assertNull(say("harder").cliCommandRedirect)
+        assertEquals("clock", AssistantSessionStore(context).load().topic)
+        assertEquals("/drill hard 20", say("repeat my last drill").cliCommandRedirect)
+    }
+
+    @Test fun learningResultsComeFromRecordedCompletionAndAreConsumedOnce() = runBlocking {
+        say("start drill medium 20")
+        val now = System.currentTimeMillis()
+        val summary = org.json.JSONObject().put("sessionId", "completed-run").put("difficulty", "medium")
+            .put("targetQuestions", 20).put("total", 12).put("correct", 9).put("isBlitz", false).toString()
+        OfflineAssistant.recordLearningResult(context, summary, now)
+        assertTrue(say("How did I do?").formattedText.contains("9 of 12"))
+        assertTrue(say("What was my score?").formattedText.contains("75%"))
+        say("what time is it")
+        OfflineAssistant.recordLearningResult(context, summary, now)
+        assertEquals("clock", AssistantSessionStore(context).load().topic)
+        assertEquals("/drill medium 20", say("repeat my last drill").cliCommandRedirect)
+        assertEquals("/drill hard 20", say("harder, same number of questions").cliCommandRedirect)
+        OfflineAssistant.recordLearningResult(context, summary, now)
+        assertNull(AssistantSessionStore(context).load().learning!!.total)
+    }
+
+    @Test fun expiredAndMalformedTestResultsAreNotConversationContext() = runBlocking {
+        val summary = org.json.JSONObject().put("sessionId", "old-run").put("difficulty", "hard")
+            .put("targetQuestions", 20).put("total", 10).put("correct", 11).toString()
+        OfflineAssistant.recordLearningResult(context, summary, System.currentTimeMillis())
+        assertNull(AssistantSessionStore(context).load().learning)
+        OfflineAssistant.recordLearningResult(context, summary.replace("11", "8"), System.currentTimeMillis() - 901_000)
+        assertNull(AssistantSessionStore(context).load().learning)
+    }
+
+    @Test fun vocabularyAndBlitzFollowUpsRespectTheirDifferentModes() = runBlocking {
+        assertEquals("/vocab", say("practice my vocabulary").cliCommandRedirect)
+        assertEquals("/vocab learn_more", say("teach me more words").cliCommandRedirect)
+        assertEquals("/vocab_quiz", say("quiz me on vocabulary").cliCommandRedirect)
+        assertNull(say("harder").cliCommandRedirect)
+        assertNull(say("repeat my last drill").cliCommandRedirect)
+        assertEquals("/vocab_quiz", say("another round").cliCommandRedirect)
+        assertEquals("/blitz", say("give me a speed round").cliCommandRedirect)
+        assertEquals("/blitz", say("another round").cliCommandRedirect)
+    }
+
+    @Test fun clearHistoryForgetsResumableQuestionsAndLearningConfiguration() = runBlocking {
+        say("remind me tomorrow at 6pm")
+        say("start drill hard 20")
+        OfflineAssistant.respond("/clear", context)
+        assertNull(AssistantSessionStore(context).load().suspendedRequest)
+        assertNull(AssistantSessionStore(context).load().learning)
+        assertTrue(AssistantSessionStore(context).load().recentTaskIds.isEmpty())
+        assertNull(say("harder").cliCommandRedirect)
+    }
+
+    @Test fun everydayWaterReportUsesRealHabitProgressAndGoalCap() = runBlocking {
+        val id = db.habitDao().insertHabit(Habit(title = "Drink water", targetPerDay = 3))
+        say("I drank two glasses of water")
+        assertEquals(2, db.habitDao().getAllLogsForHabitSync(id).single().completedCount)
+        say("one more")
+        say("had another glass")
+        assertEquals(3, db.habitDao().getAllLogsForHabitSync(id).single().completedCount)
+        assertTrue(allTasks().isEmpty())
+    }
+
+    @Test fun ambiguousWaterReportRequiresHabitSelection() = runBlocking {
+        val first = db.habitDao().insertHabit(Habit(title = "Morning water", targetPerDay = 4))
+        val second = db.habitDao().insertHabit(Habit(title = "Evening water", targetPerDay = 4))
+        say("I drank two glasses of water")
+        assertTrue(db.habitDao().getAllLogsForHabitSync(first).isEmpty())
+        assertTrue(db.habitDao().getAllLogsForHabitSync(second).isEmpty())
+        say("No, the second one")
+        assertEquals(2, db.habitDao().getAllLogsForHabitSync(second).single().completedCount)
+        assertTrue(db.habitDao().getAllLogsForHabitSync(first).isEmpty())
+    }
+
+    @Test fun waterVolumeDoesNotBecomeAHabitCountOrATask() = runBlocking {
+        val id = db.habitDao().insertHabit(Habit(title = "Water", targetPerDay = 4))
+        val response = say("I drank 2 litres of water")
+        assertTrue(response.formattedText.contains("How many glasses"))
+        assertTrue(db.habitDao().getAllLogsForHabitSync(id).isEmpty())
+        assertTrue(allTasks().isEmpty())
+    }
+
+    @Test fun explicitReminderAboutLearningCannotLaunchPractice() = runBlocking {
+        say("remind me to do a hard drill with 20 questions tomorrow")
+        assertEquals(1, allTasks().size)
+        assertNull(AssistantSessionStore(context).load().learning)
+    }
+
+    @Test fun implicitHabitReferenceCannotReenterAnEarlierTaskList() = runBlocking {
+        val first = add("Read fiction")
+        val second = add("Read history")
+        say("show my tasks")
+        say("let's work on the first task")
+        val habit = db.habitDao().insertHabit(Habit(title = "Water", targetPerDay = 4))
+        say("log habit water")
+        assertTrue(say("the other one").formattedText.contains("Which habit"))
+        assertNull(AssistantSessionStore(context).load().taskId)
+        say("done")
+        assertFalse(db.taskDao().getTaskById(first)!!.isCompleted)
+        assertFalse(db.taskDao().getTaskById(second)!!.isCompleted)
+        assertEquals(2, db.habitDao().getAllLogsForHabitSync(habit).single().completedCount)
+    }
+
+    @Test fun singularGlassUsesTheSameHabitLoggingPath() = runBlocking {
+        val id = db.habitDao().insertHabit(Habit(title = "Water", targetPerDay = 4))
+        say("I had a glass of water")
+        assertEquals(1, db.habitDao().getAllLogsForHabitSync(id).single().completedCount)
+    }
+
+    @Test fun negatedDateCorrectionPreservesTheExistingClock() = runBlocking {
+        say("call Mum Friday at 6pm")
+        val task = allTasks().single()
+        say("Not Friday—Monday. Keep the time")
+        val updated = db.taskDao().getTaskById(task.id)!!
+        assertEquals(1, allTasks().size)
+        val date = Calendar.getInstance().apply { timeInMillis = updated.dueDate!! }
+        assertEquals(Calendar.MONDAY, date.get(Calendar.DAY_OF_WEEK))
+        assertEquals(18, date.get(Calendar.HOUR_OF_DAY))
+    }
+
+    @Test fun legacyFaqHistoryCannotOverrideTheCanonicalTopic() = runBlocking {
+        AyvaTalkEngine.answerTalkQueryWithActions("soft mode wait timer", context)
+        assertTrue(AssistantSessionStore(context).load().topic!!.startsWith("faq:"))
+        say("what time is it")
+        val response = AyvaTalkEngine.answerTalkQueryWithActions("how to change it?", context)
+        assertFalse(response.formattedText.contains("Soft Mode Wait Timer"))
+    }
+
+    @Test fun otherReadingReferenceCannotChooseAnUnrelatedTask() = runBlocking {
+        val reading = add("Read fiction")
+        val groceries = add("Buy groceries")
+        say("show my tasks")
+        say("let's work on the first task")
+        say("the other reading one")
+        assertNull(AssistantSessionStore(context).load().taskId)
+        say("done")
+        assertFalse(db.taskDao().getTaskById(reading)!!.isCompleted)
+        assertFalse(db.taskDao().getTaskById(groceries)!!.isCompleted)
+    }
+
+    @Test fun habitReportInterruptsAMissingHabitTitleAndCanResumeIt() = runBlocking {
+        val water = db.habitDao().insertHabit(Habit(title = "Water", targetPerDay = 4))
+        say("add habit")
+        say("I drank two glasses of water")
+        assertEquals(2, db.habitDao().getAllLogsForHabitSync(water).single().completedCount)
+        assertEquals(1, db.habitDao().getAllHabitsSync().size)
+        say("continue that request")
+        say("Stretch")
+        say("yes")
+        assertEquals(setOf("Water", "Stretch"), db.habitDao().getAllHabitsSync().map { it.title }.toSet())
+    }
+
+    @Test fun forgettingContextDoesNotReimportAnAlreadySeenTestCard() = runBlocking {
+        val timestamp = System.currentTimeMillis()
+        val summary = org.json.JSONObject().put("sessionId", "seen-result").put("difficulty", "medium")
+            .put("targetQuestions", 20).put("total", 10).put("correct", 8).toString()
+        OfflineAssistant.recordLearningResult(context, summary, timestamp)
+        say("forget my preferences")
+        OfflineAssistant.recordLearningResult(context, summary, timestamp)
+        assertNull(AssistantSessionStore(context).load().learning)
+        assertNull(say("harder").cliCommandRedirect)
+    }
+
 }

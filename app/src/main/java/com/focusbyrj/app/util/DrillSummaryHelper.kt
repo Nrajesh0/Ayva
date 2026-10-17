@@ -181,7 +181,10 @@ object DrillSummaryHelper {
             timestamp = System.currentTimeMillis(),
             firstViewedTimestamp = System.currentTimeMillis(),
             isDrillSummary = true,
-            drillSummaryJson = typedSummary.toJson()
+            drillSummaryJson = JSONObject(typedSummary.toJson())
+                .put("difficulty", session.difficulty)
+                .put("targetQuestions", session.targetQuestions)
+                .toString()
         )
     }
 }

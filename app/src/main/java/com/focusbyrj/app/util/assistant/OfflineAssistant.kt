@@ -50,6 +50,26 @@ object OfflineAssistant {
 
     suspend fun reset(context: Context) = mutex.withLock { AssistantSessionStore(context).clear() }
 
+    /** Called from the chat boundary with a real completed-test card, never with user-authored JSON. */
+    suspend fun recordLearningResult(context: Context, summary: String, timestamp: Long) = mutex.withLock {
+        if (summary.length > 500_000 || System.currentTimeMillis() - timestamp !in 0..900_000L) return@withLock
+        val json = runCatching { JSONObject(summary) }.getOrNull() ?: return@withLock
+        val id = json.optString("sessionId").takeIf { it.isNotBlank() && it.length <= 100 } ?: return@withLock
+        val store = AssistantSessionStore(context); val state = store.load()
+        if (state.learningResultId == id || timestamp < (state.learning?.startedAt ?: 0L)) return@withLock
+        val difficulty = json.optString("difficulty")
+        if (difficulty !in setOf("easy", "medium", "hard", "vocab")) return@withLock
+        val kind = if (json.optBoolean("isBlitz")) "blitz" else if (difficulty == "vocab") "vocab" else "drill"
+        val count = json.optInt("targetQuestions", 0)
+        if (count !in setOf(-1, 10, 20) && !(kind == "vocab" && count in 1..20)) return@withLock
+        val total = json.optInt("total", -1); val correct = json.optInt("correct", -1)
+        if (total < 0 || correct !in 0..total) return@withLock
+        AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("learning")
+        state.learning = AssistantLearningContext(kind, difficulty, count, timestamp, total, correct)
+        state.learningResultId = id
+        store.save(state)
+    }
+
     suspend fun captureChoices(context: Context, prompt: String, choices: List<ConflictOption>, priority: Boolean, persistent: Boolean): AyvaTalkEngine.TalkResponse = mutex.withLock {
         val state = AssistantSessionStore(context).load()
         state.clearPending()
@@ -63,8 +83,7 @@ object OfflineAssistant {
     suspend fun rememberTopic(context: Context, response: AyvaTalkEngine.TalkResponse, query: String) = mutex.withLock {
         if (response.topicId in setOf("assistant", "tasks", "habits", "conversation", "confirmation", "choice")) return@withLock
         val state = AssistantSessionStore(context).load()
-        state.topic = response.topicId?.let { "faq:$it" }
-        state.taskId = null; state.habitId = null
+        response.topicId?.let { state.switchTopic("faq:$it") }
         state.lastReply = response.formattedText.take(4000)
         state.recentInputs = (state.recentInputs + query.take(500)).takeLast(6)
         AssistantSessionStore(context).save(state)
@@ -72,33 +91,43 @@ object OfflineAssistant {
 
     private suspend fun turn(raw: String, context: Context, app: FocusApplication, state: AssistantSession, priority: Boolean, persistent: Boolean): AyvaTalkEngine.TalkResponse? {
         val command = raw.trim().substringBefore(' ').lowercase()
-        if (command in setOf("/clear", "/clean", "/wipe")) { state.clearPending(); state.taskId = null; state.habitId = null; state.topic = null; state.undo = emptyList(); state.undoId = null; state.candidates = emptyList(); state.recentInputs = emptyList(); state.lastReply = null; return null }
+        if (command in setOf("/clear", "/clean", "/wipe")) { state.clearPending(); state.taskId = null; state.habitId = null; state.topic = null; state.undo = emptyList(); state.undoId = null; state.candidates = emptyList(); state.recentInputs = emptyList(); state.lastReply = null; state.recentTaskIds = emptyList(); state.suspendedRequest = null; state.learning = null; state.learningResultId = null; return null }
         var text = raw.trim()
-        if (command in setOf("/habit", "/habits") && raw.trim().indexOf(' ') < 0) { state.clearPending(); state.topic = "habits"; state.taskId = null; return null }
+        if (command in setOf("/habit", "/habits") && raw.trim().indexOf(' ') < 0) { AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("habits"); return null }
         if (text.startsWith("/ayva ")) return internalCommand(text.removePrefix("/ayva "), context, app, state)
         val taskAlias = command in setOf("/create", "/add", "/todo") || (command == "/task" && raw.substringAfter(' ', "").lowercase() !in setOf("", "all", "today", "list", "pending", "everything"))
         if (command in setOf("/talk", "/ask")) text = raw.substringAfter(' ', "")
         else if (taskAlias) text = raw.substringAfter(' ', "")
         else if (command in setOf("/reschedule", "/complete", "/delete", "/reopen", "/priority", "/focus", "/pomodoro", "/undo", "/routine", "/habit", "/habits")) text = com.focusbyrj.app.util.command.AyvaChatCommands.talkQuery(raw)
         else if (raw.startsWith("/")) {
+            AssistantConversation.suspendQuestion(state)
             state.clearPending()
             if (command == "/tasks" || command == "/task") rememberList(raw, app, state)
+            else {
+                val learning = AssistantLearningLanguage.command(raw)
+                state.switchTopic(if (learning != null) "learning" else command.removePrefix("/"))
+                if (learning != null) state.learning = learning
+            }
             return null
         }
         text = AssistantTaskLanguage.normalize(text)
         text = text.replace(Regex("(?i)^confirm[_ ]delete[_ ](all|overdue)$")) { "delete ${it.groupValues[1]} tasks" }
         if (taskAlias) return create(context, app, state, text, priority, persistent, true)
         val lower = text.lowercase().trimEnd('.', '!', '?')
-        if (lower in setOf("cancel", "never mind", "nevermind", "forget it", "stop that")) { state.clearPending(); return reply("Cancelled the pending request. Your saved items are unchanged.") }
+        if (lower in setOf("cancel", "never mind", "nevermind", "forget it", "stop that")) { state.clearPending(); state.suspendedRequest = null; return reply("Cancelled the pending request. Your saved items are unchanged.") }
         if (lower in setOf("undo", "undo that", "undo last", "undo last action", "take that back")) return undo(context, state, state.undoId)
         if (lower in setOf("yes", "yep", "yeah", "confirm", "do it", "go ahead", "sure", "okay", "ok") && !(state.expected == "setting_value" && state.pending.filterIsInstance<AssistantAction.SetPreference>().singleOrNull()?.type == "boolean")) {
             if (state.expected == "confirm" && state.confirmationId != null) return confirm(context, app, state, state.confirmationId!!)
             if (state.choices.size == 1) return choose(context, app, state, 0)
             return reply(if (state.expected != null) "I still need a specific answer to the last question. ${expectedHint(state)}" else "I'm ready. Tell me what you'd like to do.")
         }
-        if (lower in setOf("no", "nope", "not now") && !(state.expected == "setting_value" && state.pending.filterIsInstance<AssistantAction.SetPreference>().singleOrNull()?.type == "boolean")) { state.clearPending(); return reply("Okay. I haven't applied the pending action.") }
+        if (lower in setOf("no", "nope", "not now") && !(state.expected == "setting_value" && state.pending.filterIsInstance<AssistantAction.SetPreference>().singleOrNull()?.type == "boolean")) { state.clearPending(); state.suspendedRequest = null; return reply("Okay. I haven't applied the pending action.") }
         if (state.choices.isNotEmpty()) {
             choiceIndex(lower, state.choices.size)?.let { return choose(context, app, state, it) }
+            val label = lower.replace(Regex("^(?:no[, ]+|not that one[, ]+|i meant )"), "").removePrefix("the ")
+            val matching = state.choices.indices.filter { state.choices[it].label.equals(label, true) }
+            if (matching.size == 1) return choose(context, app, state, matching.single())
+            if (lower in setOf("done", "it", "that", "the other one", "not that one")) return choiceReply("I still need to know which item you mean.", state)
         }
         if (Regex("(?i)^remind me(?:\\s+.*)?$").matches(text) && !text.lowercase().startsWith("remind me to ") && !Regex("(?i)\\b(?:about|of)\\b").containsMatchIn(text)) {
             val date = SmartDateParser.parse(text.removePrefix("remind me").trim())
@@ -111,6 +140,32 @@ object OfflineAssistant {
         val tasks = app.database.taskDao().getAllActiveTasksList()
         val pending = tasks.filter { !it.isCompleted }
         if (state.taskId != null && tasks.none { it.id == state.taskId }) state.taskId = null
+
+        if (AssistantConversation.wantsResume(lower)) {
+            return if (AssistantConversation.resumeQuestion(state, tasks)) reply("Let's continue. ${expectedHint(state)}")
+            else reply("There's no unfinished question available to resume. Tell me the request again; old confirmations won't be reused.")
+        }
+        AssistantConversation.reference(text)?.let { reference ->
+            val implicitReference = reference == "__other__" || (lower.startsWith("no") && !Regex("\\btask\\b").containsMatchIn(lower))
+            if (implicitReference && state.topic !in setOf("tasks", "planning")) return reply("Which ${if (state.topic == "habits") "habit" else "item"} do you mean? Name it or choose one of the displayed options.")
+            state.clearPending()
+            val subject = when (reference) {
+                "__previous__" -> state.recentTaskIds.firstOrNull { id -> pending.any { it.id == id } }?.let { "id:$it" }
+                "__other__" -> {
+                    val matching = if (lower.contains("other reading one")) AssistantTaskLanguage.select("read", pending, state).tasks.map { it.id } else pending.map { it.id }
+                    state.candidates.filter { id -> id != state.taskId && id in matching }.singleOrNull()?.let { "id:$it" }
+                }
+                else -> reference
+            }
+            return handleTask(context, app, state, AssistantTaskRequest("focus", subject.orEmpty()), tasks)
+        }
+        if (state.expected == "correction_date" && !isNewIntent(lower)) {
+            val date = SmartDateParser.parse(text)
+            if (date.timestamp == null || date.hasTaskText) return reply("What exact day and time should I use? For example, ‘tomorrow at 3pm’. Nothing has changed yet.")
+            if (state.versions.any { (id, version) -> tasks.none { it.id == id && it.updatedAt == version && !it.isCompleted } }) { state.clearPending(); return reply("That task changed while we were talking. Please ask for the correction again.") }
+            val edits = state.pending.map { if (it is AssistantAction.EditTasks && it.field == TaskField.DUE && it.value.isBlank()) it.copy(value = date.timestamp.toString()) else it }
+            return propose(context, app, state, edits, correctionPreview(edits))
+        }
 
         // Slot replies are constrained to the type requested, and a new explicit intent interrupts them.
         if (state.expected == "task_title" && (!isNewIntent(lower) || OfflineNluEngine.isExplicitCreation(text))) {
@@ -127,6 +182,7 @@ object OfflineAssistant {
         if (state.expected == "task_date" && !isNewIntent(lower)) {
             val date = SmartDateParser.parse(text)
             if (date.timestamp != null && !date.hasTaskText) {
+                if (state.versions.any { (id, version) -> tasks.none { it.id == id && it.updatedAt == version && !it.isCompleted } }) { state.clearPending(); return reply("That task changed while we were talking. Please ask for the new time again.") }
                 val ids = state.pending.filterIsInstance<AssistantAction.EditTasks>().firstOrNull()?.ids ?: listOfNotNull(state.taskId)
                 val edits = ids.map { id ->
                     val previous = app.database.taskDao().getTaskById(id)?.dueDate
@@ -150,18 +206,21 @@ object OfflineAssistant {
             }
             return propose(context, app, state, listOf(pendingSetting.copy(value = value)), "Set ${spec.title} to $value ${spec.unit}?")
         }
+        if (isNewIntent(lower)) AssistantConversation.suspendQuestion(state)
         state.clearPending()
         val parts = AssistantCompoundParser.split(text)
         if (parts.size > 1) return compound(context, app, state, parts, priority, persistent)
 
         // Privacy boundary precedes creation heuristics; an explicit reminder about a note is still a task.
         if (!taskAlias && Regex("(?i)^(?:read|show|search|find|edit|delete|create|add|new|open|list)\\s+(?:my\\s+|a\\s+)?notes?\\b|^(?:my )?notes$").containsMatchIn(text)) {
-            state.clearPending(); state.topic = "notes"; state.taskId = null; state.habitId = null
+            state.clearPending(); state.switchTopic("notes")
             return reply("For privacy, notes cannot be created, searched, or viewed through the chat window. Open Keep Notes to view or change them.", listOf(TalkAction.NavigateAppScreen("notes", "Open Keep Notes", "📝")))
         }
         if (lower in setOf("forget me", "forget my preferences", "forget what i told you")) {
             context.getSharedPreferences("ayva_personalization", Context.MODE_PRIVATE).edit().clear().commit()
             state.clearPending(); state.taskId = null; state.habitId = null; state.topic = null; state.undo = emptyList(); state.undoId = null; state.recentInputs = emptyList()
+            state.recentTaskIds = emptyList(); state.suspendedRequest = null; state.learning = null
+            // Keep the opaque consumed-result ID, as with action receipts, so visible old cards cannot restore forgotten context.
             return reply("I've cleared my conversational context and your chat preferences. Saved tasks, habits and notes are unchanged.")
         }
         Regex("(?i)^(?:call me|my name is)\\s+(.+)$").matchEntire(text)?.let {
@@ -177,6 +236,19 @@ object OfflineAssistant {
         }
 
         val question = OfflineNluEngine.isQuestion(text) && !OfflineNluEngine.isExplicitCreation(text)
+        state.taskId?.let { id -> tasks.find { it.id == id && !it.isCompleted } }?.let { task ->
+            AssistantConversation.correction(text, task)?.let { correction ->
+                correction.clarification?.let { return reply(it) }
+                if (correction.needsDate) {
+                    state.expected = "correction_date"; state.pending = correction.actions
+                    state.versions = mapOf(task.id to task.updatedAt)
+                    return reply("I can correct **${task.title}**. What exact day and time do you mean? For example, ‘tomorrow at 3pm’. Nothing has changed yet.")
+                }
+                val edits = correction.actions.map { if (correction.preserveClock && task.dueDate != null && it is AssistantAction.EditTasks && it.field == TaskField.DUE) it.copy(value = preserveTime(it.value.toLong(), task.dueDate).toString()) else it }
+                return if (edits.size > 1) propose(context, app, state, edits, correctionPreview(edits))
+                else apply(context, state, edits)
+            }
+        }
         if (!question) {
             if (state.topic == "habits" && lower in setOf("done", "complete it", "log it", "log that", "finished it", "mark it done")) {
                 return featureRequest(context, app, state, "log habit it")
@@ -188,7 +260,7 @@ object OfflineAssistant {
                 return handleTask(context, app, state, AssistantTaskRequest("due", "it", parsedReply.timestamp.toString(), !parsedReply.hasTime), tasks)
             }
             if (!Regex("(?i)^(?:complete|check|log|done|finished)\\s+habit\\b").containsMatchIn(text)) {
-                AssistantTaskLanguage.request(text)?.let { return handleTask(context, app, state, it, tasks) }
+                AssistantTaskLanguage.request(text.replaceFirst(Regex("(?i)^actually[, ]+"), ""))?.let { return handleTask(context, app, state, it, tasks) }
             }
         }
         val explicit = OfflineNluEngine.isExplicitCreation(text) || Regex("(?i)^(?:urgent|important|priority)[: ,]").containsMatchIn(text)
@@ -205,7 +277,11 @@ object OfflineAssistant {
         dialogue(context, app, state, text, pending)?.let { return it }
         knowledgeFollowUp(context, state, lower)?.let { return it }
         featureRequest(context, app, state, text)?.let { return it }
-        if (question || OfflineNluEngine.isConversationalStatement(text)) { state.clearPending(); return null }
+        if (question || OfflineNluEngine.isConversationalStatement(text)) {
+            state.clearPending()
+            if (!(state.topic?.startsWith("faq:") == true && AssistantConversation.isTopicFollowUp(lower))) state.switchTopic("conversation")
+            return null
+        }
         val fallback = OfflineNluEngine.parse(text, pending)
         if (fallback.intent in setOf(NluIntent.COMPLETE, NluIntent.DELETE, NluIntent.RESCHEDULE)) {
             val operation = when (fallback.intent) { NluIntent.COMPLETE -> "complete"; NluIntent.DELETE -> "trash"; else -> "due" }
@@ -253,20 +329,23 @@ object OfflineAssistant {
     private suspend fun handleTask(context: Context, app: FocusApplication, state: AssistantSession, request: AssistantTaskRequest, tasks: List<Task>): AyvaTalkEngine.TalkResponse {
         val available = if (request.operation == "reopen") tasks.filter { it.isCompleted } else tasks.filter { !it.isCompleted }
         val selected = AssistantTaskLanguage.select(request.subject, available, state)
+        if (request.operation == "focus" && selected.tasks.size != 1) state.switchTopic("tasks")
         if (selected.tasks.isEmpty()) {
             if (available.isEmpty()) return reply("There are no ${if (request.operation == "reopen") "completed" else "pending"} tasks to ${request.operation}. Add a task directly, for example ‘buy milk tomorrow’.")
             val candidates = available.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }).take(8)
             val choices = candidates.map { task -> AssistantChoice(task.title, requestCommand(request.copy(subject = "id:${task.id}"))) }
             return setChoices(state, if (request.subject.isBlank() || request.subject in setOf("it", "that", "this")) "Which task would you like to ${request.operation}?" else "I couldn't find an exact task for **${request.subject}**. Choose a task:", choices)
         }
-        if (selected.tasks.size > 1 && !selected.group) {
+        if (selected.tasks.size > 1 && (!selected.group || request.operation == "focus")) {
             return setChoices(state, "Several tasks match **${request.subject}**. Which one?", selected.tasks.take(10).map { AssistantChoice(it.title, requestCommand(request.copy(subject = "id:${it.id}"))) })
         }
         val ids = selected.tasks.map { it.id }
-        state.taskId = ids.singleOrNull(); state.topic = "tasks"
+        if (ids.size == 1) state.focusTask(ids.single()) else state.switchTopic("tasks")
+        if (request.operation == "focus") return reply("We're talking about **${selected.tasks.single().title}**. You can change its time, rename it or mark it done. Selecting it hasn't changed the task.")
         if (request.operation == "due" && request.value == null) {
             state.clearPending(); state.expected = "task_date"
             state.pending = listOf(AssistantAction.EditTasks(ids, TaskField.DUE, ""))
+            state.versions = selected.tasks.associate { it.id to it.updatedAt }
             return reply("When should ${if (ids.size == 1) "**${selected.tasks.single().title}**" else "these ${ids.size} tasks"} be due? Try ‘tomorrow at 6pm’ or ‘in 30 minutes’.")
         }
         val actions = selected.tasks.map { task ->
@@ -281,16 +360,22 @@ object OfflineAssistant {
 
     private suspend fun featureRequest(context: Context, app: FocusApplication, state: AssistantSession, text: String): AyvaTalkEngine.TalkResponse? {
         val lower = text.lowercase().trimEnd('.', '!', '?')
-        if (Regex("^(?:(?:start|begin|run|do|give me) )?(?:a )?(?:math |arithmetic )?(?:drill|quiz)(?: (?:easy|medium|hard|10|20|questions|unlimited))*$").matches(lower) || lower in setOf("practice math", "math practice", "do math", "arithmetic practice")) {
-            val difficulty = listOf("hard", "medium", "easy").find { Regex("\\b$it\\b").containsMatchIn(lower) } ?: "easy"
-            val count = if (lower.contains("unlimited")) "unlimited" else if (Regex("\\b20\\b").containsMatchIn(lower)) "20" else "10"
-            return AyvaTalkEngine.TalkResponse("Opening the $difficulty arithmetic drill.", cliCommandRedirect = "/drill $difficulty $count")
+        AssistantLearningLanguage.parse(text, state)?.let { request ->
+            return when (request) {
+                is LearningRequest.Launch -> {
+                    state.switchTopic("learning"); state.learning = request.configuration
+                    AyvaTalkEngine.TalkResponse("Opening your practice window.", cliCommandRedirect = request.configuration.command())
+                }
+                is LearningRequest.Open -> { state.switchTopic("vocabulary"); AyvaTalkEngine.TalkResponse("Opening vocabulary.", cliCommandRedirect = request.command) }
+                is LearningRequest.Reply -> { if (request.focusLearning) state.switchTopic("learning"); reply(request.text) }
+            }
         }
-        if (lower in setOf("blitz", "start blitz", "speed drill", "start speed drill")) return AyvaTalkEngine.TalkResponse("Opening the speed blitz.", cliCommandRedirect = "/blitz")
-        if (lower in setOf("vocab", "vocabulary", "teach me a word", "learn a word", "vocabulary practice")) return AyvaTalkEngine.TalkResponse("Opening vocabulary practice.", cliCommandRedirect = "/vocab")
-        if (lower in setOf("vocabulary quiz", "start vocabulary quiz", "vocab quiz")) return AyvaTalkEngine.TalkResponse("Opening the vocabulary quiz.", cliCommandRedirect = "/vocab_quiz")
+        AssistantHabitLanguage.report(text, state)?.let { (target, count) ->
+            return featureRequest(context, app, state, "log habit $target $count times")
+        }
+        if (Regex("^(?:i )?(?:just )?(?:drank|had|finished)\\b.*\\bwater$").matches(lower)) return reply("How many glasses should I log? Say ‘I drank two glasses of water’. I won't convert litres or minutes into habit counts.")
         if (lower in setOf("routine", "routines", "my routines", "list routines", "show routines", "active routines", "which routine is active")) {
-            state.clearPending(); state.topic = "routines"; state.taskId = null; state.habitId = null
+            state.clearPending(); state.switchTopic("routines")
             val schedules = app.database.scheduleDao().getAllSchedulesSync()
             return reply(if (schedules.isEmpty()) "You haven't created any routines. Open schedules to configure their time windows and app restrictions." else schedules.joinToString("\n") {
                 "• **${it.name}** — ${if (it.isActiveAt()) "active now" else if (it.isEnabled) "enabled for its scheduled window" else "disabled"} (${String.format(java.util.Locale.US, "%02d:%02d–%02d:%02d", it.startHour, it.startMinute, it.endHour, it.endMinute)})"
@@ -330,7 +415,7 @@ object OfflineAssistant {
             return apply(context, state, listOf(AssistantAction.LogHabit(matched.single().id, count)))
         }
         if (lower in setOf("habit", "habits", "my habits", "show habits", "habit progress", "how are my habits")) {
-            state.clearPending(); state.topic = "habits"; state.taskId = null
+            state.clearPending(); state.switchTopic("habits")
             val habits = app.habitRepository.activeHabitsWithProgress.first()
             return reply(if (habits.isEmpty()) "You have no active habits. Try ‘add habit reading’." else "Today's habits:\n" + habits.joinToString("\n") { "• **${it.habit.title}** — ${it.completedToday}/${it.targetToday}${if (it.isCompletedToday) " ✓" else ""}, streak ${it.currentStreak} day(s)" }, habits.filter { !it.isCompletedToday }.take(3).map { TalkAction.AskQuery("log habit id:${it.habit.id}", "Log ${it.habit.title}") })
         }
@@ -414,8 +499,8 @@ object OfflineAssistant {
             try {
                 val result = AssistantActionExecutor.execute(context, action)
                 results.add(result.text)
-                result.taskId?.let { state.taskId = it; state.habitId = null; state.topic = "tasks" }
-                result.habitId?.let { state.habitId = it; state.taskId = null; state.topic = "habits" }
+                result.taskId?.let { state.focusTask(it) }
+                result.habitId?.let { state.switchTopic("habits"); state.habitId = it }
                 if (result.changed && result.undo.isNotEmpty()) {
                     if (taskBatch) {
                         val merged = state.undo.associateBy { it.getJSONObject("after").getLong("id") }.toMutableMap()
@@ -433,9 +518,9 @@ object OfflineAssistant {
                     state.undoId = token()
                 }
                 when (action) {
-                    is AssistantAction.SetPreference -> { state.topic = "setting:${action.key}"; state.taskId = null }
-                    is AssistantAction.SetRoutine -> { state.topic = "routines"; state.taskId = null }
-                    is AssistantAction.StartFocus, AssistantAction.StopFocus -> state.topic = "focus"
+                    is AssistantAction.SetPreference -> state.switchTopic("setting:${action.key}")
+                    is AssistantAction.SetRoutine -> state.switchTopic("routines")
+                    is AssistantAction.StartFocus, AssistantAction.StopFocus -> state.switchTopic("focus")
                     else -> Unit
                 }
                 AssistantSessionStore(context).save(state)
@@ -509,7 +594,7 @@ object OfflineAssistant {
     }
     private fun choiceReply(prompt: String, state: AssistantSession) = reply(prompt + "\n" + state.choices.mapIndexed { i, c -> "${i + 1}. ${c.label}" }.joinToString("\n") + "\nYou can reply with a number or tap a choice.", state.choices.mapIndexed { i, c -> TalkAction.AskQuery("/ayva choose ${state.confirmationId} $i", c.label) }, "choice")
     private fun choiceIndex(input: String, size: Int): Int? {
-        val cleaned = input.removePrefix("the ").removeSuffix(" one").removeSuffix(" option").removePrefix("option ").removePrefix("number ")
+        val cleaned = input.replace(Regex("^(?:no[, ]+|not that one[, ]+|i meant )"), "").removePrefix("the ").removeSuffix(" one").removeSuffix(" option").removePrefix("option ").removePrefix("number ")
         val ordinal = when (cleaned) { "first" -> 1; "second" -> 2; "third" -> 3; "fourth" -> 4; "fifth" -> 5; "last" -> size; else -> cleaned.toIntOrNull() }
         return ordinal?.minus(1)?.takeIf { it in 0 until size }
     }
@@ -520,8 +605,11 @@ object OfflineAssistant {
     private fun requestCommand(request: AssistantTaskRequest): String = "request:" + JSONObject()
         .put("operation", request.operation).put("subject", request.subject)
         .put("value", request.value ?: JSONObject.NULL).put("preserveClock", request.preserveClock).toString()
-    private fun expectedHint(state: AssistantSession) = when (state.expected) { "task_date" -> "Tell me a date or time."; "task_title", "habit_title" -> "Tell me its title."; "choice", "legacy_choice" -> "Choose a numbered option."; "setting_value" -> "Tell me the new setting value."; else -> "Please answer the pending question." }
-    private fun isNewIntent(text: String) = OfflineNluEngine.isConversationalStatement(text) || OfflineNluEngine.isExplicitCreation(text) || OfflineNluEngine.isQuestion(text) || Regex("^(?:start|stop|delete|complete|reschedule|show|list|set|change|log|undo|help)\\b").containsMatchIn(text)
+    private fun correctionPreview(actions: List<AssistantAction>) = "Correct this same task?\n" + actions.filterIsInstance<AssistantAction.EditTasks>().joinToString("\n") {
+        if (it.field == TaskField.DUE) "• Due: ${SmartDateParser.formatDueDate(it.value.toLong())}" else "• Title: ${it.value}"
+    }
+    private fun expectedHint(state: AssistantSession) = when (state.expected) { "task_date", "correction_date" -> "Tell me the exact day and time."; "task_title", "habit_title" -> "Tell me its title."; "choice", "legacy_choice" -> "Choose a numbered option."; "setting_value" -> "Tell me the new setting value."; else -> "Please answer the pending question." }
+    private fun isNewIntent(text: String) = OfflineNluEngine.isConversationalStatement(text) || OfflineNluEngine.isExplicitCreation(text) || OfflineNluEngine.isQuestion(text) || Regex("^(?:start|stop|delete|complete|reschedule|show|list|set|change|log|undo|help|practice|teach me|give me|learn|drill|vocab|vocabulary|blitz)\\b").containsMatchIn(text) || Regex("^(?:i )?(?:just )?(?:drank|had|finished)\\b.*\\bwater$").matches(text)
     private fun settingHint(spec: AssistantPreferenceSpec) = when (spec.type) { "boolean" -> "Use on or off."; "int" -> "Use ${spec.range?.first}–${spec.range?.last} ${spec.unit}."; else -> if (spec.unit == "clock") "Use a time such as 9:30am or 18:00." else "Choose ${spec.values.joinToString()}." }
     private fun reply(text: String, actions: List<TalkAction> = emptyList(), topic: String = "assistant") = AyvaTalkEngine.TalkResponse(text, actions, topic, AyvaTalkEngine.serializeActionsJson(topic, actions))
     private fun preserveTime(date: Long, previous: Long): Long {
@@ -543,6 +631,7 @@ object OfflineAssistant {
         val today = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
         val tomorrow = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }.timeInMillis
         val list = if (Regex("(?i)\\b(?:all|pending|everything)\\b").containsMatchIn(input)) all else all.filter { it.dueDate == null || it.dueDate < tomorrow }
+        state.switchTopic("tasks")
         state.candidates = list.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }).map { it.id }; state.topic = "tasks"
     }
 
@@ -554,7 +643,7 @@ object OfflineAssistant {
         val planned = mutableListOf<AssistantAction>()
         val tasks = app.database.taskDao().getAllActiveTasksList().filter { !it.isCompleted }
         for (part in parts) {
-            val request = AssistantTaskLanguage.request(part)
+            val request = AssistantTaskLanguage.request(part.replaceFirst(Regex("(?i)^actually[, ]+"), ""))
             if (request != null && request.subject.lowercase() in setOf("it", "that", "this task") && planned.lastOrNull() is AssistantAction.CreateTask) {
                 val previous = planned.removeAt(planned.lastIndex) as AssistantAction.CreateTask
                 val draft = when (request.operation) {

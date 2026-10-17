@@ -385,6 +385,9 @@ object AyvaTalkEngine {
     }
 
     private suspend fun buildTalkResponse(query: String, context: Context? = null): TalkResponse {
+        val canonicalContext = context?.applicationContext is com.focusbyrj.app.FocusApplication
+        // The encrypted coordinator owns questions and references for real app conversations.
+        if (canonicalContext) activeSession = null
         val trimmed = OfflineNluEngine.normalizeRequest(query)
         val lower = trimmed.lowercase()
 
@@ -1605,7 +1608,10 @@ object AyvaTalkEngine {
 
         // --- 1. Follow-up & Pronoun Resolution ('it', 'how to change it', 'where is it', 'why') ---
         val resolvedQuery = if (isFollowUpQuery(cleanQuery)) {
-            val prevTopicId = conversationHistory.peekLast()?.topicId ?: lastQueriedTopicId
+            val prevTopicId = if (canonicalContext) {
+                com.focusbyrj.app.util.assistant.AssistantSessionStore(context!!).load().topic
+                    ?.takeIf { it.startsWith("faq:") }?.removePrefix("faq:")
+            } else conversationHistory.peekLast()?.topicId ?: lastQueriedTopicId
             if (prevTopicId != null) {
                 val lastTopic = getTopicsDatabase(context).find { it.id == prevTopicId }
                 lastTopic?.id ?: cleanQuery

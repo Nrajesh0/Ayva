@@ -26,8 +26,22 @@ data class AssistantSession(
     var recentInputs: List<String> = emptyList(),
     var acknowledgedActionIds: List<String> = emptyList(),
     var versions: Map<Long, Long> = emptyMap(),
-    var guards: Map<String, String> = emptyMap()
+    var guards: Map<String, String> = emptyMap(),
+    var recentTaskIds: List<Long> = emptyList(),
+    var suspendedRequest: JSONObject? = null,
+    var learning: AssistantLearningContext? = null,
+    var learningResultId: String? = null
 ) {
+    fun focusTask(id: Long, newTopic: String = "tasks") {
+        taskId = id; habitId = null; topic = newTopic
+        recentTaskIds = (listOf(id) + recentTaskIds.filterNot { it == id }).take(5)
+    }
+
+    fun switchTopic(newTopic: String) {
+        taskId?.let { recentTaskIds = (listOf(it) + recentTaskIds.filterNot { previous -> previous == it }).take(5) }
+        taskId = null; habitId = null; topic = newTopic
+    }
+
     fun clearPending() {
         expected = null; pending = emptyList(); choices = emptyList(); confirmationId = null
         versions = emptyMap(); guards = emptyMap(); pendingPriority = false; pendingPersistent = false
@@ -43,6 +57,10 @@ data class AssistantSession(
         put("undo", JSONArray(undo)); put("lastReply", lastReply ?: JSONObject.NULL)
         put("recent", JSONArray(recentInputs.takeLast(6))); put("applied", JSONArray(acknowledgedActionIds.takeLast(30)))
         put("guards", JSONObject(guards))
+        put("taskReferences", JSONArray(recentTaskIds))
+        put("suspended", suspendedRequest ?: JSONObject.NULL)
+        put("learning", learning?.toJson() ?: JSONObject.NULL)
+        put("learningResult", learningResultId ?: JSONObject.NULL)
         put("versions", JSONObject().apply { versions.forEach { (id, version) -> put(id.toString(), version) } })
     }
 
@@ -62,7 +80,11 @@ data class AssistantSession(
                 lastReply = nullable("lastReply"), recentInputs = array("recent").let { a -> (0 until a.length()).map { a.getString(it) } },
                 acknowledgedActionIds = array("applied").let { a -> (0 until a.length()).map { a.getString(it) } },
                 versions = (json.optJSONObject("versions") ?: JSONObject()).let { v -> v.keys().asSequence().associate { it.toLong() to v.getLong(it) } },
-                guards = (json.optJSONObject("guards") ?: JSONObject()).let { v -> v.keys().asSequence().associateWith { v.getString(it) } }
+                guards = (json.optJSONObject("guards") ?: JSONObject()).let { v -> v.keys().asSequence().associateWith { v.getString(it) } },
+                recentTaskIds = array("taskReferences").longs().take(5),
+                suspendedRequest = json.optJSONObject("suspended"),
+                learning = json.optJSONObject("learning")?.let(AssistantLearningContext::fromJson),
+                learningResultId = json.optString("learningResult").takeUnless { it.isBlank() || it == "null" }
             )
         }
     }

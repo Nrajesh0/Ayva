@@ -64,6 +64,9 @@ class DrillCrashTest {
         assertNotNull(summaryMsg)
         assertTrue(summaryMsg.isDrillSummary)
         assertNotNull(summaryMsg.drillSummaryJson)
+        val metadata = org.json.JSONObject(summaryMsg.drillSummaryJson!!)
+        assertEquals("easy", metadata.getString("difficulty"))
+        assertEquals(10, metadata.getInt("targetQuestions"))
     }
 
     @Test

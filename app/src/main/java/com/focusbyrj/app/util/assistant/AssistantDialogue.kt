@@ -31,7 +31,7 @@ object AssistantDialogue {
         if (lower in setOf("thanks", "thank you", "thx", "thank you ayva", "thanks ayva", "great", "perfect", "nice")) return reply(if (state.taskId != null) "You're welcome. You can keep going, change that task, or say ‘undo’ for my last reversible change." else "You're welcome. I'm here when you need a hand.")
         if (lower in setOf("bye", "goodbye", "see you", "goodnight", "good night")) return reply("Take care. Your saved tasks and habits will be here when you return.")
         if (lower in setOf("help", "what can you do", "what can you help with", "commands", "show examples")) return reply(
-            "You can talk to me directly:\n• ‘Buy milk tomorrow at 6pm’\n• ‘Move it to Friday’ or ‘make it priority’\n• ‘Rename it to Dentist appointment’\n• ‘Show overdue tasks’\n• ‘Add habit reading’ or ‘log habit reading’\n• ‘Change reminder interval’ → ‘30 minutes’ → ‘yes’\n• ‘Start focus for 25 minutes’\n• ‘Buy bread; call Mum tomorrow’ (preview first)\n• ‘What should I do next?’ or ‘undo’\n\nI work offline with bounded language rules. Keep Notes and vault contents stay private outside chat.",
+            "You can talk to me directly:\n• ‘Buy milk tomorrow at 6pm’\n• ‘Move it to Friday’ or ‘make it priority’\n• ‘Rename it to Dentist appointment’\n• ‘Show overdue tasks’\n• ‘Add habit reading’ or ‘log habit reading’\n• ‘Change reminder interval’ → ‘30 minutes’ → ‘yes’\n• ‘Start focus for 25 minutes’\n• ‘Buy bread; call Mum tomorrow’ (preview first)\n• ‘What should I do next?’ or ‘undo’\n• ‘I drank two glasses of water’\n• ‘Start a hard drill with 20 questions’ → ‘easier, same number of questions’\n• ‘How did I do?’ after a test\n• ‘Back to that reminder’ to resume an unfinished question\n\nI work offline with bounded language rules. Keep Notes and vault contents stay private outside chat.",
             listOf(TalkAction.AskQuery("/tasks", "Tasks"), TalkAction.AskQuery("my habits", "Habits"), TalkAction.AskQuery("what should I do next", "Choose next step")))
         if (lower in setOf("what were we talking about", "what did i ask", "what did i just say", "summarize our chat", "summarise our chat")) {
             return reply(if (state.recentInputs.isEmpty()) "I don't have a recent conversation in this session. Tell me what you'd like to work on." else "Your recent requests were:\n" + state.recentInputs.takeLast(4).joinToString("\n") { "• $it" } + "\nMy conversational context expires after 15 minutes of inactivity.")
@@ -40,7 +40,7 @@ object AssistantDialogue {
             val name = context.getSharedPreferences("ayva_personalization", Context.MODE_PRIVATE).getString("name", null)
             return reply(name?.let { "You asked me to call you **$it**." } ?: "You haven't given me a name. Say ‘call me’ followed by your name.")
         }
-        if (lower in setOf("what time is it", "what's the time", "what day is it", "what is today's date", "what's today's date")) return reply(SimpleDateFormat("EEEE, d MMMM yyyy · h:mm a", Locale.getDefault()).format(Date()))
+        if (lower in setOf("what time is it", "what's the time", "what day is it", "what is today's date", "what's today's date")) { state.switchTopic("clock"); return reply(SimpleDateFormat("EEEE, d MMMM yyyy · h:mm a", Locale.getDefault()).format(Date())) }
         if (lower in setOf("no that's not what i meant", "that's wrong", "you misunderstood", "not what i meant", "that isn't what i meant")) { state.clearPending(); return reply("Let's correct it. Tell me what should change—its title, date, priority, or the action itself. Say ‘undo’ to reverse my last reversible change.") }
 
         AssistantCalculator.answer(input)?.let { return reply(it) }
@@ -72,16 +72,16 @@ object AssistantDialogue {
                 }
             }
             selected = selected.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }.thenBy { it.id })
-            state.clearPending(); state.candidates = selected.map { it.id }; state.topic = "tasks"
+            state.clearPending(); state.switchTopic("tasks"); state.candidates = selected.map { it.id }
             val text = if (selected.isEmpty()) "No tasks match that view." else selected.take(20).mapIndexed { i, t -> "${i + 1}. **${t.title}**${if (t.isPriority) " · priority" else ""}${t.dueDate?.let { " — ${SmartDateParser.formatDueDate(it)}" }.orEmpty()}" }.joinToString("\n") + if (selected.size > 20) "\nShowing 20 of ${selected.size}." else ""
             return reply(text + if (selected.isNotEmpty()) "\nYou can say ‘reschedule the second one tomorrow’ or ‘complete task 1’." else "", selected.take(3).map { TalkAction.AskQuery("${if (completed) "reopen" else "complete"} id:${it.id}", "${if (completed) "Reopen" else "Complete"} ${it.title.take(25)}") }, "tasks")
         }
         val overwhelmed = Regex("(?i)\\b(?:tired|exhausted|stressed|overwhelmed|distracted|procrastinating|lazy|stuck|burned out)\\b").containsMatchIn(input)
         val plan = lower in setOf("what should i do next", "what next", "help me prioritize", "help me prioritise", "plan my day", "help me plan my day", "what should i focus on", "help me focus", "motivate me", "i don't know where to start")
         if (overwhelmed || plan) {
-            state.clearPending(); state.topic = "planning"
+            state.clearPending(); state.switchTopic("planning")
             if (next == null) return reply(if (overwhelmed) "That sounds difficult. Take a short break, then pick one small thing. Your task list is clear; tell me what needs doing and I'll help you capture it." else "Your task list is clear. Tell me one thing you'd like to get done, or add a habit to build consistency.")
-            state.taskId = next.id; state.candidates = ordered.take(3).map { it.id }
+            state.focusTask(next.id, "planning"); state.candidates = ordered.take(3).map { it.id }
             val reason = when { next.dueDate?.let { it < System.currentTimeMillis() } == true -> "it's overdue"; next.isPriority -> "you marked it as priority"; next.dueDate != null -> "it has the nearest due date among your priorities"; else -> "it's next in your current task list" }
             val concise = context.getSharedPreferences("ayva_personalization", Context.MODE_PRIVATE).getBoolean("concise", false)
             val intro = if (overwhelmed) "Let's make this smaller. " else "I'd start with "

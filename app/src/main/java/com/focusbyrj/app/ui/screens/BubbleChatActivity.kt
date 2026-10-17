@@ -412,7 +412,6 @@ fun ChatInterface() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val messageMutex = remember { kotlinx.coroutines.sync.Mutex() }
-    val conversationContext = remember { ChatConversationContext() }
     
     val profile by FocusEconomyManager.profileFlow.collectAsState()
     
@@ -868,6 +867,7 @@ fun ChatInterface() {
             val updatedUserList = messages + userMsg
             messages = updatedUserList
             BubbleChatManager.saveMessages(context, updatedUserList.map { it.toPersistedChatMessage() })
+            val completedTest = messages.lastOrNull { it.isDrillSummary && it.drillSummaryJson != null }
             var sentText = textToSend
             val wasPriority = isHighPriority
             val wasPersistent = isPersistent
@@ -883,6 +883,9 @@ fun ChatInterface() {
                     val app = context.applicationContext as com.focusbyrj.app.FocusApplication
                     val repo = app.taskRepository
                     val db = app.database
+                    completedTest?.let { completed ->
+                        completed.drillSummaryJson?.let { OfflineAssistant.recordLearningResult(context, it, completed.timestamp) }
+                    }
                     val assisted = OfflineAssistant.respond(sentText, context, wasPriority, wasPersistent, userMsg.id)
                     if (assisted != null && assisted.cliCommandRedirect == null) {
                         withContext(Dispatchers.Main) {
@@ -897,7 +900,7 @@ fun ChatInterface() {
                     assisted?.cliCommandRedirect?.let { sentText = it }
                     
                     val currentTasks = repo.allTasks.first().filter { !it.isCompleted && !it.isTrashed }
-                    val contextualInput = conversationContext.resolve(sentText, currentTasks)
+                    val contextualInput = sentText
                     when (val destination = if (assisted?.cliCommandRedirect != null) RouterDestination.DirectCommand(sentText) else AyvaIntentRouter.route(contextualInput, currentTasks)) {
                         is RouterDestination.ConflictCard -> {
                             val choice = OfflineAssistant.captureChoices(context, destination.prompt, destination.options, wasPriority, wasPersistent)
@@ -1031,7 +1034,6 @@ fun ChatInterface() {
                                 return@launch
                             }
                             "/clear", "/clean", "/wipe" -> {
-                                conversationContext.clear()
                                 com.focusbyrj.app.util.AyvaTalkEngine.resetConversation()
                                 withContext(Dispatchers.Main) {
                                     val welcome = ChatMessage(
@@ -1050,12 +1052,6 @@ fun ChatInterface() {
                             }
                             "/talk", "/advice", "/breathe", "/screentime", "/tips", "/coach", "/guide", "/ask", "/how", "/help", "/faq", "/info", "/menu", "/settings", "/vacation", "/streak", "/routines", "/unblock", "/block", "/apps", "/diagnose" -> {
                                 val query = AyvaChatCommands.talkQuery(sentText)
-                                if (query.startsWith("reschedule ") || query.startsWith("complete ") || query.startsWith("delete ")) {
-                                    val parsedAction = com.focusbyrj.app.util.OfflineNluEngine.parse(query, currentTasks)
-                                    parsedAction.targetTask?.let {
-                                        conversationContext.focusTask(it.id, requestDate = parsedAction.intent == com.focusbyrj.app.util.NluIntent.RESCHEDULE && parsedAction.targetDateMs == null)
-                                    }
-                                }
                                 val talkResp = try {
                                     com.focusbyrj.app.util.AyvaTalkEngine.answerTalkQueryWithActions(query, context)
                                 } catch (e: Exception) {
@@ -1444,8 +1440,6 @@ fun ChatInterface() {
                             }
                             "/reschedule" -> {
                                 val rawQuery = parts.drop(1).joinToString(" ").trim()
-                                val result = com.focusbyrj.app.util.OfflineNluEngine.parse("reschedule $rawQuery", currentTasks)
-                                result.targetTask?.let { conversationContext.focusTask(it.id, requestDate = result.targetDateMs == null) }
                                 val response = com.focusbyrj.app.util.AyvaTalkEngine.answerTalkQueryWithActions("reschedule $rawQuery", context)
                                 withContext(Dispatchers.Main) {
                                     messages = messages + ChatMessage(
@@ -1818,17 +1812,24 @@ fun ChatInterface() {
                         DropdownMenuItem(
                             text = { Text("Clear History") },
                             onClick = {
-                                val welcome = ChatMessage(
-                                    id = "welcome_${System.currentTimeMillis()}",
-                                    text = com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context),
-                                    isUser = false,
-                                    timestamp = System.currentTimeMillis()
-                                )
-                                messages = listOf(welcome)
-                                BubbleChatManager.saveMessages(context, listOf(
-                                    PersistedChatMessage(welcome.id, welcome.text, welcome.isUser, welcome.timestamp)
-                                ))
-                                BubbleChatManager.clearUnread(context)
+                                coroutineScope.launch {
+                                    messageMutex.lock()
+                                    try {
+                                        withContext(Dispatchers.IO) { OfflineAssistant.reset(context) }
+                                        com.focusbyrj.app.util.AyvaTalkEngine.resetConversation()
+                                        val welcome = ChatMessage(
+                                            id = "welcome_${System.currentTimeMillis()}",
+                                            text = com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context),
+                                            isUser = false,
+                                            timestamp = System.currentTimeMillis()
+                                        )
+                                        messages = listOf(welcome)
+                                        BubbleChatManager.saveMessages(context, listOf(
+                                            PersistedChatMessage(welcome.id, welcome.text, welcome.isUser, welcome.timestamp)
+                                        ))
+                                        BubbleChatManager.clearUnread(context)
+                                    } finally { messageMutex.unlock() }
+                                }
                                 showMenu = false
                             }
                         )
