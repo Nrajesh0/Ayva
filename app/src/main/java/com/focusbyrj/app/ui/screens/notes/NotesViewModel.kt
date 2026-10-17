@@ -1603,11 +1603,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     val playbackState = audioMemoManager.playbackState
 
     fun startVoiceRecording() {
-        audioMemoManager.startRecording()
+        if (recordingState.value.isSessionOpen && !recordingState.value.isRecording) {
+            audioMemoManager.retryRecording()
+        } else {
+            audioMemoManager.startRecording()
+        }
     }
 
     fun stopVoiceRecordingAndAttach() {
         val (audioPath, transcript) = audioMemoManager.stopRecording()
+        if (audioPath == null && transcript.isBlank()) return
         val current = _editingState.value
         if (current == null) {
             // Started voice memo from main screen FAB

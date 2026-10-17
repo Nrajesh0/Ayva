@@ -299,7 +299,6 @@ fun AyvaComposerBar(
                 value = inputTextFieldValue,
                 onValueChange = onInputChange,
                 modifier = Modifier.weight(1f),
-                placeholder = { Text(if (inputText.startsWith("/")) "Enter command..." else "Message Ayva or add a task...") },
                 shape = RoundedCornerShape(24.dp),
                 visualTransformation = CommandVisualTransformation(),
                 trailingIcon = {

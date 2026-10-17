@@ -230,6 +230,7 @@ fun NotesScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.audioMemoManager.pauseRecording()
                 if (viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
                     viewModel.lockVault()
                 }
@@ -240,6 +241,7 @@ fun NotesScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.audioMemoManager.pauseRecording()
             if (viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
                 viewModel.lockVault()
             }
@@ -1724,12 +1726,15 @@ fun NotesScreen(
             // =========================================================
             // OFFLINE VOICE RECORDING DIALOG (Option 2 Hybrid Audio Memo)
             // =========================================================
-            if (recordingState.isRecording) {
+            if (recordingState.isSessionOpen) {
                 VoiceRecordDialog(
                     elapsedSeconds = recordingState.elapsedSeconds,
                     amplitude = recordingState.currentAmplitude,
                     liveTranscript = recordingState.liveTranscript,
                     statusMessage = recordingState.statusMessage,
+                    isRecording = recordingState.isRecording,
+                    errorMessage = recordingState.errorMessage,
+                    onRetry = { checkAndStartRecording() },
                     onCancel = { viewModel.cancelVoiceRecording() },
                     onDone = { viewModel.stopVoiceRecordingAndAttach() }
                 )

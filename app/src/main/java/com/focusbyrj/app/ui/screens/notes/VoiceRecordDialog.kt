@@ -43,6 +43,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -75,9 +77,13 @@ fun VoiceRecordDialog(
     amplitude: Float,
     liveTranscript: String,
     statusMessage: String = "Listening...",
+    isRecording: Boolean = true,
+    errorMessage: String? = null,
+    onRetry: () -> Unit = {},
     onCancel: () -> Unit,
     onDone: () -> Unit
 ) {
+    val context = LocalContext.current
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -151,7 +157,7 @@ fun VoiceRecordDialog(
                                 .background(Color(0xFFE53935))
                         )
                         Text(
-                            text = "LIVE TRANSCRIPTION",
+                            text = if (isRecording) "LIVE TRANSCRIPTION" else "TRANSCRIPTION PAUSED",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.8.sp,
@@ -171,7 +177,7 @@ fun VoiceRecordDialog(
                     Box(
                         modifier = Modifier
                             .size(110.dp)
-                            .scale(pulseScale)
+                            .scale(if (isRecording) pulseScale else 1f)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
                     )
@@ -184,13 +190,13 @@ fun VoiceRecordDialog(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
-                            ) { onDone() }
+                            ) { if (!isRecording) onRetry() else if (liveTranscript.isNotBlank()) onDone() }
                             .testTag("voice_record_pulsing_mic"),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Mic,
-                            contentDescription = "Tap to finish live transcription",
+                            contentDescription = if (isRecording) "Tap to finish live transcription" else "Retry live transcription",
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(38.dp)
                         )
@@ -226,6 +232,25 @@ fun VoiceRecordDialog(
                                 .clip(RoundedCornerShape(2.dp))
                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f))
                         )
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.fillMaxWidth().testTag("voice_record_error")
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = onRetry) { Text("Retry") }
+                        TextButton(onClick = {
+                            try {
+                                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS))
+                            } catch (_: Exception) {
+                                android.widget.Toast.makeText(context, "Open your device Settings and find offline speech recognition.", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }) { Text("Voice settings") }
                     }
                 }
 
@@ -277,7 +302,7 @@ fun VoiceRecordDialog(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = if (statusMessage.isNotBlank()) statusMessage else "Speak now — live transcript will appear",
+                                    text = if (errorMessage != null) "Your transcript will stay here when you retry." else if (statusMessage.isNotBlank()) statusMessage else "Speak now — live transcript will appear",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                                     textAlign = TextAlign.Center
@@ -315,6 +340,7 @@ fun VoiceRecordDialog(
                     // Done / Save button
                     IconButton(
                         onClick = onDone,
+                        enabled = liveTranscript.isNotBlank(),
                         modifier = Modifier
                             .size(58.dp)
                             .clip(CircleShape)
@@ -323,7 +349,7 @@ fun VoiceRecordDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Done,
-                            contentDescription = "Save voice memo and transcript",
+                            contentDescription = "Use transcript",
                             tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(28.dp)
                         )

@@ -508,22 +508,26 @@ fun ChatInterface() {
         showCatForWelcome = false
         showCatForInactivity = false
         isCatActionPlaying = false
-        initialInputBeforeTranscription = inputTextFieldValue.text
-        audioMemoManager.startRecording(
-            onTranscriptUpdate = { transcript ->
-                if (transcript.isNotBlank()) {
-                    val combined = if (initialInputBeforeTranscription.isBlank()) {
-                        transcript
-                    } else {
-                        "${initialInputBeforeTranscription.trim()} $transcript"
+        if (audioMemoManager.recordingState.value.isSessionOpen && !audioMemoManager.recordingState.value.isRecording) {
+            audioMemoManager.retryRecording()
+        } else {
+            initialInputBeforeTranscription = inputTextFieldValue.text
+            audioMemoManager.startRecording(
+                onTranscriptUpdate = { transcript ->
+                    if (transcript.isNotBlank()) {
+                        val combined = if (initialInputBeforeTranscription.isBlank()) {
+                            transcript
+                        } else {
+                            "${initialInputBeforeTranscription.trim()} $transcript"
+                        }
+                        inputTextFieldValue = TextFieldValue(
+                            text = combined,
+                            selection = TextRange(combined.length)
+                        )
                     }
-                    inputTextFieldValue = TextFieldValue(
-                        text = combined,
-                        selection = TextRange(combined.length)
-                    )
                 }
-            }
-        )
+            )
+        }
     }
 
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
@@ -699,7 +703,7 @@ fun ChatInterface() {
                     }
                 }
             } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
-                if (recordingState.isRecording) {
+                if (audioMemoManager.recordingState.value.isRecording) {
                     val (_, finalTranscript) = audioMemoManager.stopRecording()
                     if (finalTranscript.isNotBlank()) {
                         val combined = if (initialInputBeforeTranscription.isBlank()) {
@@ -2081,12 +2085,21 @@ fun ChatInterface() {
             )
         }
 
-        if (recordingState.isRecording) {
+        if (recordingState.isSessionOpen) {
             VoiceRecordDialog(
                 elapsedSeconds = recordingState.elapsedSeconds,
                 amplitude = recordingState.currentAmplitude,
                 liveTranscript = recordingState.liveTranscript,
                 statusMessage = recordingState.statusMessage,
+                isRecording = recordingState.isRecording,
+                errorMessage = recordingState.errorMessage,
+                onRetry = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        startLiveTranscriptionAction()
+                    } else {
+                        recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
                 onCancel = {
                     audioMemoManager.cancelRecording()
                     inputTextFieldValue = TextFieldValue(
