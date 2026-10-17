@@ -1401,7 +1401,9 @@ fun ChatBubble(
     onOpenMysteryChest: (() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     onHabitLog: ((Long) -> Unit)? = null,
-    onHabitCreated: ((com.focusbyrj.app.data.Habit) -> Unit)? = null
+    onHabitCreated: ((com.focusbyrj.app.data.Habit) -> Unit)? = null,
+    chatState: com.focusbyrj.app.util.assistant.AssistantChatState = com.focusbyrj.app.util.assistant.AssistantChatState(),
+    onReply: ((ChatMessage) -> Unit)? = null
 ) {
     val context = LocalContext.current
     if (message.isStreakPrompt) {
@@ -1532,6 +1534,11 @@ fun ChatBubble(
             fontSizeSp = fontSizeSp,
             onQueryClick = onQueryClick
         )
+        return
+    }
+
+    if (message.isUser || (!isWelcome && !isMorning && !isEvening && !message.isArithmetic && !message.isVocabBrief && !message.isStreakFreezeSkipped)) {
+        AyvaConversationMessage(message, fontSizeSp, chatState, onReply, onQueryClick, onMessageUpdate)
         return
     }
 
@@ -1737,6 +1744,8 @@ fun AyvaChatTimeline(
     onTaskToggle: (Long) -> Unit,
     onFilterChange: (String) -> Unit,
     onHabitLog: (Long) -> Unit,
+    chatState: com.focusbyrj.app.util.assistant.AssistantChatState = com.focusbyrj.app.util.assistant.AssistantChatState(),
+    onReply: ((ChatMessage) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1834,9 +1843,16 @@ fun AyvaChatTimeline(
                         onRescheduleClick = onRescheduleClick,
                         onTaskToggle = onTaskToggle,
                         onFilterChange = onFilterChange,
-                        onHabitLog = onHabitLog
+                        onHabitLog = onHabitLog,
+                        chatState = chatState,
+                        onReply = onReply
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // Group related assistant content; leave a clearer pause before the next user turn.
+                    val nextNewer = reversedMessages.getOrNull(index - 1)
+                    val gap = if (msg.isOrdinaryConversationTurn() && (nextNewer == null || nextNewer.isOrdinaryConversationTurn())) {
+                        if (nextNewer?.isUser == true) 28.dp else 16.dp
+                    } else 8.dp
+                    Spacer(modifier = Modifier.height(gap))
                 }
             }
         }

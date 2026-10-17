@@ -18,15 +18,22 @@ object OfflineAssistant {
     private val mutex = Mutex()
     private fun token() = UUID.randomUUID().toString()
 
-    suspend fun respond(input: String, context: Context, priority: Boolean = false, persistent: Boolean = false, requestId: String? = null): AyvaTalkEngine.TalkResponse? = mutex.withLock {
+    suspend fun respond(input: String, context: Context, priority: Boolean = false, persistent: Boolean = false, requestId: String? = null, replyTarget: AssistantItemReference? = null, quotedReply: String? = null): AyvaTalkEngine.TalkResponse? = mutex.withLock {
         val app = context.applicationContext as? FocusApplication ?: return@withLock null
         val store = AssistantSessionStore(context)
         val state = store.load()
         if (requestId != null && requestId in state.acknowledgedActionIds) return@withLock reply("That request has already been processed.")
         if (input.length > 4000) return@withLock reply("Please keep each request under 4,000 characters, or send it in smaller parts.")
         try {
-            val response = turn(input, context, app, state, priority, persistent)
+            if (quotedReply != null && !prepareReply(context, state, replyTarget, quotedReply)) {
+                return@withLock reply("That reply refers to an item that is no longer available. Please choose a task or habit before trying again.")
+            }
+            var response = turn(input, context, app, state, priority, persistent)
+            if (response != null && state.expected != null && AssistantPresentation.data(response.jsonPayload)?.has("receipt") != true) {
+                response = AssistantPresentation.attach(response, itemReference(context, state))
+            }
             if (response != null) {
+                response = AssistantPresentation.withReplyTarget(response, AssistantPresentation.reference(response.jsonPayload) ?: itemReference(context, state))
                 state.lastReply = response.formattedText.take(4000)
                 state.recentInputs = (state.recentInputs + input.take(500)).takeLast(6)
                 requestId?.let { state.acknowledgedActionIds = (state.acknowledgedActionIds + it).takeLast(30) }
@@ -49,6 +56,81 @@ object OfflineAssistant {
     }
 
     suspend fun reset(context: Context) = mutex.withLock { AssistantSessionStore(context).clear() }
+
+    /** Read-only UI projection of the canonical session. Reading never refreshes its lifetime. */
+    suspend fun chatState(context: Context): AssistantChatState = mutex.withLock {
+        val state = AssistantSessionStore(context).load()
+        AssistantChatState(itemReference(context, state), state.confirmationId, state.undoId, state.touchedAt + 900_001L)
+    }
+
+    suspend fun availableReferences(context: Context): List<AssistantItemReference> = mutex.withLock {
+        val app = context.applicationContext as? FocusApplication ?: return@withLock emptyList()
+        app.database.taskDao().getAllActiveTasksList().filter { !it.isCompleted && !it.isTrashed }
+            .sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE })
+            .map { AssistantItemReference("task", it.id, it.title, AssistantPresentation.due(it.dueDate)) } +
+            app.database.habitDao().getAllHabitsSync().filter { !it.isArchived }
+                .map { AssistantItemReference("habit", it.id, it.title) }
+    }
+
+    private suspend fun referenceAvailable(context: Context, reference: AssistantItemReference): Boolean {
+        val app = context.applicationContext as? FocusApplication ?: return false
+        return when (reference.kind) {
+            "task" -> app.database.taskDao().getTaskById(reference.id)?.let { !it.isTrashed } == true
+            "habit" -> app.database.habitDao().getHabitById(reference.id)?.let { !it.isArchived } == true
+            else -> false
+        }
+    }
+
+    private fun focusReference(state: AssistantSession, reference: AssistantItemReference?) {
+        state.clearPending(); state.suspendedRequest = null
+        when (reference?.kind) {
+            "task" -> state.focusTask(reference.id)
+            "habit" -> { state.switchTopic("habits"); state.habitId = reference.id }
+            else -> state.switchTopic("conversation")
+        }
+    }
+
+    /** Selecting a reference is explicit and validated; a transcript label cannot execute an action. */
+    suspend fun selectReference(context: Context, reference: AssistantItemReference): Boolean = mutex.withLock {
+        if (!referenceAvailable(context, reference)) return@withLock false
+        val store = AssistantSessionStore(context); val state = store.load()
+        focusReference(state, reference)
+        store.save(state); true
+    }
+
+    private suspend fun prepareReply(context: Context, state: AssistantSession, reference: AssistantItemReference?, quotedReply: String): Boolean {
+        if (reference != null && !referenceAvailable(context, reference)) return false
+        val same = reference == null || when (reference.kind) {
+            "task" -> state.taskId == reference.id && state.habitId == null
+            "habit" -> state.habitId == reference.id && state.taskId == null
+            else -> false
+        }
+        // Answer the live question (including a new reminder draft); never restore historical pending state.
+        val currentQuestion = same && state.expected != null && quotedReply.take(4000) == state.lastReply
+        if (!currentQuestion) focusReference(state, reference)
+        return true
+    }
+
+    suspend fun releaseReference(context: Context) = mutex.withLock {
+        val store = AssistantSessionStore(context); val state = store.load()
+        state.clearPending(); state.switchTopic("conversation"); state.suspendedRequest = null
+        store.save(state)
+    }
+
+    private suspend fun itemReference(context: Context, state: AssistantSession): AssistantItemReference? {
+        // A new-item/setting question or disambiguation is not a reference to the previous task.
+        if (state.expected in setOf("task_title", "habit_title", "setting_value") ||
+            (state.expected in setOf("choice", "legacy_choice") && state.choices.size > 1) ||
+            state.pending.any { it !is AssistantAction.EditTasks && it !is AssistantAction.CompleteTasks && it !is AssistantAction.TrashTasks }) return null
+        val app = context.applicationContext as? FocusApplication ?: return null
+        state.taskId?.let { id -> app.database.taskDao().getTaskById(id)?.takeUnless { it.isTrashed }?.let {
+            return AssistantItemReference("task", id, it.title, AssistantPresentation.due(it.dueDate))
+        } }
+        state.habitId?.let { id -> app.database.habitDao().getHabitById(id)?.takeUnless { it.isArchived }?.let {
+            return AssistantItemReference("habit", id, it.title)
+        } }
+        return null
+    }
 
     /** Called from the chat boundary with a real completed-test card, never with user-authored JSON. */
     suspend fun recordLearningResult(context: Context, summary: String, timestamp: Long) = mutex.withLock {
@@ -493,6 +575,7 @@ object OfflineAssistant {
         // Consume a confirmation before mutation so a stale/repeated button cannot replay it.
         AssistantSessionStore(context).save(state)
         val results = mutableListOf<String>()
+        var partialFailure = false
         val taskBatch = actions.all { it is AssistantAction.CreateTask || it is AssistantAction.EditTasks || it is AssistantAction.CompleteTasks || it is AssistantAction.TrashTasks }
         state.undo = emptyList(); state.undoId = null
         for (action in actions) {
@@ -526,6 +609,7 @@ object OfflineAssistant {
                 AssistantSessionStore(context).save(state)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                partialFailure = true
                 results.add("Couldn't apply the next action: ${e.message}. Remaining actions were not run.")
                 break
             }
@@ -533,14 +617,17 @@ object OfflineAssistant {
         val actionsOut = mutableListOf<TalkAction>()
         state.undoId?.let { actionsOut.add(TalkAction.AskQuery("/ayva undo $it", if (state.undo.size > 1) "Undo task changes" else "Undo last change", "↶")) }
         if (state.taskId != null) actionsOut.add(TalkAction.AskQuery("reschedule id:${state.taskId}", "Change time", "⏰"))
-        return reply(results.joinToString("\n"), actionsOut)
+        val result = reply(results.joinToString("\n"), actionsOut)
+        return AssistantPresentation.attach(result, itemReference(context, state), AssistantPresentation.taskReceipt(state.undo, partialFailure))
     }
 
     private suspend fun undo(context: Context, state: AssistantSession, id: String?): AyvaTalkEngine.TalkResponse {
         if (id == null || id != state.undoId || state.undo.isEmpty()) return reply("There's no recent action available to undo.")
+        val record = state.undo.singleOrNull()?.takeIf { it.optString("kind") == "task" }
+        val restored = record?.let { it.optJSONObject("before") ?: it.optJSONObject("after") }?.let(TaskJson::decode)
         val text = AssistantActionExecutor.undo(context, state.undo)
         state.undo = emptyList(); state.undoId = null; state.clearPending()
-        return reply(text)
+        return AssistantPresentation.attach(reply(text), restored?.let { AssistantItemReference("task", it.id, it.title, "Restored · ${AssistantPresentation.due(it.dueDate)}") })
     }
 
     private suspend fun internalCommand(command: String, context: Context, app: FocusApplication, state: AssistantSession): AyvaTalkEngine.TalkResponse {

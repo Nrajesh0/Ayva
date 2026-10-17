@@ -2,6 +2,10 @@ package com.focusbyrj.app.ui.screens
 
 import com.focusbyrj.app.util.assistant.OfflineAssistant
 import com.focusbyrj.app.util.assistant.AssistantAction
+import com.focusbyrj.app.util.assistant.AssistantChatState
+import com.focusbyrj.app.util.assistant.AssistantItemReference
+import com.focusbyrj.app.util.assistant.AssistantPresentation
+import kotlinx.coroutines.sync.withLock
 
 import com.focusbyrj.app.util.router.AyvaIntentRouter
 import com.focusbyrj.app.util.router.RouterDestination
@@ -437,7 +441,36 @@ fun ChatInterface() {
             initialList.map { it.toChatMessage() }
         ) 
     }
-    var showMenu by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
+    var showClearHistory by remember { mutableStateOf(false) }
+    var showReferencePicker by remember { mutableStateOf(false) }
+    var availableReferences by remember { mutableStateOf<List<AssistantItemReference>>(emptyList()) }
+    var assistantChatState by remember { mutableStateOf(AssistantChatState()) }
+    var referenceRevision by remember { mutableIntStateOf(0) }
+    var replyToMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var requestsInFlight by remember { mutableIntStateOf(0) }
+
+    // A UI projection only: reads do not extend the encrypted session's 15-minute lifetime.
+    LaunchedEffect(messages, referenceRevision) {
+        while (true) {
+            assistantChatState = withContext(Dispatchers.IO) { OfflineAssistant.chatState(context) }
+            val remaining = assistantChatState.expiresAt - System.currentTimeMillis() + 1L
+            delay(remaining.coerceIn(1L, 5_000L))
+        }
+    }
+    fun changeReference(reference: AssistantItemReference?) {
+        coroutineScope.launch {
+            val changed = withContext(Dispatchers.IO) {
+                messageMutex.withLock {
+                    if (reference == null) { OfflineAssistant.releaseReference(context); true }
+                    else OfflineAssistant.selectReference(context, reference)
+                }
+            }
+            if (changed) { replyToMessage = null; referenceRevision++ }
+            else android.widget.Toast.makeText(context, "That item is no longer available.", android.widget.Toast.LENGTH_SHORT).show()
+            showReferencePicker = false
+        }
+    }
     var showFontSizeDialog by remember { mutableStateOf(false) }
     var showNotificationColorsDialog by remember { mutableStateOf(false) }
     var chatFontSizeSp by remember { mutableStateOf(prefs.getFloat("chat_font_size_sp", 15f)) }
@@ -852,7 +885,7 @@ fun ChatInterface() {
         if (inputText.isNotBlank()) SmartDateParser.parse(inputText) else null
     }
 
-    fun sendMessage(overrideText: String? = null) {
+    fun sendMessage(overrideText: String? = null, actionLabel: String? = null) {
         lastInteractionTimestamp = System.currentTimeMillis()
         showCatForWelcome = false
         showCatForInactivity = false
@@ -867,7 +900,10 @@ fun ChatInterface() {
             } else if (lowerCheck == "evening brief" || lowerCheck == "evening briefing" || lowerCheck == "night brief") {
                 textToSend = "/summary evening"
             }
-            val userMsg = ChatMessage(java.util.UUID.randomUUID().toString(), textToSendOriginal, true)
+            val quoted = replyToMessage.takeIf { overrideText == null }
+            val quotedTarget = quoted?.let { AssistantPresentation.replyTarget(it.talkActionJson) }
+            val userMsg = ChatMessage(java.util.UUID.randomUUID().toString(), actionLabel ?: textToSendOriginal, true,
+                talkActionJson = quoted?.let { AssistantPresentation.withReply(it.text, quotedTarget, it.id) })
             val updatedUserList = messages + userMsg
             messages = updatedUserList
             BubbleChatManager.saveMessages(context, updatedUserList.map { it.toPersistedChatMessage() })
@@ -877,10 +913,12 @@ fun ChatInterface() {
             val wasPersistent = isPersistent
             if (overrideText == null) {
                 inputTextFieldValue = TextFieldValue("")
+                replyToMessage = null
                 isHighPriority = false
                 isPersistent = false
             }
             
+            requestsInFlight++
             coroutineScope.launch(Dispatchers.IO) {
                 messageMutex.lock()
                 try {
@@ -890,7 +928,7 @@ fun ChatInterface() {
                     completedTest?.let { completed ->
                         completed.drillSummaryJson?.let { OfflineAssistant.recordLearningResult(context, it, completed.timestamp) }
                     }
-                    val assisted = OfflineAssistant.respond(sentText, context, wasPriority, wasPersistent, userMsg.id)
+                    val assisted = OfflineAssistant.respond(sentText, context, wasPriority, wasPersistent, userMsg.id, replyTarget = quotedTarget, quotedReply = quoted?.text)
                     if (assisted != null && assisted.cliCommandRedirect == null) {
                         withContext(Dispatchers.Main) {
                             messages = messages + ChatMessage(
@@ -1533,6 +1571,7 @@ fun ChatInterface() {
                     }
                 } finally {
                     messageMutex.unlock()
+                    withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { requestsInFlight--; referenceRevision++ }
                 }
             }
         }
@@ -1737,121 +1776,30 @@ fun ChatInterface() {
                     detectTapGestures(onTap = { /* Prevent clicks from falling through */ })
                 }
         ) {
-            // Handle drag bar, title, and menu
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = 16.dp, 
-                        end = 16.dp, 
-                        top = 10.dp, 
-                        bottom = 10.dp
-                    )
-            ) {
-                // Close / dismiss button on left
-                IconButton(
-                    onClick = { (context as? android.app.Activity)?.finish() },
-                    modifier = Modifier
-                        .size(28.dp)
-                        .align(Alignment.CenterStart)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Close",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+            AyvaCompactHeader(
+                onClose = { (context as? android.app.Activity)?.finish() },
+                onSearch = { showSearch = true },
+                onColors = { showNotificationColorsDialog = true },
+                onTextSize = { showFontSizeDialog = true },
+                onClear = { showClearHistory = true },
+                onSettings = {
+                    context.startActivity(Intent(context, com.focusbyrj.app.MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        putExtra("navigate_to", "bubble_settings")
+                    })
+                    (context as? android.app.Activity)?.finish()
                 }
-
-                // Center drag handle + title
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.align(Alignment.Center)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Ayva",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+            )
+            AyvaActiveContext(
+                reference = assistantChatState.reference,
+                onSwitch = {
+                    coroutineScope.launch {
+                        availableReferences = withContext(Dispatchers.IO) { OfflineAssistant.availableReferences(context) }
+                        showReferencePicker = true
                     }
-                }
-
-                Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-                    IconButton(onClick = { showMenu = true }, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Menu", tint = MaterialTheme.colorScheme.onSurface)
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Notification Colors") },
-                            leadingIcon = {
-                                Icon(Icons.Filled.AutoFixHigh, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                            },
-                            onClick = {
-                                showMenu = false
-                                showNotificationColorsDialog = true
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Text Size") },
-                            leadingIcon = {
-                                Icon(Icons.Filled.FormatSize, contentDescription = null, modifier = Modifier.size(20.dp))
-                            },
-                            onClick = {
-                                showMenu = false
-                                showFontSizeDialog = true
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Clear History") },
-                            onClick = {
-                                coroutineScope.launch {
-                                    messageMutex.lock()
-                                    try {
-                                        withContext(Dispatchers.IO) { OfflineAssistant.reset(context) }
-                                        com.focusbyrj.app.util.AyvaTalkEngine.resetConversation()
-                                        val welcome = ChatMessage(
-                                            id = "welcome_${System.currentTimeMillis()}",
-                                            text = com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context),
-                                            isUser = false,
-                                            timestamp = System.currentTimeMillis()
-                                        )
-                                        messages = listOf(welcome)
-                                        BubbleChatManager.saveMessages(context, listOf(
-                                            PersistedChatMessage(welcome.id, welcome.text, welcome.isUser, welcome.timestamp)
-                                        ))
-                                        BubbleChatManager.clearUnread(context)
-                                    } finally { messageMutex.unlock() }
-                                }
-                                showMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Open Settings") },
-                            onClick = {
-                                showMenu = false
-                                val i = Intent(context, com.focusbyrj.app.MainActivity::class.java).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                    putExtra("navigate_to", "bubble_settings")
-                                }
-                                context.startActivity(i)
-                                (context as? android.app.Activity)?.finish()
-                            }
-                        )
-                    }
-                }
-            }
+                },
+                onRelease = { changeReference(null) }
+            )
 
             Box(
                 modifier = Modifier
@@ -1862,10 +1810,13 @@ fun ChatInterface() {
                     messages = messages,
                     listState = listState,
                     chatFontSizeSp = chatFontSizeSp,
+                    chatState = assistantChatState,
+                    onReply = { replyToMessage = it },
                     activeDrillSession = activeDrillSession,
                     isCatActionPlaying = isCatActionPlaying,
                     onQueryClick = { query ->
-                        sendMessage(query)
+                        val label = messages.asReversed().firstNotNullOfOrNull { AssistantPresentation.actionLabel(it.talkActionJson, query) }
+                        sendMessage(query, actionLabel = label)
                     },
                     onMessageUpdate = { updatedMsg ->
                         val idx = messages.indexOfFirst { it.id == updatedMsg.id }
@@ -2020,6 +1971,12 @@ fun ChatInterface() {
                 )
             }
 
+            if (requestsInFlight > 0) {
+                Text("Working on your request…", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            }
+            replyToMessage?.let { quoted -> AyvaReplyPreview(quoted, onCancel = { replyToMessage = null }) }
+
             // Bottom Composer Bar
             AnimatedVisibility(
                 visible = activeDrillSession == null,
@@ -2053,6 +2010,31 @@ fun ChatInterface() {
             Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
         }
     }
+
+        if (showSearch) AyvaConversationSearch(messages, onSelect = { message ->
+            showSearch = false
+            val index = messages.asReversed().indexOfFirst { it.id == message.id }
+            if (index >= 0) coroutineScope.launch { listState.scrollToItem(index + 1) }
+        }, onDismiss = { showSearch = false })
+
+        if (showReferencePicker) AyvaReferencePicker(availableReferences, onSelect = { changeReference(it) }, onDismiss = { showReferencePicker = false })
+
+        if (showClearHistory) AlertDialog(onDismissRequest = { showClearHistory = false },
+            title = { Text("Clear chat history?") }, text = { Text("This clears the conversation and its active reference. Your saved tasks and habits stay available.") },
+            dismissButton = { TextButton(onClick = { showClearHistory = false }) { Text("Cancel") } },
+            confirmButton = { TextButton(enabled = requestsInFlight == 0, onClick = {
+                showClearHistory = false
+                coroutineScope.launch {
+                    messageMutex.withLock {
+                        withContext(Dispatchers.IO) { OfflineAssistant.reset(context) }
+                        com.focusbyrj.app.util.AyvaTalkEngine.resetConversation()
+                        val welcome = ChatMessage("welcome_${System.currentTimeMillis()}", com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context), false, isWelcome = true)
+                        messages = listOf(welcome); replyToMessage = null; assistantChatState = AssistantChatState(); referenceRevision++
+                        BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                        BubbleChatManager.clearUnread(context)
+                    }
+                }
+            }) { Text("Clear history") } })
 
         if (showNotificationColorsDialog) {
             com.focusbyrj.app.ui.components.AyvaNotificationColorsDialog(
