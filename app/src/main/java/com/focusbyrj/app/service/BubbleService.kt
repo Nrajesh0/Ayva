@@ -63,9 +63,6 @@ class BubbleService : Service() {
     private val previewDismissRunnable = Runnable { dismissPreviewPill(animated = true) }
     private var lastPreviewedMessageId: String? = null
 
-    private var lastX = 0
-    private var lastY = 300
-
     private var lastIsLandscape: Boolean? = null
     private var lastScreenWidth: Int = 0
     private var lastScreenHeight: Int = 0
@@ -211,29 +208,18 @@ class BubbleService : Service() {
                 "com.focusbyrj.app.CHAT_CLOSED" -> {
                     isChatOpen = false
                     addBubbleToWindowManager()
-                    bubbleView?.visibility = android.view.View.VISIBLE
-                    layoutParams?.x = lastX
-                    layoutParams?.y = lastY
-                    bubbleView?.let { bv ->
-                        try { windowManager.updateViewLayout(bv, layoutParams) } catch (_: Exception) {}
-                    }
                     resetHideTimer()
                     updateBadgeCount()
                 }
                 "com.focusbyrj.app.CHAT_OPENED" -> {
                     isChatOpen = true
-                    addBubbleToWindowManager()
-                    bubbleView?.visibility = android.view.View.VISIBLE
                     hideHandler.removeCallbacks(hideRunnable)
-                    dismissPreviewPill(animated = false)
+                    springXAnim?.cancel()
+                    peekAnimator?.cancel()
                     unpeekBubble(animate = false)
-                    lastX = layoutParams?.x ?: 0
-                    lastY = layoutParams?.y ?: 0
-                    layoutParams?.x = (16 * resources.displayMetrics.density).toInt()
-                    layoutParams?.y = (48 * resources.displayMetrics.density).toInt()
-                    bubbleView?.let { bv ->
-                        try { windowManager.updateViewLayout(bv, layoutParams) } catch (_: Exception) {}
-                    }
+                    // The chat has its own header and close control. Keep the
+                    // floating launcher at its original position for restoration.
+                    removeBubbleFromWindowManager()
                     updateBadgeCount(0)
                 }
                 "com.focusbyrj.app.HIDE_BUBBLE" -> {
@@ -425,6 +411,9 @@ class BubbleService : Service() {
 
     @Synchronized
     private fun addBubbleToWindowManager() {
+        // Also covers notification, settings and permission-restore paths while
+        // chat is open, so none can put the launcher over the chat header.
+        if (isChatOpen) return
         if (isSnoozed(this)) return
         if (isHiddenForPermission) return
         val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)

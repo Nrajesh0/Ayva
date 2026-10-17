@@ -104,7 +104,8 @@ fun AyvaConversationMessage(
             Spacer(Modifier.height(6.dp))
             if (reference != null && receipt == null) {
                 val same = chatState.reference?.let { it.kind == reference.kind && it.id == reference.id } == true
-                Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f), shape = RoundedCornerShape(8.dp)) {
+                Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f), contentColor = MaterialTheme.colorScheme.onSurface,
+                    shape = RoundedCornerShape(8.dp)) {
                     Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Icon(Icons.AutoMirrored.Filled.Reply, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
                         Text(listOfNotNull(reference.title.takeUnless { same }, reference.detail.takeIf { it.isNotBlank() }).joinToString(" · ").ifBlank { "About this ${reference.kind}" },
@@ -180,6 +181,7 @@ private fun AyvaActionReceipt(receipt: JSONObject, payload: String?, font: Float
             (0 until actions.length()).map { actions.getJSONObject(it) }.firstOrNull { it.optString("query").startsWith("/ayva undo ") }?.optString("query") }.getOrNull()
     }
     Surface(shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

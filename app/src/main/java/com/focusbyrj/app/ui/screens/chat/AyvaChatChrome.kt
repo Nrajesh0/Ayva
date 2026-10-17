@@ -35,12 +35,12 @@ fun AyvaCompactHeader(onClose: () -> Unit, onSearch: () -> Unit, onColors: () ->
                       onTextSize: () -> Unit, onClear: () -> Unit, onSettings: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close chat", Modifier.size(20.dp)) }
+        IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close chat", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface) }
         Image(painterResource(R.drawable.app_icon), null, Modifier.size(25.dp).clip(CircleShape))
-        Text("Ayva", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).padding(start = 8.dp))
-        IconButton(onClick = onSearch) { Icon(Icons.Default.Search, "Search conversation", Modifier.size(20.dp)) }
+        Text("Ayva", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f).padding(start = 8.dp))
+        IconButton(onClick = onSearch) { Icon(Icons.Default.Search, "Search conversation", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface) }
         Box {
-            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreHoriz, "Chat controls", Modifier.size(20.dp)) }
+            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreHoriz, "Chat controls", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("Notification Colors") }, leadingIcon = { Icon(Icons.Default.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { menu = false; onColors() })
                 DropdownMenuItem(text = { Text("Text Size") }, leadingIcon = { Icon(Icons.Default.FormatSize, null) }, onClick = { menu = false; onTextSize() })
@@ -61,14 +61,15 @@ fun AyvaActiveContext(reference: AssistantItemReference?, onSwitch: () -> Unit, 
             Text("Talking about · ${reference.title}", maxLines = 1, overflow = TextOverflow.Ellipsis,
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
         }
-        IconButton(onClick = onRelease) { Icon(Icons.Default.Close, "Release active reference", Modifier.size(16.dp)) }
+        IconButton(onClick = onRelease) { Icon(Icons.Default.Close, "Release active reference", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
 @Composable
 fun AyvaReplyPreview(message: ChatMessage, onCancel: () -> Unit) {
     Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f), border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))) {
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f), contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))) {
         Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text("Replying to Ayva", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)

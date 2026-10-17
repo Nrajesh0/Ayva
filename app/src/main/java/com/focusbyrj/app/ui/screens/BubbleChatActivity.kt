@@ -374,7 +374,11 @@ class BubbleChatActivity : ComponentActivity() {
                             animationSpec = tween(300)
                         ) + fadeOut()
                     ) {
-                        ChatInterface()
+                        // MaterialTheme does not set LocalContentColor by itself. This
+                        // activity has no Scaffold/Surface to supply it for the chat.
+                        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+                            ChatInterface()
+                        }
                     }
                 }
             }
@@ -388,6 +392,7 @@ class BubbleChatActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        com.focusbyrj.app.service.BubbleService.isChatOpen = true
         com.focusbyrj.app.service.BubbleService.clearSnooze(this)
         com.focusbyrj.app.util.BubbleChatManager.markAllAsViewed(this)
         com.focusbyrj.app.util.BubbleChatManager.checkAndClearIfInactive(this)
@@ -397,6 +402,9 @@ class BubbleChatActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        // Keep lifecycle state current even if the bubble service is restarting
+        // and cannot receive the corresponding broadcast.
+        com.focusbyrj.app.service.BubbleService.isChatOpen = false
         com.focusbyrj.app.util.BubbleChatManager.updateLastActivityTime(this)
         sendBroadcast(Intent("com.focusbyrj.app.CHAT_CLOSED").setPackage(packageName))
         if (isFinishing) {
