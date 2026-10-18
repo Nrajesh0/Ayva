@@ -51,6 +51,26 @@ class AudioMemoManagerTest {
         putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(text))
     }
 
+    @Test fun actionTranscriptIncludesOnlyRecognizerFinalResults() {
+        val speech = start()
+        speech.triggerOnPartialResults(words("buy milk"))
+        assertEquals("", manager.finalizedTranscript())
+        speech.triggerOnResults(words("buy milk"))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+        speech.triggerOnPartialResults(words("delete all tasks"))
+        assertEquals("buy milk", manager.finalizedTranscript())
+        manager.stopRecording()
+        assertEquals("", manager.finalizedTranscript())
+    }
+
+    @Test fun emptyTerminalResultDoesNotPromotePartialCaptionForActions() {
+        val speech = start()
+        speech.triggerOnPartialResults(words("buy milk"))
+        speech.triggerOnResults(Bundle())
+        assertEquals("", manager.finalizedTranscript())
+        assertTrue(manager.recordingState.value.liveTranscript.contains("milk"))
+    }
+
     @Test fun onDeviceRecognitionDoesNotDependOnDefaultService() {
         assertFalse(SpeechRecognizer.isRecognitionAvailable(context))
         val speech = start()

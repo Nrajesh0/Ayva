@@ -82,6 +82,8 @@ class AyvaChatActionIntegrationTest {
     @Test fun cancelTaskIsAnActionRatherThanAQuestion() = runBlocking {
         val first = db.taskDao().insertTask(Task(title = "Keep me"))
         val second = db.taskDao().insertTask(Task(title = "Remove me"))
+        // Numbers refer to an order Ayva actually displayed, not a fresh DB sort.
+        AyvaTalkEngine.answerTalkQueryWithActions("show my tasks", context)
         AyvaTalkEngine.answerTalkQueryWithActions("cancel task 2", context)
         assertFalse(db.taskDao().getTaskById(first)!!.isTrashed)
         assertTrue(db.taskDao().getTaskById(second)!!.isTrashed)

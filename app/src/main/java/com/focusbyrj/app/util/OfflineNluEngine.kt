@@ -84,6 +84,7 @@ object OfflineNluEngine {
     fun normalizeRequest(query: String): String = query.trim()
         .replace('’', '\'')
         .replace(Regex("(?i)^(?:(?:hey|hi|hello)[, ]+)?ayva[,!: ]+"), "")
+        .let(com.focusbyrj.app.util.assistant.AssistantLanguage::unwrap)
         .replace(Regex("(?i)^(?:(?:can|could|would|will)\\s+you\\s+|please\\s+)"), "")
         .replace(Regex("(?i)^please\\s+"), "")
         .replace(Regex("(?i)[, ]+please[.!?]*$"), "")
@@ -474,6 +475,8 @@ object OfflineNluEngine {
     fun parse(query: String, pendingTasks: List<Task>): NluParsedResult {
         val trimmed = normalizeRequest(query)
         val lower = trimmed.lowercase()
+
+        if (com.focusbyrj.app.util.assistant.AssistantLanguage.actionGuard(trimmed) != null) return NluParsedResult(NluIntent.UNKNOWN)
 
         // Questions and casual replies must not trigger keyword-based conflict/action rules.
         if (!isExplicitCreation(trimmed) && (isQuestion(trimmed) || isConversationalStatement(trimmed))) {

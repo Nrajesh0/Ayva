@@ -37,6 +37,9 @@ interface DrillSessionDao {
     @Query("SELECT * FROM drill_sessions ORDER BY timestamp DESC")
     suspend fun getAllSessionsSync(): List<DrillSessionEntity>
 
+    @Query("SELECT * FROM drill_sessions ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getRecentSessions(limit: Int): List<DrillSessionEntity>
+
     @Query("UPDATE drill_sessions SET isClaimed = 1 WHERE sessionId = :sessionId")
     suspend fun markClaimed(sessionId: String)
 

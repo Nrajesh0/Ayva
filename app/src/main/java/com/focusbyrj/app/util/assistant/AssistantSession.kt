@@ -30,16 +30,46 @@ data class AssistantSession(
     var recentTaskIds: List<Long> = emptyList(),
     var suspendedRequest: JSONObject? = null,
     var learning: AssistantLearningContext? = null,
-    var learningResultId: String? = null
+    var learningResultId: String? = null,
+    var taskListIds: List<Long> = emptyList(),
+    var taskListAt: Long = 0L,
+    var selectedTaskIds: List<Long> = emptyList(),
+    var olderQuestions: List<JSONObject> = emptyList(),
+    var taskListComplete: Boolean = true,
+    var planning: AssistantPlanContext? = null,
+    var featureState: JSONObject? = null,
+    var vocabularyCardId: String? = null
 ) {
     fun focusTask(id: Long, newTopic: String = "tasks") {
         taskId = id; habitId = null; topic = newTopic
+        selectedTaskIds = listOf(id)
         recentTaskIds = (listOf(id) + recentTaskIds.filterNot { it == id }).take(5)
+    }
+
+    fun focusTasks(ids: List<Long>) {
+        // One extra ID records overflow, so “them” can ask for a smaller
+        // selection instead of silently acting on the first hundred.
+        val selected = ids.distinct().take(101)
+        if (selected.size == 1) focusTask(selected.single())
+        else { switchTopic("tasks"); selectedTaskIds = selected }
+    }
+
+    fun rememberTaskList(ids: List<Long>) {
+        taskListComplete = ids.distinct().size <= 100
+        taskListIds = ids.distinct().take(100); taskListAt = System.currentTimeMillis()
+        candidates = taskListIds
+    }
+
+    fun clearSuspended() { suspendedRequest = null; olderQuestions = emptyList() }
+
+    fun clearTaskReferences() {
+        taskId = null; selectedTaskIds = emptyList(); taskListIds = emptyList(); taskListAt = 0L; taskListComplete = true
+        candidates = emptyList(); recentTaskIds = emptyList()
     }
 
     fun switchTopic(newTopic: String) {
         taskId?.let { recentTaskIds = (listOf(it) + recentTaskIds.filterNot { previous -> previous == it }).take(5) }
-        taskId = null; habitId = null; topic = newTopic
+        taskId = null; habitId = null; selectedTaskIds = emptyList(); topic = newTopic
     }
 
     fun clearPending() {
@@ -59,8 +89,14 @@ data class AssistantSession(
         put("guards", JSONObject(guards))
         put("taskReferences", JSONArray(recentTaskIds))
         put("suspended", suspendedRequest ?: JSONObject.NULL)
+        put("olderQuestions", JSONArray(olderQuestions.take(2)))
+        put("taskList", JSONArray(taskListIds.take(100))); put("taskListAt", taskListAt); put("taskListComplete", taskListComplete)
+        put("selectedTasks", JSONArray(selectedTaskIds.take(101)))
         put("learning", learning?.toJson() ?: JSONObject.NULL)
         put("learningResult", learningResultId ?: JSONObject.NULL)
+        put("vocabularyCard", vocabularyCardId ?: JSONObject.NULL)
+        put("features", featureState ?: JSONObject.NULL)
+        put("planning", planning?.toJson() ?: JSONObject.NULL)
         put("versions", JSONObject().apply { versions.forEach { (id, version) -> put(id.toString(), version) } })
     }
 
@@ -84,7 +120,14 @@ data class AssistantSession(
                 recentTaskIds = array("taskReferences").longs().take(5),
                 suspendedRequest = json.optJSONObject("suspended"),
                 learning = json.optJSONObject("learning")?.let(AssistantLearningContext::fromJson),
-                learningResultId = json.optString("learningResult").takeUnless { it.isBlank() || it == "null" }
+                learningResultId = json.optString("learningResult").takeUnless { it.isBlank() || it == "null" },
+                taskListIds = array("taskList").longs().distinct().take(100), taskListAt = json.optLong("taskListAt"),
+                selectedTaskIds = array("selectedTasks").longs().distinct().take(101),
+                olderQuestions = array("olderQuestions").let { a -> (0 until minOf(a.length(), 2)).map { a.getJSONObject(it) } },
+                taskListComplete = json.optBoolean("taskListComplete", true),
+                planning = json.optJSONObject("planning")?.let(AssistantPlanContext::fromJson),
+                featureState = json.optJSONObject("features"),
+                vocabularyCardId = json.optString("vocabularyCard").takeUnless { it.isBlank() || it == "null" }
             )
         }
     }

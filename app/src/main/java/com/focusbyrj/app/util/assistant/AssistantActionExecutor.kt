@@ -38,6 +38,7 @@ object AssistantActionExecutor {
             TodoWidgetProvider.updateAllWidgets(context)
         }
         when (action) {
+            is AssistantAction.SaveRoutine, is AssistantAction.BookmarkWord, is AssistantAction.SetAppRule -> AssistantFeatureActions.execute(context, app, action)
             is AssistantAction.CreateTask -> {
                 require(action.draft.title.isNotBlank() && action.draft.title.length <= 500) { "Use a task title of 1–500 characters" }
                 val draft = action.draft.copy(id = 0, isCompleted = false, isTrashed = false, completedAt = null, trashedAt = null, deletedAt = null, updatedAt = now())
@@ -154,6 +155,38 @@ object AssistantActionExecutor {
                 val inverse = JSONObject().put("kind", "habit").put("id", habit.id).put("date", date).put("before", old).put("after", log.completedCount)
                 AssistantActionResult("Logged **${habit.title}** — ${log.completedCount}/${log.targetCount} today${if (log.completedCount >= log.targetCount) "; daily target reached" else ""}.", habitId = habit.id, undo = listOf(inverse))
             }
+            is AssistantAction.EditHabit -> {
+                val updated = app.database.withTransaction {
+                    val habit = app.database.habitDao().getHabitById(action.id) ?: error("That habit no longer exists")
+                    require(habit == action.expected && habit.id == action.expected.id) { "That habit changed. Please review the edit again" }
+                    require(!habit.isArchived || action.field == HabitField.ARCHIVED && action.value == "false") { "Restore that habit before editing it" }
+                    val value = AssistantHabitEditing.value(action.field, action.value) ?: error(AssistantHabitEditing.hint(action.field))
+                    val after = when (action.field) {
+                        HabitField.INTERVAL -> habit.copy(type = com.focusbyrj.app.data.HabitType.INTERVAL_WINDOW, intervalHours = value.toInt() / 60, intervalMinutes = value.toInt() % 60)
+                        HabitField.WINDOW -> value.split(',').map(String::toInt).let { habit.copy(type = com.focusbyrj.app.data.HabitType.INTERVAL_WINDOW, windowStartHour = it[0] / 60, windowStartMinute = it[0] % 60, windowEndHour = it[1] / 60, windowEndMinute = it[1] % 60) }
+                        HabitField.REMINDER_TIME -> habit.copy(type = com.focusbyrj.app.data.HabitType.ONCE_DAILY, fixedReminderHour = value.removePrefix("@").toInt() / 60, fixedReminderMinute = value.removePrefix("@").toInt() % 60)
+                        HabitField.TITLE -> habit.copy(title = value)
+                        HabitField.TARGET -> habit.copy(targetPerDay = value.toInt())
+                        HabitField.REMINDER -> habit.copy(isReminderEnabled = value.toBooleanStrict())
+                        HabitField.ARCHIVED -> habit.copy(isArchived = value.toBooleanStrict())
+                    }
+                    if (!after.isArchived) require(app.database.habitDao().getAllHabitsSync().none {
+                        it.id != after.id && !it.isArchived && it.title.equals(after.title, true)
+                    }) { "An active habit already uses that name" }
+                    app.database.habitDao().updateHabit(after)
+                    after
+                }
+                refreshHabit(context, app, updated)
+                val detail = when (action.field) {
+                    HabitField.INTERVAL, HabitField.WINDOW, HabitField.REMINDER_TIME -> "Updated the reminder schedule for **${updated.title}**. Reminders remain ${if (updated.isReminderEnabled) "enabled" else "disabled"}."
+                    HabitField.TITLE -> "Renamed habit to **${updated.title}**."
+                    HabitField.TARGET -> "Set **${updated.title}** to ${updated.targetPerDay} per day. Any existing daily log keeps its recorded target."
+                    HabitField.REMINDER -> "Reminders ${if (updated.isReminderEnabled) "on" else "off"} for **${updated.title}**."
+                    HabitField.ARCHIVED -> "${if (updated.isArchived) "Archived" else "Restored"} habit **${updated.title}**. Its history is preserved."
+                }
+                val inverse = JSONObject().put("kind", "habit_edit").put("before", HabitJson.encode(action.expected)).put("after", HabitJson.encode(updated))
+                AssistantActionResult(detail, habitId = updated.id, undo = listOf(inverse), changed = updated != action.expected)
+            }
             is AssistantAction.SetRoutine -> {
                 val dao = app.database.scheduleDao()
                 val schedule = dao.getScheduleById(action.id) ?: error("That routine no longer exists")
@@ -171,8 +204,10 @@ object AssistantActionExecutor {
                 AssistantActionResult("${spec.title}: **${if (action.type == "boolean") if (action.value == "true") "on" else "off" else action.value}** ${spec.unit.takeUnless { it == "clock" }.orEmpty()}.", undo = listOf(JSONObject().put("kind", "pref").put("key", action.key).put("type", action.type).put("before", old).put("after", action.value)))
             }
             is AssistantAction.StartFocus -> {
-                FocusSessionManager.start(context, action.minutes)
-                AssistantActionResult("Started a **${action.minutes}-minute focus session**. The countdown is running; your existing app restrictions remain in effect.")
+                val task = action.taskId?.let { id -> dao.getTaskById(id)?.takeIf { !it.isCompleted && !it.isTrashed && it.deletedAt == null }
+                    ?: error("That focus task is no longer available") }
+                FocusSessionManager.start(context, action.minutes, task?.id)
+                AssistantActionResult("Started a **${action.minutes}-minute focus session**${task?.let { " for **${it.title}**" }.orEmpty()}. The countdown is running; your existing app restrictions remain in effect.")
             }
             AssistantAction.StopFocus -> {
                 FocusSessionManager.stop(context)
@@ -212,6 +247,7 @@ object AssistantActionExecutor {
         }
         for (record in records.filter { it.getString("kind") != "task" }.asReversed()) {
             when (record.getString("kind")) {
+                "routine_edit", "app_rule", "vocab_bookmark" -> AssistantFeatureActions.undo(context, app, record)
                 "habit" -> {
                     val date = app.habitRepository.getTodayDateString()
                     require(date == record.getString("date")) { "Yesterday's habit log cannot be undone as today's progress" }
@@ -222,6 +258,18 @@ object AssistantActionExecutor {
                         HabitAlarmScheduler.scheduleHabitReminder(context, habit, log.lastCompletedTimestamp, isGoalCompletedToday = log.completedCount >= log.targetCount)
                     }
                 }
+                "habit_edit" -> {
+                    val after = HabitJson.decode(record.getJSONObject("after"))
+                    val before = HabitJson.decode(record.getJSONObject("before"))
+                    app.database.withTransaction {
+                        require(app.database.habitDao().getHabitById(after.id) == after) { "That habit changed since my action. I won't overwrite the newer version." }
+                        if (!before.isArchived) require(app.database.habitDao().getAllHabitsSync().none {
+                            it.id != before.id && !it.isArchived && it.title.equals(before.title, true)
+                        }) { "Another active habit now uses the previous name" }
+                        app.database.habitDao().updateHabit(before)
+                    }
+                    refreshHabit(context, app, before)
+                }
                 "pref" -> {
                     val spec = AssistantPreferences.specs.first { it.key == record.getString("key") }
                     require(AssistantPreferences.read(context, spec) == record.getString("after")) { "That setting changed since my action" }
@@ -231,5 +279,11 @@ object AssistantActionExecutor {
         }
         TodoWidgetProvider.updateAllWidgets(context)
         "Undid my last reversible change. Previously earned rewards are kept; repeating the same completion won't earn them again."
+    }
+
+    private suspend fun refreshHabit(context: Context, app: FocusApplication, habit: Habit) {
+        val log = app.database.habitDao().getLogForHabitAndDate(habit.id, app.habitRepository.getTodayDateString())
+        HabitAlarmScheduler.scheduleHabitReminder(context, habit, log?.lastCompletedTimestamp,
+            isGoalCompletedToday = log != null && log.completedCount >= log.targetCount)
     }
 }

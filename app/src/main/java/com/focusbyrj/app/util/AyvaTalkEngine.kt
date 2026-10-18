@@ -390,6 +390,9 @@ object AyvaTalkEngine {
         if (canonicalContext) activeSession = null
         val trimmed = OfflineNluEngine.normalizeRequest(query)
         val lower = trimmed.lowercase()
+        com.focusbyrj.app.util.assistant.AssistantLanguage.actionGuard(trimmed)?.let {
+            return TalkResponse(com.focusbyrj.app.util.assistant.AssistantReplyStyle.guard(it))
+        }
 
         // Clean query prefix if user typed /talk, /ask, /guide, /how, /faq, /help, etc.
         val cleanQuery = lower
@@ -1834,24 +1837,8 @@ object AyvaTalkEngine {
             return TalkResponse(replyText, actions, "chat", json)
         }
 
-        val fallbackActions = listOf(
-            TalkAction.AskQuery("/status", "⚡ Focus Status"),
-            TalkAction.AskQuery("/tasks", "📋 My Tasks"),
-            TalkAction.AskQuery("/habits", "🌱 Daily Habits"),
-            TalkAction.NavigateAppScreen("notes", "Keep Notes 📝", "📝"),
-            TalkAction.NavigateAppScreen("preferences_hub", "Preferences Hub ⚙️", "⚙️"),
-            TalkAction.AskQuery("vacation mode", "🏖️ Vacation Mode"),
-            TalkAction.AskQuery("why apps not blocking", "🛡️ Troubleshoot")
-        )
-        val json = serializeActionsJson("fallback", fallbackActions)
-        val conversationalGreeting = AyvaDialogueEngine.getConversationalChatReply(context, cleanQuery)
-        val fullText = "$conversationalGreeting\n\nI'm ready to help! You can ask me to:\n• **Add / manage tasks** (e.g. *\"create finish presentation tomorrow 4pm\"*)\n• **Track daily habits** (e.g. *\"log habit reading\"* or *\"my habits\"*)\n• **Check focus status** (e.g. *\"status\"* or *\"today's summary\"*)\n• **Lock distracting apps** (e.g. *\"lock instagram in strict mode\"*)"
-        return TalkResponse(
-            formattedText = fullText,
-            actions = fallbackActions,
-            topicId = "fallback",
-            jsonPayload = json
-        )
+        return if (context != null) com.focusbyrj.app.util.assistant.OfflineAssistant.clarifyUnknown(context, query)
+        else com.focusbyrj.app.util.assistant.AssistantReplyStyle.unknown(null, query)
     }
 
     /**

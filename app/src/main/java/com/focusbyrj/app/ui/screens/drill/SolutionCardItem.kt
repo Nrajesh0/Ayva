@@ -76,7 +76,7 @@ fun SolutionCardItem(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = formatSecondsToMinutesSec(question.timeTakenSec),
+                text = if (question.timeTakenSec < 0) "Not measured" else formatSecondsToMinutesSec(question.timeTakenSec),
                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
                 color = if (question.status == "wrong" || question.timeTakenSec > 35) timerRed else textSecondary
             )

@@ -24,6 +24,8 @@ import com.focusbyrj.app.util.FocusEconomyManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -315,7 +317,15 @@ class Batch8SecurityAuditTest {
         // Drain coroutine queue
         Shadows.shadowOf(Looper.getMainLooper()).idle()
 
-        val persisted = focusDb.taskDao().getTaskById(899L)
+        // Main-loop draining starts the ViewModel coroutine, but Room writes
+        // continue on its executor. Await the actual database emission instead
+        // of racing that executor under a loaded full-suite/release build.
+        val persisted = withTimeout(5_000L) {
+            focusDb.taskDao().getAllTasks().first { rows ->
+                rows.any { it.id == 899L && it.title == "Updated Title" }
+            }.first { it.id == 899L }
+        }
+        Shadows.shadowOf(Looper.getMainLooper()).idle()
         assertNotNull("Task must exist in DB", persisted)
         assertEquals("Updated Title", persisted?.title)
         assertTrue("updatedAt must be refreshed to >= startTime", persisted!!.updatedAt >= startTime)

@@ -7,7 +7,7 @@ import com.focusbyrj.app.util.OfflineNluEngine
 import com.focusbyrj.app.util.SmartDateParser
 
 data class AssistantTaskRequest(val operation: String, val subject: String, val value: String? = null, val preserveClock: Boolean = false)
-data class AssistantTaskSelection(val tasks: List<Task>, val group: Boolean = false)
+data class AssistantTaskSelection(val tasks: List<Task>, val group: Boolean = false, val clarification: String? = null)
 
 /** Bounded grammar: requests are interpreted into data, never evaluated as code or split into CLI text. */
 object AssistantTaskLanguage {
@@ -68,11 +68,12 @@ object AssistantTaskLanguage {
         val raw = subject.trim().trim('"', '\'')
         Regex("(?i)^id:(\\d+)$").matchEntire(raw)?.let { id -> return AssistantTaskSelection(tasks.filter { it.id == id.groupValues[1].toLongOrNull() }) }
         val lower = raw.lowercase().removePrefix("the ").replace(Regex("\\s+"), " ")
+        AssistantTaskReferences.select(lower, tasks, state)?.let { return it }
         if (lower in setOf("it", "that", "this", "that task", "this task", "the task", "that one", "this one")) return AssistantTaskSelection(tasks.filter { it.id == state.taskId })
         val number = Regex("(?i)^(?:(?:task|number|no\\.)\\s*#?\\s*)?(\\d+)(?:st|nd|rd|th)?(?:\\s+(?:task|one))?$").matchEntire(lower)?.groupValues?.get(1)?.toIntOrNull()
             ?: when (lower.removePrefix("the ").removeSuffix(" one").removeSuffix(" task")) { "first" -> 1; "second" -> 2; "third" -> 3; "fourth" -> 4; "fifth" -> 5; "last" -> state.candidates.size; else -> null }
         if (number != null) {
-            val order = state.candidates.ifEmpty { tasks.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }.thenBy { it.id }).map { it.id } }
+            val order = state.candidates
             return AssistantTaskSelection(tasks.filter { it.id == order.getOrNull(number - 1) })
         }
         val now = System.currentTimeMillis()
@@ -83,7 +84,9 @@ object AssistantTaskLanguage {
         if (keyword.isBlank()) return AssistantTaskSelection(emptyList())
         val exact = tasks.filter { it.title.equals(keyword, true) }
         if (exact.isNotEmpty()) return AssistantTaskSelection(exact)
-        val tokens = keyword.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 2 }
+        val descriptive = keyword.replace(Regex("\\s+(?:task|reminder)$"), "")
+        val tokens = descriptive.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 2 }
+            .map { if (it == "reading") "read" else it }
         if (tokens.isEmpty()) return AssistantTaskSelection(emptyList())
         val matches = tasks.filter { task ->
             val title = task.title.lowercase()

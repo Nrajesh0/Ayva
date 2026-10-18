@@ -42,19 +42,27 @@ object FocusSessionManager {
         if (!activeState.value) { initialState.value = minutes * 60L; remainingState.value = minutes * 60L }
     }
 
-    @Synchronized fun start(context: Context, minutes: Int) {
+    @Synchronized fun start(context: Context, minutes: Int, taskId: Long? = null) {
         require(minutes in 1..240) { "Choose 1–240 minutes" }
         refresh(context)
         require(!activeState.value) { "A focus session is already running; stop it before starting another" }
         val duration = minutes * 60L
         val prefs = context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
         check(prefs.edit().putBoolean("isSessionActive", true)
+            .putLong("focus_task_id", taskId ?: 0L)
             .putLong("focus_duration_sec", duration).putLong("focus_accounted_seconds", 0)
             .putLong("focus_end_wall_ms", System.currentTimeMillis() + duration * 1000)
             .putLong("focus_end_elapsed_ms", SystemClock.elapsedRealtime() + duration * 1000)
             .putInt("focus_boot_count", bootCount(context)).commit()) { "Couldn't save focus session" }
         init(context)
         scheduleEnd(context, duration * 1000)
+    }
+
+    /** Association is optional metadata; completing a task never stops the countdown. */
+    @Synchronized fun taskId(context: Context): Long? {
+        refresh(context)
+        return if (activeState.value) context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
+            .getLong("focus_task_id", 0L).takeIf { it > 0 } else null
     }
 
     @Synchronized fun refresh(context: Context) {
@@ -116,7 +124,7 @@ object FocusSessionManager {
     }
 
     private fun finish(context: Context) {
-        context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE).edit().putBoolean("isSessionActive", false).apply()
+        context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE).edit().putBoolean("isSessionActive", false).remove("focus_task_id").apply()
         activeState.value = false
         (context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)?.cancel(endIntent(context))
         DndHelper.setDndMode(context, false)

@@ -343,8 +343,9 @@ class Batch10SecurityAuditTest {
         assertEquals(150, summary.xpEarned)
         // Valid questions parsed (skipping null question at index 1)
         assertEquals(2, summary.questions.size)
-        // Accuracy percentage coerced into [0, 100]
-        assertEquals(100, summary.questions[0].accuracyPct)
+        // Legacy question metrics lack measurement provenance and must stay unknown.
+        assertEquals(-1, summary.questions[0].accuracyPct)
+        assertEquals(-1, summary.questions[0].timeTakenSec)
         // Null option safely filtered
         assertFalse(summary.questions[0].options.contains("null"))
         assertEquals(3, summary.questions[0].options.size)

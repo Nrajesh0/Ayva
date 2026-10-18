@@ -339,7 +339,7 @@ fun FullscreenSolutionsView(
                         SolutionSortOrder.DEFAULT -> list
                         SolutionSortOrder.ALPHABETICAL -> list.sortedBy { it.second.questionText }
                         SolutionSortOrder.TIME_TAKEN -> list.sortedByDescending { it.second.timeTakenSec }
-                        SolutionSortOrder.ACCURACY -> list.sortedBy { it.second.accuracyPct }
+                        SolutionSortOrder.ACCURACY -> list.sortedBy { if (it.second.accuracyPct < 0) Int.MAX_VALUE else it.second.accuracyPct }
                     }
                 }
 
@@ -358,7 +358,7 @@ fun FullscreenSolutionsView(
                             "wrong" -> wrongRed
                             else -> unattemptedGrey
                         }
-                        val timeStr = formatSecondsToMmSs(qItem.timeTakenSec)
+                        val timeStr = if (qItem.timeTakenSec < 0) "Not measured" else formatSecondsToMmSs(qItem.timeTakenSec)
 
                         Surface(
                             modifier = Modifier

@@ -13,8 +13,8 @@ data class DrillQuestionResult(
     val userSelectedIndex: Int, // -1 if unattempted
     val status: String, // "correct", "wrong", "unattempted"
     val explanation: String,
-    val timeTakenSec: Int = 24,
-    val accuracyPct: Int = 80,
+    val timeTakenSec: Int = -1,
+    val accuracyPct: Int = -1,
     val positiveMarks: Double = 1.0,
     val negativeMarks: Double = 0.25
 ) {
@@ -31,6 +31,7 @@ data class DrillQuestionResult(
         obj.put("userSelectedIndex", userSelectedIndex)
         obj.put("status", status)
         obj.put("explanation", explanation)
+        obj.put("measurementVersion", 2)
         obj.put("timeTakenSec", timeTakenSec)
         obj.put("accuracyPct", accuracyPct)
         obj.put("positiveMarks", positiveMarks)
@@ -42,34 +43,23 @@ data class DrillQuestionResult(
         fun fromJson(obj: JSONObject, defaultAvgSec: Int = 20, index: Int = 0): DrillQuestionResult {
             val optsArr = obj.optJSONArray("options")
             val opts = mutableListOf<String>()
+            val optionIndices = mutableMapOf<Int, Int>()
             if (optsArr != null) {
                 for (j in 0 until optsArr.length()) {
                     if (optsArr.isNull(j)) continue
                     val opt = optsArr.optString(j, "").trim()
                     if (opt.isNotEmpty() && opt != "null") {
+                        optionIndices[j] = opts.size
                         opts.add(opt)
                     }
                 }
             }
             val status = obj.optString("status", "unattempted")
-            val timeTaken = if (obj.has("timeTakenSec")) {
-                obj.optInt("timeTakenSec", defaultAvgSec)
-            } else {
-                when (index % 3) {
-                    0 -> (defaultAvgSec * 1.4).toInt()
-                    1 -> (defaultAvgSec * 0.7).toInt().coerceAtLeast(4)
-                    else -> defaultAvgSec
-                }
-            }
-            val accuracy = if (obj.has("accuracyPct")) {
-                obj.optInt("accuracyPct", 80).coerceIn(0, 100)
-            } else {
-                when (status) {
-                    "correct" -> 75 + (index * 3) % 20
-                    "wrong" -> 45 + (index * 7) % 35
-                    else -> 50 + (index * 5) % 30
-                }.coerceIn(35, 95)
-            }
+            // Older writers fabricated these values, including explicit JSON fields.
+            // Only the new provenance version may describe a measured value.
+            val trusted = obj.optInt("measurementVersion") >= 2
+            val timeTaken = if (trusted) obj.optInt("timeTakenSec", -1).takeIf { it >= 0 } ?: -1 else -1
+            val accuracy = if (trusted) obj.optInt("accuracyPct", -1).takeIf { it in 0..100 } ?: -1 else -1
 
             return DrillQuestionResult(
                 qNum = obj.optInt("qNum", index + 1),
@@ -77,10 +67,10 @@ data class DrillQuestionResult(
                 direction = obj.optString("direction", ""),
                 questionText = obj.optString("questionText", ""),
                 options = opts,
-                correctIndex = obj.optInt("correctIndex", 0),
-                userSelectedIndex = obj.optInt("userSelectedIndex", -1),
+                correctIndex = optionIndices[obj.optInt("correctIndex", -1)] ?: -1,
+                userSelectedIndex = optionIndices[obj.optInt("userSelectedIndex", -1)] ?: -1,
                 status = status,
-                explanation = obj.optString("explanation", "Step-by-step mathematical breakdown and shortcut analysis."),
+                explanation = obj.optString("explanation", ""),
                 timeTakenSec = timeTaken,
                 accuracyPct = accuracy,
                 positiveMarks = obj.optDouble("positiveMarks", 1.0),
@@ -116,10 +106,14 @@ data class DrillSummary(
     val weeklyXp: Int = 0,
     val freezeNotice: String = "",
     val isClaimed: Boolean = false,
-    val questions: List<DrillQuestionResult> = emptyList()
+    val questions: List<DrillQuestionResult> = emptyList(),
+    val practiceKind: String = "unknown",
+    val difficulty: String? = null
 ) {
     fun toJson(): String {
         val obj = JSONObject()
+        obj.put("practiceKind", practiceKind)
+        obj.put("difficulty", difficulty ?: JSONObject.NULL)
         obj.put("sessionId", sessionId)
         obj.put("title", title)
         obj.put("tier", tier)
@@ -197,7 +191,9 @@ data class DrillSummary(
                     weeklyXp = obj.optInt("weeklyXp", 0),
                     freezeNotice = obj.optString("freezeNotice", ""),
                     isClaimed = obj.optBoolean("isClaimed", false),
-                    questions = questionsList
+                    questions = questionsList,
+                    practiceKind = obj.optString("practiceKind", "unknown"),
+                    difficulty = obj.optString("difficulty").takeIf { it in setOf("easy", "medium", "hard", "vocab") }
                 )
             } catch (_: Exception) {
                 DrillSummary(

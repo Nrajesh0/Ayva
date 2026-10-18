@@ -79,20 +79,8 @@ object DrillSummaryHelper {
         val sessionId = UUID.randomUUID().toString()
         val questionsList = mutableListOf<com.focusbyrj.app.data.drill.DrillQuestionResult>()
         val recordedNums = mutableSetOf<Int>()
-        val avgSecPerQ = (elapsedSeconds / (session.questionRecords.size.coerceAtLeast(1))).coerceAtLeast(5)
-
         session.questionRecords.forEachIndexed { idx, qRec ->
             recordedNums.add(qRec.questionNumber)
-            val accuracy = when (qRec.status) {
-                "correct" -> 75 + (idx * 3) % 20
-                "wrong" -> 45 + (idx * 7) % 35
-                else -> 50 + (idx * 5) % 30
-            }.coerceIn(35, 95)
-            val timeTaken = when (idx % 3) {
-                0 -> (avgSecPerQ * 1.4).toInt()
-                1 -> (avgSecPerQ * 0.7).toInt().coerceAtLeast(4)
-                else -> avgSecPerQ
-            }
             questionsList.add(
                 com.focusbyrj.app.data.drill.DrillQuestionResult(
                     qNum = qRec.questionNumber,
@@ -104,8 +92,8 @@ object DrillSummaryHelper {
                     userSelectedIndex = qRec.userSelectedIndex ?: -1,
                     status = qRec.status,
                     explanation = qRec.explanation,
-                    timeTakenSec = timeTaken,
-                    accuracyPct = accuracy
+                    timeTakenSec = -1,
+                    accuracyPct = -1
                 )
             )
         }
@@ -132,9 +120,9 @@ object DrillSummaryHelper {
                                 correctIndex = qObj.optInt("correctIndex", 0),
                                 userSelectedIndex = -1,
                                 status = "unattempted",
-                                explanation = qObj.optString("explanation", "Step-by-step mathematical breakdown and shortcut analysis."),
-                                timeTakenSec = avgSecPerQ,
-                                accuracyPct = 60
+                                explanation = qObj.optString("explanation", ""),
+                                timeTakenSec = -1,
+                                accuracyPct = -1
                             )
                         )
                     } catch (_: Exception) {}
@@ -168,7 +156,9 @@ object DrillSummaryHelper {
             weeklyXp = profileNow.weeklyXp,
             freezeNotice = profileNow.freezeUsedNotice ?: "",
             isClaimed = false,
-            questions = questionsList
+            questions = questionsList,
+            practiceKind = if (session.isBlitz) "blitz" else if (session.difficulty == "vocab") "vocabulary" else "drill",
+            difficulty = session.difficulty
         )
 
         // Store in DrillSessionRepository (in-memory + Room)

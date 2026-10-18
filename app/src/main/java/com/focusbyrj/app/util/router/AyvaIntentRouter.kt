@@ -53,6 +53,8 @@ object AyvaIntentRouter {
             return handleSlashCommand(trimmed)
         }
 
+        if (com.focusbyrj.app.util.assistant.AssistantLanguage.actionGuard(trimmed) != null) return RouterDestination.TalkQuery(trimmed)
+
         if (lower in setOf("task", "tasks", "todo", "todos", "todo list", "my tasks", "task list")) {
             return RouterDestination.DirectCommand("/tasks")
         }

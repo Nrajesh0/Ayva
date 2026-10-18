@@ -533,6 +533,7 @@ fun ChatInterface() {
 
     val audioMemoManager = remember { AudioMemoManager(context.applicationContext) }
     val recordingState by audioMemoManager.recordingState.collectAsState()
+    val transcriptForActions = remember { java.util.concurrent.atomic.AtomicReference<Pair<String, Long>?>(null) }
     var initialInputBeforeTranscription by remember { mutableStateOf("") }
 
     var lastInteractionTimestamp by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -546,6 +547,7 @@ fun ChatInterface() {
 
     val startLiveTranscriptionAction = {
         lastInteractionTimestamp = System.currentTimeMillis()
+        transcriptForActions.set("" to System.currentTimeMillis())
         showCatForWelcome = false
         showCatForInactivity = false
         isCatActionPlaying = false
@@ -585,6 +587,7 @@ fun ChatInterface() {
     val toggleLiveTranscription: () -> Unit = {
         lastInteractionTimestamp = System.currentTimeMillis()
         if (recordingState.isRecording) {
+            transcriptForActions.set(audioMemoManager.finalizedTranscript() to System.currentTimeMillis())
             val (_, finalTranscript) = audioMemoManager.stopRecording()
             if (finalTranscript.isNotBlank()) {
                 val combined = if (initialInputBeforeTranscription.isBlank()) {
@@ -745,6 +748,7 @@ fun ChatInterface() {
                 }
             } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
                 if (audioMemoManager.recordingState.value.isRecording) {
+                    transcriptForActions.set(audioMemoManager.finalizedTranscript() to System.currentTimeMillis())
                     val (_, finalTranscript) = audioMemoManager.stopRecording()
                     if (finalTranscript.isNotBlank()) {
                         val combined = if (initialInputBeforeTranscription.isBlank()) {
@@ -915,6 +919,8 @@ fun ChatInterface() {
             val updatedUserList = messages + userMsg
             messages = updatedUserList
             BubbleChatManager.saveMessages(context, updatedUserList.map { it.toPersistedChatMessage() })
+            val finalizedVoice = transcriptForActions.getAndSet(null)
+            val vocabularyCard = messages.lastOrNull { it.isVocabBrief && it.vocabJson != null }
             val completedTest = messages.lastOrNull { it.isDrillSummary && it.drillSummaryJson != null }
             var sentText = textToSend
             val wasPriority = isHighPriority
@@ -936,6 +942,10 @@ fun ChatInterface() {
                     completedTest?.let { completed ->
                         completed.drillSummaryJson?.let { OfflineAssistant.recordLearningResult(context, it, completed.timestamp) }
                     }
+                    vocabularyCard?.let { card ->
+                        card.vocabJson?.let { OfflineAssistant.recordVocabularyCard(context, it, card.timestamp, card.id) }
+                    }
+                    finalizedVoice?.let { OfflineAssistant.recordTranscript(context, it.first, it.second) }
                     val assisted = OfflineAssistant.respond(sentText, context, wasPriority, wasPersistent, userMsg.id, replyTarget = quotedTarget, quotedReply = quoted?.text)
                     if (assisted != null && assisted.cliCommandRedirect == null) {
                         withContext(Dispatchers.Main) {
@@ -1203,24 +1213,28 @@ fun ChatInterface() {
                                     val vocabObj = org.json.JSONObject()
                                     if (newIdiom != null) {
                                         vocabObj.put("idiom", org.json.JSONObject().apply {
+                                            put("id", newIdiom.id ?: -1)
                                             put("idiom", newIdiom.idiom)
                                             put("meaning", newIdiom.meaning)
                                         })
                                     }
                                     if (newOws != null) {
                                         vocabObj.put("ows", org.json.JSONObject().apply {
+                                            put("id", newOws.id ?: -1)
                                             put("term", newOws.term)
                                             put("definition", newOws.definition)
                                         })
                                     }
                                     if (revIdiom != null) {
                                         vocabObj.put("rev_idiom", org.json.JSONObject().apply {
+                                            put("id", revIdiom.id ?: -1)
                                             put("idiom", revIdiom.idiom)
                                             put("meaning", revIdiom.meaning)
                                         })
                                     }
                                     if (revOws != null) {
                                         vocabObj.put("rev_ows", org.json.JSONObject().apply {
+                                            put("id", revOws.id ?: -1)
                                             put("term", revOws.term)
                                             put("definition", revOws.definition)
                                         })
@@ -1368,7 +1382,7 @@ fun ChatInterface() {
                             }
                             "/vocab_quiz" -> {
                                 val vocabRepo = (context.applicationContext as com.focusbyrj.app.FocusApplication).vocabRepository
-                                val (learnedIdioms, learnedOws) = vocabRepo.getQuizWords()
+                                val (learnedIdioms, learnedOws) = vocabRepo.getQuizWords(sentText.trim().split(Regex("\\s+")).getOrNull(1) == "missed")
                                 
                                 val quizList = mutableListOf<org.json.JSONObject>()
                                 
@@ -1418,7 +1432,7 @@ fun ChatInterface() {
                                 if (finalQuestions.isEmpty()) {
                                     val summaryResponse = ChatMessage(
                                         id = "vocab_empty_${System.currentTimeMillis()}",
-                                        text = "You haven't learned any vocabulary yet! Let's learn some words first with `/vocab learn_more`.",
+                                        text = if (sentText.trim().endsWith(" missed")) "No saved missed words are available for this quiz. You can practise all learned words with `/vocab_quiz`." else "You haven't learned any vocabulary yet! Let's learn some words first with `/vocab learn_more`.",
                                         isUser = false
                                     )
                                     withContext(Dispatchers.Main) {
@@ -2092,12 +2106,14 @@ fun ChatInterface() {
                 },
                 onCancel = {
                     audioMemoManager.cancelRecording()
+                    transcriptForActions.set("" to System.currentTimeMillis())
                     inputTextFieldValue = TextFieldValue(
                         text = initialInputBeforeTranscription,
                         selection = TextRange(initialInputBeforeTranscription.length)
                     )
                 },
                 onDone = {
+                    transcriptForActions.set(audioMemoManager.finalizedTranscript() to System.currentTimeMillis())
                     val (_, finalTranscript) = audioMemoManager.stopRecording()
                     if (finalTranscript.isNotBlank()) {
                         val combined = if (initialInputBeforeTranscription.isBlank()) {

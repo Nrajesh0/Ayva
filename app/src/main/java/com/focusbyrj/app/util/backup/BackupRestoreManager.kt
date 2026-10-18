@@ -590,6 +590,8 @@ object BackupRestoreManager {
                 }
             } ?: throw IOException("Could not open destination backup stream for post-creation verification.")
 
+            context.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
+                .putLong("last_verified_export_ms", System.currentTimeMillis()).apply()
             Log.i(TAG, "Encrypted backup created and verified successfully: ${metadata.noteCount} notes, ${metadata.taskCount} tasks.")
             Result.success(metadata)
         } catch (e: Exception) {

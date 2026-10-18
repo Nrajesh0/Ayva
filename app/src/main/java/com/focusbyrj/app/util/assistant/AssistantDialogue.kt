@@ -19,6 +19,17 @@ object AssistantDialogue {
         val lower = input.lowercase().trimEnd('.', '!', '?')
         val ordered = tasks.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }.thenBy { it.id })
         val next = ordered.firstOrNull()
+        if (lower in setOf("back to that task list", "back to the task list", "show that task list again", "back to that list")) {
+            if (state.taskListIds.isEmpty() || !state.taskListComplete || System.currentTimeMillis() - state.taskListAt !in 0..900_000L)
+                return reply("That task list is no longer available. Say ‘show my tasks’ for a fresh list.")
+            val byId = app.database.taskDao().getAllActiveTasksList().associateBy { it.id }
+            if (state.taskListIds.any { it !in byId }) return reply("An item from that list is no longer available. Say ‘show my tasks’ for a fresh list.")
+            state.clearPending(); state.switchTopic("tasks"); state.candidates = state.taskListIds
+            return reply("Here's the same task list, in the same order, with current details:\n" + state.taskListIds.mapIndexed { index, id ->
+                val task = byId.getValue(id)
+                "${index + 1}. **${task.title}** — ${task.dueDate?.let(SmartDateParser::formatDueDate) ?: "no due date"}${if (task.isCompleted) " · completed" else ""}"
+            }.joinToString("\n"), topic = "tasks")
+        }
         if (lower in setOf("hi", "hello", "hey", "hey ayva", "good morning", "good afternoon", "good evening", "howdy")) {
             state.clearPending()
             val name = context.getSharedPreferences("ayva_personalization", Context.MODE_PRIVATE).getString("name", null)
@@ -31,8 +42,9 @@ object AssistantDialogue {
         if (lower in setOf("thanks", "thank you", "thx", "thank you ayva", "thanks ayva", "great", "perfect", "nice")) return reply(if (state.taskId != null) "You're welcome. You can keep going, change that task, or say ‘undo’ for my last reversible change." else "You're welcome. I'm here when you need a hand.")
         if (lower in setOf("bye", "goodbye", "see you", "goodnight", "good night")) return reply("Take care. Your saved tasks and habits will be here when you return.")
         if (lower in setOf("help", "what can you do", "what can you help with", "commands", "show examples")) return reply(
-            "You can talk to me directly:\n• ‘Buy milk tomorrow at 6pm’\n• ‘Move it to Friday’ or ‘make it priority’\n• ‘Rename it to Dentist appointment’\n• ‘Show overdue tasks’\n• ‘Add habit reading’ or ‘log habit reading’\n• ‘Change reminder interval’ → ‘30 minutes’ → ‘yes’\n• ‘Start focus for 25 minutes’\n• ‘Buy bread; call Mum tomorrow’ (preview first)\n• ‘What should I do next?’ or ‘undo’\n• ‘I drank two glasses of water’\n• ‘Start a hard drill with 20 questions’ → ‘easier, same number of questions’\n• ‘How did I do?’ after a test\n• ‘Back to that reminder’ to resume an unfinished question\n\nI work offline with bounded language rules. Keep Notes and vault contents stay private outside chat.",
-            listOf(TalkAction.AskQuery("/tasks", "Tasks"), TalkAction.AskQuery("my habits", "Habits"), TalkAction.AskQuery("what should I do next", "Choose next step")))
+            AssistantReplyStyle.help(context), listOf("/tasks" to "Tasks", "my habits" to "Habits").map { (query, label) ->
+                TalkAction.AskQuery(query, label, if (AssistantReplyStyle.emoji(context)) "💬" else "")
+            })
         if (lower in setOf("what were we talking about", "what did i ask", "what did i just say", "summarize our chat", "summarise our chat")) {
             return reply(if (state.recentInputs.isEmpty()) "I don't have a recent conversation in this session. Tell me what you'd like to work on." else "Your recent requests were:\n" + state.recentInputs.takeLast(4).joinToString("\n") { "• $it" } + "\nMy conversational context expires after 15 minutes of inactivity.")
         }
@@ -72,27 +84,11 @@ object AssistantDialogue {
                 }
             }
             selected = selected.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }.thenBy { it.id })
-            state.clearPending(); state.switchTopic("tasks"); state.candidates = selected.map { it.id }
+            state.clearPending(); state.switchTopic("tasks"); state.rememberTaskList(selected.take(20).map { it.id })
             val text = if (selected.isEmpty()) "No tasks match that view." else selected.take(20).mapIndexed { i, t -> "${i + 1}. **${t.title}**${if (t.isPriority) " · priority" else ""}${t.dueDate?.let { " — ${SmartDateParser.formatDueDate(it)}" }.orEmpty()}" }.joinToString("\n") + if (selected.size > 20) "\nShowing 20 of ${selected.size}." else ""
             return reply(text + if (selected.isNotEmpty()) "\nYou can say ‘reschedule the second one tomorrow’ or ‘complete task 1’." else "", selected.take(3).map { TalkAction.AskQuery("${if (completed) "reopen" else "complete"} id:${it.id}", "${if (completed) "Reopen" else "Complete"} ${it.title.take(25)}") }, "tasks")
         }
-        val overwhelmed = Regex("(?i)\\b(?:tired|exhausted|stressed|overwhelmed|distracted|procrastinating|lazy|stuck|burned out)\\b").containsMatchIn(input)
-        val plan = lower in setOf("what should i do next", "what next", "help me prioritize", "help me prioritise", "plan my day", "help me plan my day", "what should i focus on", "help me focus", "motivate me", "i don't know where to start")
-        if (overwhelmed || plan) {
-            state.clearPending(); state.switchTopic("planning")
-            if (next == null) return reply(if (overwhelmed) "That sounds difficult. Take a short break, then pick one small thing. Your task list is clear; tell me what needs doing and I'll help you capture it." else "Your task list is clear. Tell me one thing you'd like to get done, or add a habit to build consistency.")
-            state.focusTask(next.id, "planning"); state.candidates = ordered.take(3).map { it.id }
-            val reason = when { next.dueDate?.let { it < System.currentTimeMillis() } == true -> "it's overdue"; next.isPriority -> "you marked it as priority"; next.dueDate != null -> "it has the nearest due date among your priorities"; else -> "it's next in your current task list" }
-            val concise = context.getSharedPreferences("ayva_personalization", Context.MODE_PRIVATE).getBoolean("concise", false)
-            val intro = if (overwhelmed) "Let's make this smaller. " else "I'd start with "
-            val detail = if (lower.contains("plan") && !concise) "\nThen consider:\n" + ordered.drop(1).take(2).mapIndexed { i, t -> "${i + 2}. ${t.title}" }.joinToString("\n") + "\nI haven't changed any dates or estimated task durations." else ""
-            FocusSessionManager.refresh(context)
-            val focus = if (FocusSessionManager.active.value) "Your focus countdown is already running with ${(FocusSessionManager.remainingSeconds.value + 59) / 60} minute(s) left. Use it for one small step."
-                else "Try one small step for ${if (overwhelmed) 5 else 25} minutes."
-            val focusAction = if (FocusSessionManager.active.value) TalkAction.AskQuery("time remaining", "Timer status")
-                else TalkAction.AskQuery("start focus for ${if (overwhelmed) 5 else 25} minutes", "Start focus")
-            return reply("$intro**${next.title}** because $reason. $focus$detail", listOf(focusAction, TalkAction.AskQuery("reschedule id:${next.id}", "Change its time"), TalkAction.AskQuery("complete id:${next.id}", "Mark complete")))
-        }
+        AssistantPlanning.respond(context, state, input, tasks)?.let { return it }
         if (Regex("(?i)\\b(?:weather|breaking news|stock price|browse the web|search the web|capital of)\\b").containsMatchIn(input)) return reply("I work offline with app data, built-in help, dates and basic arithmetic. I can't look up live or general web information. I can help plan your next task instead.")
         return null
     }

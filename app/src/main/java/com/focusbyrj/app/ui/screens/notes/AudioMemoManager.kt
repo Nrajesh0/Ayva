@@ -55,6 +55,11 @@ class AudioMemoManager(private val context: Context) {
     private var speechRecognizer: SpeechRecognizer? = null
     private val scope = CoroutineScope(Dispatchers.Main)
     private val accumulatedSentences = mutableListOf<String>()
+    private val finalizedSentences = mutableListOf<String>()
+
+    /** Recognizer final results only; partial captions remain available separately for editing. */
+    @androidx.annotation.MainThread
+    fun finalizedTranscript(): String = finalizedSentences.joinToString("; ")
     private var currentPartialText = ""
     private var onTranscriptCallback: ((String) -> Unit)? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -301,6 +306,7 @@ class AudioMemoManager(private val context: Context) {
     }
 
     private fun finishSegment(finalText: String?) {
+        finalText?.trim()?.takeIf(String::isNotBlank)?.let { finalizedSentences.add(it) }
         val text = finalText?.trim().takeUnless { it.isNullOrBlank() } ?: currentPartialText
         if (text.isNotBlank()) {
             accumulatedSentences.add(text.replaceFirstChar {
@@ -363,6 +369,7 @@ class AudioMemoManager(private val context: Context) {
         endRecognition()
         onTranscriptCallback = null
         accumulatedSentences.clear()
+        finalizedSentences.clear()
         currentPartialText = ""
         _recordingState.value = RecordingState()
     }

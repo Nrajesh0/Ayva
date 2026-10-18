@@ -7,6 +7,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 enum class TaskField { TITLE, DUE, PRIORITY, PERSISTENT, RECURRENCE, DETAILS, REOPEN }
+enum class HabitField { TITLE, TARGET, REMINDER, ARCHIVED, INTERVAL, WINDOW, REMINDER_TIME }
 
 sealed class AssistantAction {
     data class CreateTask(val draft: Task) : AssistantAction()
@@ -15,9 +16,13 @@ sealed class AssistantAction {
     data class TrashTasks(val ids: List<Long>) : AssistantAction()
     data class CreateHabit(val title: String, val target: Int = 1) : AssistantAction()
     data class LogHabit(val id: Long, val count: Int = 1) : AssistantAction()
+    data class EditHabit(val id: Long, val field: HabitField, val value: String, val expected: com.focusbyrj.app.data.Habit) : AssistantAction()
+    data class SaveRoutine(val draft: com.focusbyrj.app.data.FocusSchedule, val expected: com.focusbyrj.app.data.FocusSchedule? = null) : AssistantAction()
+    data class BookmarkWord(val type: String, val id: Int, val bookmarked: Boolean, val expected: Int) : AssistantAction()
+    data class SetAppRule(val draft: com.focusbyrj.app.data.AppRestriction, val expected: com.focusbyrj.app.data.AppRestriction?) : AssistantAction()
     data class SetRoutine(val id: Int, val enabled: Boolean) : AssistantAction()
     data class SetPreference(val key: String, val type: String, val value: String) : AssistantAction()
-    data class StartFocus(val minutes: Int) : AssistantAction()
+    data class StartFocus(val minutes: Int, val taskId: Long? = null) : AssistantAction()
     data object StopFocus : AssistantAction()
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -28,9 +33,13 @@ sealed class AssistantAction {
             is TrashTasks -> { put("kind", "trash"); put("ids", JSONArray(action.ids)) }
             is CreateHabit -> { put("kind", "create_habit"); put("title", action.title); put("target", action.target) }
             is LogHabit -> { put("kind", "log_habit"); put("id", action.id); put("count", action.count) }
+            is EditHabit -> { put("kind", "edit_habit"); put("id", action.id); put("field", action.field.name); put("value", action.value); put("expected", HabitJson.encode(action.expected)) }
+            is SaveRoutine -> { put("kind", "save_routine"); put("draft", RoutineJson.encode(action.draft)); put("expected", action.expected?.let(RoutineJson::encode) ?: JSONObject.NULL) }
+            is BookmarkWord -> { put("kind", "bookmark_word"); put("type", action.type); put("id", action.id); put("bookmarked", action.bookmarked); put("expected", action.expected) }
+            is SetAppRule -> { put("kind", "app_rule"); put("draft", AppRuleJson.encode(action.draft)); put("expected", action.expected?.let(AppRuleJson::encode) ?: JSONObject.NULL) }
             is SetRoutine -> { put("kind", "routine"); put("id", action.id); put("enabled", action.enabled) }
             is SetPreference -> { put("kind", "pref"); put("key", action.key); put("type", action.type); put("value", action.value) }
-            is StartFocus -> { put("kind", "focus"); put("minutes", action.minutes) }
+            is StartFocus -> { put("kind", "focus"); put("minutes", action.minutes); put("taskId", action.taskId ?: JSONObject.NULL) }
             StopFocus -> put("kind", "stop_focus")
         }
     }
@@ -43,9 +52,13 @@ sealed class AssistantAction {
             "trash" -> TrashTasks(json.getJSONArray("ids").longs())
             "create_habit" -> CreateHabit(json.getString("title"), json.getInt("target"))
             "log_habit" -> LogHabit(json.getLong("id"), json.getInt("count"))
+            "edit_habit" -> EditHabit(json.getLong("id"), HabitField.valueOf(json.getString("field")), json.getString("value"), HabitJson.decode(json.getJSONObject("expected")))
+            "save_routine" -> SaveRoutine(RoutineJson.decode(json.getJSONObject("draft")), json.optJSONObject("expected")?.let(RoutineJson::decode))
+            "bookmark_word" -> BookmarkWord(json.getString("type"), json.getInt("id"), json.getBoolean("bookmarked"), json.getInt("expected"))
+            "app_rule" -> SetAppRule(AppRuleJson.decode(json.getJSONObject("draft")), json.optJSONObject("expected")?.let(AppRuleJson::decode))
             "routine" -> SetRoutine(json.getInt("id"), json.getBoolean("enabled"))
             "pref" -> SetPreference(json.getString("key"), json.getString("type"), json.getString("value"))
-            "focus" -> StartFocus(json.getInt("minutes"))
+            "focus" -> StartFocus(json.getInt("minutes"), if (json.isNull("taskId")) null else json.getLong("taskId"))
             "stop_focus" -> StopFocus
             else -> error("Unknown assistant action")
         }

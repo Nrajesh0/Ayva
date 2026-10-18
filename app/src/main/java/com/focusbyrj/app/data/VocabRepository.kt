@@ -86,7 +86,8 @@ class VocabRepository(val vocabDao: VocabDao) {
         }
     }
 
-    suspend fun getQuizWords(): Pair<List<Idiom>, List<Ows>> {
+    suspend fun getQuizWords(mistakesOnly: Boolean = false): Pair<List<Idiom>, List<Ows>> {
+        if (mistakesOnly) return vocabDao.getMissedIdioms(10) to vocabDao.getMissedOws(10)
         val unmasteredIdioms = vocabDao.getUnmasteredLearnedIdioms(7)
         val neededIdioms = 10 - unmasteredIdioms.size
         val masteredIdioms = if (neededIdioms > 0) vocabDao.getMasteredLearnedIdioms(neededIdioms) else emptyList()

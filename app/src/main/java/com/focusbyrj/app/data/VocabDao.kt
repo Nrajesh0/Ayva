@@ -75,6 +75,12 @@ interface VocabDao {
     @Query("SELECT * FROM ows WHERE id = :id LIMIT 1")
     suspend fun getOwsById(id: Int): Ows?
 
+    @Query("SELECT * FROM idioms WHERE is_mastered = 0 AND learned_at = 1 ORDER BY id LIMIT :limit")
+    suspend fun getMissedIdioms(limit: Int): List<Idiom>
+
+    @Query("SELECT * FROM ows WHERE is_mastered = 0 AND learned_at = 1 ORDER BY id LIMIT :limit")
+    suspend fun getMissedOws(limit: Int): List<Ows>
+
     // Stats
     @Query("SELECT COUNT(*) FROM idioms WHERE learned_at IS NOT NULL")
     suspend fun getLearnedIdiomCount(): Int
