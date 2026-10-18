@@ -1,7 +1,8 @@
 package com.focusbyrj.app.util.assistant
 
 import android.content.Context
-import com.focusbyrj.app.util.crypto.EncryptedMediaStorage
+import com.focusbyrj.app.util.backup.EncryptedSnapshotFile
+import com.focusbyrj.app.util.backup.SnapshotCryptoEngine
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -41,6 +42,8 @@ data class AssistantSession(
     var vocabularyCardId: String? = null
 ) {
     fun focusTask(id: Long, newTopic: String = "tasks") {
+        if (newTopic != "blocking") featureState?.remove("appSelection")
+        if (newTopic != "routines") featureState?.remove("routineRef")
         taskId = id; habitId = null; topic = newTopic
         selectedTaskIds = listOf(id)
         recentTaskIds = (listOf(id) + recentTaskIds.filterNot { it == id }).take(5)
@@ -68,6 +71,8 @@ data class AssistantSession(
     }
 
     fun switchTopic(newTopic: String) {
+        if (newTopic != "blocking") featureState?.remove("appSelection")
+        if (newTopic != "routines") featureState?.remove("routineRef")
         taskId?.let { recentTaskIds = (listOf(it) + recentTaskIds.filterNot { previous -> previous == it }).take(5) }
         taskId = null; habitId = null; selectedTaskIds = emptyList(); topic = newTopic
     }
@@ -139,8 +144,10 @@ class AssistantSessionStore(private val context: Context, private val clock: () 
     fun load(): AssistantSession {
         return try {
             if (!file.exists() || file.length() > 512_000) return AssistantSession(touchedAt = clock())
-            val bytes = EncryptedMediaStorage.readDecryptedBytes(file) ?: return AssistantSession(touchedAt = clock())
-            val state = AssistantSession.fromJson(JSONObject(bytes.toString(Charsets.UTF_8)))
+            // Old media-key sessions are deliberately expired on upgrade rather
+            // than retaining a saved-media decryption capability in chat.
+            if (!SnapshotCryptoEngine.isEncrypted(file)) { clear(); return AssistantSession(touchedAt = clock()) }
+            val state = AssistantSession.fromJson(JSONObject(EncryptedSnapshotFile.read(file)))
             if (clock() - state.touchedAt !in 0..900_000L) { clear(); AssistantSession(touchedAt = clock()) } else state
         } catch (_: Exception) { clear(); AssistantSession(touchedAt = clock()) }
     }
@@ -148,9 +155,7 @@ class AssistantSessionStore(private val context: Context, private val clock: () 
         state.touchedAt = clock()
         val bytes = state.toJson().toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= 512_000) { "Conversation state is too large" }
-        val temporary = File(file.parentFile, "${file.name}.tmp")
-        EncryptedMediaStorage.writeEncryptedBytes(temporary, bytes)
-        check(temporary.renameTo(file)) { "Couldn't save conversation state" }
+        EncryptedSnapshotFile.write(file, bytes.toString(Charsets.UTF_8))
     }
-    fun clear() { file.delete(); File(file.parentFile, "${file.name}.tmp").delete() }
+    fun clear() { androidx.core.util.AtomicFile(file).delete(); File(file.parentFile, "${file.name}.tmp").delete() }
 }

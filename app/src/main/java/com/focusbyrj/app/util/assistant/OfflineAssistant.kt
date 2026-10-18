@@ -182,10 +182,11 @@ object OfflineAssistant {
         var text = raw.trim()
         if (command in setOf("/habit", "/habits") && raw.trim().indexOf(' ') < 0) { AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("habits"); return null }
         if (text.startsWith("/ayva ")) return internalCommand(text.removePrefix("/ayva "), context, app, state)
+        val appMode = command in setOf("/talk", "/ask")
         val taskAlias = command in setOf("/create", "/add", "/todo") || (command == "/task" && raw.substringAfter(' ', "").lowercase() !in setOf("", "all", "today", "list", "pending", "everything"))
         if (command in setOf("/talk", "/ask")) text = raw.substringAfter(' ', "")
         else if (taskAlias) text = raw.substringAfter(' ', "")
-        else if (command in setOf("/reschedule", "/complete", "/delete", "/reopen", "/priority", "/focus", "/pomodoro", "/undo", "/routine", "/habit", "/habits")) text = com.focusbyrj.app.util.command.AyvaChatCommands.talkQuery(raw)
+        else if (command in setOf("/reschedule", "/complete", "/delete", "/reopen", "/priority", "/focus", "/pomodoro", "/undo", "/routine", "/habit", "/habits", "/lock", "/unlock", "/block", "/unblock")) text = com.focusbyrj.app.util.command.AyvaChatCommands.talkQuery(raw)
         else if (raw.startsWith("/")) {
             AssistantConversation.suspendQuestion(state)
             state.clearPending()
@@ -200,6 +201,9 @@ object OfflineAssistant {
         text = AssistantTaskLanguage.normalize(text)
         text = text.replace(Regex("(?i)^confirm[_ ]delete[_ ](all|overdue)$")) { "delete ${it.groupValues[1]} tasks" }
         if (taskAlias) { if (state.expected != "task_title") AssistantConversation.suspendQuestion(state); return create(context, app, state, text, priority, persistent, true) }
+        if (appMode && state.expected != null && (state.topic in setOf("tasks", "planning") || state.expected?.startsWith("task_") == true || state.expected == "correction_date")) {
+            AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("app_help")
+        }
         val lower = text.lowercase().trimEnd('.', '!', '?')
         AssistantLanguage.actionGuard(text)?.let { reason ->
             AssistantConversation.suspendQuestion(state); state.clearPending()
@@ -216,9 +220,11 @@ object OfflineAssistant {
             return pendingReply(context, state, message + if (state.expected == null) "" else " ${expectedHint(state)}")
         }
         if (AssistantLanguage.acknowledgement(text)) return pendingReply(context, state, AssistantReplyStyle.acknowledgement(context, state))
+        AssistantConversationSupport.answer(context, app, state, text)?.let { return pendingReply(context, state, it) }
+        AssistantHabitConversation.information(app, state, text)?.let { return pendingReply(context, state, it) }
         if (lower in setOf("not yet", "wait", "hold on") && state.expected == "confirm")
             return pendingReply(context, state, "Okay. The preview is still here; nothing in it has been applied.")
-        if (lower in setOf("cancel", "never mind", "nevermind", "forget it", "stop that")) { if (state.expected == "plan_budget") state.planning = null; state.featureState?.remove("routineDraft"); state.clearPending(); state.clearSuspended(); return reply("Cancelled the pending request. Your saved items are unchanged.") }
+        if (lower in setOf("cancel", "never mind", "nevermind", "forget it", "stop that")) { if (state.expected == "plan_budget") state.planning = null; state.featureState?.remove("routineDraft"); state.featureState?.remove("appSelection"); state.clearPending(); state.clearSuspended(); return reply("Cancelled the pending request. Your saved items are unchanged.") }
         if (lower in setOf("undo", "undo that", "undo last", "undo last action", "take that back")) {
             state.clearPending()
             return undo(context, state, state.undoId)
@@ -236,7 +242,28 @@ object OfflineAssistant {
             if (matching.size == 1) return choose(context, app, state, matching.single())
             if (lower in setOf("done", "it", "that", "the other one", "not that one")) return choiceReply("I still need to know which item you mean.", state)
         }
-        if (Regex("(?i)^remind me(?:\\s+.*)?$").matches(text) && !text.lowercase().startsWith("remind me to ") && !Regex("(?i)\\b(?:about|of)\\b").containsMatchIn(text)) {
+        if (appMode && AssistantCompoundParser.split(text).size > 1) {
+            state.clearPending()
+            return reply("Please send one app question or setting change at a time in /talk. This keeps each proposed change clear.")
+        }
+        AssistantRoutineConversation.answer(context, app, state, text)?.let { turn ->
+            return if (turn is FeatureTurn.Reply) pendingReply(context, state, turn.text) else featureTurn(context, app, state, turn)
+        }
+        AssistantHabitConversation.revise(app, state, text)?.let { turn ->
+            return if (turn is FeatureTurn.Reply) pendingReply(context, state, turn.text) else {
+                val action = (turn as FeatureTurn.Preview).actions.single() as AssistantAction.EditHabit
+                previewHabitEdit(context, app, state, action)
+            }
+        }
+        AssistantAppControl.answer(context, app, state, text)?.let { return featureTurn(context, app, state, it) }
+        // App/settings questions interrupt stale task slots before task-edit or creation heuristics.
+        if (appMode || state.expected != "task_edit_field" || AssistantEditDialogue.field(text) == null)
+            AssistantAppKnowledge.answer(context, state, text, appMode)?.let { return featureTurn(context, app, state, it) }
+        if (appMode && OfflineNluEngine.isExplicitCreation(text) && !AssistantFeatureLanguage.isRequest(text)) {
+            state.clearPending(); state.switchTopic("app_help")
+            return reply("/talk is for app information and settings. To save a task, send it as an ordinary message or use /create. What feature would you like help with?", listOf(TalkAction.AskQuery("/talk help", "Explore features")))
+        }
+        if (!appMode && Regex("(?i)^remind me(?:\\s+.*)?$").matches(text) && !text.lowercase().startsWith("remind me to ") && !Regex("(?i)\\b(?:about|of)\\b").containsMatchIn(text)) {
             val date = SmartDateParser.parse(text.removePrefix("remind me").trim())
             if (text.equals("remind me", true) || (date.timestamp != null && !date.hasTaskText)) {
                 AssistantConversation.suspendQuestion(state)
@@ -286,7 +313,7 @@ object OfflineAssistant {
         }
 
         // Slot replies are constrained to the type requested, and a new explicit intent interrupts them.
-        if (state.expected == "task_title" && !AssistantFeatureLanguage.isRequest(text) && (!isNewIntent(lower) || OfflineNluEngine.isExplicitCreation(text))) {
+        if (!appMode && state.expected == "task_title" && !AssistantFeatureLanguage.isRequest(text) && (!isNewIntent(lower) || OfflineNluEngine.isExplicitCreation(text))) {
             return create(context, app, state, text, state.pendingPriority, state.pendingPersistent, false)
         }
         if (state.expected == "habit_title" && !isNewIntent(lower)) return propose(context, app, state, listOf(AssistantAction.CreateHabit(text)), "Create habit **$text** with a target of once a day?")
@@ -390,7 +417,7 @@ object OfflineAssistant {
         if (Regex("(?i)^(?:fix|edit|update) (?:it|that|this|them)$").matches(text))
             return reply("What would you like me to change? Name the task or setting and what should be different.")
         val explicit = OfflineNluEngine.isExplicitCreation(text) || Regex("(?i)^(?:urgent|important|priority)[: ,]").containsMatchIn(text)
-        if (explicit) return create(context, app, state, text, priority, persistent, false)
+        if (explicit && !appMode) return create(context, app, state, text, priority, persistent, false)
         if (state.topic?.startsWith("setting:") == true) {
             val spec = AssistantPreferences.specs.find { it.key == state.topic?.removePrefix("setting:") }
             val followUp = Regex("(?i)^(?:(?:change|set|make|turn) (?:it|that)(?: to)?|actually)(?:\\s+(.*))?$").matchEntire(text)
@@ -403,10 +430,11 @@ object OfflineAssistant {
         dialogue(context, app, state, text, pending)?.let { return it }
         knowledgeFollowUp(context, state, lower)?.let { return it }
         featureRequest(context, app, state, text)?.let { return it }
+        if (AssistantAppKnowledge.legacyFeature(text)) return null
         if (question || OfflineNluEngine.isConversationalStatement(text)) {
             state.clearPending()
             if (!(state.topic?.startsWith("faq:") == true && AssistantConversation.isTopicFollowUp(lower))) state.switchTopic("conversation")
-            return null
+            return if (appMode) appHelpFallback() else null
         }
         val fallback = OfflineNluEngine.parse(text, pending)
         if (fallback.intent in setOf(NluIntent.COMPLETE, NluIntent.DELETE, NluIntent.RESCHEDULE)) {
@@ -415,7 +443,7 @@ object OfflineAssistant {
                 else fallback.targetTask?.id?.let { "id:$it" } ?: fallback.filterQuery.orEmpty()
             return handleTask(context, app, state, AssistantTaskRequest(operation, subject, fallback.targetDateMs?.toString(), fallback.targetDateMs != null && !fallback.hasExplicitTimeSpecified), tasks)
         }
-        if (fallback.intent == NluIntent.CREATE_TASK) return create(context, app, state, text, priority, persistent, false)
+        if (fallback.intent == NluIntent.CREATE_TASK && !appMode) return create(context, app, state, text, priority, persistent, false)
         if (fallback.intent == NluIntent.CONFLICT && fallback.conflictOptions.isNotEmpty()) {
             val result = setChoices(state, fallback.conflictPrompt ?: "Which action did you mean?", fallback.conflictOptions.take(10).map { AssistantChoice(it.label, it.command) })
             state.pendingPriority = priority; state.pendingPersistent = persistent
@@ -426,9 +454,12 @@ object OfflineAssistant {
                 else "${if (fallback.intent == NluIntent.START_ROUTINE) "enable" else "disable"} routine ${if (fallback.isAllTasks) "all" else fallback.targetRoutineName.orEmpty()}".trim()
             return featureRequest(context, app, state, query)
         }
+        if (appMode) return appHelpFallback()
         // Keep existing app-specific FAQ and feature dispatch; remember its choices at the UI boundary.
         return null
     }
+
+    private fun appHelpFallback() = reply("I can explain Ayva's features and current settings, preview supported setting changes, or check device permissions. Try ‘soft mode wait’, ‘practice reminders’, ‘notes vault PIN’, or ‘check device health’. For a task, use an ordinary message or /create.", listOf(TalkAction.NavigateAppScreen("preferences_hub", "Open preferences")))
 
     private suspend fun create(context: Context, app: FocusApplication, state: AssistantSession, text: String, priority: Boolean, persistent: Boolean, allowDuplicate: Boolean): AyvaTalkEngine.TalkResponse {
         var draft = AssistantTaskLanguage.draft(text, priority, persistent)
@@ -657,7 +688,7 @@ object OfflineAssistant {
             val progress = app.habitRepository.activeHabitsWithProgress.first().firstOrNull { it.habit.id == habit.id }
                 ?: return reply("That habit is no longer active. Please choose it again.")
             state.switchTopic("habits"); state.habitId = habit.id
-            return reply("**${habit.title}** — ${progress.completedToday}/${progress.targetToday} today.\nCurrent streak: ${progress.currentStreak} day(s); best: ${progress.bestStreak}.\nSaved daily target: ${habit.targetPerDay}. Reminders ${if (habit.isReminderEnabled) "on" else "off"}.\nYou can log it, rename it, change its goal, or archive it.",
+            return reply("**${habit.title}** — ${progress.completedToday}/${progress.targetToday} today.\nCurrent streak: ${progress.currentStreak} day(s); best: ${progress.bestStreak}.\nSaved daily target: ${habit.targetPerDay}. Reminders ${if (habit.isReminderEnabled) "on" else "off"}.\nSaved schedule: ${AssistantHabitConversation.schedule(habit)} (device local time).\nYou can log it, rename it, change its goal, reminder time or interval, or archive it.",
                 listOf(suggestion(context, "log habit id:${habit.id}", "Log progress"), suggestion(context, "change habit id:${habit.id} goal", "Change goal")))
         }
         if (lower in setOf("what am i focusing on", "what am i focusing on?", "focus task", "show focus task")) return focusStatus(context, app, state)
@@ -724,6 +755,7 @@ object OfflineAssistant {
         if (Regex("^(?:i )?(?:just )?(?:drank|had|finished)\\b.*\\bwater$").matches(lower)) return reply("How many glasses should I log? Say ‘I drank two glasses of water’. I won't convert litres or minutes into habit counts.")
         if (lower in setOf("routine", "routines", "my routines", "list routines", "show routines", "active routines", "which routine is active")) {
             state.clearPending(); state.switchTopic("routines")
+            state.featureState?.remove("routineRef")
             val schedules = app.database.scheduleDao().getAllSchedulesSync()
             return reply(if (schedules.isEmpty()) "You haven't created any routines. Open schedules to configure their time windows and app restrictions." else schedules.joinToString("\n") {
                 "• **${it.name}** — ${if (it.isActiveAt()) "active now" else if (it.isEnabled) "enabled for its scheduled window" else "disabled"} (${String.format(java.util.Locale.US, "%02d:%02d–%02d:%02d", it.startHour, it.startMinute, it.endHour, it.endMinute)})"
@@ -805,7 +837,10 @@ object OfflineAssistant {
     }
 
     private suspend fun featureTurn(context: Context, app: FocusApplication, state: AssistantSession, turn: FeatureTurn): AyvaTalkEngine.TalkResponse = when (turn) {
-        is FeatureTurn.Reply -> if (turn.redirect != null) AyvaTalkEngine.TalkResponse(turn.text, cliCommandRedirect = turn.redirect) else reply(turn.text, turn.actions)
+        is FeatureTurn.Reply -> if (turn.redirect != null) AyvaTalkEngine.TalkResponse(turn.text, cliCommandRedirect = turn.redirect) else {
+            val response = reply(turn.text, turn.actions, turn.topicId ?: "conversation")
+            if (turn.settingKey == null) response else AssistantResponseContent.setting(response, turn.settingKey)
+        }
         is FeatureTurn.Preview -> propose(context, app, state, turn.actions, turn.text)
     }
 
@@ -840,14 +875,23 @@ object OfflineAssistant {
         if (actions.isNotEmpty() && actions.all { it is AssistantAction.SetRoutine }) state.switchTopic("routines")
         when (val action = actions.singleOrNull()) {
             is AssistantAction.SetPreference -> state.switchTopic("setting:${action.key}")
-            is AssistantAction.SetRoutine, is AssistantAction.SaveRoutine -> state.switchTopic("routines")
+            is AssistantAction.SetRoutine -> {
+                state.switchTopic("routines")
+                app.database.scheduleDao().getScheduleById(action.id)?.let { AssistantRoutineConversation.remember(state, it) }
+            }
+            is AssistantAction.SaveRoutine -> {
+                state.switchTopic("routines")
+                if (action.expected != null) AssistantRoutineConversation.remember(state, action.expected) else state.featureState?.remove("routineRef")
+            }
             is AssistantAction.BookmarkWord -> state.switchTopic("vocabulary")
-            is AssistantAction.SetAppRule -> state.switchTopic("blocking")
+            is AssistantAction.SetAppRule -> { state.featureState?.remove("appSelection"); state.switchTopic("blocking") }
+            is AssistantAction.SetAppRules -> state.switchTopic("blocking")
             is AssistantAction.CreateHabit, is AssistantAction.LogHabit -> state.switchTopic("habits")
             is AssistantAction.EditHabit -> { state.switchTopic("habits"); state.habitId = action.id }
             AssistantAction.StopFocus -> state.switchTopic("focus")
             else -> Unit
         }
+        if (actions.size > 1 && actions.any { it is AssistantAction.SetRoutine || it is AssistantAction.SaveRoutine }) state.featureState?.remove("routineRef")
         state.clearPending(); state.expected = "confirm"; state.confirmationId = token(); state.pending = actions
         val ids = actions.flatMap { when (it) { is AssistantAction.EditTasks -> it.ids; is AssistantAction.CompleteTasks -> it.ids; is AssistantAction.TrashTasks -> it.ids; else -> emptyList() } }.distinct()
         state.versions = ids.associateWith { app.database.taskDao().getTaskById(it)?.updatedAt ?: -1 }
@@ -874,10 +918,16 @@ object OfflineAssistant {
             }
             require(current == before) { "The selected item, setting or session changed. Please review the request again" }
         }
-        return apply(context, state, state.pending.toList(), id)
+        return apply(context, state, state.pending.toList(), id, reviewed = true)
     }
 
-    private suspend fun apply(context: Context, state: AssistantSession, actions: List<AssistantAction>, receipt: String = token()): AyvaTalkEngine.TalkResponse {
+    private suspend fun apply(context: Context, state: AssistantSession, actions: List<AssistantAction>, receipt: String = token(), reviewed: Boolean = false): AyvaTalkEngine.TalkResponse {
+        actions.forEach(AssistantCapabilities::validate)
+        if (!reviewed && actions.any(AssistantCapabilities::requiresReview)) {
+            val app = context.applicationContext as FocusApplication
+            val details = actions.map { AssistantConversationSupport.describe(context, app, it) }
+            return propose(context, app, state, actions, "Review this change?\n" + details.joinToString("\n") { "• $it" })
+        }
         if (receipt in state.acknowledgedActionIds) return reply("That action was already applied.")
         state.clearPending()
         state.acknowledgedActionIds = (state.acknowledgedActionIds + receipt).takeLast(30)
@@ -888,9 +938,15 @@ object OfflineAssistant {
         val appliedTaskIds = mutableListOf<Long>()
         val taskBatch = actions.all { it is AssistantAction.CreateTask || it is AssistantAction.EditTasks || it is AssistantAction.CompleteTasks || it is AssistantAction.TrashTasks }
         state.undo = emptyList(); state.undoId = null
-        for (action in actions) {
+        // One reviewed Trash group needs one recovery snapshot and one database
+        // transaction, even when the parser supplied one action per selected row.
+        val executionActions = if (actions.size > 1 && actions.all { it is AssistantAction.TrashTasks }) {
+            listOf(AssistantAction.TrashTasks(actions.filterIsInstance<AssistantAction.TrashTasks>().flatMap { it.ids }.distinct()))
+        } else actions
+        for (action in executionActions) {
             try {
                 val result = AssistantActionExecutor.execute(context, action)
+                if (action is AssistantAction.SetAppRules) AssistantAppControl.applied(state)
                 results.add(result.text)
                 if (taskBatch) appliedTaskIds += when (action) {
                     is AssistantAction.EditTasks -> action.ids
@@ -918,9 +974,16 @@ object OfflineAssistant {
                 }
                 when (action) {
                     is AssistantAction.SetPreference -> state.switchTopic("setting:${action.key}")
-                    is AssistantAction.SetRoutine, is AssistantAction.SaveRoutine -> state.switchTopic("routines")
+                    is AssistantAction.SetRoutine, is AssistantAction.SaveRoutine -> {
+                        state.switchTopic("routines")
+                        val schedules = (context.applicationContext as FocusApplication).database.scheduleDao()
+                        val routine = if (action is AssistantAction.SetRoutine) schedules.getScheduleById(action.id)
+                            else schedules.getAllSchedulesSync().singleOrNull { it.name == (action as AssistantAction.SaveRoutine).draft.name }
+                        if (actions.size == 1 && routine != null) AssistantRoutineConversation.remember(state, routine) else state.featureState?.remove("routineRef")
+                    }
             is AssistantAction.BookmarkWord -> state.switchTopic("vocabulary")
-            is AssistantAction.SetAppRule -> state.switchTopic("blocking")
+            is AssistantAction.SetAppRule -> { state.featureState?.remove("appSelection"); state.switchTopic("blocking") }
+            is AssistantAction.SetAppRules -> state.switchTopic("blocking")
                     is AssistantAction.StartFocus, AssistantAction.StopFocus -> state.switchTopic("focus")
                     else -> Unit
                 }
@@ -945,6 +1008,7 @@ object OfflineAssistant {
         val record = state.undo.singleOrNull()?.takeIf { it.optString("kind") == "task" }
         val restored = record?.let { it.optJSONObject("before") ?: it.optJSONObject("after") }?.let(TaskJson::decode)
         val text = AssistantActionExecutor.undo(context, state.undo)
+        if (state.undo.any { it.optString("kind") == "app_rules" }) state.featureState?.remove("appSelection")
         state.undo = emptyList(); state.undoId = null; state.clearPending()
         return AssistantPresentation.attach(reply(text), restored?.let { AssistantItemReference("task", it.id, it.title, "Restored · ${AssistantPresentation.due(it.dueDate)}") })
     }
@@ -954,7 +1018,7 @@ object OfflineAssistant {
         return when (parts.firstOrNull()) {
             "confirm" -> confirm(context, app, state, parts.getOrNull(1).orEmpty())
             "undo" -> undo(context, state, parts.getOrNull(1))
-            "cancel" -> if (parts.getOrNull(1) == state.confirmationId) { state.clearPending(); reply("Cancelled.") } else reply("That request is no longer pending.")
+            "cancel" -> if (parts.getOrNull(1) == state.confirmationId) { if (state.pending.any { it is AssistantAction.SetAppRules }) state.featureState?.remove("appSelection"); state.clearPending(); reply("Cancelled.") } else reply("That request is no longer pending.")
             "choose" -> if (parts.getOrNull(1) == state.confirmationId && state.choices.isNotEmpty()) {
                 val index = parts.getOrNull(2)?.toIntOrNull() ?: -1
                 if (index in state.choices.indices) choose(context, app, state, index) else reply("Choose one of the displayed options.")

@@ -20,6 +20,7 @@ sealed class AssistantAction {
     data class SaveRoutine(val draft: com.focusbyrj.app.data.FocusSchedule, val expected: com.focusbyrj.app.data.FocusSchedule? = null) : AssistantAction()
     data class BookmarkWord(val type: String, val id: Int, val bookmarked: Boolean, val expected: Int) : AssistantAction()
     data class SetAppRule(val draft: com.focusbyrj.app.data.AppRestriction, val expected: com.focusbyrj.app.data.AppRestriction?) : AssistantAction()
+    data class SetAppRules(val rules: List<SetAppRule>) : AssistantAction()
     data class SetRoutine(val id: Int, val enabled: Boolean) : AssistantAction()
     data class SetPreference(val key: String, val type: String, val value: String) : AssistantAction()
     data class StartFocus(val minutes: Int, val taskId: Long? = null) : AssistantAction()
@@ -37,6 +38,7 @@ sealed class AssistantAction {
             is SaveRoutine -> { put("kind", "save_routine"); put("draft", RoutineJson.encode(action.draft)); put("expected", action.expected?.let(RoutineJson::encode) ?: JSONObject.NULL) }
             is BookmarkWord -> { put("kind", "bookmark_word"); put("type", action.type); put("id", action.id); put("bookmarked", action.bookmarked); put("expected", action.expected) }
             is SetAppRule -> { put("kind", "app_rule"); put("draft", AppRuleJson.encode(action.draft)); put("expected", action.expected?.let(AppRuleJson::encode) ?: JSONObject.NULL) }
+            is SetAppRules -> { put("kind", "app_rules"); put("rules", JSONArray(action.rules.map { it.toJson() })) }
             is SetRoutine -> { put("kind", "routine"); put("id", action.id); put("enabled", action.enabled) }
             is SetPreference -> { put("kind", "pref"); put("key", action.key); put("type", action.type); put("value", action.value) }
             is StartFocus -> { put("kind", "focus"); put("minutes", action.minutes); put("taskId", action.taskId ?: JSONObject.NULL) }
@@ -56,6 +58,10 @@ sealed class AssistantAction {
             "save_routine" -> SaveRoutine(RoutineJson.decode(json.getJSONObject("draft")), json.optJSONObject("expected")?.let(RoutineJson::decode))
             "bookmark_word" -> BookmarkWord(json.getString("type"), json.getInt("id"), json.getBoolean("bookmarked"), json.getInt("expected"))
             "app_rule" -> SetAppRule(AppRuleJson.decode(json.getJSONObject("draft")), json.optJSONObject("expected")?.let(AppRuleJson::decode))
+            "app_rules" -> json.getJSONArray("rules").let { array ->
+                require(array.length() in 1..500)
+                SetAppRules((0 until array.length()).map { fromJson(array.getJSONObject(it)) as SetAppRule })
+            }
             "routine" -> SetRoutine(json.getInt("id"), json.getBoolean("enabled"))
             "pref" -> SetPreference(json.getString("key"), json.getString("type"), json.getString("value"))
             "focus" -> StartFocus(json.getInt("minutes"), if (json.isNull("taskId")) null else json.getLong("taskId"))

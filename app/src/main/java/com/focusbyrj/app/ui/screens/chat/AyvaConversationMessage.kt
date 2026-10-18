@@ -38,6 +38,9 @@ import com.focusbyrj.app.ui.components.TalkActionChips
 import com.focusbyrj.app.ui.screens.ChatMessage
 import com.focusbyrj.app.util.assistant.AssistantChatState
 import com.focusbyrj.app.util.assistant.AssistantPresentation
+import com.focusbyrj.app.util.assistant.AssistantResponseContent
+import com.focusbyrj.app.util.assistant.AssistantItemReference
+import com.focusbyrj.app.data.Task
 import org.json.JSONObject
 import java.text.DateFormat
 import java.util.Date
@@ -51,11 +54,15 @@ fun AyvaConversationMessage(
     chatState: AssistantChatState,
     onReply: ((ChatMessage) -> Unit)?,
     onQuery: ((String) -> Unit)?,
-    onMessageUpdate: (ChatMessage) -> Unit = {}
+    onMessageUpdate: (ChatMessage) -> Unit = {},
+    liveTasks: List<Task>? = null,
+    onSelectReference: ((AssistantItemReference?) -> Unit)? = null
 ) {
     val font = fontSizeSp.takeIf { it.isFinite() }?.coerceIn(12f, 24f) ?: 15f
     val display = remember(message.talkActionJson) { AssistantPresentation.data(message.talkActionJson) }
     val reference = remember(message.talkActionJson) { AssistantPresentation.reference(message.talkActionJson) }
+    val taskList = remember(message.talkActionJson) { AssistantResponseContent.tasks(message.talkActionJson) }
+    val setting = remember(message.talkActionJson) { AssistantResponseContent.settingSpec(message.talkActionJson) }
     val receipt = display?.optJSONObject("receipt")
     val quote = display?.optJSONObject("reply")
     val clipboard = LocalClipboardManager.current
@@ -114,12 +121,15 @@ fun AyvaConversationMessage(
                 }
                 Spacer(Modifier.height(6.dp))
             }
-            Box(gesture.fillMaxWidth()) {
+            if (taskList != null && receipt == null) {
+                AyvaSelectableTaskList(taskList, liveTasks, chatState.reference, font, onSelectReference, onQuery)
+            } else Box(gesture.fillMaxWidth()) {
                 if (drag > 0) Icon(Icons.AutoMirrored.Filled.Reply, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.CenterStart).size(18.dp))
                 SelectionContainer(Modifier.offset { IntOffset((drag * 0.45f).coerceAtMost(maxDrag).roundToInt(), 0) }) {
                     Text(parseRichFormattedText(message.text), fontSize = font.sp, lineHeight = (font * 1.6f).sp, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
+            if (setting != null && receipt == null) AyvaInlineSetting(setting, onQuery)
             if (receipt != null) {
                 Spacer(Modifier.height(6.dp))
                 AyvaActionReceipt(receipt, message.talkActionJson, font, chatState, onQuery)
@@ -131,7 +141,12 @@ fun AyvaConversationMessage(
                 val actionsOnly = remember(message.talkActionJson, chatState) { filteredActions(message.talkActionJson, chatState, receipt != null) }
                 if (actionsOnly != null) {
                     Spacer(Modifier.height(6.dp))
-                    AyvaConversationActions(actionsOnly, font, onQuery)
+                    val important = remember(actionsOnly) {
+                        runCatching { val root = JSONObject(actionsOnly); root.optString("topicId") in setOf("confirmation", "choice", "conflict", "disambiguation", "legacy_choice") ||
+                            root.optJSONArray("actions")?.let { a -> (0 until a.length()).any { a.getJSONObject(it).optString("query").startsWith("/ayva ") } } == true }.getOrDefault(false)
+                    }
+                    if (receipt != null || important) AyvaConversationActions(actionsOnly, font, onQuery)
+                    else if (taskList == null) AyvaInfoActions(actionsOnly, onQuery)
                 }
             }
         }

@@ -46,10 +46,6 @@ object AyvaIntentRouter {
 
         // 1. Direct Slash Commands
         if (trimmed.startsWith("/")) {
-            val talkContent = trimmed.substringAfter(' ', "").trim()
-            if (trimmed.substringBefore(' ').lowercase() in setOf("/talk", "/ask") && OfflineNluEngine.isExplicitCreation(talkContent)) {
-                return route(talkContent, pendingTasks, knownHabits, knownRoutines)
-            }
             return handleSlashCommand(trimmed)
         }
 

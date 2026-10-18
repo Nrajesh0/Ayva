@@ -73,7 +73,8 @@ class AyvaTalkEngineTest {
     @Test
     fun testNoPinLockQueryExplainsActualMechanism() = kotlinx.coroutines.runBlocking {
         val answer = AyvaTalkEngine.answerTalkQuery(context = androidx.test.core.app.ApplicationProvider.getApplicationContext(), query = "how to set pin lock?")
-        assertTrue(answer.contains("No PIN Lock Required") || answer.contains("does not have or use a PIN lock"))
+        assertTrue(answer.contains("6-digit") && answer.contains("vault", ignoreCase = true))
+        assertTrue(answer.contains("12-word"))
         assertTrue(answer.contains("Soft Mode") || answer.contains("Strict Mode") || answer.contains("Uninstall Protection"))
     }
 

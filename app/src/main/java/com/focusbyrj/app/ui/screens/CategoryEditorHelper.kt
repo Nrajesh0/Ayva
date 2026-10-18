@@ -17,18 +17,6 @@ object CategoryEditorHelper {
         category: AppCategory,
         searchQuery: String
     ): List<InstalledApp> {
-        var list = if (category == AppCategory.ALL) {
-            installedApps.filter { it.packageName.isNotBlank() }
-        } else {
-            installedApps.filter { it.packageName.isNotBlank() && it.category == category }
-        }
-        val trimmedQuery = searchQuery.trim()
-        if (trimmedQuery.isNotBlank()) {
-            list = list.filter { 
-                it.appName.contains(trimmedQuery, ignoreCase = true) || 
-                it.packageName.contains(trimmedQuery, ignoreCase = true)
-            }
-        }
-        return list.distinctBy { it.packageName }
+        return com.focusbyrj.app.util.AppCatalog.filter(installedApps, category, searchQuery)
     }
 }

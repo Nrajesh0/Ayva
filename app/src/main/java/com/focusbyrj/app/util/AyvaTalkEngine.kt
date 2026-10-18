@@ -1076,8 +1076,6 @@ object AyvaTalkEngine {
                         val completedHabitsCount = activeHabits.count { completedHabitIds.contains(it.id) }
 
                         // Notes Data: Ayva Chat decoupled from Room keep_notes for zero-knowledge privacy
-                        val activeNotes = emptyList<com.focusbyrj.app.data.note.NoteEntity>()
-                        val pinnedNotesCount = 0
 
                         // Battery Context
                         val batteryIntent = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
@@ -1103,8 +1101,8 @@ object AyvaTalkEngine {
                             overdueCount = overdueCount,
                             totalHabitsCount = activeHabits.size,
                             completedHabitsCount = completedHabitsCount,
-                            notesCount = activeNotes.size,
-                            pinnedNotesCount = pinnedNotesCount,
+                            notesCount = 0,
+                            pinnedNotesCount = 0,
                             batteryPct = batteryPct,
                             isCharging = isCharging
                         )
@@ -1116,7 +1114,7 @@ object AyvaTalkEngine {
                         actions.add(TalkAction.AskQuery("/focus 25", "⏱️ 25m Focus Sprint"))
                         actions.add(TalkAction.AskQuery("/tasks", "📋 My Tasks"))
                         actions.add(TalkAction.AskQuery("/habits", "🌱 Habits (${completedHabitsCount}/${activeHabits.size})"))
-                        actions.add(TalkAction.AskQuery("/notes", "📝 Notes (${activeNotes.size})"))
+                        actions.add(TalkAction.AskQuery("/notes", "📝 Notes"))
                         actions.add(TalkAction.AskQuery("/drill", "⚡ Mind Drill"))
 
                         return TalkResponse(briefing, actions, "status", serializeActionsJson("status", actions))
@@ -1635,6 +1633,13 @@ object AyvaTalkEngine {
             return TalkResponse(idMatch.formatResponse(context), actions, idMatch.id, json)
         }
 
+        // A unique exact alias outranks accumulated fuzzy words from a longer troubleshooting topic.
+        val exactAlias = getTopicsDatabase(context).filter { topic -> topic.keywords.any { it.equals(cleanQuery, true) } }.singleOrNull()
+        if (exactAlias != null) {
+            val actions = exactAlias.getActions(context)
+            return TalkResponse(exactAlias.formatResponse(context), actions, exactAlias.id, serializeActionsJson(exactAlias.id, actions))
+        }
+
         // --- 3. Stop-Word Filtered Semantic & Fuzzy Scoring ---
         val stopWords = setOf(
             "the", "a", "an", "is", "are", "was", "were", "in", "on", "at", "to", "for", "of", "with",
@@ -1736,8 +1741,8 @@ object AyvaTalkEngine {
                 } else if (cleanQuery.contains("dark")) stringVal = "dark"
                 else if (cleanQuery.contains("light")) stringVal = "light"
                 else if (cleanQuery.contains("system")) stringVal = "system"
-                else if (cleanQuery.contains("banner") || cleanQuery.contains("pop")) stringVal = "Banner"
-                else if (cleanQuery.contains("silent")) stringVal = "Silent"
+                else if (cleanQuery.contains("banner") || cleanQuery.contains("pop")) stringVal = "Floating Bar"
+                else if (cleanQuery.contains("silent")) stringVal = "Notification Only"
                 else if (cleanQuery.contains("both")) stringVal = "Both"
                 else if (cleanQuery.contains("dashboard")) stringVal = "dashboard"
                 else if (cleanQuery.contains("time") || cleanQuery.contains("analytics")) stringVal = "time"

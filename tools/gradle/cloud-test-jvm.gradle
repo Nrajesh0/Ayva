@@ -1,0 +1,8 @@
+// Optional workaround for the observed JDK 21 C2 crash in cloud Robolectric
+// workers. Use only after diagnosing that crash; production compilation and
+// normal CI remain unchanged. No tests or assertions are disabled.
+allprojects {
+    tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+        jvmArgs '-XX:TieredStopAtLevel=1'
+    }
+}

@@ -25,6 +25,7 @@ object AssistantActionExecutor {
             !(schedule.mode == "HARD" && schedule.isActiveAt())
 
     suspend fun execute(context: Context, action: AssistantAction): AssistantActionResult = mutex.withLock {
+        AssistantCapabilities.validate(action)
         val app = context.applicationContext as? FocusApplication ?: error("App database is unavailable")
         val dao = app.database.taskDao()
         fun now(previous: Long = 0) = maxOf(System.currentTimeMillis(), previous + 1)
@@ -38,7 +39,7 @@ object AssistantActionExecutor {
             TodoWidgetProvider.updateAllWidgets(context)
         }
         when (action) {
-            is AssistantAction.SaveRoutine, is AssistantAction.BookmarkWord, is AssistantAction.SetAppRule -> AssistantFeatureActions.execute(context, app, action)
+            is AssistantAction.SaveRoutine, is AssistantAction.BookmarkWord, is AssistantAction.SetAppRule, is AssistantAction.SetAppRules -> AssistantFeatureActions.execute(context, app, action)
             is AssistantAction.CreateTask -> {
                 require(action.draft.title.isNotBlank() && action.draft.title.length <= 500) { "Use a task title of 1–500 characters" }
                 val draft = action.draft.copy(id = 0, isCompleted = false, isTrashed = false, completedAt = null, trashedAt = null, deletedAt = null, updatedAt = now())
@@ -54,15 +55,6 @@ object AssistantActionExecutor {
                     else -> emptyList()
                 }.distinct()
                 require(ids.isNotEmpty() && ids.size <= 100) { "Choose between 1 and 100 tasks" }
-                if (action is AssistantAction.TrashTasks) {
-                    val selected = ids.map { dao.getTaskById(it) ?: error("A selected task no longer exists") }
-                    val overdue = selected.all { it.dueDate?.let { date -> date < System.currentTimeMillis() } == true }
-                    val tag = if (overdue) "ayva_talk_delete_overdue" else "ayva_talk_delete_all"
-                    val noteDao = com.focusbyrj.app.data.note.NoteDatabase.getInstance(context).noteDao()
-                    check(com.focusbyrj.app.util.backup.DataSafetyManager.writePreOpSnapshot(context, noteDao, tag, app.database) != null) {
-                        "Couldn't create the recovery snapshot; tasks have not been moved to Trash"
-                    }
-                }
                 val changes = mutableListOf<Triple<Task, Task, Task?>>()
                 app.database.withTransaction {
                     val originals = ids.map { dao.getTaskById(it) ?: error("A selected task no longer exists") }
@@ -87,7 +79,6 @@ object AssistantActionExecutor {
                             }
                             else -> error("Unsupported task operation")
                         }
-                        dao.updateTask(after)
                         var recurring: Task? = null
                         if (action is AssistantAction.CompleteTasks && before.recurrence != RecurrencePattern.NONE) {
                             val next = TaskReminderHelper.generateNextRecurringTask(after)
@@ -95,6 +86,15 @@ object AssistantActionExecutor {
                         }
                         changes.add(Triple(before, after, recurring))
                     }
+                    if (action is AssistantAction.TrashTasks) {
+                        try {
+                            com.focusbyrj.app.util.backup.TaskRecoveryStore.write(context, changes.map { it.first to it.second })
+                        } catch (error: Exception) {
+                            if (error is kotlinx.coroutines.CancellationException) throw error
+                            throw IllegalStateException("Couldn't create the task recovery snapshot; tasks have not been moved to Trash", error)
+                        }
+                    }
+                    changes.forEach { dao.updateTask(it.second) }
                 }
                 for ((before, after, recurring) in changes) {
                     if (action is AssistantAction.CompleteTasks) {
@@ -198,10 +198,11 @@ object AssistantActionExecutor {
                 AssistantActionResult("**${schedule.name}** ${if (!action.enabled) "disabled" else if (updated.isActiveAt()) "enabled and active now" else "enabled for its scheduled window"}.")
             }
             is AssistantAction.SetPreference -> {
-                val spec = AssistantPreferences.specs.find { it.key == action.key } ?: error("Unsupported setting")
-                val old = AssistantPreferences.read(context, spec)
+                val capability = AssistantCapabilities.setting(action.key)
+                val spec = capability.spec
+                val old = capability.current(context)
                 AssistantPreferences.apply(context, action.key, action.type, action.value)
-                AssistantActionResult("${spec.title}: **${if (action.type == "boolean") if (action.value == "true") "on" else "off" else action.value}** ${spec.unit.takeUnless { it == "clock" }.orEmpty()}.", undo = listOf(JSONObject().put("kind", "pref").put("key", action.key).put("type", action.type).put("before", old).put("after", action.value)))
+                AssistantActionResult("${spec.title}: **${AssistantPreferences.display(spec, action.value)}**.", undo = listOf(JSONObject().put("kind", "pref").put("key", action.key).put("type", action.type).put("before", old).put("after", action.value)))
             }
             is AssistantAction.StartFocus -> {
                 val task = action.taskId?.let { id -> dao.getTaskById(id)?.takeIf { !it.isCompleted && !it.isTrashed && it.deletedAt == null }
@@ -247,7 +248,7 @@ object AssistantActionExecutor {
         }
         for (record in records.filter { it.getString("kind") != "task" }.asReversed()) {
             when (record.getString("kind")) {
-                "routine_edit", "app_rule", "vocab_bookmark" -> AssistantFeatureActions.undo(context, app, record)
+                "routine_edit", "app_rule", "app_rules", "vocab_bookmark" -> AssistantFeatureActions.undo(context, app, record)
                 "habit" -> {
                     val date = app.habitRepository.getTodayDateString()
                     require(date == record.getString("date")) { "Yesterday's habit log cannot be undone as today's progress" }

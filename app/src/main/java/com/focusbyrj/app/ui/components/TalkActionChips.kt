@@ -185,7 +185,7 @@ fun TalkActionChips(
                 }
             }
         } catch (_: Exception) {}
-        Pair(topic, list)
+        Pair(topic, list.mapNotNull { runCatching { com.focusbyrj.app.util.assistant.AssistantCapabilities.reviewedChip(it) }.getOrNull() })
     }
 
     if (parsedActions.isEmpty()) return

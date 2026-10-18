@@ -5,9 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import com.focusbyrj.app.MainActivity
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 /**
  * Direct navigation action target from Ayva talk / guidance responses.
@@ -56,12 +53,8 @@ sealed class TalkAction(
     suspend fun executeAsync(context: Context): Boolean {
         return try {
             when (this) {
-                is RoutineToggle -> kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    com.focusbyrj.app.util.assistant.AssistantActionExecutor.execute(context,
-                        com.focusbyrj.app.util.assistant.AssistantAction.SetRoutine(scheduleId, isEnabled))
-                    true
-                }
-                is DirectPrefUpdate -> kotlinx.coroutines.withContext(Dispatchers.IO) { execute(context) }
+                is RoutineToggle, is DirectPrefUpdate ->
+                    com.focusbyrj.app.util.assistant.AssistantCapabilities.reviewedChip(this).execute(context)
                 else -> execute(context)
             }
         } catch (e: Exception) {
@@ -83,7 +76,9 @@ sealed class TalkAction(
                 }
                 is OpenSystemSetting -> {
                     val intent = Intent(intentAction).apply {
-                        if (packageUri) {
+                        if (intentAction == Settings.ACTION_APP_NOTIFICATION_SETTINGS) {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        } else if (packageUri) {
                             data = Uri.parse("package:${context.packageName}")
                         }
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -99,9 +94,9 @@ sealed class TalkAction(
                     context.startActivity(intent)
                     true
                 }
-                is RoutineToggle -> false // Database mutations must be awaited through executeAsync.
+                is RoutineToggle -> com.focusbyrj.app.util.assistant.AssistantCapabilities.reviewedChip(this).execute(context)
                 is DirectPrefUpdate -> {
-                    com.focusbyrj.app.util.assistant.AssistantPreferences.apply(context, prefKey, prefType, targetValue)
+                    com.focusbyrj.app.util.assistant.AssistantCapabilities.reviewedChip(this).execute(context)
                 }
             }
         } catch (e: Exception) {

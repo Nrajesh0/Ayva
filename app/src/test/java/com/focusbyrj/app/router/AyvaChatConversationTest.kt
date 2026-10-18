@@ -97,7 +97,7 @@ class AyvaChatConversationTest {
         assertEquals(RecurrencePattern.DAILY, natural.recurrence)
         assertEquals(natural.recurrence, slash.recurrence)
         assertTrue(natural.isPriority && natural.isPersistent && slash.isPriority && slash.isPersistent)
-        assertEquals("Take medicine", (AyvaIntentRouter.route("/talk remind me to take medicine every day at 8am") as RouterDestination.TaskCreation).title)
+        assertEquals(RouterDestination.DirectCommand("/talk remind me to take medicine every day at 8am"), AyvaIntentRouter.route("/talk remind me to take medicine every day at 8am"))
     }
 
     @Test fun taskTitlePrefixMustBeACompleteWord() {

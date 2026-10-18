@@ -665,15 +665,8 @@ fun MultiAppSelectorScreen(
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val pm = context.packageManager
-            val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            val appsList = packages.mapNotNull { info ->
-                val appName = pm.getApplicationLabel(info).toString()
-                if (info.packageName != context.packageName && pm.getLaunchIntentForPackage(info.packageName) != null) {
-                    InstalledApp(info.packageName, appName, getCategoryForApp(info, info.packageName))
-                } else null
-            }.sortedBy { it.appName.lowercase() }
-            
+            val appsList = com.focusbyrj.app.util.AppCatalog.load(context)
+
             withContext(Dispatchers.Main) {
                 installedApps = appsList
                 isLoading = false
@@ -728,7 +721,7 @@ fun MultiAppSelectorScreen(
                 val allOptions = standardOptions + customOptions
 
                 items(allOptions) { option ->
-                    val isCatSelected = selectedCategory == option
+                    val isCatSelected = if (selectedCategory is ScheduleCategoryOption.Custom && option is ScheduleCategoryOption.Custom) (selectedCategory as ScheduleCategoryOption.Custom).custom.id == option.custom.id else selectedCategory == option
                     val title = when (option) {
                         is ScheduleCategoryOption.Default -> option.category.title
                         is ScheduleCategoryOption.Custom -> option.custom.name
@@ -794,14 +787,13 @@ fun MultiAppSelectorScreen(
                 }
             }
             
-            val filteredApps = remember(installedApps, selectedCategory) {
+            val filteredApps = remember(installedApps, selectedCategory, customCategories) {
                 when (val cat = selectedCategory) {
                     is ScheduleCategoryOption.Default -> {
-                        if (cat.category == AppCategory.ALL) installedApps
-                        else installedApps.filter { it.category == cat.category }
+                        com.focusbyrj.app.util.AppCatalog.filter(installedApps, cat.category)
                     }
                     is ScheduleCategoryOption.Custom -> {
-                        installedApps.filter { cat.custom.packages.contains(it.packageName) }
+                        com.focusbyrj.app.util.AppCatalog.filter(installedApps, packages = customCategories.firstOrNull { it.id == cat.custom.id }?.packages.orEmpty())
                     }
                 }
             }

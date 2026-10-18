@@ -179,12 +179,15 @@ object DataSafetyManager {
         return try {
             val dailyDir = File(context.filesDir, AUTO_BACKUP_DIR)
             val preOpDir = File(context.filesDir, PRE_OP_DIR)
+            val taskOnlyDir = File(context.filesDir, TaskRecoveryStore.DIRECTORY)
             val files = mutableListOf<File>()
             if (dailyDir.exists()) files.addAll(dailyDir.listFiles { f -> f.isFile && f.name.endsWith(".json") } ?: emptyArray())
             if (preOpDir.exists()) files.addAll(preOpDir.listFiles { f -> f.isFile && f.name.endsWith(".json") } ?: emptyArray())
+            if (taskOnlyDir.exists()) files.addAll(taskOnlyDir.listFiles { f -> f.isFile && f.name.endsWith(".json") } ?: emptyArray())
             files.sortByDescending { it.lastModified() }
             files.map { file ->
                 val tag = when {
+                    file.parentFile == taskOnlyDir -> "Task recovery"
                     file.name.startsWith(DAILY_PREFIX) -> "Daily"
                     file.name.contains("SYNC_ANOMALY") -> "Emergency (Sync Anomaly)"
                     else -> "Pre-Op"
@@ -317,6 +320,13 @@ object DataSafetyManager {
             val file = File(snapshotPath)
             if (!file.exists()) {
                 return@withContext Result.failure(IllegalArgumentException("Snapshot file not found: $snapshotPath"))
+            }
+
+            // Task-only recovery is a separate format and never enters Notes recovery.
+            // Route by its dedicated directory before any all-data snapshot is created.
+            if (file.canonicalFile.parentFile == File(context.filesDir, TaskRecoveryStore.DIRECTORY).canonicalFile) {
+                return@withContext TaskRecoveryStore.restore(context, snapshotPath,
+                    requireNotNull(focusDb) { "Task database is required for task recovery" })
             }
 
             // A restore is destructive. Do not proceed unless the rollback point is durable.
@@ -621,31 +631,9 @@ object DataSafetyManager {
         return count
     }
 
-    internal fun writeAtomically(file: File, content: String) {
-        val atomicFile = androidx.core.util.AtomicFile(file)
-        val fos = atomicFile.startWrite()
-        try {
-            val encryptedBytes = SnapshotCryptoEngine.encryptSnapshot(content.toByteArray(Charsets.UTF_8))
-            fos.write(encryptedBytes)
-            atomicFile.finishWrite(fos)
-        } catch (e: Exception) {
-            atomicFile.failWrite(fos)
-            throw e
-        }
-    }
+    internal fun writeAtomically(file: File, content: String) = EncryptedSnapshotFile.write(file, content)
 
-    internal fun readAtomically(file: File): String {
-        val atomicFile = androidx.core.util.AtomicFile(file)
-        val bytes = atomicFile.openRead().use { stream ->
-            stream.readBytes()
-        }
-        return if (SnapshotCryptoEngine.isEncrypted(bytes)) {
-            val decryptedBytes = SnapshotCryptoEngine.decryptSnapshot(bytes)
-            String(decryptedBytes, Charsets.UTF_8)
-        } else {
-            String(bytes, Charsets.UTF_8)
-        }
-    }
+    internal fun readAtomically(file: File): String = EncryptedSnapshotFile.read(file)
 
     private fun ensureDir(context: Context, relPath: String): File {
         val dir = File(context.filesDir, relPath)

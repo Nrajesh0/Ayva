@@ -28,3 +28,7 @@ debug.keystore
 .env*
 .build-outputs/
 .agents/
+
+# Local Python helper bytecode
+__pycache__/
+*.py[cod]

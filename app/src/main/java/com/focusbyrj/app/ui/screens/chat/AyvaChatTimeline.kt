@@ -1403,6 +1403,8 @@ fun ChatBubble(
     onHabitLog: ((Long) -> Unit)? = null,
     onHabitCreated: ((com.focusbyrj.app.data.Habit) -> Unit)? = null,
     chatState: com.focusbyrj.app.util.assistant.AssistantChatState = com.focusbyrj.app.util.assistant.AssistantChatState(),
+    liveTasks: List<com.focusbyrj.app.data.Task>? = null,
+    onSelectReference: ((com.focusbyrj.app.util.assistant.AssistantItemReference?) -> Unit)? = null,
     onReply: ((ChatMessage) -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -1538,7 +1540,7 @@ fun ChatBubble(
     }
 
     if (message.isUser || (!isWelcome && !isMorning && !isEvening && !message.isArithmetic && !message.isVocabBrief && !message.isStreakFreezeSkipped)) {
-        AyvaConversationMessage(message, fontSizeSp, chatState, onReply, onQueryClick, onMessageUpdate)
+        AyvaConversationMessage(message, fontSizeSp, chatState, onReply, onQueryClick, onMessageUpdate, liveTasks, onSelectReference)
         return
     }
 
@@ -1745,6 +1747,8 @@ fun AyvaChatTimeline(
     onFilterChange: (String) -> Unit,
     onHabitLog: (Long) -> Unit,
     chatState: com.focusbyrj.app.util.assistant.AssistantChatState = com.focusbyrj.app.util.assistant.AssistantChatState(),
+    liveTasks: List<com.focusbyrj.app.data.Task>? = null,
+    onSelectReference: ((com.focusbyrj.app.util.assistant.AssistantItemReference?) -> Unit)? = null,
     onReply: ((ChatMessage) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -1845,6 +1849,8 @@ fun AyvaChatTimeline(
                         onFilterChange = onFilterChange,
                         onHabitLog = onHabitLog,
                         chatState = chatState,
+                        liveTasks = liveTasks,
+                        onSelectReference = onSelectReference,
                         onReply = onReply
                     )
                     // Group related assistant content; leave a clearer pause before the next user turn.

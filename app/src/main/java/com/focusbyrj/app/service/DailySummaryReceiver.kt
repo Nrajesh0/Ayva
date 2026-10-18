@@ -37,7 +37,7 @@ class DailySummaryReceiver : BroadcastReceiver() {
         fun scheduleDailySummaries(context: Context) {
             val prefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
             val morningTimeStr = prefs.getString("morning_brief_time", "08:00 AM") ?: "08:00 AM"
-            val eveningTimeStr = prefs.getString("evening_brief_time", "09:00 PM") ?: "09:00 PM"
+            val eveningTimeStr = prefs.getString("evening_brief_time", "08:00 PM") ?: "08:00 PM"
 
             scheduleSingleSummary(context, morningTimeStr, ACTION_MORNING_SUMMARY, REQUEST_CODE_MORNING)
             scheduleSingleSummary(context, eveningTimeStr, ACTION_EVENING_SUMMARY, REQUEST_CODE_EVENING)

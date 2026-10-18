@@ -50,76 +50,10 @@ import com.focusbyrj.app.util.ImageUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-enum class AppCategory(val title: String) {
-    ALL("All"),
-    SOCIAL("Social"),
-    PAYMENT("Finance"),
-    SHOPPING("Shopping"),
-    GAMES("Games"),
-    UTILITY("Utility"),
-    OTHERS("Others")
-}
+typealias AppCategory = com.focusbyrj.app.util.AppCategory
+typealias InstalledApp = com.focusbyrj.app.util.InstalledApp
 
-fun getCategoryForApp(appInfo: ApplicationInfo, packageName: String): AppCategory {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        when (appInfo.category) {
-            ApplicationInfo.CATEGORY_SOCIAL -> return AppCategory.SOCIAL
-            ApplicationInfo.CATEGORY_GAME -> return AppCategory.GAMES
-            ApplicationInfo.CATEGORY_PRODUCTIVITY -> return AppCategory.UTILITY
-        }
-    }
-    
-    val lowerPkg = packageName.lowercase()
-    if (lowerPkg.contains("whatsapp") || lowerPkg.contains("instagram") || 
-        lowerPkg.contains("facebook") || lowerPkg.contains("twitter") || 
-        lowerPkg.contains("tiktok") || lowerPkg.contains("snapchat") ||
-        lowerPkg.contains("reddit") || lowerPkg.contains("telegram") ||
-        lowerPkg.contains("discord")) {
-        return AppCategory.SOCIAL
-    }
-    
-    if (lowerPkg.contains("pay") || lowerPkg.contains("bank") || 
-        lowerPkg.contains("cash") || lowerPkg.contains("wallet") ||
-        lowerPkg.contains("paypal") || lowerPkg.contains("venmo") ||
-        lowerPkg.contains("stripe") || lowerPkg.contains("finance")) {
-        return AppCategory.PAYMENT
-    }
-    
-    if (lowerPkg.contains("shop") || lowerPkg.contains("store") || 
-        lowerPkg.contains("amazon") || lowerPkg.contains("flipkart") ||
-        lowerPkg.contains("ebay") || lowerPkg.contains("cart") ||
-        lowerPkg.contains("myntra") || lowerPkg.contains("alibaba") ||
-        lowerPkg.contains("aliexpress") || lowerPkg.contains("buy") || lowerPkg.contains("retail") || lowerPkg.contains("commerce")) {
-        return AppCategory.SHOPPING
-    }
-    
-    if (lowerPkg.contains("game") || lowerPkg.contains("unity") || 
-        lowerPkg.contains("unreal") || lowerPkg.contains("roblox") ||
-        lowerPkg.contains("mojang") || lowerPkg.contains("ea") ||
-        lowerPkg.contains("supercell") || lowerPkg.contains("king") ||
-        lowerPkg.contains("epic")) {
-        return AppCategory.GAMES
-    }
-    
-    if (lowerPkg.contains("tool") || lowerPkg.contains("util") || 
-        lowerPkg.contains("calculator") || lowerPkg.contains("calendar") ||
-        lowerPkg.contains("clock") || lowerPkg.contains("camera") ||
-        lowerPkg.contains("weather") || lowerPkg.contains("notes") ||
-        lowerPkg.contains("file") || lowerPkg.contains("settings") ||
-        lowerPkg.contains("drive") || lowerPkg.contains("docs") ||
-        lowerPkg.contains("sheet") || lowerPkg.contains("slide") ||
-        lowerPkg.contains("gmail") || lowerPkg.contains("mail")) {
-        return AppCategory.UTILITY
-    }
-    
-    return AppCategory.OTHERS
-}
-
-data class InstalledApp(
-    val packageName: String,
-    val appName: String,
-    val category: AppCategory
-)
+fun getCategoryForApp(appInfo: ApplicationInfo, packageName: String): AppCategory = com.focusbyrj.app.util.AppCatalog.category(appInfo, packageName)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,13 +79,7 @@ fun AddRestrictionScreen(
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val pm = context.packageManager
-            val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            val apps = packages
-                .filter { pm.getLaunchIntentForPackage(it.packageName) != null && it.packageName != context.packageName }
-                .map { InstalledApp(it.packageName, it.loadLabel(pm).toString(), getCategoryForApp(it, it.packageName)) }
-                .distinctBy { it.packageName }
-                .sortedBy { it.appName }
+            val apps = com.focusbyrj.app.util.AppCatalog.load(context)
             installedApps = apps
             isLoading = false
         }
@@ -319,7 +247,7 @@ fun AddRestrictionScreen(
                             }
 
                             items(customCategories, key = { it.id }) { cat ->
-                                val isSelected = selectedCategory == cat
+                                val isSelected = (selectedCategory as? CustomCategory)?.id == cat.id
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(14.dp))
@@ -375,21 +303,12 @@ fun AddRestrictionScreen(
                             }
                         }
 
-                        val filteredApps = remember(installedApps, selectedCategory, searchQuery) {
-                            var list = when (val cat = selectedCategory) {
-                                is AppCategory -> {
-                                    if (cat == AppCategory.ALL) installedApps
-                                    else installedApps.filter { it.category == cat }
-                                }
-                                is CustomCategory -> {
-                                    installedApps.filter { cat.packages.contains(it.packageName) }
-                                }
-                                else -> installedApps
+                        val filteredApps = remember(installedApps, selectedCategory, searchQuery, customCategories) {
+                            when (val cat = selectedCategory) {
+                                is AppCategory -> com.focusbyrj.app.util.AppCatalog.filter(installedApps, cat, searchQuery)
+                                is CustomCategory -> com.focusbyrj.app.util.AppCatalog.filter(installedApps, query = searchQuery, packages = customCategories.firstOrNull { it.id == cat.id }?.packages.orEmpty())
+                                else -> com.focusbyrj.app.util.AppCatalog.filter(installedApps, query = searchQuery)
                             }
-                            if (searchQuery.isNotBlank()) {
-                                list = list.filter { it.appName.contains(searchQuery, ignoreCase = true) }
-                            }
-                            list.distinctBy { it.packageName }
                         }
 
                         if (isLoading) {

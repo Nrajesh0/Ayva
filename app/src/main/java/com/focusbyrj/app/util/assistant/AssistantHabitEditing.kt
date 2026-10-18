@@ -30,6 +30,12 @@ object AssistantHabitEditing {
             return HabitEditRequest(it.groupValues[2], HabitField.ARCHIVED, it.groupValues[1].equals("archive", true).toString())
         }
         if (state.topic == "habits") {
+            match("^(?:set|change) (?:its|the) (interval|window|reminder time)(?: to (.+))?$")?.let {
+                val field = when (it.groupValues[1].lowercase()) { "interval" -> HabitField.INTERVAL; "window" -> HabitField.WINDOW; else -> HabitField.REMINDER_TIME }
+                return HabitEditRequest("it", field, it.groupValues[2].ifBlank { null })
+            }
+            match("^(?:turn|switch) (?:its|the) reminders? (on|off)$")?.let { return HabitEditRequest("it", HabitField.REMINDER, it.groupValues[1].equals("on", true).toString()) }
+            match("^(enable|disable) (?:its )?reminders?$")?.let { return HabitEditRequest("it", HabitField.REMINDER, it.groupValues[1].equals("enable", true).toString()) }
             match("^rename (?:it|that) to (.+)$")?.let { return HabitEditRequest("it", HabitField.TITLE, it.groupValues[1]) }
             match("^(?:set|change) (?:its|the) (?:daily )?(?:target|goal)(?: to (.+))?$")?.let { return HabitEditRequest("it", HabitField.TARGET, it.groupValues[1].ifBlank { null }) }
             match("^(archive|restore|unarchive) (?:it|that)$")?.let { return HabitEditRequest("it", HabitField.ARCHIVED, it.groupValues[1].equals("archive", true).toString()) }
@@ -40,7 +46,7 @@ object AssistantHabitEditing {
     fun value(field: HabitField, raw: String): String? {
         val text = raw.trim()
         return when (field) {
-            HabitField.INTERVAL -> Regex("(?i)^(\\d+)(?:\\s*(minutes?|mins?|hours?|hrs?))?$").matchEntire(text)?.let {
+            HabitField.INTERVAL -> Regex("(?i)^(?:every )?(\\d+)(?:\\s*(minutes?|mins?|hours?|hrs?))?$").matchEntire(text)?.let {
                 val n = it.groupValues[1].toLongOrNull() ?: return null
                 if (n !in 1..1440) return null
                 val minutes = n * if (it.groupValues[2].lowercase().startsWith("h")) 60 else 1
@@ -51,7 +57,7 @@ object AssistantHabitEditing {
                 if (canonical != null) { val a = canonical.groupValues[1].toInt(); val b = canonical.groupValues[2].toInt(); text.takeIf { a in 0..1439 && b in 0..1439 && a != b } }
                 else AssistantFeatureLanguage.window(text)?.let { "${it.first},${it.second}" }
             }
-            HabitField.REMINDER_TIME -> if (text.startsWith("@")) text.drop(1).toIntOrNull()?.takeIf { it in 0..1439 }?.let { "@$it" } else AssistantFeatureLanguage.clock(text)?.let { "@$it" }
+            HabitField.REMINDER_TIME -> if (text.startsWith("@")) text.drop(1).toIntOrNull()?.takeIf { it in 0..1439 }?.let { "@$it" } else AssistantFeatureLanguage.clock(text.replaceFirst(Regex("(?i)^at "), ""))?.let { "@$it" }
             HabitField.TITLE -> text.removeSurrounding("\"").takeIf { it.isNotBlank() && it.length <= 200 }
             HabitField.TARGET -> Regex("(?i)^(\\d+)(?:\\s+times?)?(?:\\s+(?:a|per)\\s+day|\\s+daily)?$").matchEntire(text)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 1..100 }?.toString()
             HabitField.REMINDER, HabitField.ARCHIVED -> text.lowercase().takeIf { it in setOf("true", "false") }

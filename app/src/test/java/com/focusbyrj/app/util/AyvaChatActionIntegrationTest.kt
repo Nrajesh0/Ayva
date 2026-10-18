@@ -98,8 +98,11 @@ class AyvaChatActionIntegrationTest {
     @Test fun explicitUnblockAllIsRecognized() = runBlocking {
         db.appRestrictionDao().insertRestriction(AppRestriction("com.example.keep", "Keep", isRestricted = true))
         val response = AyvaTalkEngine.answerTalkQueryWithActions("unblock all", context)
-        assertTrue(db.appRestrictionDao().getAllRestrictionsSync().isEmpty())
-        assertTrue(response.formattedText.contains("unlocked"))
+        assertTrue(db.appRestrictionDao().getAllRestrictionsSync().single().isRestricted)
+        val confirm = response.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }.query
+        val saved = AyvaTalkEngine.answerTalkQueryWithActions(confirm, context)
+        assertFalse(db.appRestrictionDao().getAllRestrictionsSync().single().isRestricted)
+        assertTrue(saved.formattedText.contains("unlocked"))
     }
 
     @Test fun deleteChoiceNeverDeletesTheWholeList() = runBlocking {

@@ -57,14 +57,14 @@
   },
   {
     "id": "no_pin_lock",
-    "title": "No PIN Lock Required",
+    "title": "Notes Vault PIN and App Blocking",
     "emoji": "🔐",
-    "directExplanation": "FocusByRj **does not have or use a PIN lock or passcode**. Instead, app restriction and tamper defense are managed directly through **Focus Routines**, **Soft Mode wait delays** (5s–30s pause), **Strict Mode** (zero bypass), and **Uninstall Protection (Device Admin)**. If you need data security, you can create a password-encrypted backup in the Data Vault.",
+    "directExplanation": "Archived/secret notes can be protected with a 6-digit vault PIN and a 12-word recovery phrase in Security & Permissions. App blocking is separate: Soft Mode uses a wait timer and relief window; Strict Mode has no ordinary wait-to-bypass button. A notes PIN does not unlock blocked apps.",
     "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions / App Settings",
     "whatToClick": [
-      "• For blocking enforcement: Configure Soft Mode delays in App Settings or Strict Mode in Focus tab.",
-      "• To prevent app deletion: Enable Uninstall Protection in Security & Permissions.",
-      "• To protect exported data: Use AES-256 Encrypted Backup in Security & Permissions."
+      "Open Security & Permissions.",
+      "Use Notes Vault passcode setup for archived notes.",
+      "Use the app blocking controls separately for Soft or Strict Mode."
     ],
     "keywords": [
       "pin",
@@ -80,16 +80,22 @@
       "pin code",
       "app pin",
       "app password",
-      "how to set pin"
+      "how to set pin",
+      "notes vault pin",
+      "vault pin",
+      "secret notes",
+      "recovery phrase",
+      "pin lock"
     ],
     "route": "security",
-    "isPackageSettingUri": false
+    "isPackageSettingUri": false,
+    "whyOrTip": "Archived/secret notes can be protected with a 6-digit vault PIN and a 12-word recovery phrase in Security & Permissions. App blocking is separate: Soft Mode uses a wait timer and relief window; Strict Mode has no ordinary wait-to-bypass button. A notes PIN does not unlock blocked apps."
   },
   {
     "id": "app_background_theme",
     "title": "App Background Theme Mode",
     "emoji": "🌓",
-    "directExplanation": "Controls the light/dark mode for the entire application (Light, Dark, or follow System).",
+    "directExplanation": "Choose System Default, Dark Minimal, Pitch Black, Graphite Black, Obsidian Black, Clean Light, Frost White, Paper White, Warm Sepia, or Ivory White. Theme and accent color are separate settings.",
     "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> App Background Theme",
     "whatToClick": [
       "Tap the Profile Avatar in the top header",
@@ -109,13 +115,14 @@
     "isPackageSettingUri": false,
     "prefKey": "app_theme_mode",
     "prefType": "string",
-    "diagnosticKey": "app_background_theme"
+    "diagnosticKey": "app_background_theme",
+    "whyOrTip": "Choose System Default, Dark Minimal, Pitch Black, Graphite Black, Obsidian Black, Clean Light, Frost White, Paper White, Warm Sepia, or Ivory White. Theme and accent color are separate settings."
   },
   {
     "id": "accent_theme",
     "title": "App Accent Color",
     "emoji": "🎨",
-    "directExplanation": "Sets the primary highlight color used for buttons, switches, and active elements across the app (Emerald, Ocean, Violet, Sunset, Amber, Rose, Crimson, Monolith).",
+    "directExplanation": "Changes the highlight color used by buttons and active elements. The current choices are the color palettes listed in App Settings; changing the accent does not change the background theme.",
     "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> Accent Theme",
     "whatToClick": [
       "Tap the Profile Avatar in the top header",
@@ -136,7 +143,8 @@
     "isPackageSettingUri": false,
     "prefKey": "app_theme_color",
     "prefType": "string",
-    "diagnosticKey": "accent_theme"
+    "diagnosticKey": "accent_theme",
+    "whyOrTip": "Changes the highlight color used by buttons and active elements. The current choices are the color palettes listed in App Settings; changing the accent does not change the background theme."
   },
   {
     "id": "heatmap_theme",
@@ -188,12 +196,11 @@
     "id": "soft_mode_wait_timer",
     "title": "Soft Mode Wait Timer",
     "emoji": "⏱️",
-    "directExplanation": "The number of seconds you must wait mindfully on the block screen before you can bypass it in Soft Mode (5s to 30s).",
+    "directExplanation": "The wait on a Soft Mode block screen before its relief option becomes available. The supported range is 5–60 seconds. This is separate from the number of minutes of relief.",
     "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Soft Mode Delay",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Adjust the Soft Mode Delay slider (5s to 30s)"
+      "Open App Settings.",
+      "Choose Soft Mode Wait Timer, then a value from 5–60 seconds."
     ],
     "keywords": [
       "soft mode wait timer",
@@ -209,18 +216,18 @@
     "isPackageSettingUri": false,
     "prefKey": "soft_lock_duration",
     "prefType": "int",
-    "diagnosticKey": "soft_mode_wait_timer"
+    "diagnosticKey": "soft_mode_wait_timer",
+    "whyOrTip": "The wait on a Soft Mode block screen before its relief option becomes available. The supported range is 5–60 seconds. This is separate from the number of minutes of relief."
   },
   {
     "id": "soft_mode_relief_duration",
     "title": "Soft Mode Relief Duration",
     "emoji": "🕊️",
-    "directExplanation": "How many minutes an app stays unlocked after you wait out the Soft Mode timer (1m to 15m).",
+    "directExplanation": "The temporary access window after the Soft Mode wait. The supported range is 1–60 minutes. This does not change the wait timer or turn a Strict Mode rule into Soft Mode.",
     "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Temporary Access Relief Window",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Adjust the Temporary Access Relief Window (1m to 15m)"
+      "Open App Settings.",
+      "Choose Soft Mode Relief Duration, then a value from 1–60 minutes."
     ],
     "keywords": [
       "relief duration",
@@ -235,13 +242,14 @@
     "isPackageSettingUri": false,
     "prefKey": "soft_unlock_duration",
     "prefType": "int",
-    "diagnosticKey": "soft_mode_relief_duration"
+    "diagnosticKey": "soft_mode_relief_duration",
+    "whyOrTip": "The temporary access window after the Soft Mode wait. The supported range is 1–60 minutes. This does not change the wait timer or turn a Strict Mode rule into Soft Mode."
   },
   {
     "id": "strict_mode",
     "title": "Strict Mode (Hard Block)",
     "emoji": "🧱",
-    "directExplanation": "Strict Mode blocks apps completely without a wait timer option. You cannot bypass it until your scheduled routine or focus session ends.",
+    "directExplanation": "Strict/HARD rules have no ordinary Soft Mode wait-to-bypass option. A scheduled routine follows its saved times; a manual block has no automatic expiry. Active strict routines and focus sessions have protected controls. Emergency relief, when available, is a separate limited feature.",
     "whereToGo": "Bottom Bar -> Focus tab -> Set category mode to Strict",
     "whatToClick": [
       "Go to Focus Tab",
@@ -256,7 +264,8 @@
     ],
     "route": "dashboard",
     "isPackageSettingUri": false,
-    "diagnosticKey": "strict_mode"
+    "diagnosticKey": "strict_mode",
+    "whyOrTip": "Strict/HARD rules have no ordinary Soft Mode wait-to-bypass option. A scheduled routine follows its saved times; a manual block has no automatic expiry. Active strict routines and focus sessions have protected controls. Emergency relief, when available, is a separate limited feature."
   },
   {
     "id": "emergency_relief",
@@ -282,7 +291,7 @@
     "id": "persistent_reminders",
     "title": "Persistent Task Reminders",
     "emoji": "🔔",
-    "directExplanation": "Sets how often FocusByRj persistently reminds you about overdue or pending priority tasks (e.g., 5m, 15m, 30m, 1h, 2h).",
+    "directExplanation": "The interval for repeat alerts on tasks with Persistent Reminders enabled. The supported range is 1–1440 minutes. Priority alone does not make a task persistent. Due times, completion, Android notification permissions and battery restrictions also affect delivery.",
     "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Persistent Reminders Interval",
     "whatToClick": [
       "Tap the Profile Avatar in the top header",
@@ -301,7 +310,8 @@
     "isPackageSettingUri": false,
     "prefKey": "persistent_reminder_interval",
     "prefType": "int",
-    "diagnosticKey": "persistent_reminders"
+    "diagnosticKey": "persistent_reminders",
+    "whyOrTip": "The interval for repeat alerts on tasks with Persistent Reminders enabled. The supported range is 1–1440 minutes. Priority alone does not make a task persistent. Due times, completion, Android notification permissions and battery restrictions also affect delivery."
   },
   {
     "id": "routine_notifications",
@@ -330,12 +340,12 @@
     "id": "task_notification_style",
     "title": "Task Notification Style",
     "emoji": "📱",
-    "directExplanation": "Choose whether task reminders show as a top banner, play an audio alarm, or both (Both, Sound Only, Popups Only, Silent).",
+    "directExplanation": "The available styles are Notification Only, Floating Bar, and Both. These control reminder presentation, not separate sound/alarm modes. System notifications are still posted by the reminder receiver; priority tasks can also use the floating bar. Android channels, volume and Do Not Disturb control sound.",
     "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Notification Style",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Select Both, Sound Only, Popups Only, or Silent"
+      "Open App Settings.",
+      "Choose Task Notification Style.",
+      "Select Notification Only, Floating Bar, or Both."
     ],
     "keywords": [
       "notification style",
@@ -348,7 +358,8 @@
     "isPackageSettingUri": false,
     "prefKey": "task_notification_style",
     "prefType": "string",
-    "diagnosticKey": "task_notification_style"
+    "diagnosticKey": "task_notification_style",
+    "whyOrTip": "The available styles are Notification Only, Floating Bar, and Both. These control reminder presentation, not separate sound/alarm modes. System notifications are still posted by the reminder receiver; priority tasks can also use the floating bar. Android channels, volume and Do Not Disturb control sound."
   },
   {
     "id": "bubble_enable_disable",
@@ -406,12 +417,12 @@
     "id": "bubble_auto_hide_duration",
     "title": "Bubble Auto-Hide Inactivity Timer",
     "emoji": "⏱️",
-    "directExplanation": "The number of idle seconds before the floating bubble automatically peeks into the edge of your screen (1s to 15s).",
+    "directExplanation": "The idle delay before an enabled auto-hide tucks the floating bubble into the screen edge. The supported range is 1–300 seconds. Auto-hide must also be enabled; changing its delay alone does not enable it.",
     "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Auto-hide Bubble",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap Bubble Settings",
-      "Adjust the Auto-hide Bubble stepper (1s to 15s or Off)"
+      "Open Bubble Settings.",
+      "Enable auto-hide if desired.",
+      "Set the auto-hide delay from 1–300 seconds."
     ],
     "keywords": [
       "hide bubble timer",
@@ -424,13 +435,14 @@
     "isPackageSettingUri": false,
     "prefKey": "auto_hide_duration_sec",
     "prefType": "int",
-    "diagnosticKey": "bubble_auto_hide_duration"
+    "diagnosticKey": "bubble_auto_hide_duration",
+    "whyOrTip": "The idle delay before an enabled auto-hide tucks the floating bubble into the screen edge. The supported range is 1–300 seconds. Auto-hide must also be enabled; changing its delay alone does not enable it."
   },
   {
     "id": "bubble_smart_regex",
     "title": "Smart Regex Parsing",
     "emoji": "🪄",
-    "directExplanation": "Automatically extracts task priorities (e.g., !high, !urgent), dates, and category tags when chatting with Ayva.",
+    "directExplanation": "Bubble Settings includes a Smart Regex Parsing toggle for priority and tags. The current chat coordinator does not consult that flag, so changing it does not disable its date or intent parsing. Use /talk for app information and /create for a literal task. This toggle is not an AI model.",
     "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Smart Regex Parsing",
     "whatToClick": [
       "Tap Profile Avatar in the top header",
@@ -445,7 +457,10 @@
       "chat regex"
     ],
     "route": "bubble_settings",
-    "isPackageSettingUri": false
+    "isPackageSettingUri": false,
+    "whyOrTip": "Bubble Settings includes a Smart Regex Parsing toggle for priority and tags. The current chat coordinator does not consult that flag, so changing it does not disable its date or intent parsing. Use /talk for app information and /create for a literal task. This toggle is not an AI model.",
+    "prefKey": "smart_regex_enabled",
+    "prefType": "boolean"
   },
   {
     "id": "bubble_hide_in_landscape",
@@ -508,7 +523,7 @@
     "id": "anti_screenshot_protection",
     "title": "Anti-Screenshot Protection",
     "emoji": "🛡️",
-    "directExplanation": "Blocks Android screen captures and hides app contents in recent apps overview to secure private notes, tasks, and credentials.",
+    "directExplanation": "Uses Android secure-window protection on supported app screens and obscures their recent-app previews. Its coverage depends on the window and Android; it is not a guarantee against every form of capture.",
     "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Anti-Screenshot Protection",
     "whatToClick": [
       "Tap the Profile Avatar in the top header",
@@ -528,7 +543,8 @@
     "isPackageSettingUri": false,
     "prefKey": "secure_recents",
     "prefType": "boolean",
-    "diagnosticKey": "secure_recents_blur"
+    "diagnosticKey": "secure_recents_blur",
+    "whyOrTip": "Uses Android secure-window protection on supported app screens and obscures their recent-app previews. Its coverage depends on the window and Android; it is not a guarantee against every form of capture."
   },
   {
     "id": "uninstall_protection",
@@ -547,7 +563,9 @@
       "cant uninstall",
       "device administrator",
       "device admin",
-      "protect app"
+      "protect app",
+      "uninstal protect",
+      "uninstall protect"
     ],
     "route": "security",
     "isPackageSettingUri": false,
@@ -557,7 +575,7 @@
     "id": "backup_and_restore",
     "title": "Data Vault & Encrypted Backup",
     "emoji": "📦",
-    "directExplanation": "Export or restore a secure AES-256 password-encrypted archive containing all your notes, tasks, habits, math drills, and application preferences.",
+    "directExplanation": "Export or restore a password-encrypted backup from Security & Permissions. Keep the archive password safe. Export, file selection, password entry and restore happen in the dedicated backup interface; chat cannot view the vault or silently restore data. Use backup status to check recorded backup evidence.",
     "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Data Vault & Backup",
     "whatToClick": [
       "Tap Profile Avatar -> Security & Permissions",
@@ -576,18 +594,18 @@
       "save data"
     ],
     "route": "security",
-    "isPackageSettingUri": false
+    "isPackageSettingUri": false,
+    "whyOrTip": "Export or restore a password-encrypted backup from Security & Permissions. Keep the archive password safe. Export, file selection, password entry and restore happen in the dedicated backup interface; chat cannot view the vault or silently restore data. Use backup status to check recorded backup evidence."
   },
   {
     "id": "default_launch_tab",
     "title": "Default Launch Tab",
     "emoji": "🏠",
-    "directExplanation": "Configures which screen opens automatically when you launch FocusByRj (Focus, Tasks, Routines, Time Stats, Notes, or Account).",
+    "directExplanation": "Choose which screen opens on launch: Focus, Tasks, Time, or Account. Routines and Notes are not launch-tab choices.",
     "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Default Launch Tab",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Select your default startup screen"
+      "Open App Settings.",
+      "Choose Default Launch Tab: Focus, Tasks, Time, or Account."
     ],
     "keywords": [
       "start tab",
@@ -600,7 +618,8 @@
     "isPackageSettingUri": false,
     "prefKey": "default_start_tab",
     "prefType": "string",
-    "diagnosticKey": "default_launch_tab"
+    "diagnosticKey": "default_launch_tab",
+    "whyOrTip": "Choose which screen opens on launch: Focus, Tasks, Time, or Account. Routines and Notes are not launch-tab choices."
   },
   {
     "id": "account_profile_economy",
@@ -630,9 +649,9 @@
   },
   {
     "id": "pro_subscription",
-    "title": "Focus Pro Subscription & Cloud Sync",
+    "title": "Pro Subscription and Activation",
     "emoji": "⭐",
-    "directExplanation": "Unlock Pro capabilities, lifetime access, cloud sync, and exclusive avatar tiers.",
+    "directExplanation": "The Subscription screen shows the available Pro benefits and activation/license controls. Cloud/account availability depends on its own setup and service status; a chat answer or license alone does not establish that your data is syncing.",
     "whereToGo": "Top Header -> Profile Avatar -> Subscription",
     "whatToClick": [
       "Tap the Profile Avatar in the top header",
@@ -648,7 +667,8 @@
       "purchase"
     ],
     "route": "subscription",
-    "isPackageSettingUri": false
+    "isPackageSettingUri": false,
+    "whyOrTip": "The Subscription screen shows the available Pro benefits and activation/license controls. Cloud/account availability depends on its own setup and service status; a chat answer or license alone does not establish that your data is syncing."
   },
   {
     "id": "practice_alert_time",
@@ -680,7 +700,7 @@
     "id": "morning_brief_time",
     "title": "Morning Brief Time",
     "emoji": "🌅",
-    "directExplanation": "The time you receive your daily morning focus summary.",
+    "directExplanation": "Schedules the morning vocabulary briefing with new and revision learning cards. It uses the existing morning brief window; this setting changes its delivery time.",
     "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Daily Summaries & Practice -> Morning Brief Time",
     "whatToClick": [
       "Tap the Profile Avatar in the top header",
@@ -698,13 +718,14 @@
     "isPackageSettingUri": false,
     "prefKey": "morning_brief_time",
     "prefType": "string",
-    "diagnosticKey": "morning_brief_time"
+    "diagnosticKey": "morning_brief_time",
+    "whyOrTip": "Schedules the morning vocabulary briefing with new and revision learning cards. It uses the existing morning brief window; this setting changes its delivery time."
   },
   {
     "id": "evening_brief_time",
     "title": "Evening Brief Time",
     "emoji": "🌙",
-    "directExplanation": "The time you receive your daily evening reflection summary.",
+    "directExplanation": "Schedules the evening vocabulary briefing with learning and revision cards in the existing evening brief window.",
     "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Daily Summaries & Practice -> Evening Brief Time",
     "whatToClick": [
       "Tap the Profile Avatar in the top header",
@@ -722,7 +743,8 @@
     "isPackageSettingUri": false,
     "prefKey": "evening_brief_time",
     "prefType": "string",
-    "diagnosticKey": "evening_brief_time"
+    "diagnosticKey": "evening_brief_time",
+    "whyOrTip": "Schedules the evening vocabulary briefing with learning and revision cards in the existing evening brief window."
   },
   {
     "id": "streak_notification_enabled",
@@ -781,10 +803,10 @@
     "directExplanation": "Missing or delayed task alarms are usually caused by disabled notification permissions, battery sleep, or system Do Not Disturb.",
     "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Notifications",
     "whatToClick": [
-      "1. Verify 'Post Notifications' is allowed in Android App Settings.",
-      "2. Set Battery Optimization to Unrestricted.",
-      "3. Check if your phone is in Do Not Disturb (DND) mode.",
-      "4. In App Settings -> Persistent Reminders Interval, ensure an interval (e.g. 15m) is selected."
+      "Check Android notification permission and channels.",
+      "Check the task due time and whether Persistent Reminders is enabled on that task.",
+      "Check exact-alarm permission and battery restrictions.",
+      "Use “diagnose reminders” for current device checks."
     ],
     "keywords": [
       "why no notification",
@@ -804,7 +826,7 @@
     "id": "troubleshoot_why_cant_uninstall",
     "title": "Troubleshooting: Why can't I uninstall FocusByRj?",
     "emoji": "🔍",
-    "directExplanation": "You cannot uninstall FocusByRj because **Uninstall Protection (Device Administrator)** is currently active.",
+    "directExplanation": "Device Administrator protection can prevent uninstalling until it is deactivated. Check its actual status in Security & Permissions, then follow Android's deactivation prompt. Other Android device policies can also prevent uninstalling.",
     "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Uninstall Protection",
     "whatToClick": [
       "1. Tap the Profile Avatar in the top header",
@@ -824,17 +846,18 @@
     ],
     "route": "security",
     "isPackageSettingUri": false,
-    "diagnosticKey": "troubleshoot_why_cant_uninstall"
+    "diagnosticKey": "troubleshoot_why_cant_uninstall",
+    "whyOrTip": "Device Administrator protection can prevent uninstalling until it is deactivated. Check its actual status in Security & Permissions, then follow Android's deactivation prompt. Other Android device policies can also prevent uninstalling."
   },
   {
     "id": "troubleshoot_why_streak_reset",
-    "title": "Troubleshooting: Why did my focus streak reset?",
+    "title": "Learning Streaks and Missed Days",
     "emoji": "🔍",
-    "directExplanation": "A streak resets to 0 when a full calendar day (midnight to 11:59 PM) elapses without completing at least one 10-minute focus session or checking off a due task.",
+    "directExplanation": "Learning streaks track test activity and local calendar dates. A missed day may consume an available streak freeze; longer gaps or no remaining protection can reset the learning streak. Vacation mode pauses its checks. Focus rewards and learning XP are separate; completing an arbitrary task is not a substitute for a learning test.",
     "whereToGo": "Bottom Bar -> Time tab / Account tab",
     "whatToClick": [
-      "Complete at least 1 focus session (10m minimum) OR check off 1 due task every day before 11:59 PM.",
-      "Your streak will increment automatically upon claiming rewards."
+      "Check the saved learning history and streak/freezes in the learning profile.",
+      "Complete a learning test on each local day, or use the supported protection controls."
     ],
     "keywords": [
       "why streak reset",
@@ -846,7 +869,8 @@
     ],
     "route": "time",
     "isPackageSettingUri": false,
-    "diagnosticKey": "troubleshoot_why_streak_reset"
+    "diagnosticKey": "troubleshoot_why_streak_reset",
+    "whyOrTip": "Learning streaks track test activity and local calendar dates. A missed day may consume an available streak freeze; longer gaps or no remaining protection can reset the learning streak. Vacation mode pauses its checks. Focus rewards and learning XP are separate; completing an arbitrary task is not a substitute for a learning test."
   },
   {
     "id": "troubleshoot_why_bubble_missing",
@@ -864,7 +888,10 @@
       "bubble gone",
       "bubble missing",
       "bubble disappeared",
-      "bubble not showing"
+      "bubble not showing",
+      "bubble disappear",
+      "floating bubble disappear",
+      "bubble not appearing"
     ],
     "route": "bubble_settings",
     "isPackageSettingUri": false,
@@ -895,9 +922,9 @@
   },
   {
     "id": "arithmetic_drills",
-    "title": "Arithmetic Drills & Neuro-Agility",
+    "title": "Arithmetic Drills and Tests",
     "emoji": "🧠",
-    "directExplanation": "Engage your prefrontal cortex with quick math drills to overcome brain fog and initiate flow state.",
+    "directExplanation": "Start an arithmetic test in the separate test window with /drill. Choose the available test length there, or use /blitz for the timed mode. Chat can explain tests and report saved results; it does not replace the test window with a single chat question.",
     "whereToGo": "Top Header -> Profile Avatar -> Account -> Start Drill Session (or type /drill in chat)",
     "whatToClick": [
       "Open Chat and type /drill.",
@@ -910,11 +937,15 @@
       "math",
       "test",
       "quiz",
-      "calculate"
+      "calculate",
+      "drill",
+      "drills",
+      "blitz"
     ],
     "route": "account",
     "isPackageSettingUri": false,
-    "diagnosticKey": "arithmetic_drills"
+    "diagnosticKey": "arithmetic_drills",
+    "whyOrTip": "Start an arithmetic test in the separate test window with /drill. Choose the available test length there, or use /blitz for the timed mode. Chat can explain tests and report saved results; it does not replace the test window with a single chat question."
   },
   {
     "id": "focus_briefing",
@@ -965,7 +996,7 @@
     "id": "box_breathing",
     "title": "1-Minute Box Breathing Session",
     "emoji": "🫁",
-    "directExplanation": "An interactive 4-4-4-4 physiological reset exercise (Inhale, Hold, Exhale, Hold) designed to eliminate anxiety and cognitive clutter.",
+    "directExplanation": "A guided breathing pause with four phases: inhale, hold, exhale, hold. Use /breathe to open the existing exercise. It is a relaxation tool, not a medical treatment or a guaranteed outcome.",
     "whereToGo": "Ask Ayva 'breathe' or '/breathe' in the chat bubble.",
     "whatToClick": [
       "Open Ayva Chat Bubble",
@@ -982,13 +1013,14 @@
       "anxiety"
     ],
     "route": "dashboard",
-    "isPackageSettingUri": false
+    "isPackageSettingUri": false,
+    "whyOrTip": "A guided breathing pause with four phases: inhale, hold, exhale, hold. Use /breathe to open the existing exercise. It is a relaxation tool, not a medical treatment or a guaranteed outcome."
   },
   {
     "id": "battery_optimization",
     "title": "Battery Optimization & Background Reliability",
     "emoji": "🔋",
-    "directExplanation": "To prevent Android from killing Ayva's blocker service and floating bubble in the background, exclude FocusByRj from battery optimization.",
+    "directExplanation": "Battery optimization exemptions can improve background reliability for the blocker, reminders and floating bubble. Android and device-maker restrictions still affect delivery; this setting cannot guarantee the service will always run.",
     "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Battery Restrictions",
     "whatToClick": [
       "Tap Profile Avatar -> Security & Permissions",
@@ -1005,6 +1037,153 @@
     ],
     "route": "security",
     "isPackageSettingUri": true,
-    "packageUri": "android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS"
+    "packageUri": "android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS",
+    "whyOrTip": "Battery optimization exemptions can improve background reliability for the blocker, reminders and floating bubble. Android and device-maker restrictions still affect delivery; this setting cannot guarantee the service will always run."
+  },
+  {
+    "id": "notes_privacy",
+    "title": "Keep Notes and the Private Vault",
+    "directExplanation": "Notes are managed in Keep Notes. For privacy, chat cannot read, search, edit, or create note content. Archived notes can use the vault PIN and recovery controls.",
+    "whereToGo": "Open notes",
+    "whatToClick": [],
+    "keywords": [
+      "keep notes",
+      "my notes",
+      "notes feature",
+      "notes"
+    ],
+    "route": "notes"
+  },
+  {
+    "id": "live_transcription",
+    "title": "Live Transcription",
+    "directExplanation": "/transcribe opens live speech transcription. Microphone permission and a compatible Android speech recognition service are required. Language availability and offline recognition depend on the installed service and language packs; chat cannot guarantee that service works offline on every device. Finalized transcripts can be summarized into task drafts; review those drafts before saving.",
+    "whereToGo": "Open bubble settings",
+    "whatToClick": [],
+    "keywords": [
+      "live transcription",
+      "live transcript",
+      "speech recognition",
+      "transcribe",
+      "transcription"
+    ],
+    "route": "bubble_settings"
+  },
+  {
+    "id": "habit_tracking",
+    "title": "Habit Tracking",
+    "directExplanation": "Create habits with a daily target, log progress, and inspect habit history. Chat supports naming a habit, choosing the action, and confirming edits. Habit notifications are separate from task reminders and practice alerts.",
+    "whereToGo": "Open todos",
+    "whatToClick": [],
+    "keywords": [
+      "habit tracking",
+      "habits feature",
+      "habit history",
+      "habit",
+      "habits"
+    ],
+    "route": "todos"
+  },
+  {
+    "id": "routine_help",
+    "title": "Focus Routines",
+    "directExplanation": "Routines save a name, selected apps, days, start/end times and blocking mode. Enabling a routine follows its saved schedule; it does not immediately start a timed focus session. Chat can build a routine step by step and preview changes. Active strict routines have protected controls.",
+    "whereToGo": "Open schedules",
+    "whatToClick": [],
+    "keywords": [
+      "focus routines",
+      "routine feature",
+      "how routines work",
+      "routine",
+      "routines"
+    ],
+    "route": "schedules"
+  },
+  {
+    "id": "vocabulary_help",
+    "title": "Vocabulary Learning",
+    "directExplanation": "Morning and evening briefs, revision cards and vocabulary quizzes use the app's built-in learning data. Open the vocabulary hub for the available exercises. Saved learning progress is distinct from focus-session rewards.",
+    "whereToGo": "Open account",
+    "whatToClick": [],
+    "keywords": [
+      "vocabulary",
+      "vocab",
+      "idioms",
+      "one word substitutions"
+    ],
+    "route": "account"
+  },
+  {
+    "id": "bubble_auto_hide_enabled",
+    "title": "Bubble Auto-Hide",
+    "directExplanation": "Enables automatic tucking of the floating bubble into the screen edge after its idle delay. Change the delay separately. Turning auto-hide off does not disable the floating bubble.",
+    "whereToGo": "Preferences & Settings Hub -> Bubble Settings",
+    "keywords": [
+      "bubble auto hide",
+      "auto-hide"
+    ],
+    "whatToClick": [],
+    "prefKey": "auto_hide_enabled",
+    "prefType": "boolean",
+    "route": "bubble_settings"
+  },
+  {
+    "id": "bubble_hidden_opacity",
+    "title": "Hidden Bubble Opacity",
+    "directExplanation": "Controls how visible the docked bubble remains, from 20% to 100%. A higher value makes it more opaque; it does not change the amount tucked off-screen.",
+    "whereToGo": "Preferences & Settings Hub -> Bubble Settings",
+    "keywords": [
+      "hidden bubble opacity",
+      "hidden opacity",
+      "bubble opacity"
+    ],
+    "whatToClick": [],
+    "prefKey": "bubble_hidden_opacity",
+    "prefType": "int",
+    "route": "bubble_settings"
+  },
+  {
+    "id": "bubble_hidden_amount",
+    "title": "Bubble Hidden Amount",
+    "directExplanation": "Controls how far the bubble tucks into the screen edge when docked, from 25% to 85%. A higher amount hides more of the bubble. Opacity and glow are separate.",
+    "whereToGo": "Preferences & Settings Hub -> Bubble Settings",
+    "keywords": [
+      "bubble hidden amount",
+      "hidden amount",
+      "bubble docking amount"
+    ],
+    "whatToClick": [],
+    "prefKey": "bubble_hidden_amount",
+    "prefType": "int",
+    "route": "bubble_settings"
+  },
+  {
+    "id": "bubble_glow_intensity",
+    "title": "Bubble Glow Intensity",
+    "directExplanation": "Controls the brightness of the docked bubble glow, from 0% to 100%. This changes its visual glow and does not enable notifications or change reminder frequency.",
+    "whereToGo": "Preferences & Settings Hub -> Bubble Settings",
+    "keywords": [
+      "bubble glow intensity",
+      "glow intensity",
+      "bubble glow"
+    ],
+    "whatToClick": [],
+    "prefKey": "bubble_glow_intensity",
+    "prefType": "int",
+    "route": "bubble_settings"
+  },
+  {
+    "id": "habit_top_notifications",
+    "title": "Habit Top Notifications",
+    "directExplanation": "Requests Android notifications for habit reminders alongside the habit reminder interface. If overlay permission is unavailable, the reminder receiver can use notifications as a fallback even when this preference is off. Android notification permissions and channels still apply.",
+    "whereToGo": "Preferences & Settings Hub -> App Settings",
+    "keywords": [
+      "habit notifications",
+      "habit top notifications"
+    ],
+    "whatToClick": [],
+    "prefKey": "habit_top_notifications",
+    "prefType": "boolean",
+    "route": "settings"
   }
 ]

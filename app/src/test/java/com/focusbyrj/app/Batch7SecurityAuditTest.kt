@@ -372,9 +372,9 @@ class Batch7SecurityAuditTest {
         assertTrue("Task 2 must be moved to Trash (isTrashed = true)!", t2After!!.isTrashed)
 
         // Pre-op backup snapshot must have been created in internal storage
-        val preOpDir = java.io.File(context.filesDir, "auto_backups/pre_op")
+        val preOpDir = java.io.File(context.filesDir, "auto_backups/task_only")
         assertTrue("Pre-op directory must exist", preOpDir.exists())
-        val snapshots = preOpDir.listFiles { file -> file.name.contains("ayva_talk_delete_all") }
+        val snapshots = preOpDir.listFiles { file -> file.name.startsWith("tasks_") }
         assertTrue("A pre-op snapshot must be recorded for bulk task deletion!", snapshots != null && snapshots.isNotEmpty())
     }
 
@@ -438,8 +438,8 @@ class Batch7SecurityAuditTest {
         assertNotNull("Task must still exist in Room table", taskAfter)
         assertTrue("Task must be moved to Trash (isTrashed = true)!", taskAfter!!.isTrashed)
 
-        val preOpDir = java.io.File(context.filesDir, "auto_backups/pre_op")
-        val snapshots = preOpDir.listFiles { file -> file.name.contains("ayva_talk_delete_overdue") }
+        val preOpDir = java.io.File(context.filesDir, "auto_backups/task_only")
+        val snapshots = preOpDir.listFiles { file -> file.name.startsWith("tasks_") }
         assertTrue("A pre-op snapshot must be recorded for overdue task deletion!", snapshots != null && snapshots.isNotEmpty())
     }
 

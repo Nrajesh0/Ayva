@@ -253,11 +253,14 @@ class OfflineAssistantBatchTest {
         assertFalse(action.execute(context))
     }
 
-    @Test fun directPreferenceChipUsesTheSameValidation() {
+    @Test fun directPreferenceChipUsesTheSameValidationAndRequiresReview() = runBlocking {
         val invalid = TalkAction.DirectPrefUpdate("soft_lock_duration", "int", "-10", "-10", "Invalid")
         assertFalse(invalid.execute(context))
         val valid = invalid.copy(targetValue = "20")
         assertTrue(valid.execute(context))
+        assertEquals(10, context.getSharedPreferences("focus_prefs", 0).getInt("soft_lock_duration", 10))
+        val preview = say(AssistantPreferences.previewQuery(AssistantPreferences.find("wait timer")!!, "20"))
+        say(command(preview, "Confirm"))
         assertEquals(20, context.getSharedPreferences("focus_prefs", 0).getInt("soft_lock_duration", 10))
     }
 
@@ -789,7 +792,7 @@ class OfflineAssistantBatchTest {
 
     @Test fun legacyFaqHistoryCannotOverrideTheCanonicalTopic() = runBlocking {
         AyvaTalkEngine.answerTalkQueryWithActions("soft mode wait timer", context)
-        assertTrue(AssistantSessionStore(context).load().topic!!.startsWith("faq:"))
+        assertEquals("setting:soft_lock_duration", AssistantSessionStore(context).load().topic)
         say("what time is it")
         val response = AyvaTalkEngine.answerTalkQueryWithActions("how to change it?", context)
         assertFalse(response.formattedText.contains("Soft Mode Wait Timer"))

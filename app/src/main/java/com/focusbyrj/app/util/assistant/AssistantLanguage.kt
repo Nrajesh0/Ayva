@@ -10,11 +10,12 @@ object AssistantLanguage {
         "marking" to "mark", "completing" to "complete", "deleting" to "delete", "setting" to "set",
         "changing" to "change", "opening" to "open", "checking" to "check", "enabling" to "enable", "disabling" to "disable",
         "explaining" to "explain", "telling" to "tell", "helping" to "help", "archiving" to "archive",
-        "restoring" to "restore", "focusing" to "focus")
+        "restoring" to "restore", "focusing" to "focus", "locking" to "lock", "unlocking" to "unlock",
+        "blocking" to "block", "unblocking" to "unblock", "pausing" to "pause", "resuming" to "resume")
     private val commands = setOf("move", "reschedule", "add", "create", "remind", "show", "list", "start", "stop",
         "log", "rename", "mark", "complete", "delete", "set", "change", "open", "check", "enable", "disable",
         "buy", "call", "email", "repeat", "reopen", "block", "unblock", "remove", "clear", "trash", "edit", "update", "fix",
-        "archive", "restore", "unarchive", "focus")
+        "archive", "restore", "unarchive", "focus", "lock", "unlock", "pause", "resume")
 
     fun unwrap(input: String): String {
         if (input.trimStart().startsWith('/') || input.trimStart().startsWith('"')) return input
@@ -37,7 +38,7 @@ object AssistantLanguage {
         if (request && text.substringBefore(' ').lowercase() in commands) text = text.trimEnd('?').trimEnd()
         text = text.replaceFirst(Regex("(?i)^(?:help me|show(?: me)? how to|tell me how to)\\s+(?=(?:delete|remove|move|reschedule|rename|complete|block|unblock|edit|set|change|add|create|archive|restore|unarchive)\\b)"), "how do I ")
         // A qualified yes is a new request, never permission to run the old preview first.
-        text = text.replaceFirst(Regex("(?i)^(?:yes|okay|ok)[, ]+but\\s+(?=(?:move|reschedule|rename|make|change|delete|add|start|stop)\\b)"), "")
+        text = text.replaceFirst(Regex("(?i)^(?:yes|okay|ok)[, ]+but\\s+(?=(?:move|reschedule|rename|make|change|delete|add|start|stop|lock|unlock|block|unblock|pause|resume|except|exclude|include|set|turn)\\b)"), "")
         text = text.replaceFirst(Regex("(?i)^no[, ]+make (?:that|it)\\s+"), "actually ")
         val politeReply = Regex("(?i)^(yes|yep|yeah|sure|okay|ok|go ahead|do it|confirm|no|nope)[, ]+(?:please|thanks|thank you)[.!?]*$").matchEntire(text)
         return politeReply?.groupValues?.get(1) ?: text

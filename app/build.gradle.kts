@@ -57,7 +57,9 @@ android {
       }
     }
     debug {
-      signingConfig = signingConfigs.getByName("debugConfig")
+      // Reuse an existing local development key, or let AGP generate its standard
+      // debug key on a fresh checkout. Verification must not require private keys.
+      signingConfig = signingConfigs.getByName(if (file("${rootDir}/debug.keystore").exists()) "debugConfig" else "debug")
       ndk {
         abiFilters += listOf("arm64-v8a", "x86_64")
       }

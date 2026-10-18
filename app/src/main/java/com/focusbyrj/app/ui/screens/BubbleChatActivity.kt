@@ -92,7 +92,7 @@ import android.Manifest
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import com.focusbyrj.app.ui.screens.notes.AudioMemoManager
+import com.focusbyrj.app.util.speech.OnDeviceTranscriber
 import com.focusbyrj.app.ui.screens.notes.VoiceRecordDialog
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
@@ -531,7 +531,7 @@ fun ChatInterface() {
     var isHighPriority by remember { mutableStateOf(false) }
     var isPersistent by remember { mutableStateOf(false) }
 
-    val audioMemoManager = remember { AudioMemoManager(context.applicationContext) }
+    val audioMemoManager = remember { OnDeviceTranscriber(context.applicationContext) }
     val recordingState by audioMemoManager.recordingState.collectAsState()
     val transcriptForActions = remember { java.util.concurrent.atomic.AtomicReference<Pair<String, Long>?>(null) }
     var initialInputBeforeTranscription by remember { mutableStateOf("") }
@@ -1833,6 +1833,8 @@ fun ChatInterface() {
                     listState = listState,
                     chatFontSizeSp = chatFontSizeSp,
                     chatState = assistantChatState,
+                    liveTasks = allTasksList,
+                    onSelectReference = { changeReference(it) },
                     onReply = { replyToMessage = it },
                     activeDrillSession = activeDrillSession,
                     isCatActionPlaying = isCatActionPlaying,

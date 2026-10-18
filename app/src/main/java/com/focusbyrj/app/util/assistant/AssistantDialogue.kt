@@ -25,10 +25,10 @@ object AssistantDialogue {
             val byId = app.database.taskDao().getAllActiveTasksList().associateBy { it.id }
             if (state.taskListIds.any { it !in byId }) return reply("An item from that list is no longer available. Say ‘show my tasks’ for a fresh list.")
             state.clearPending(); state.switchTopic("tasks"); state.candidates = state.taskListIds
-            return reply("Here's the same task list, in the same order, with current details:\n" + state.taskListIds.mapIndexed { index, id ->
+            return AssistantResponseContent.taskList(reply("Here's the same task list, in the same order, with current details:\n" + state.taskListIds.mapIndexed { index, id ->
                 val task = byId.getValue(id)
                 "${index + 1}. **${task.title}** — ${task.dueDate?.let(SmartDateParser::formatDueDate) ?: "no due date"}${if (task.isCompleted) " · completed" else ""}"
-            }.joinToString("\n"), topic = "tasks")
+            }.joinToString("\n"), topic = "tasks"), state.taskListIds.map { byId.getValue(it) }, state.taskListAt)
         }
         if (lower in setOf("hi", "hello", "hey", "hey ayva", "good morning", "good afternoon", "good evening", "howdy")) {
             state.clearPending()
@@ -68,7 +68,7 @@ object AssistantDialogue {
             val task = state.taskId?.let { app.database.taskDao().getTaskById(it) }
             return reply(task?.let { "**${it.title}**\nDue: ${it.dueDate?.let(SmartDateParser::formatDueDate) ?: "no due date"}\n${if (it.isCompleted) "Completed" else if (it.isTrashed) "In Trash" else "Pending"} · ${if (it.isPriority) "priority" else "normal priority"} · ${it.recurrence.name.lowercase()}${it.details.takeIf(String::isNotBlank)?.let { details -> "\n${details.take(500)}" }.orEmpty()}" } ?: "Which task do you mean? Ask ‘show my tasks’ first.")
         }
-        val listQuery = Regex("(?i)^(?:(?:show|list|view|what are|what's on|what is on)\\s+)?(?:my\\s+)?(?:all |pending |overdue |priority |completed |today's |tomorrow's )?(?:tasks|todos|to-do list|task list)(?:\\s+(?:for )?(today|tomorrow|all))?$").matches(input.trimEnd('?')) ||
+        val listQuery = Regex("(?i)^(?:(?:show|list|view|what are|what's on|what is on)\\s+)?(?:me\\s+)?(?:my\\s+)?(?:all |pending |overdue |priority |completed |today's |tomorrow's )?(?:tasks|todos|to-do list|task list)(?:\\s+(?:for )?(today|tomorrow|all))?$").matches(input.trimEnd('?')) ||
             lower in setOf("my agenda", "what do i have today", "what do i have tomorrow", "show overdue tasks", "overdue tasks", "priority tasks", "completed tasks")
         if (listQuery) {
             val completed = lower.contains("completed")
@@ -86,7 +86,7 @@ object AssistantDialogue {
             selected = selected.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }.thenBy { it.id })
             state.clearPending(); state.switchTopic("tasks"); state.rememberTaskList(selected.take(20).map { it.id })
             val text = if (selected.isEmpty()) "No tasks match that view." else selected.take(20).mapIndexed { i, t -> "${i + 1}. **${t.title}**${if (t.isPriority) " · priority" else ""}${t.dueDate?.let { " — ${SmartDateParser.formatDueDate(it)}" }.orEmpty()}" }.joinToString("\n") + if (selected.size > 20) "\nShowing 20 of ${selected.size}." else ""
-            return reply(text + if (selected.isNotEmpty()) "\nYou can say ‘reschedule the second one tomorrow’ or ‘complete task 1’." else "", selected.take(3).map { TalkAction.AskQuery("${if (completed) "reopen" else "complete"} id:${it.id}", "${if (completed) "Reopen" else "Complete"} ${it.title.take(25)}") }, "tasks")
+            return AssistantResponseContent.taskList(reply(text + if (selected.isNotEmpty()) "\nSelect a task to act, or tell me what to change." else "", topic = "tasks"), selected, state.taskListAt)
         }
         AssistantPlanning.respond(context, state, input, tasks)?.let { return it }
         if (Regex("(?i)\\b(?:weather|breaking news|stock price|browse the web|search the web|capital of)\\b").containsMatchIn(input)) return reply("I work offline with app data, built-in help, dates and basic arithmetic. I can't look up live or general web information. I can help plan your next task instead.")

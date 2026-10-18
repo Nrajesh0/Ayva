@@ -35,9 +35,7 @@ object AssistantRoutineDialogue {
             }
             state.featureState!!.remove("routineDraft")
             val before = draft.optJSONObject("before")?.let(RoutineJson::decode)
-            val overlaps = app.database.scheduleDao().getAllSchedulesSync().filter { it.id != changed.id && AssistantFeatureLanguage.overlaps(changed, it) }
-            val dayNames = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-            return FeatureTurn.Preview(listOf(AssistantAction.SaveRoutine(changed, before)), "Save routine **${changed.name}**?\nDays: ${changed.daysOfWeek.split(',').map { dayNames[it.toInt() - 1] }.joinToString(", ")}\nTime: ${AssistantFeatureLanguage.timeText(changed.startHour * 60 + changed.startMinute, changed.endHour * 60 + changed.endMinute)} (device local time)\nEnabled: ${changed.isEnabled}. Mode: ${changed.mode}; apps: ${changed.appsToBlock}\n${if (changed.mode == "HARD") "An active strict routine cannot be edited or undone through chat.\n" else ""}${if (overlaps.isEmpty()) "No overlapping enabled routines." else "Overlaps: " + overlaps.joinToString { it.name } + ". Both sets of rules can apply."}")
+            return preview(app, changed, before)
         }
         val create = Regex("(?i)^(?:create|add) (?:a )?routine(?: (.+))?$").matchEntire(text)
         val edit = Regex("(?i)^(?:edit|change) routine (.+)$").matchEntire(text)
@@ -55,9 +53,15 @@ object AssistantRoutineDialogue {
         val schedule = before ?: FocusSchedule(name = name, startHour = 9, startMinute = 0, endHour = 10, endMinute = 0, daysOfWeek = "2,3,4,5,6", appsToBlock = "")
         val fields = if (before != null) listOf("field") else if (name.isBlank()) listOf("name", "days", "time", "apps", "mode") else listOf("days", "time", "apps", "mode")
         state.clearPending(); state.switchTopic("routines"); state.expected = "feature_value"
+        if (before != null) AssistantRoutineConversation.remember(state, before) else state.featureState?.remove("routineRef")
         if (state.featureState == null) state.featureState = JSONObject()
         state.featureState!!.put("routineDraft", JSONObject().put("schedule", RoutineJson.encode(schedule)).put("before", before?.let(RoutineJson::encode) ?: JSONObject.NULL).put("field", fields.first()).put("remaining", fields.drop(1).joinToString(",")))
         return FeatureTurn.Reply(hint(fields.first()))
+    }
+    internal suspend fun preview(app: FocusApplication, changed: FocusSchedule, before: FocusSchedule?): FeatureTurn.Preview {
+        val overlaps = app.database.scheduleDao().getAllSchedulesSync().filter { it.id != changed.id && AssistantFeatureLanguage.overlaps(changed, it) }
+        val dayNames = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+        return FeatureTurn.Preview(listOf(AssistantAction.SaveRoutine(changed, before)), "Save routine **${changed.name}**?\nDays: ${changed.daysOfWeek.split(',').map { dayNames[it.toInt() - 1] }.joinToString(", ")}\nTime: ${AssistantFeatureLanguage.timeText(changed.startHour * 60 + changed.startMinute, changed.endHour * 60 + changed.endMinute)} (device local time)\nEnabled: ${changed.isEnabled}. Mode: ${changed.mode}; apps: ${changed.appsToBlock}\n${if (changed.mode == "HARD") "An active strict routine cannot be edited or undone through chat.\n" else ""}${if (overlaps.isEmpty()) "No overlapping enabled routines." else "Overlaps: " + overlaps.joinToString { it.name } + ". Both sets of rules can apply."}")
     }
     fun hint(field: String) = when (field) {
         "name" -> "What should the routine be called?"

@@ -58,6 +58,31 @@ object AssistantFeatureActions {
             }
             AssistantActionResult(if (action.bookmarked) "Bookmarked that saved word." else "Removed that word's bookmark.", undo = listOf(JSONObject().put("kind", "vocab_bookmark").put("type", action.type).put("id", action.id).put("before", action.expected).put("after", if (action.bookmarked) 1 else 0)))
         }
+        is AssistantAction.SetAppRules -> {
+            require(action.rules.size in 1..500 && action.rules.map { it.draft.packageName }.distinct().size == action.rules.size) { "Choose up to 500 distinct apps" }
+            val dao = app.database.appRestrictionDao()
+            val protected = com.focusbyrj.app.util.AppCatalog.protectedPackages(context)
+            for (rule in action.rules) {
+                if (rule.draft.isRestricted) com.focusbyrj.app.util.AppCatalog.requireEligible(context, rule.draft.packageName, protected)
+                else require(rule.expected != null && rule.expected.packageName == rule.draft.packageName) { "Only a saved manual rule can be unlocked" }
+                require(rule.expected == null || rule.expected.packageName == rule.draft.packageName)
+                require(rule.draft.mode in setOf("HARD", "SOFT") && rule.draft.restrictionMode in setOf("SIMPLE", "TIME_LIMIT", "CLICK_LIMIT"))
+                if (rule.draft.restrictionMode == "TIME_LIMIT") require(rule.draft.timeLimitMinutes in 1..1440)
+                if (rule.draft.restrictionMode == "CLICK_LIMIT") require(rule.draft.clickLimitCount in 1..10000)
+            }
+            app.database.withTransaction {
+                // Validate every snapshot and protection before the first write: bulk requests are atomic.
+                requireCanChangeApps(context, app, action.rules.filter { it.expected != null }.map { it.draft.packageName }.toSet())
+                for (rule in action.rules) {
+                    require(dao.getRestriction(rule.draft.packageName) == rule.expected) { "${rule.draft.appName}'s rule changed. Review the request again" }
+                }
+                dao.insertRestrictions(action.rules.map { it.draft })
+            }
+            val locked = action.rules.count { it.draft.isRestricted }
+            AssistantActionResult("Updated ${action.rules.size} manual app rules: $locked locked, ${action.rules.size - locked} unlocked. Active routine rules still apply.", undo = listOf(JSONObject().put("kind", "app_rules").put("rules", org.json.JSONArray(action.rules.map { rule ->
+                JSONObject().put("before", rule.expected?.let(AppRuleJson::encode) ?: JSONObject.NULL).put("after", AppRuleJson.encode(rule.draft))
+            }))))
+        }
         is AssistantAction.SetAppRule -> {
             val draft = action.draft
             requireSafePackage(context, draft.packageName)
@@ -86,6 +111,20 @@ object AssistantFeatureActions {
                     app.database.scheduleDao().insertSchedule(before)
                 }
             }
+            "app_rules" -> app.database.withTransaction {
+                val rows = record.getJSONArray("rules")
+                require(rows.length() in 1..500)
+                val after = (0 until rows.length()).map { AppRuleJson.decode(rows.getJSONObject(it).getJSONObject("after")) }
+                requireCanChangeApps(context, app, after.map { it.packageName }.toSet())
+                for (rule in after) {
+                    require(app.database.appRestrictionDao().getRestriction(rule.packageName) == rule) { "An app rule changed since this action. Nothing was undone" }
+                }
+                for (i in 0 until rows.length()) {
+                    val row = rows.getJSONObject(i)
+                    if (row.isNull("before")) app.database.appRestrictionDao().deleteRestriction(after[i].packageName)
+                    else app.database.appRestrictionDao().insertRestriction(AppRuleJson.decode(row.getJSONObject("before")))
+                }
+            }
             "app_rule" -> app.database.withTransaction {
                 val after = AppRuleJson.decode(record.getJSONObject("after"))
                 require(app.database.appRestrictionDao().getRestriction(after.packageName) == after) { "That app rule changed since this edit" }
@@ -100,15 +139,16 @@ object AssistantFeatureActions {
             }
         }
     }
+    private suspend fun requireCanChangeApps(context: Context, app: FocusApplication, packages: Set<String>) {
+        if (packages.isEmpty()) return
+        FocusSessionManager.refresh(context)
+        require(!FocusSessionManager.active.value && app.database.scheduleDao().getAllSchedulesSync().none { routine -> routine.mode == "HARD" && routine.isActiveAt() && routine.appsToBlock.split(',').any { it in packages } }) { "An active focus session or strict routine protects an app in this selection. Nothing changed" }
+    }
     private suspend fun requireCanChangeApp(context: Context, app: FocusApplication, pkg: String) {
         FocusSessionManager.refresh(context)
         require(!FocusSessionManager.active.value && app.database.scheduleDao().getAllSchedulesSync().none { it.mode == "HARD" && it.isActiveAt() && pkg in it.appsToBlock.split(',') }) { "An active focus session or strict routine protects that app rule" }
     }
     fun requireSafePackage(context: Context, pkg: String) {
-        require(pkg.matches(Regex("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+"))) { "Choose an installed application" }
-        require(pkg !in setOf(context.packageName, "com.android.settings", "com.android.systemui", "android")) { "System and Ayva apps cannot be restricted here" }
-        @Suppress("DEPRECATION") val info = context.packageManager.getApplicationInfo(pkg, 0)
-        val homes = context.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0).mapNotNull { it.activityInfo?.packageName }
-        require(info.enabled && pkg !in homes) { "Choose an enabled non-launcher application" }
+        com.focusbyrj.app.util.AppCatalog.requireEligible(context, pkg)
     }
 }

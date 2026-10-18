@@ -6,7 +6,7 @@ import com.focusbyrj.app.data.FocusSchedule
 import java.util.Calendar
 
 sealed class FeatureTurn {
-    data class Reply(val text: String, val actions: List<com.focusbyrj.app.util.TalkAction> = emptyList(), val redirect: String? = null) : FeatureTurn()
+    data class Reply(val text: String, val actions: List<com.focusbyrj.app.util.TalkAction> = emptyList(), val redirect: String? = null, val settingKey: String? = null, val topicId: String? = null) : FeatureTurn()
     data class Preview(val actions: List<AssistantAction>, val text: String) : FeatureTurn()
 }
 
@@ -47,11 +47,7 @@ object AssistantFeatureLanguage {
         return a.isEnabled && b.isEnabled && slots(a).any { it in other }
     }
     fun apps(context: Context): List<Pair<String, String>> {
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return context.packageManager.queryIntentActivities(intent, 0).mapNotNull {
-            val pkg = it.activityInfo?.packageName ?: return@mapNotNull null
-            runCatching { AssistantFeatureActions.requireSafePackage(context, pkg); pkg to it.loadLabel(context.packageManager).toString() }.getOrNull()
-        }.distinctBy { it.first }.sortedBy { it.second.lowercase() }
+        return com.focusbyrj.app.util.AppCatalog.load(context).map { it.packageName to it.appName }
     }
     fun resolveApps(context: Context, input: String): List<String>? {
         val catalog = apps(context)
