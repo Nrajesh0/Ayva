@@ -4,7 +4,7 @@ enum class AssistantActionGuard { NEGATED, SUGGESTED }
 
 /** Shared, anchored request grammar. Contents of task titles are never rewritten. */
 object AssistantLanguage {
-    private val gerunds = mapOf("moving" to "move", "rescheduling" to "reschedule", "adding" to "add",
+    private val gerunds = mapOf("planning" to "plan", "moving" to "move", "rescheduling" to "reschedule", "adding" to "add",
         "creating" to "create", "reminding" to "remind", "showing" to "show", "listing" to "list",
         "starting" to "start", "stopping" to "stop", "logging" to "log", "renaming" to "rename",
         "marking" to "mark", "completing" to "complete", "deleting" to "delete", "setting" to "set",
@@ -15,7 +15,7 @@ object AssistantLanguage {
     private val commands = setOf("move", "reschedule", "add", "create", "remind", "show", "list", "start", "stop",
         "log", "rename", "mark", "complete", "delete", "set", "change", "open", "check", "enable", "disable",
         "buy", "call", "email", "repeat", "reopen", "block", "unblock", "remove", "clear", "trash", "edit", "update", "fix",
-        "archive", "restore", "unarchive", "focus", "lock", "unlock", "pause", "resume")
+        "archive", "restore", "unarchive", "focus", "lock", "unlock", "pause", "resume", "plan")
 
     fun unwrap(input: String): String {
         if (input.trimStart().startsWith('/') || input.trimStart().startsWith('"')) return input

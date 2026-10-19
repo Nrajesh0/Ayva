@@ -31,7 +31,7 @@ object AssistantDialogue {
             }.joinToString("\n"), topic = "tasks"), state.taskListIds.map { byId.getValue(it) }, state.taskListAt)
         }
         if (lower in setOf("hi", "hello", "hey", "hey ayva", "good morning", "good afternoon", "good evening", "howdy")) {
-            state.clearPending()
+            state.clearPending(); state.switchTopic("conversation")
             val name = context.getSharedPreferences("ayva_personalization", Context.MODE_PRIVATE).getString("name", null)
             val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
             val greeting = when (hour) { in 5..11 -> "Good morning"; in 12..16 -> "Good afternoon"; in 17..21 -> "Good evening"; else -> "Hello" }

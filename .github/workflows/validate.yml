@@ -31,7 +31,9 @@ jobs:
         with:
           validate-wrappers: true
       - name: Check chat data boundary
-        run: python3 tools/check_chat_boundary.py
+        run: |
+          python3 tools/check_chat_boundary.py
+          python3 tools/check_dictionary.py
       - name: Run unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --max-workers=2
       - name: Assemble unsigned builds

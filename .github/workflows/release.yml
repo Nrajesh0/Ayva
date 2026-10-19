@@ -46,6 +46,11 @@ jobs:
           AYVA_BEFORE_SHA: ${{ github.event.before }}
         run: python3 tools/release_intent.py
 
+      - name: Check assistant boundaries and dictionary data
+        run: |
+          python3 tools/check_chat_boundary.py
+          python3 tools/check_dictionary.py
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:

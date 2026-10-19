@@ -1,6 +1,6 @@
 # Ayva offline personal assistant: sequential development plan
 
-Planning baseline: 2026-10-18. This document proposes future work; it does not mark those features implemented. See [STATUS.md](STATUS.md) before starting any batch.
+Planning baseline: 2026-10-18. This is the original specification; implementation/acceptance status is tracked in [STATUS.md](STATUS.md). See [OFFLINE_ASSISTANT_IMPLEMENTATION.md](OFFLINE_ASSISTANT_IMPLEMENTATION.md) for the current bounded implementation and explicit remaining gates. A proposed feature below is not automatically implemented or accepted.
 
 ## Product goal and limits
 

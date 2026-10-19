@@ -39,11 +39,14 @@ data class AssistantSession(
     var taskListComplete: Boolean = true,
     var planning: AssistantPlanContext? = null,
     var featureState: JSONObject? = null,
-    var vocabularyCardId: String? = null
+    var vocabularyCardId: String? = null,
+    var referenceAt: Long = System.currentTimeMillis(),
+    var confirmationAt: Long = 0L
 ) {
     fun focusTask(id: Long, newTopic: String = "tasks") {
         if (newTopic != "blocking") featureState?.remove("appSelection")
         if (newTopic != "routines") featureState?.remove("routineRef")
+        referenceAt = System.currentTimeMillis()
         taskId = id; habitId = null; topic = newTopic
         selectedTaskIds = listOf(id)
         recentTaskIds = (listOf(id) + recentTaskIds.filterNot { it == id }).take(5)
@@ -71,6 +74,7 @@ data class AssistantSession(
     }
 
     fun switchTopic(newTopic: String) {
+        referenceAt = System.currentTimeMillis()
         if (newTopic != "blocking") featureState?.remove("appSelection")
         if (newTopic != "routines") featureState?.remove("routineRef")
         taskId?.let { recentTaskIds = (listOf(it) + recentTaskIds.filterNot { previous -> previous == it }).take(5) }
@@ -78,11 +82,12 @@ data class AssistantSession(
     }
 
     fun clearPending() {
-        expected = null; pending = emptyList(); choices = emptyList(); confirmationId = null
+        expected = null; pending = emptyList(); choices = emptyList(); confirmationId = null; confirmationAt = 0L
         versions = emptyMap(); guards = emptyMap(); pendingPriority = false; pendingPersistent = false
     }
 
     fun toJson(): JSONObject = JSONObject().apply {
+        put("referenceAt", referenceAt); put("confirmationAt", confirmationAt)
         put("version", 1); put("touched", touchedAt); put("task", taskId ?: JSONObject.NULL)
         put("habit", habitId ?: JSONObject.NULL); put("topic", topic ?: JSONObject.NULL)
         put("expected", expected ?: JSONObject.NULL); put("pending", JSONArray(pending.map { it.toJson() }))
@@ -132,7 +137,9 @@ data class AssistantSession(
                 taskListComplete = json.optBoolean("taskListComplete", true),
                 planning = json.optJSONObject("planning")?.let(AssistantPlanContext::fromJson),
                 featureState = json.optJSONObject("features"),
-                vocabularyCardId = json.optString("vocabularyCard").takeUnless { it.isBlank() || it == "null" }
+                vocabularyCardId = json.optString("vocabularyCard").takeUnless { it.isBlank() || it == "null" },
+                referenceAt = json.optLong("referenceAt", json.getLong("touched")),
+                confirmationAt = json.optLong("confirmationAt")
             )
         }
     }
@@ -140,6 +147,7 @@ data class AssistantSession(
 
 /** Small encrypted, expiring state; deliberately independent of expiring transcript cards. */
 class AssistantSessionStore(private val context: Context, private val clock: () -> Long = System::currentTimeMillis) {
+    companion object { private val processId = java.util.UUID.randomUUID().toString() }
     private val file get() = File(context.filesDir, "ayva_conversation_state.enc")
     fun load(): AssistantSession {
         return try {
@@ -147,13 +155,18 @@ class AssistantSessionStore(private val context: Context, private val clock: () 
             // Old media-key sessions are deliberately expired on upgrade rather
             // than retaining a saved-media decryption capability in chat.
             if (!SnapshotCryptoEngine.isEncrypted(file)) { clear(); return AssistantSession(touchedAt = clock()) }
-            val state = AssistantSession.fromJson(JSONObject(EncryptedSnapshotFile.read(file)))
+            val json = JSONObject(EncryptedSnapshotFile.read(file))
+            val state = AssistantSession.fromJson(json)
+            if (json.optString("process") != processId) {
+                state.clearPending()
+                state.featureState?.optJSONObject("guidedPlan")?.let { it.put("nonce", JSONObject.NULL).put("paused", true) }
+            }
             if (clock() - state.touchedAt !in 0..900_000L) { clear(); AssistantSession(touchedAt = clock()) } else state
         } catch (_: Exception) { clear(); AssistantSession(touchedAt = clock()) }
     }
     fun save(state: AssistantSession) {
         state.touchedAt = clock()
-        val bytes = state.toJson().toString().toByteArray(Charsets.UTF_8)
+        val bytes = state.toJson().put("process", processId).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= 512_000) { "Conversation state is too large" }
         EncryptedSnapshotFile.write(file, bytes.toString(Charsets.UTF_8))
     }

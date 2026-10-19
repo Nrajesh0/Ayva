@@ -48,6 +48,29 @@ object AssistantFeatureActions {
             }
             AssistantActionResult("Saved routine **${after.name}**. ${if (!after.isEnabled) "It is currently disabled." else if (after.isActiveAt()) "It is active now." else "It uses its saved scheduled windows."}", undo = listOf(JSONObject().put("kind", "routine_edit").put("before", before?.let(RoutineJson::encode) ?: JSONObject.NULL).put("after", RoutineJson.encode(after))))
         }
+        is AssistantAction.SaveDictionaryWord -> {
+            val sense = AssistantDictionaryStore.lookup(context, action.key).singleOrNull { it.id == action.senseId } ?: error("That dictionary sense is unavailable")
+            val dao = app.vocabDatabase.vocabDao()
+            val id = app.vocabDatabase.withTransaction {
+                val link = app.vocabDatabase.dictionaryBookmarkDao().get(sense.id)
+                require(link == null || link.wordKey == action.key)
+                val currentId = link?.owsId ?: action.expectedId
+                require(currentId == action.expectedId) { "That word was saved while we were talking. Look it up again" }
+                val current = currentId?.let { dao.getOwsById(it) }
+                require(current?.let { it.isBookmarked ?: 0 } == action.expectedBookmark) { "That bookmark changed. Review it again" }
+                val targetId = if (current != null) {
+                    require(current.term == sense.word && current.definition == sense.definition) { "That saved definition changed" }
+                    val existingId = current.id ?: error("Saved vocabulary ID missing"); dao.setOwsBookmarked(existingId, 1); existingId
+                } else {
+                    require(action.expectedId == null)
+                    dao.insertDictionaryOws(com.focusbyrj.app.data.Ows(term = sense.word, definition = sense.definition, partOfSpeech = sense.part, isBookmarked = 1)).toInt()
+                }
+                if (link == null) app.vocabDatabase.dictionaryBookmarkDao().insert(com.focusbyrj.app.data.DictionaryBookmark(sense.id, action.key, targetId))
+                targetId
+            }
+            AssistantActionResult("Saved **${sense.word}** to vocabulary bookmarks. This doesn't mark it learned. Wordset source and license remain available through ‘dictionary credits’.",
+                undo = listOf(JSONObject().put("kind", "vocab_bookmark").put("type", "ows").put("id", id).put("before", action.expectedBookmark ?: 0).put("after", 1)))
+        }
         is AssistantAction.BookmarkWord -> {
             require(action.type in setOf("idiom", "ows") && action.id > 0 && action.expected in 0..1)
             val dao = app.vocabDatabase.vocabDao()

@@ -147,7 +147,7 @@ class AssistantCapabilitiesTest {
         assertTrue(db.scheduleDao().getScheduleById(second)!!.isEnabled)
     }
 
-    @Test fun capabilityHelpMarksFutureFeaturesUnavailableAndNeverMutatesTasks() = runBlocking {
+    @Test fun capabilityHelpDescribesCurrentFeaturesAndNeverMutatesTasks() = runBlocking {
         val id = db.taskDao().insertTask(Task(title = "Keep me"))
         val old = confirm(say("delete all tasks"))
         val help = say("/talk capabilities")
@@ -158,8 +158,8 @@ class AssistantCapabilitiesTest {
             assertFalse(db.taskDao().getTaskById(id)!!.isTrashed)
             assertNull(pending().confirmationId)
         }
-        assertTrue(say("/talk capabilities planning").formattedText.contains("not implemented yet"))
-        assertTrue(say("/talk capabilities learning").formattedText.contains("not available yet"))
+        assertTrue(say("/talk capabilities planning").formattedText.contains("No invented syllabus"))
+        assertTrue(say("/talk capabilities learning").formattedText.contains("not arbitrary sentences"))
         say(old)
         assertFalse(db.taskDao().getTaskById(id)!!.isTrashed)
     }
@@ -192,12 +192,46 @@ class AssistantCapabilitiesTest {
     }
 
     @Test fun unavailableFeaturesHaveNoExecutionAuthorityAndSpeechLimitsAreHonest() {
-        assertEquals(false, AssistantCapabilities.availability(context, "planning.projects").available)
+        assertEquals(true, AssistantCapabilities.availability(context, "planning.projects").available)
         assertEquals(false, AssistantCapabilities.availability(context, "unknown.write").available)
         val speech = AssistantCapabilities.availability(context, "transcript.capture")
         assertEquals(false, speech.available)
         assertTrue(speech.reason.contains("Android 12"))
         assertEquals(true, AssistantCapabilities.availability(context, "transcript.open").available)
+    }
+
+    @Test fun contextualSettingReadsAndChangeBackUseLiveOwnerAndMatchingUndo() = runBlocking {
+        val setting = AssistantCapabilities.setting("persistent_reminder_interval")
+        val before = setting.current(context)
+        val proposed = if (before == "30") "45" else "30"
+        say(confirm(say(setting.query("int", proposed))))
+        assertTrue(say("what is it set to now").formattedText.contains(proposed))
+        assertTrue(say("what does that do").formattedText.isNotBlank())
+        say("change it back"); assertEquals(before, setting.current(context))
+        val id = db.taskDao().insertTask(Task(title = "Keep task"))
+        say("show my tasks"); say("/talk explain reminder interval"); say("change it back")
+        assertFalse(db.taskDao().getTaskById(id)!!.isTrashed)
+    }
+
+    @Test fun executorRechecksReviewedTaskInsideTransaction() = runBlocking {
+        val id = db.taskDao().insertTask(Task(title = "Original"))
+        val before = db.taskDao().getTaskById(id)!!
+        db.taskDao().updateTask(before.copy(title = "Changed externally"))
+        try {
+            AssistantActionExecutor.execute(context, AssistantAction.TrashTasks(listOf(id)), mapOf("task:$id" to TaskJson.encode(before).toString()))
+            fail("Expected stale write rejection")
+        } catch (_: IllegalArgumentException) {}
+        assertFalse(db.taskDao().getTaskById(id)!!.isTrashed)
+        assertEquals("Changed externally", db.taskDao().getTaskById(id)!!.title)
+    }
+    @Test fun routineToggleHasGuardedUndoAndRefusesExternalChanges() = runBlocking {
+        val id = addRoutine("Reading")
+        say(confirm(say("enable routine id:$id")))
+        assertTrue(db.scheduleDao().getScheduleById(id)!!.isEnabled)
+        say("undo"); assertFalse(db.scheduleDao().getScheduleById(id)!!.isEnabled)
+        val preview = say("enable routine id:$id")
+        db.scheduleDao().insertSchedule(db.scheduleDao().getScheduleById(id)!!.copy(name = "Updated outside chat"))
+        say(confirm(preview)); assertFalse(db.scheduleDao().getScheduleById(id)!!.isEnabled)
     }
 
 }

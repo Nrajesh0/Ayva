@@ -69,9 +69,9 @@ object AssistantCapabilities {
         capability("tasks.edit", "tasks", "Edit tasks", CapabilityAccess.WRITE, "AssistantActionExecutor", "move the second task to Friday", listOf("task IDs", "field", "value"), CapabilityReview.GROUP, CapabilityUndo.GUARDED),
         capability("tasks.complete", "tasks", "Complete tasks", CapabilityAccess.WRITE, "AssistantActionExecutor", "complete the first task", listOf("task IDs"), CapabilityReview.GROUP, CapabilityUndo.GUARDED),
         capability("tasks.trash", "tasks", "Move tasks to Trash", CapabilityAccess.WRITE, "AssistantActionExecutor/TaskRecoveryStore", "delete all tasks", listOf("task IDs"), CapabilityReview.GROUP, CapabilityUndo.GUARDED),
-        capability("tasks.subtasks", "tasks", "Conversational checklist editing", CapabilityAccess.UNAVAILABLE, "Native task editor", "", limitation = "Checklist subtasks can be edited in the native task editor; guided conversational editing is planned."),
+        capability("tasks.subtasks", "tasks", "Review checklist edits", CapabilityAccess.WRITE, "AssistantChecklist/AssistantActionExecutor", "add checklist item Pack charger to task Trip preparation", listOf("parent task", "stable checklist IDs", "edit"), CapabilityReview.ALWAYS, CapabilityUndo.GUARDED, "Checklist children have no separate reminders; completing a child does not complete its parent."),
         capability("planning.suggest", "planning", "Suggest an order and work blocks from saved tasks", CapabilityAccess.READ, "AssistantPlanning", "plan my day", limitation = "Work blocks are suggestions, not estimates of completion. Saved tasks are unchanged."),
-        capability("planning.projects", "planning", "Guided trip and exam plans", CapabilityAccess.UNAVAILABLE, "Planned B5P", "", limitation = "Guided trip/exam drafts and saving their task groups are not implemented yet."),
+        capability("planning.projects", "planning", "Draft day, exam and trip preparation plans", CapabilityAccess.READ, "AssistantGuidedPlanning", "help me plan my trip", limitation = "Uses supplied steps, an optional shared deadline and budget. No invented syllabus, duration estimates or current travel facts."),
         capability("habits.read", "habits", "Inspect habit goals, schedules and progress", CapabilityAccess.READ, "AssistantHabitConversation", "show my habits"),
         capability("habits.create", "habits", "Create a habit", CapabilityAccess.WRITE, "AssistantActionExecutor", "add habit reading", listOf("title", "daily target"), CapabilityReview.ALWAYS),
         capability("habits.log", "habits", "Log habit progress", CapabilityAccess.WRITE, "AssistantActionExecutor", "log habit reading", listOf("habit ID", "count"), undo = CapabilityUndo.SAME_DAY_GUARDED),
@@ -90,7 +90,8 @@ object AssistantCapabilities {
         capability("learning.results", "learning", "Review actual saved mistakes and results", CapabilityAccess.READ, "AssistantLearningFeatures", "review my mistakes"),
         capability("vocabulary.lookup", "learning", "Look up bundled idioms and one-word substitutions", CapabilityAccess.READ, "AssistantVocabularyFeatures", "look up break the ice", limitation = "Coverage is the existing vocabulary dataset, not a full English dictionary."),
         capability("vocabulary.bookmark", "learning", "Bookmark a vocabulary entry", CapabilityAccess.WRITE, "AssistantFeatureActions", "bookmark that idiom", listOf("entry ID", "entry type", "expected bookmark"), CapabilityReview.ALWAYS, CapabilityUndo.GUARDED),
-        capability("dictionary.expand", "learning", "Full dictionary and sentence explanation", CapabilityAccess.UNAVAILABLE, "Planned B7D", "", limitation = "Expanded dictionary data and bounded sentence explanations are planned, not available yet."),
+        capability("dictionary.expand", "learning", "Bundled English dictionary and supported sentence patterns", CapabilityAccess.READ, "AssistantDictionary/AssistantDictionaryStore", "what does reluctant mean", limitation = "About 108,000 source entries, with multiple senses and source examples where available. Plain-English alternatives cover selected senses. Sentence explanations cover explicit supported patterns, not arbitrary sentences or sarcasm."),
+        capability("dictionary.save", "learning", "Save a dictionary sense to vocabulary bookmarks", CapabilityAccess.WRITE, "AssistantFeatureActions/VocabDatabase", "save this word", listOf("source word key", "sense ID", "current bookmark state"), CapabilityReview.ALWAYS, CapabilityUndo.GUARDED),
         capability("device.read", "device", "Check permissions and device health", CapabilityAccess.READ, "AssistantDeviceFeatures", "check device health", limitation = "Permission state does not prove that Android delivered an overlay or reminder."),
         capability("usage.read", "device", "Inspect local foreground-usage estimates", CapabilityAccess.READ, "AssistantUsage", "show my usage", limitation = "Requires Android usage access. Missing usage remains unknown."),
         capability("device.permissions", "device", "Open native permission settings", CapabilityAccess.NAVIGATE, "TalkAction.OpenSystemSetting", "check permissions"),
@@ -119,7 +120,7 @@ object AssistantCapabilities {
     /** Exhaustive mapping forces a deliberate contract whenever a new typed action is added. */
     fun forAction(action: AssistantAction): AssistantCapability = when (action) {
         is AssistantAction.CreateTask -> contract("tasks.create")
-        is AssistantAction.EditTasks -> contract("tasks.edit")
+        is AssistantAction.EditTasks -> contract(if (action.field == TaskField.CHECKLIST) "tasks.subtasks" else "tasks.edit")
         is AssistantAction.CompleteTasks -> contract("tasks.complete")
         is AssistantAction.TrashTasks -> contract("tasks.trash")
         is AssistantAction.CreateHabit -> contract("habits.create")
@@ -129,6 +130,7 @@ object AssistantCapabilities {
         is AssistantAction.SetRoutine -> contract("routines.toggle")
         is AssistantAction.SetAppRule -> contract("apps.rule")
         is AssistantAction.SetAppRules -> contract("apps.group")
+        is AssistantAction.SaveDictionaryWord -> contract("dictionary.save")
         is AssistantAction.BookmarkWord -> contract("vocabulary.bookmark")
         is AssistantAction.SetPreference -> setting(action.key).writeContract
         is AssistantAction.StartFocus -> contract("focus.start")

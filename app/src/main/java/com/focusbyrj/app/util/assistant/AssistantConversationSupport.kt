@@ -80,6 +80,7 @@ internal object AssistantConversationSupport {
                     TaskField.PERSISTENT -> if (action.value == "true") "On" else "Off"
                     TaskField.RECURRENCE -> action.value.lowercase()
                     TaskField.REOPEN -> "pending"
+                    TaskField.CHECKLIST -> org.json.JSONObject(action.value).getJSONArray("items").let { a -> (0 until a.length()).joinToString { i -> a.getJSONObject(i).getString("title") } }
                     else -> action.value
                 }
                 "Change ${action.field.name.lowercase().replace('_', ' ')} for ${tasks(action.ids)} to $value"
@@ -93,6 +94,7 @@ internal object AssistantConversationSupport {
             is AssistantAction.SetRoutine -> "${if (action.enabled) "Enable" else "Disable"} routine ‘${app.database.scheduleDao().getScheduleById(action.id)?.name ?: "#${action.id}"}’ using its saved schedule"
             is AssistantAction.SetAppRule -> "${if (action.draft.isRestricted) "Lock" else "Unlock"} ${action.draft.appName} (${action.draft.packageName})"
             is AssistantAction.SetAppRules -> "Update ${action.rules.size} manual app rules: ${action.rules.count { it.draft.isRestricted }} locked, ${action.rules.count { !it.draft.isRestricted }} unlocked. Targets: " + action.rules.take(8).joinToString { "${it.draft.appName} (${it.draft.packageName})" } + if (action.rules.size > 8) "; see the original preview for all targets" else ""
+            is AssistantAction.SaveDictionaryWord -> "Save dictionary sense ‘${action.key}’ to vocabulary bookmarks"
             is AssistantAction.BookmarkWord -> "${if (action.bookmarked) "Bookmark" else "Unbookmark"} saved ${action.type} #${action.id}"
             is AssistantAction.StartFocus -> "Start a ${action.minutes}-minute focus session"
             AssistantAction.StopFocus -> "Stop the current focus countdown"

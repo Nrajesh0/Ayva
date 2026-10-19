@@ -9,6 +9,7 @@ import org.json.JSONObject
 
 /** Bulk manual rules use the full eligible installed catalogue, never just already-saved restrictions. */
 object AssistantAppControl {
+    internal fun inventory(context: Context): String = AppCatalog.load(context).sortedBy { it.packageName }.joinToString("\n") { "${it.packageName}|${it.appName}|${it.category.name}" }
     private fun ids(json: JSONObject, key: String): Set<String> = json.optJSONArray(key)?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty()
     private fun text(raw: String) = raw.trim().trimEnd('.', '!', '?').replaceFirst(Regex("(?i)^please\\s+"), "")
     private data class Selection(val packages: Set<String> = emptySet(), val error: String? = null)
@@ -42,11 +43,11 @@ object AssistantAppControl {
     private fun fresh(state: AssistantSession): JSONObject? = state.featureState?.optJSONObject("appSelection")?.takeIf { state.topic == "blocking" && System.currentTimeMillis() - it.optLong("at") in 0..900_000L }
 
     suspend fun answer(context: Context, app: FocusApplication, state: AssistantSession, input: String): FeatureTurn? {
-        val query = text(input)
+        val query = text(input).replaceFirst(Regex("(?i)^also (?=keep|leave)"), "")
         val root = Regex("(?i)^(?:(?:also|now|then)\\s+)?(lock|block|unlock|unblock)(?:\\s+(.+))?$").matchEntire(query)
         if (root == null && (AssistantFeatureLanguage.isRequest(query) || Regex("(?i)^add (?:an? )?(?:habit|routine|task|note)\\b").containsMatchIn(query))) return null
         val previous = fresh(state)
-        val modifier = Regex("(?i)^(?:except|exclude|also exclude|excluding|leave out|remove|include|also include|add|also add|keep|leave|make|change|switch|set)\\b").containsMatchIn(query)
+        val modifier = Regex("(?i)^(?:except|exclude|also exclude|excluding|leave out|remove|include|also include|add|also add|keep|leave|make|change|switch|set|only)\\b").containsMatchIn(query)
         val listing = query.lowercase() in setOf("show locked apps", "show blocked apps", "which apps are locked", "which apps are blocked", "what is locked", "my locked apps", "my blocked apps")
         val selectionReport = previous != null && query.lowercase() in setOf("which apps", "which ones", "show selection", "show those apps", "what did you lock", "what did you unlock")
         if (root == null && !listing && !selectionReport && (!modifier || previous == null)) return null
@@ -109,9 +110,14 @@ object AssistantAppControl {
             }
             if (halves.size == 2) { val exception = resolve(context, halves[1], catalog, exclusion = true); exception.error?.let { return FeatureTurn.Reply(it) }; excluded = exception.packages }
         } else {
+            val only = Regex("(?i)^only (.+?)(?: instead)?$").matchEntire(query)
             val modeMatch = Regex("(?i)^(?:make|change|switch|set) (?:it|them|those apps|these apps)(?: to)? (soft|strict|hard)(?: mode)?$").matchEntire(query)
             val keep = Regex("(?i)^(?:keep|leave) (.+?) (locked|blocked|unlocked|unblocked)$").matchEntire(query)
             when {
+                only != null -> {
+                    val selection = resolve(context, only.groupValues[1], catalog); selection.error?.let { return FeatureTurn.Reply(it) }
+                    base = selection.packages; excluded = excluded.intersect(base)
+                }
                 modeMatch != null -> mode = if (modeMatch.groupValues[1].equals("soft", true)) "SOFT" else "HARD"
                 keep != null -> {
                     val selection = resolve(context, keep.groupValues[1], catalog); selection.error?.let { return FeatureTurn.Reply(it) }

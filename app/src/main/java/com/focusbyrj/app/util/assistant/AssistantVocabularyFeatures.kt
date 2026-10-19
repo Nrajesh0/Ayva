@@ -48,8 +48,8 @@ object AssistantVocabularyFeatures {
                 if (refs == null) emptyList() else (0 until refs.length()).mapNotNull { i -> val r = refs.getJSONObject(i); get(app, r.getString("type"), r.getInt("id")) }.filter { type == null || it.type == type }.distinctBy { it.type to it.id }
             }
             target.startsWith("id:", true) -> target.substringAfter(':').toIntOrNull()?.let { id -> listOfNotNull(if (type != "ows") get(app, "idiom", id) else null, if (type != "idiom") get(app, "ows", id) else null) }.orEmpty()
-            else -> (if (type != "ows") dao.getAllIdioms().filter { it.idiom.equals(target, true) }.mapNotNull { it.id?.let { id -> Word("idiom", id, it.idiom, it.meaning, it.isBookmarked ?: 0) } } else emptyList()) +
-                (if (type != "idiom") dao.getAllOws().filter { it.term.equals(target, true) }.mapNotNull { it.id?.let { id -> Word("ows", id, it.term, it.definition, it.isBookmarked ?: 0) } } else emptyList())
+            else -> (if (type != "ows") dao.findIdioms(target).mapNotNull { it.id?.let { id -> Word("idiom", id, it.idiom, it.meaning, it.isBookmarked ?: 0) } } else emptyList()) +
+                (if (type != "idiom") dao.findOws(target).mapNotNull { it.id?.let { id -> Word("ows", id, it.term, it.definition, it.isBookmarked ?: 0) } } else emptyList())
         }
         if (candidates.size != 1) { state.switchTopic("vocabulary"); features(state).remove("wordRefs") }
         if (candidates.isEmpty()) return FeatureTurn.Reply("I can't identify that word from saved vocabulary. Name it exactly, or show a fresh vocabulary card first. I won't invent a definition.")

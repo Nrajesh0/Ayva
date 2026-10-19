@@ -1057,7 +1057,7 @@
   {
     "id": "live_transcription",
     "title": "Live Transcription",
-    "directExplanation": "/transcribe opens live speech transcription. Microphone permission and a compatible Android speech recognition service are required. Language availability and offline recognition depend on the installed service and language packs; chat cannot guarantee that service works offline on every device. Finalized transcripts can be summarized into task drafts; review those drafts before saving.",
+    "directExplanation": "/transcribe opens live on-device speech transcription on Android 12 or later. Microphone permission and an installed compatible on-device speech service/language are required. Ayva does not use an online fallback or download speech/language models. Finalized transcripts can become reviewed task drafts; partial captions never execute actions. Chat does not read saved Notes attachments.",
     "whereToGo": "Open bubble settings",
     "whatToClick": [],
     "keywords": [
@@ -1185,5 +1185,42 @@
     "prefKey": "habit_top_notifications",
     "prefType": "boolean",
     "route": "settings"
+  },
+  {
+    "id": "offline_dictionary",
+    "title": "Offline Dictionary",
+    "directExplanation": "Ayva bundles about 108,000 Wordset source entries with multiple senses and source examples where available. Ask what a word means, choose another meaning, or save a sense to vocabulary bookmarks. Selected senses have separately written simple-English wording and examples. Whole-sentence explanations support named grammar/idiom patterns; they cannot reliably explain arbitrary sentences or sarcasm. No runtime data or model download is needed. Say dictionary credits for source and license.",
+    "whereToGo": "Use chat: what does reluctant mean?",
+    "whatToClick": [
+      "Ask for a word meaning.",
+      "Choose a sense, ask for an example, or review saving the word.",
+      "Use quiz me on saved words to open the native vocabulary quiz."
+    ],
+    "keywords": [
+      "dictionary",
+      "offline dictionary",
+      "word meanings",
+      "sentence explanations"
+    ],
+    "route": "account"
+  },
+  {
+    "id": "guided_planning",
+    "title": "Plan Together",
+    "directExplanation": "Ask help me plan my trip, help me plan my exam, or plan my day from scratch. Supply your own steps/topics, optional deadlines and time budget. Review, rename, reorder or remove entries, choose separate tasks or one checklist, and use Add tasks to save. Study and trip suggestions are optional. A budget is not a completion estimate. Ayva does not invent a syllabus, current travel facts, commitments or free calendar slots. Notes stay inaccessible.",
+    "whereToGo": "Start in chat.",
+    "whatToClick": [
+      "Start a plan and answer one question at a time.",
+      "Review the actual titles and deadlines.",
+      "Use Add tasks to save, or cancel planning to discard."
+    ],
+    "keywords": [
+      "plan together",
+      "guided planning",
+      "planning draft",
+      "trip planning",
+      "exam planning"
+    ],
+    "route": "todos"
   }
 ]

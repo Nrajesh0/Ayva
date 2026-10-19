@@ -22,10 +22,11 @@ object AssistantLearningFeatures {
     }.getOrNull()
     suspend fun answer(context: Context, state: AssistantSession, input: String): FeatureTurn? {
         val text = input.lowercase().trim().trimEnd('.', '!', '?')
+        val lastResult = text in setOf("how did i do last time", "how did i do on my last test", "show my last result", "last test result")
         val compare = text in setOf("compare my last two tests", "compare my last two drills", "compare my last tests", "compare my last two blitz rounds")
         val coach = text in setOf("what should i practise after that test", "what should i practice after that test", "what should i practise next", "what should i practice next")
         val mistakes = text in setOf("review my mistakes", "show my last mistakes", "show my test mistakes", "where am i slow", "which questions were slow")
-        if (!compare && !coach && !mistakes) return null
+        if (!lastResult && !compare && !coach && !mistakes) return null
         val rows = DrillDatabase.getDatabase(context).drillSessionDao().getRecentSessions(50)
         val valid = rows.mapNotNull { row -> validSummary(row)?.let { row to it } }
         val requestedKind = if (text.contains("blitz")) "blitz" else if (text.contains("drills")) "drill" else null
@@ -36,6 +37,7 @@ object AssistantLearningFeatures {
         val kind = summary.practiceKind
         val kindText = when (kind) { "drill" -> "arithmetic drill"; "blitz" -> "Speed Blitz"; "vocabulary" -> "vocabulary quiz"; else -> "test (older record; feature and difficulty not recorded)" }
         fun score(r: DrillSessionEntity) = "${r.correctCount}/${r.totalQuestions} attempted correct (${r.correctCount * 100L / r.totalQuestions}%), ${r.timeSpentSeconds}s total"
+        if (lastResult) return FeatureTurn.Reply("Last $kindText: ${score(row)}. This is the latest valid saved result, not a prediction of ability.")
         if (compare) {
             if (kind == "unknown") return FeatureTurn.Reply("The latest older result does not record its practice type. I can't reliably compare it with another test. Its saved score: ${score(row)}.")
             val previous = valid.dropWhile { it.first.sessionId != row.sessionId }.drop(1).firstOrNull { it.second.practiceKind == kind }

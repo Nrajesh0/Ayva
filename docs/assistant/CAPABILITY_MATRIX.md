@@ -1,3 +1,7 @@
+# Current continuation
+
+See [OFFLINE_ASSISTANT_IMPLEMENTATION.md](OFFLINE_ASSISTANT_IMPLEMENTATION.md) for B3–B11 additions and remaining acceptance. The table and B2 vertical-migration record below document the earlier checkpoint. The live registry now also declares checklist editing, guided preparation drafts and the bundled dictionary/bookmark capability. Native/device and independent human validation are not implied by those declarations.
+
 # B2 capability inventory and migration
 
 The runtime source is `util/assistant/AssistantCapabilities.kt`. Stable IDs describe reads, writes, native navigation, conversation and unavailable operations. Every `AssistantAction` has an exhaustive contract mapping. Domain owners still perform the actual entity, permission, strict-mode, timestamp and side-effect validation. A capability description is never execution authority.

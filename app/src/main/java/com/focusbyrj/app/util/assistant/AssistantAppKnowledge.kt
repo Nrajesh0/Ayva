@@ -17,7 +17,7 @@ object AssistantAppKnowledge {
         val array = JSONArray(context.assets.open("ayva_knowledge_base.json").bufferedReader().use { it.readText() })
         return (0 until array.length()).map { array.getJSONObject(it) }.also { catalogue = it }
     }
-    private val followUps = setOf("why", "where", "how", "more", "tell me more", "explain that", "explain it", "how to change it", "how do i change it", "where is it", "where can i find it", "how does it work", "what does it do", "what is it", "what are the options", "what options", "what range", "what is the range", "what is the default", "is it on", "is it off", "what is it set to", "what about it", "what is my current value")
+    private val followUps = setOf("why", "where", "how", "more", "tell me more", "explain that", "explain it", "how to change it", "how do i change it", "where is it", "where can i find it", "how does it work", "what does it do", "what does that do", "what is it set to now", "why didnt it work", "why did it not work", "what is it", "what are the options", "what options", "what range", "what is the range", "what is the default", "is it on", "is it off", "what is it set to", "what about it", "what is my current value")
     private val writeStart = Regex("(?i)^(?:(?:please|can you|could you|would you)\\s+)?(?:set|change|switch|turn|enable|disable|activate|deactivate|freeze|unfreeze|make|reset)\\b")
     private fun isWrite(text: String) = writeStart.containsMatchIn(text) && !Regex("(?i)\\b(?:explain|tell me|show me|how|why|whether|if)\\b").containsMatchIn(text)
 
@@ -101,6 +101,7 @@ object AssistantAppKnowledge {
             val explanation = catalogue?.optString("directExplanation").orEmpty()
             val path = catalogue?.optString("whereToGo")?.takeIf { it.isNotBlank() } ?: "Open ${AssistantPreferences.route(spec).replace('_', ' ')}."
             val detail = when {
+                lower in setOf("why didnt it work", "why did it not work") -> "The saved value is $current. I can't tell from that alone whether Android delivered the related feature. $path\n${hint(spec)} Ask ‘check device health’ for current permissions."
                 lower.startsWith("where") || lower.contains("change it") -> "$path\n${hint(spec)}"
                 lower.contains("default") -> "Default: ${AssistantPreferences.display(spec, spec.default)}. ${hint(spec)}"
                 else -> "$explanation\n${hint(spec)}"

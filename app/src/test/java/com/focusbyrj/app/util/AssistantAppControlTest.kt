@@ -157,4 +157,19 @@ class AssistantAppControlTest {
         say(confirm(all))
         assertEquals(63, rules().count { it.isRestricted })
     }
+    @Test fun inventoryChangeInvalidatesBulkReviewAndFreshReviewIncludesNewApp() = runBlocking {
+        val old = confirm(say("lock all"))
+        install("com.example.mail", "Mail"); register()
+        say(old); assertTrue(rules().isEmpty())
+        say(confirm(say("lock all")))
+        assertEquals(4, rules().count { it.isRestricted })
+    }
+    @Test fun conversationalExceptionsSurviveNarrowingToSocialApps() = runBlocking {
+        say("lock all except WhatsApp")
+        say("also leave Reader unlocked")
+        val revised = say("only social apps instead")
+        say(confirm(revised))
+        assertEquals(setOf(instagram), rules().filter { it.isRestricted }.map { it.packageName }.toSet())
+    }
+
 }

@@ -45,6 +45,67 @@ class AssistantConversationLanguageTest {
     private suspend fun select(id: Long) { say("let's work on id:$id") }
     private fun confirm(response: AyvaTalkEngine.TalkResponse) = response.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }.query
 
+    @Test fun examplesHypotheticalsAndTyposCannotReplayDeletion() = runBlocking {
+        val id = add("Send report")
+        for (input in listOf("If I delete all tasks what happens?", "Suppose complete all tasks", "My friend said delete all tasks", "\"delete all tasks\"", "I should delete all tasks", "Here is an example: delete all tasks", "The instruction says complete all tasks", "deleet all tasks")) {
+            val old = confirm(say("delete all tasks"))
+            assertTrue(input, AyvaIntentRouter.route(input) is RouterDestination.TalkQuery)
+            say(input); say(old); say("yes")
+            assertFalse(input, task(id).isTrashed)
+            assertFalse(input, task(id).isCompleted)
+            assertEquals(NluIntent.UNKNOWN, OfflineNluEngine.parse(input, listOf(task(id))).intent)
+        }
+    }
+    @Test fun legacyKeywordDescriptionsCannotGrantWriteAuthority() {
+        val writes = setOf(NluIntent.CLEAR_CHAT, NluIntent.START_ROUTINE, NluIntent.STOP_ROUTINE, NluIntent.BLOCK_APP, NluIntent.UNBLOCK, NluIntent.COMPLETE, NluIntent.DELETE, NluIntent.RESCHEDULE)
+        for (input in listOf("the chat is clear", "the routine has a fresh start", "routine at the end of the day", "social apps allow conversation", "the report is done")) {
+            assertFalse(input, OfflineNluEngine.classifyIntent(input) in writes)
+            assertFalse(input, AyvaIntentRouter.route(input) == RouterDestination.DirectCommand("/clear"))
+        }
+        assertEquals(NluIntent.CLEAR_CHAT, OfflineNluEngine.classifyIntent("clear chat"))
+        assertEquals(NluIntent.START_ROUTINE, OfflineNluEngine.classifyIntent("start routine Morning"))
+    }
+
+    @Test fun unknownAppInfoCannotLeaveImplicitTaskMutationTarget() = runBlocking {
+        val id = add("Keep report")
+        select(id)
+        say("/talk zqxv plom")
+        assertNull(state().taskId)
+        say("complete it")
+        assertFalse(task(id).isCompleted)
+    }
+
+    @Test fun ambiguousDatedStatementRequiresChoiceButExplicitCaptureStillWorks() = runBlocking {
+        val input = "Dad will visit tomorrow"
+        assertTrue(AyvaIntentRouter.route(input) is RouterDestination.ConflictCard)
+        assertEquals(NluIntent.CONFLICT, OfflineNluEngine.parse(input, emptyList()).intent)
+        val clarification = say(input)
+        assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
+        assertTrue(clarification.actions.filterIsInstance<TalkAction.AskQuery>().isNotEmpty())
+        say("buy milk tomorrow")
+        assertEquals("buy milk", db.taskDao().getAllActiveTasksList().single().title.lowercase())
+    }
+
+    @Test fun titleContentsRemainLiteralAfterExplicitCapture() = runBlocking {
+        say("remind me to imagine delete all tasks tomorrow")
+        assertTrue(db.taskDao().getAllActiveTasksList().single().title.contains("imagine delete all tasks", true))
+    }
+    @Test fun externalEditWithUnchangedTimestampInvalidatesPreview() = runBlocking {
+        val id = add("Send report")
+        val old = confirm(say("delete all tasks"))
+        db.taskDao().updateTask(task(id).copy(title = "Updated externally"))
+        say(old)
+        assertFalse(task(id).isTrashed)
+    }
+    @Test fun authorityExpiresEvenWhenSessionIsKeptAlive() = runBlocking {
+        val id = add("Send report"); select(id)
+        val old = confirm(say("delete all tasks"))
+        val snapshot = state(); snapshot.referenceAt = System.currentTimeMillis() - 900_001; snapshot.confirmationAt = snapshot.referenceAt
+        AssistantSessionStore(context).save(snapshot)
+        say(old); say("complete it")
+        assertFalse(task(id).isTrashed); assertFalse(task(id).isCompleted)
+    }
+
     @Test fun politeCreationIsConsistentAcrossRouterAndCoordinator() = runBlocking {
         val input = "Could you please add task buy milk tomorrow at 6pm?"
         val route = AyvaIntentRouter.route(input) as RouterDestination.TaskCreation
@@ -237,4 +298,20 @@ class AssistantConversationLanguageTest {
         say((choice + 1).toString()); say("priority"); say("high"); say("yes")
         assertFalse(task(a).isPriority); assertTrue(task(b).isPriority)
     }
+    @Test fun literalFieldAnswersCannotBeRewrittenAsTyposOrHijackedBySettingHelp() = runBlocking {
+        val id = add("Original"); select(id)
+        say("edit it"); say("title"); say("\"soft mode wait\""); say("yes")
+        assertEquals("soft mode wait", task(id).title)
+        say("edit it"); say("title"); say("“Tommorow’s Report”"); say("yes")
+        assertEquals("Tommorow’s Report", task(id).title)
+        assertEquals("10", AssistantCapabilities.setting("soft_lock_duration").current(context))
+    }
+    @Test fun quotedReminderTitleKeepsDateWordsAndHeldReminderDate() = runBlocking {
+        say("remind me tomorrow at 6pm")
+        val due = state().pending.filterIsInstance<AssistantAction.CreateTask>().single().draft.dueDate
+        say("\"Is tomorrow a good day?\"")
+        val saved = db.taskDao().getAllActiveTasksList().single()
+        assertEquals("Is tomorrow a good day?", saved.title); assertEquals(due, saved.dueDate)
+    }
+
 }

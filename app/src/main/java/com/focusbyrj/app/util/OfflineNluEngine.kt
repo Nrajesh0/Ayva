@@ -93,7 +93,7 @@ object OfflineNluEngine {
 
     fun isConversationalStatement(query: String): Boolean {
         val lower = normalizeRequest(query).lowercase().trimEnd('.', '!', '?')
-        return Regex("^(?:i am|i'm|i feel|i was|i don't|i cannot|i can't|i think|i wish|i love|i hate|i just|feeling|today is|it is|it's|that is|that's|you are|you're|we are|we're)\\b").containsMatchIn(lower) ||
+        return Regex("^(?:i am|i'm|i feel|i was|i don't|i cannot|i can't|i think|i wish|i want|i like|i enjoy|i prefer|i believe|i hope|i love|i hate|i just|i finally|i had|i have|i've been|my day|feeling|today is|it is|it's|that is|that's|you are|you're|we are|we're)\\b").containsMatchIn(lower) ||
             lower in setOf("yes", "no", "okay", "ok", "sure", "thanks", "thank you", "thx", "bye", "hi", "hello", "hey", "good morning", "good evening", "good afternoon", "goodnight", "cancel", "never mind", "nevermind", "forget it", "done", "tired", "stressed", "overwhelmed", "tell me more", "more", "why", "how", "where", "it")
     }
 
@@ -137,10 +137,11 @@ object OfflineNluEngine {
         }
 
         // Conflict 2 fix: Chat wipe requires explicit chat target and MUST NOT contain task/todo/overdue indicators
-        val hasClearVerb = matchesAnyFuzzy(tokens, listOf("clear", "clean", "reset", "wipe"))
-        val hasChatTarget = matchesAnyFuzzy(tokens, listOf("chat", "messages", "screen", "conversation"))
+        val interpretation = com.focusbyrj.app.util.assistant.AssistantInterpretation.interpret(query)
+        val actionRequested = interpretation.kind == com.focusbyrj.app.util.assistant.UtteranceKind.REQUEST && !interpretation.blocksDispatch
+        val exactClearRequest = Regex("^(?:clear|clean|reset|wipe) (?:the |my |all )?(?:chat|messages|screen|conversation)(?: history)?[.!]?$", RegexOption.IGNORE_CASE).matches(normalizeRequest(query))
         val hasTaskIndicators = lower.contains("task") || lower.contains("todo") || lower.contains("overdue") || lower.contains("habit") || lower.contains("routine")
-        val isClearChat = !queryIsQuestion && hasClearVerb && hasChatTarget && !hasTaskIndicators
+        val isClearChat = !queryIsQuestion && actionRequested && exactClearRequest && !hasTaskIndicators
         if (isClearChat) return NluIntent.CLEAR_CHAT
 
         // Conflict 3 fix: Keyword triggers MUST NOT swallow questions (e.g. "how does arithmetic drill work?" or "how do I earn XP?")
@@ -157,16 +158,16 @@ object OfflineNluEngine {
         val isStartRoutine = (matchesAnyFuzzy(tokens, listOf("start", "enable", "activate", "resume", "begin", "launch")) || (lower.contains("turn") && lower.contains("on"))) && isRoutineKeyword && !lower.contains("task")
         val isStopRoutine = (matchesAnyFuzzy(tokens, listOf("stop", "disable", "deactivate", "pause", "halt", "end", "quit")) || (lower.contains("turn") && lower.contains("off"))) && isRoutineKeyword && !lower.contains("task")
         val isListRoutines = (matchesAnyFuzzy(tokens, listOf("list", "show", "what", "display", "check", "status")) && matchesAnyFuzzy(tokens, listOf("routine", "routines", "schedules", "timings"))) || lower == "routines" || lower == "schedules" || lower == "my routines"
-        if (isStartRoutine) return NluIntent.START_ROUTINE
-        if (isStopRoutine) return NluIntent.STOP_ROUTINE
+        if (isStartRoutine && actionRequested) return NluIntent.START_ROUTINE
+        if (isStopRoutine && actionRequested) return NluIntent.STOP_ROUTINE
         if (isListRoutines) return NluIntent.LIST_ROUTINES
 
         val directBlock = Regex("^(?:(?:soft|hard|strict)\\s+)?(?:block|lock|restrict|shield)\\s+\\S").containsMatchIn(lower)
         val directUnblock = Regex("^(?:unblock|unlock|allow|unshield)\\s+\\S").containsMatchIn(lower)
         val isBlock = directBlock || matchesAnyFuzzy(tokens, listOf("block", "lock", "restrict", "shield")) && (lower.contains("app") || lower.contains("apps") || lower.contains("filter") || lower.contains("category") || lower.contains("mode") || lower.contains("site") || lower.contains("instagram") || lower.contains("youtube") || lower.contains("social") || lower.contains("game") || lower.contains("games"))
         val isUnblock = directUnblock || matchesAnyFuzzy(tokens, listOf("unblock", "unlock", "allow", "unshield")) && (lower.contains("app") || lower.contains("apps") || lower.contains("filter") || lower.contains("category") || lower.contains("mode") || lower.contains("site") || lower.contains("instagram") || lower.contains("youtube") || lower.contains("social") || lower.contains("game") || lower.contains("games"))
-        if (isBlock) return if (lower.contains("filter") || lower.contains("category")) NluIntent.BLOCK_FILTER else NluIntent.BLOCK_APP
-        if (isUnblock) return NluIntent.UNBLOCK
+        if (isBlock && actionRequested) return if (lower.contains("filter") || lower.contains("category")) NluIntent.BLOCK_FILTER else NluIntent.BLOCK_APP
+        if (isUnblock && actionRequested) return NluIntent.UNBLOCK
 
         val isActionOnOverdue = lower.contains("clean") || lower.contains("clear") || lower.contains("delete") ||
                                 lower.contains("remove") || lower.contains("reschedule") || lower.contains("push") ||
@@ -200,9 +201,9 @@ object OfflineNluEngine {
                        (lower.contains("clear") && lower.contains("overdue"))
 
         return when {
-            isDelete -> NluIntent.DELETE
-            isExplicitRescheduleWord -> NluIntent.RESCHEDULE
-            isComplete -> NluIntent.COMPLETE
+            isDelete && actionRequested -> NluIntent.DELETE
+            isExplicitRescheduleWord && actionRequested -> NluIntent.RESCHEDULE
+            isComplete && actionRequested -> NluIntent.COMPLETE
             else -> NluIntent.UNKNOWN
         }
     }
@@ -476,7 +477,7 @@ object OfflineNluEngine {
         val trimmed = normalizeRequest(query)
         val lower = trimmed.lowercase()
 
-        if (com.focusbyrj.app.util.assistant.AssistantLanguage.actionGuard(trimmed) != null) return NluParsedResult(NluIntent.UNKNOWN)
+        if (com.focusbyrj.app.util.assistant.AssistantInterpretation.interpret(trimmed).blocksDispatch) return NluParsedResult(NluIntent.UNKNOWN)
 
         // Questions and casual replies must not trigger keyword-based conflict/action rules.
         if (!isExplicitCreation(trimmed) && (isQuestion(trimmed) || isConversationalStatement(trimmed))) {
@@ -1033,12 +1034,18 @@ object OfflineNluEngine {
                     )
                 }
 
-                val (newTitle, dueDate) = extractTaskCreationDetails(trimmed)
+                if (com.focusbyrj.app.util.assistant.AssistantInterpretation.interpret(trimmed).kind == com.focusbyrj.app.util.assistant.UtteranceKind.REQUEST) {
+                    val (newTitle, dueDate) = extractTaskCreationDetails(trimmed)
+                    return NluParsedResult(NluIntent.CREATE_TASK, createdTaskTitle = newTitle,
+                        targetDateMs = dueDate ?: timeMs, hasExplicitTimeSpecified = hasTime)
+                }
                 return NluParsedResult(
-                    intent = NluIntent.CREATE_TASK,
-                    createdTaskTitle = newTitle,
-                    targetDateMs = dueDate ?: timeMs,
-                    hasExplicitTimeSpecified = hasTime
+                    intent = NluIntent.CONFLICT,
+                    conflictPrompt = "Would you like to add this dated message as a task, or discuss it?",
+                    conflictOptions = listOf(
+                        ConflictOption("Add as task", "➕", "/create ${trimmed.replace(Regex("[\\r\\n]+"), " ")}"),
+                        ConflictOption("Ask Ayva", "💬", "/talk ${trimmed.replace(Regex("[\\r\\n]+"), " ")}")
+                    )
                 )
             }
 

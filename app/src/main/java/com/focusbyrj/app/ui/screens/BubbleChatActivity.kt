@@ -1382,16 +1382,16 @@ fun ChatInterface() {
                             }
                             "/vocab_quiz" -> {
                                 val vocabRepo = (context.applicationContext as com.focusbyrj.app.FocusApplication).vocabRepository
-                                val (learnedIdioms, learnedOws) = vocabRepo.getQuizWords(sentText.trim().split(Regex("\\s+")).getOrNull(1) == "missed")
+                                val (learnedIdioms, learnedOws) = vocabRepo.getQuizWords(sentText.trim().split(Regex("\\s+")).getOrNull(1) == "missed", sentText.trim().split(Regex("\\s+")).getOrNull(1) == "saved", sentText.trim().split(Regex("\\s+")).getOrNull(2)?.removePrefix("ows:")?.toIntOrNull())
                                 
                                 val quizList = mutableListOf<org.json.JSONObject>()
                                 
-                                learnedIdioms.forEach { idiom ->
-                                    val otherIdioms = vocabRepo.getAllLearnedIdioms().filter { it.id != idiom.id }.shuffled().take(3).map { it.meaning }.toMutableList()
-                                    if (otherIdioms.size < 3) {
-                                        otherIdioms.addAll(vocabRepo.vocabDao.getUnlearnedIdioms(3).map { it.meaning })
-                                    }
-                                    val options = (otherIdioms.take(3) + idiom.meaning).shuffled()
+                                val idiomPool = vocabRepo.getAllLearnedIdioms() + vocabRepo.vocabDao.getUnlearnedIdioms(16)
+                                val wordPool = vocabRepo.getAllLearnedOws() + vocabRepo.vocabDao.getUnlearnedOws(16)
+                                learnedIdioms.shuffled().take(20).forEach { idiom ->
+                                    val otherIdioms = idiomPool.filter { it.id != idiom.id }.shuffled().map { it.meaning }
+                                    val options = com.focusbyrj.app.util.VocabQuizChoices.build(idiom.meaning, otherIdioms)
+                                    if (options.isEmpty()) return@forEach
                                     val correctIndex = options.indexOf(idiom.meaning)
                                     quizList.add(org.json.JSONObject().apply {
                                         put("title", "Idioms")
@@ -1406,12 +1406,10 @@ fun ChatInterface() {
                                     })
                                 }
                                 
-                                learnedOws.forEach { ows ->
-                                    val otherOws = vocabRepo.getAllLearnedOws().filter { it.id != ows.id }.shuffled().take(3).map { it.term }.toMutableList()
-                                    if (otherOws.size < 3) {
-                                        otherOws.addAll(vocabRepo.vocabDao.getUnlearnedOws(3).map { it.term })
-                                    }
-                                    val options = (otherOws.take(3) + ows.term).shuffled()
+                                learnedOws.shuffled().take(20).forEach { ows ->
+                                    val otherOws = wordPool.filter { it.id != ows.id }.shuffled().map { it.term }
+                                    val options = com.focusbyrj.app.util.VocabQuizChoices.build(ows.term, otherOws)
+                                    if (options.isEmpty()) return@forEach
                                     val correctIndex = options.indexOf(ows.term)
                                     quizList.add(org.json.JSONObject().apply {
                                         put("title", "One Word Substitution")
@@ -1432,7 +1430,7 @@ fun ChatInterface() {
                                 if (finalQuestions.isEmpty()) {
                                     val summaryResponse = ChatMessage(
                                         id = "vocab_empty_${System.currentTimeMillis()}",
-                                        text = if (sentText.trim().endsWith(" missed")) "No saved missed words are available for this quiz. You can practise all learned words with `/vocab_quiz`." else "You haven't learned any vocabulary yet! Let's learn some words first with `/vocab learn_more`.",
+                                        text = if (learnedIdioms.isNotEmpty() || learnedOws.isNotEmpty()) "There are not enough distinct other answers to build a fair quiz. Learn or save more words, then try again." else if (sentText.trim().split(Regex("\\s+")).getOrNull(1) == "saved") "No matching bookmarked words are available for this quiz. Look up a word and save it first." else if (sentText.trim().endsWith(" missed")) "No saved missed words are available for this quiz. You can practise all learned words with `/vocab_quiz`." else "You haven't learned any vocabulary yet! Let's learn some words first with `/vocab learn_more`.",
                                         isUser = false
                                     )
                                     withContext(Dispatchers.Main) {

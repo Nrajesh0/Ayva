@@ -6,6 +6,18 @@ import androidx.room.Update
 
 @Dao
 interface VocabDao {
+    @Query("SELECT * FROM idioms WHERE idiom = :name COLLATE NOCASE LIMIT 10")
+    suspend fun findIdioms(name: String): List<Idiom>
+    @Query("SELECT * FROM ows WHERE term = :name COLLATE NOCASE LIMIT 10")
+    suspend fun findOws(name: String): List<Ows>
+
+    @androidx.room.Insert(onConflict = androidx.room.OnConflictStrategy.ABORT)
+    suspend fun insertDictionaryOws(value: Ows): Long
+    @Query("SELECT * FROM idioms WHERE is_bookmarked = 1 ORDER BY idiom COLLATE NOCASE LIMIT :limit")
+    suspend fun getBookmarkedIdioms(limit: Int): List<Idiom>
+    @Query("SELECT * FROM ows WHERE is_bookmarked = 1 ORDER BY term COLLATE NOCASE LIMIT :limit")
+    suspend fun getBookmarkedOws(limit: Int): List<Ows>
+
     @Query("SELECT * FROM idioms")
     suspend fun getAllIdioms(): List<Idiom>
 

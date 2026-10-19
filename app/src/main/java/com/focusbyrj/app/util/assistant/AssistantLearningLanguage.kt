@@ -62,6 +62,7 @@ object AssistantLearningLanguage {
         }
         if (text in setOf("vocab", "vocabulary", "teach me a word", "learn a word", "vocabulary practice", "practice vocabulary", "practice my vocabulary", "open vocabulary", "show my vocabulary")) return LearningRequest.Open("/vocab")
         if (text in setOf("learn more words", "teach me more words", "learn another word", "learn an idiom")) return LearningRequest.Open("/vocab learn_more")
+        if (text in setOf("quiz me on words i saved", "quiz me on saved words", "quiz my bookmarks", "practice saved words")) return LearningRequest.Open("/vocab_quiz saved")
         if (text in setOf("vocabulary quiz", "start vocabulary quiz", "vocab quiz", "quiz me on vocabulary", "test my vocabulary", "review my vocabulary", "practice my learned words")) return LearningRequest.Launch(AssistantLearningContext("vocab", "vocab"))
         if (text in setOf("blitz", "start blitz", "speed drill", "start speed drill", "do a blitz", "start speed blitz", "a speed round", "give me a speed round")) return LearningRequest.Launch(AssistantLearningContext("blitz", count = -1))
 

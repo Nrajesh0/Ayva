@@ -24,7 +24,7 @@ object AssistantActionExecutor {
         !context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE).getBoolean("isSessionActive", false) &&
             !(schedule.mode == "HARD" && schedule.isActiveAt())
 
-    suspend fun execute(context: Context, action: AssistantAction): AssistantActionResult = mutex.withLock {
+    suspend fun execute(context: Context, action: AssistantAction, expected: Map<String, String> = emptyMap()): AssistantActionResult = mutex.withLock {
         AssistantCapabilities.validate(action)
         val app = context.applicationContext as? FocusApplication ?: error("App database is unavailable")
         val dao = app.database.taskDao()
@@ -39,7 +39,7 @@ object AssistantActionExecutor {
             TodoWidgetProvider.updateAllWidgets(context)
         }
         when (action) {
-            is AssistantAction.SaveRoutine, is AssistantAction.BookmarkWord, is AssistantAction.SetAppRule, is AssistantAction.SetAppRules -> AssistantFeatureActions.execute(context, app, action)
+            is AssistantAction.SaveRoutine, is AssistantAction.SaveDictionaryWord, is AssistantAction.BookmarkWord, is AssistantAction.SetAppRule, is AssistantAction.SetAppRules -> AssistantFeatureActions.execute(context, app, action)
             is AssistantAction.CreateTask -> {
                 require(action.draft.title.isNotBlank() && action.draft.title.length <= 500) { "Use a task title of 1–500 characters" }
                 val draft = action.draft.copy(id = 0, isCompleted = false, isTrashed = false, completedAt = null, trashedAt = null, deletedAt = null, updatedAt = now())
@@ -58,6 +58,9 @@ object AssistantActionExecutor {
                 val changes = mutableListOf<Triple<Task, Task, Task?>>()
                 app.database.withTransaction {
                     val originals = ids.map { dao.getTaskById(it) ?: error("A selected task no longer exists") }
+                    for (original in originals) expected["task:${original.id}"]?.let { snapshot ->
+                        require(original == TaskJson.decode(JSONObject(snapshot))) { "A reviewed task changed before the write. Review it again" }
+                    }
                     require(originals.none { it.isTrashed || it.deletedAt != null }) { "A selected task is in Trash; restore it before editing" }
                     for (before in originals) {
                         if (action is AssistantAction.CompleteTasks && before.isCompleted) continue
@@ -73,6 +76,7 @@ object AssistantActionExecutor {
                                     TaskField.PERSISTENT -> before.copy(isPersistent = action.value.toBooleanStrict())
                                     TaskField.RECURRENCE -> before.copy(recurrence = RecurrencePattern.valueOf(action.value))
                                     TaskField.DETAILS -> { require(action.value.length <= 10_000); before.copy(details = action.value) }
+                                    TaskField.CHECKLIST -> { require(ids.size == 1); before.copy(subtasksJson = AssistantChecklist.validate(before.subtasksJson, action.value)) }
                                     TaskField.REOPEN -> before.copy(isCompleted = false, completedAt = null)
                                 }
                                 updated.copy(updatedAt = now(before.updatedAt))
@@ -189,18 +193,23 @@ object AssistantActionExecutor {
             }
             is AssistantAction.SetRoutine -> {
                 val dao = app.database.scheduleDao()
-                val schedule = dao.getScheduleById(action.id) ?: error("That routine no longer exists")
-                if (!action.enabled) {
-                    require(canDisableRoutine(context, schedule)) { "An active strict routine or focus session cannot be stopped from chat" }
+                val pair = app.database.withTransaction {
+                    val schedule = dao.getScheduleById(action.id) ?: error("That routine no longer exists")
+                    expected["routine:${action.id}"]?.let { require(schedule == RoutineJson.decode(JSONObject(it))) { "That reviewed routine changed. Review it again" } }
+                    if (!action.enabled) require(canDisableRoutine(context, schedule)) { "An active strict routine or focus session cannot be stopped from chat" }
+                    val updated = schedule.copy(isEnabled = action.enabled)
+                    dao.insertSchedule(updated)
+                    schedule to updated
                 }
-                val updated = schedule.copy(isEnabled = action.enabled)
-                dao.insertSchedule(updated)
-                AssistantActionResult("**${schedule.name}** ${if (!action.enabled) "disabled" else if (updated.isActiveAt()) "enabled and active now" else "enabled for its scheduled window"}.")
+                val (schedule, updated) = pair
+                AssistantActionResult("**${schedule.name}** ${if (!action.enabled) "disabled" else if (updated.isActiveAt()) "enabled and active now" else "enabled for its scheduled window"}.",
+                    undo = listOf(JSONObject().put("kind", "routine_edit").put("before", RoutineJson.encode(schedule)).put("after", RoutineJson.encode(updated))))
             }
             is AssistantAction.SetPreference -> {
                 val capability = AssistantCapabilities.setting(action.key)
                 val spec = capability.spec
                 val old = capability.current(context)
+                expected["pref:${action.key}"]?.let { require(it == old) { "That setting changed. Review it again" } }
                 AssistantPreferences.apply(context, action.key, action.type, action.value)
                 AssistantActionResult("${spec.title}: **${AssistantPreferences.display(spec, action.value)}**.", undo = listOf(JSONObject().put("kind", "pref").put("key", action.key).put("type", action.type).put("before", old).put("after", action.value)))
             }

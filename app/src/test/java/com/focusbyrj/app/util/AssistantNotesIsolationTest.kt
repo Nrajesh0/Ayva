@@ -214,4 +214,21 @@ class AssistantNotesIsolationTest {
         assertFalse(file.exists())
         assertNoNoteAccess()
     }
+    @Test fun dictionaryPlanningAndSocialPathsNeverTouchNotes() = runBlocking {
+        val app = context.applicationContext as FocusApplication
+        val vocab = Room.inMemoryDatabaseBuilder(context, com.focusbyrj.app.data.VocabDatabase::class.java).allowMainThreadQueries().build()
+        app.javaClass.getDeclaredField("vocabDatabase\$delegate").apply { isAccessible = true; set(app, lazyOf(vocab)) }
+        try {
+            say("define reluctant"); say("simpler")
+            val bookmark = say("save this word").actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }
+            say(bookmark.query)
+            say("help me plan my trip"); say("Review my notes; Pack charger"); say("skip")
+            val review = say("skip"); val save = review.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva plan-save ") }
+            say(save.query); say("undo"); say("tell me a joke"); say("I had a rough day"); say("just listen")
+            assertNoNoteAccess()
+            val stateText = EncryptedSnapshotFile.read(File(context.filesDir, "ayva_conversation_state.enc"))
+            assertFalse(stateText.contains(sentinel))
+        } finally { vocab.close() }
+    }
+
 }

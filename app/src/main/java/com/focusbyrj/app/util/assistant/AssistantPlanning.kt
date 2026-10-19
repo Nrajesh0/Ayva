@@ -41,6 +41,7 @@ object AssistantPlanning {
     private fun overwhelmed(input: String) = Regex("\\b(?:tired|exhausted|stressed|overwhelmed|distracted|procrastinating|lazy|stuck|burned out)\\b").containsMatchIn(input)
     private fun budgetText(input: String): String? {
         val lower = clean(input).replaceFirst(Regex("^(?:actually|instead)[, ]+"), "")
+        Regex("^(?:help me )?plan my day (?:for|with) (.+)$").matchEntire(lower)?.let { return it.groupValues[1] }
         val plan = Regex("^(?:plan (?:my |the )?next|plan for|help me plan for) (.+)$").matchEntire(lower)
         if (plan != null) return plan.groupValues[1]
         val have = Regex("^(?:i have got|i've got|i (?:only )?have|i can spare) (.+?)(?: (?:free|available))?$").matchEntire(lower)?.groupValues?.get(1) ?: return null
@@ -86,7 +87,7 @@ object AssistantPlanning {
         }
         var plan = if (continuation) previous!! else AssistantPlanContext(
             minutes = budget?.let(::minutes), limit = if (lower in nextRequests || emotion) 1 else AssistantPersonalization.planSize(context),
-            order = AssistantPersonalization.planOrder(context), todayOnly = lower in dayRequests)
+            order = AssistantPersonalization.planOrder(context), todayOnly = lower in dayRequests || Regex("^(?:help me )?plan my day (?:for|with) ").containsMatchIn(lower))
         if (budget != null && previous != null && state.topic == "planning") plan = previous.copy(minutes = minutes(budget), createdAt = System.currentTimeMillis())
         if (lower in timeRequests || budget != null && minutes(budget) == null) {
             state.clearPending(); state.switchTopic("planning"); state.planning = plan.copy(minutes = null); state.expected = "plan_budget"

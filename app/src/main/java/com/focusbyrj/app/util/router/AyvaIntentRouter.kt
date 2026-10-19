@@ -49,11 +49,13 @@ object AyvaIntentRouter {
             return handleSlashCommand(trimmed)
         }
 
-        if (com.focusbyrj.app.util.assistant.AssistantLanguage.actionGuard(trimmed) != null) return RouterDestination.TalkQuery(trimmed)
+        if (com.focusbyrj.app.util.assistant.AssistantInterpretation.interpret(trimmed).let { it.blocksDispatch || it.kind == com.focusbyrj.app.util.assistant.UtteranceKind.CONVERSATION }) return RouterDestination.TalkQuery(trimmed)
 
         if (lower in setOf("task", "tasks", "todo", "todos", "todo list", "my tasks", "task list")) {
             return RouterDestination.DirectCommand("/tasks")
         }
+
+        if (com.focusbyrj.app.util.assistant.AssistantDictionary.isLookup(trimmed)) return RouterDestination.TalkQuery(trimmed)
 
         // 2. Explicit Task Creation Syntax (e.g. "add buy groceries tomorrow", "remind me to call mom 5pm")
         if (OfflineNluEngine.isExplicitCreation(trimmed)) {
@@ -318,7 +320,12 @@ object AyvaIntentRouter {
                 // Check if date parser extracted a valid time entity (e.g. "meeting with bob 4pm")
                 val parsed = SmartDateParser.parse(trimmed)
                 if (parsed.timestamp != null && parsed.hasTaskText) {
-                    return RouterDestination.TaskCreation(title = parsed.cleanText, dueDate = parsed.timestamp)
+                    if (com.focusbyrj.app.util.assistant.AssistantInterpretation.interpret(trimmed).kind == com.focusbyrj.app.util.assistant.UtteranceKind.REQUEST)
+                        return RouterDestination.TaskCreation(title = parsed.cleanText, dueDate = parsed.timestamp)
+                    return RouterDestination.ConflictCard("Add this dated message as a task, or talk about it?", listOf(
+                        ConflictOption("Add as Todo Task", "➕", "/create $safeTrimmed"),
+                        ConflictOption("Ask Ayva", "💬", "/talk $safeTrimmed")
+                    ))
                 }
                 // Pure conversation / FAQ / personality query - send to Talk Engine (no phantom tasks!)
                 if (parsed.timestamp != null || trimmed.split(Regex("\\s+")).size > 12) {

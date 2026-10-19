@@ -86,7 +86,9 @@ class VocabRepository(val vocabDao: VocabDao) {
         }
     }
 
-    suspend fun getQuizWords(mistakesOnly: Boolean = false): Pair<List<Idiom>, List<Ows>> {
+    suspend fun getQuizWords(mistakesOnly: Boolean = false, bookmarksOnly: Boolean = false, bookmarkId: Int? = null): Pair<List<Idiom>, List<Ows>> {
+        if (bookmarksOnly && bookmarkId != null) return emptyList<Idiom>() to listOfNotNull(vocabDao.getOwsById(bookmarkId)?.takeIf { it.isBookmarked == 1 })
+        if (bookmarksOnly) return vocabDao.getBookmarkedIdioms(10) to vocabDao.getBookmarkedOws(10)
         if (mistakesOnly) return vocabDao.getMissedIdioms(10) to vocabDao.getMissedOws(10)
         val unmasteredIdioms = vocabDao.getUnmasteredLearnedIdioms(7)
         val neededIdioms = 10 - unmasteredIdioms.size

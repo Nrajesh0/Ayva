@@ -8,14 +8,30 @@ data class AssistantDateRevision(val actions: List<AssistantAction> = emptyList(
 
 /** Revise the data in a live date preview; a revision never executes its actions. */
 object AssistantTaskDateRepair {
+    internal fun clockOnly(input: String) = Regex("(?i)^(?:at\\s+)?(?:\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?|(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?:\\s+(?:am|pm))?|noon|midnight)$").matches(input.trim())
     fun repair(input: String, state: AssistantSession, tasks: List<Task>): AssistantDateRevision? {
-        val original = input.lowercase().trimEnd('.', '!', '?').replaceFirst(Regex("^(?:actually|instead)[, ]+"), "")
+        val original = input.lowercase().replaceFirst(Regex("^(?:yes|okay|ok)[, ]+but\\s+"), "").trimEnd('.', '!', '?').replaceFirst(Regex("^(?:actually|instead)[, ]+"), "")
         val negated = Regex("^not .+?[,—–]\\s*(.+)$").matchEntire(original)
         val text = negated?.groupValues?.get(1) ?: original
         val keepTime = Regex("^(?:keep|use) (?:their|the|its|both|our)(?: original| existing| same)? times?$").matches(text) || text == "same time"
         if (state.expected != "confirm") return if (keepTime) AssistantDateRevision(clarification = "Ask me to move a task or selection first, then we can keep its original time.") else null
         val edits = state.pending.filterIsInstance<AssistantAction.EditTasks>()
         if (edits.isEmpty() || edits.size != state.pending.size || edits.any { it.field != TaskField.DUE || it.ids.size != 1 || it.value.toLongOrNull() == null }) return null
+        val words = mapOf("one" to "1", "two" to "2", "three" to "3", "four" to "4", "five" to "5", "six" to "6", "seven" to "7", "eight" to "8", "nine" to "9", "ten" to "10", "eleven" to "11", "twelve" to "12")
+        val clockText = text.replaceFirst(Regex("^at\\s+"), "").replace(Regex("\\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b")) { words.getValue(it.value) }
+        val clockOnly = Regex("^(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?$").matchEntire(clockText)
+        if (clockOnly != null || clockText in setOf("noon", "midnight")) {
+            if (clockOnly != null && clockOnly.groupValues[3].isEmpty() && (clockOnly.groupValues[1].toIntOrNull() ?: -1) in 1..12 && !clockOnly.groupValues[1].startsWith('0'))
+                return AssistantDateRevision(clarification = "Do you mean AM or PM? Say ‘at 8am’ or ‘at 8pm’. The dates and saved tasks are unchanged.")
+            val clock = when (clockText) { "noon" -> 720; "midnight" -> 0; else -> AssistantFeatureLanguage.clock(clockText) }
+                ?: return AssistantDateRevision(clarification = "Use a valid time, such as 8pm or 18:30. The preview hasn't been applied.")
+            if (edits.any { edit -> tasks.none { it.id == edit.ids.single() && it.updatedAt == state.versions[it.id] && !it.isCompleted && !it.isTrashed } })
+                return AssistantDateRevision(clarification = "A task in the preview changed. Ask for the date change again.", stale = true)
+            return AssistantDateRevision(edits.map { edit ->
+                val due = Calendar.getInstance().apply { timeInMillis = edit.value.toLong(); set(Calendar.HOUR_OF_DAY, clock / 60); set(Calendar.MINUTE, clock % 60); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.timeInMillis
+                edit.copy(value = due.toString())
+            })
+        }
         val ids = edits.flatMap { it.ids }
         val originals = tasks.associateBy { it.id }
         fun unclear(message: String) = AssistantDateRevision(clarification = message)

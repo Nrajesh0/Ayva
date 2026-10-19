@@ -66,3 +66,9 @@ production compilation. Record its use; normal CI does not enable it by default.
 Resource-limited cloud sessions can additionally use
 `-Pkotlin.compiler.execution.strategy=in-process -Pkotlin.incremental=false`
 and lower worker counts. Do not silently change app behavior to fix tooling.
+
+## Dictionary artifact integrity
+
+Run `python3 tools/check_dictionary.py` alongside `python3 tools/check_chat_boundary.py`. Both non-publishing validation and release workflows run these before tests/builds. The dictionary check validates the pinned source identity, all 256 compressed `.dict` assets, manifest counts/hashes, editorial sense IDs, notices and byte budgets. It does not fetch the source or a model at runtime/build validation. To reproduce data intentionally, use tools/import_dictionary.py as described in DICTIONARY_DATA.md.
+
+The release publication decision was tested against the B2 base for this unchanged-version continuation and returned `publish=false`. Workflow edits can trigger a build; they cannot automatically overwrite the existing release without version-name/code changes under the push gate.

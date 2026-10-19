@@ -130,6 +130,7 @@ fun AyvaConversationMessage(
                 }
             }
             if (setting != null && receipt == null) AyvaInlineSetting(setting, onQuery)
+            if (receipt == null) AyvaPlanningControls(message.talkActionJson, onQuery)
             if (receipt != null) {
                 Spacer(Modifier.height(6.dp))
                 AyvaActionReceipt(receipt, message.talkActionJson, font, chatState, onQuery)

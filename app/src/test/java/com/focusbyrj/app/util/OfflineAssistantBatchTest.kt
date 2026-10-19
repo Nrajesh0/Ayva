@@ -362,10 +362,12 @@ class OfflineAssistantBatchTest {
         assertNotNull(db.taskDao().getTaskById(id))
     }
 
-    @Test fun suggestionsUseActualPriorityAndDoNotChangeDates() = runBlocking {
+    @Test fun emotionDoesNotForcePlanningAndExplicitSuggestionsUseActualPriority() = runBlocking {
         add("Normal")
         val important = add("Urgent report", true)
-        assertTrue(say("I feel overwhelmed").formattedText.contains("Urgent report"))
+        assertFalse(say("I feel overwhelmed").formattedText.contains("Urgent report"))
+        assertNull(AssistantSessionStore(context).load().planning)
+        assertTrue(say("what should I do next").formattedText.contains("Urgent report"))
         assertNull(db.taskDao().getTaskById(important)!!.dueDate)
     }
 

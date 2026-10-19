@@ -117,7 +117,8 @@ class FocusApplication : Application(), ImageLoaderFactory {
                 FocusDatabase.MIGRATION_7_11,
                 FocusDatabase.MIGRATION_1_11,
                 FocusDatabase.MIGRATION_11_12,
-                FocusDatabase.MIGRATION_1_12
+                FocusDatabase.MIGRATION_1_12,
+                FocusDatabase.MIGRATION_12_13
             )
             .build()
         } catch (t: Throwable) {
@@ -160,7 +161,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
             "vocab.db"
         )
         .createFromAsset("vocab.db")
-        .addMigrations(com.focusbyrj.app.data.VocabDatabase.MIGRATION_1_2)
+        .addMigrations(com.focusbyrj.app.data.VocabDatabase.MIGRATION_1_2, com.focusbyrj.app.data.VocabDatabase.MIGRATION_2_3)
         .build()
     }
     

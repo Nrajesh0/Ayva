@@ -68,7 +68,7 @@ data class Subtask(
                     }
                     list.add(
                         Subtask(
-                            id = obj.optString("id", java.util.UUID.randomUUID().toString()),
+                            id = obj.optString("id").takeIf { it.isNotBlank() && it != "null" } ?: java.util.UUID.nameUUIDFromBytes("legacy:$i:$title".toByteArray(Charsets.UTF_8)).toString(),
                             title = title,
                             isDone = isDone
                         )

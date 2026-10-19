@@ -1,6 +1,6 @@
 # Guided planning: research findings and implementation specification
 
-Status: planned, not implemented. Inspected 2026-10-18. Required batch B5P in [MASTER_PLAN.md](MASTER_PLAN.md), after B5 and before B6. This document defines a bounded offline planning assistant, not unrestricted natural-language reasoning. The quality goal is correct, understandable and recoverable behavior; no claim of perfect understanding.
+Original implementation specification, inspected 2026-10-18. A bounded draft/question/review/save flow is now implemented; see [OFFLINE_ASSISTANT_IMPLEMENTATION.md](OFFLINE_ASSISTANT_IMPLEMENTATION.md) and [STATUS.md](STATUS.md). P6 physical acceptance and the advanced constraints explicitly listed as unsupported remain open. The findings table below describes the planning baseline. Required batch B5P in [MASTER_PLAN.md](MASTER_PLAN.md), after B5 and before B6. This document defines a bounded offline planning assistant, not unrestricted natural-language reasoning. The quality goal is correct, understandable and recoverable behavior; no claim of perfect understanding.
 
 ## Findings from the current code
 

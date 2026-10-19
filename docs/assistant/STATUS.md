@@ -1,6 +1,6 @@
 # Assistant roadmap handoff
 
-Last updated: 2026-10-18. Master specification: [MASTER_PLAN.md](MASTER_PLAN.md).
+Last updated: 2026-10-19. Master specification: [MASTER_PLAN.md](MASTER_PLAN.md).
 
 ## Current checkpoint
 
@@ -8,7 +8,7 @@ Last updated: 2026-10-18. Master specification: [MASTER_PLAN.md](MASTER_PLAN.md)
 - HEAD at planning time: `01c692116526e0f78bea043403b6539914f93146`.
 - Version at planning time: 2.0.8 / 108.
 - The planning baseline had substantial uncommitted implementation/documents and design assets. The authorized B0–B2 checkpoint includes the reviewed implementation, tests and roadmap; design mockups remain local. The SHA above identifies the original planning base, not the completed checkpoint; use `git log` for the latter.
-- Latest request: stop after B2 and push the validated checkpoint to main. B0–B2 are locally validated. Do not start B3 or bump the version without a new request.
+- Latest request: continue after the B2 push and complete the remaining batches. B0–B2 were pushed to main as `1c8618e540d066366115b6f65fcaf39cbe6309d3`; remote HEAD was verified. Continue sequentially without a version bump.
 
 ## Existing work to preserve
 
@@ -31,20 +31,20 @@ At planning baseline, release CI used JDK 17/Gradle 8.9, the wrapper specified 9
 | --- | --- | --- |
 | B0 | Validated locally; hosted CI pending | Wrapper/JDK alignment, non-publishing CI and portable instructions |
 | B1 | Validated locally; device checks pending | Task-only recovery, storage-independent speech/session and privacy regression guard |
-| B2 | Validated locally; CI/device checks pending | Shared contracts, schema-derived settings/help, reviewed legacy chips and feature matrix |
-| B3 | Ready; awaiting a new implementation request | Common interpretation and ambiguity policy |
-| B4 | Pending B3 | Shared context, reference and repair semantics |
-| B5 | Pending B4 | Task conversations/planning |
-| B5P | Pending B5 | Guided planning P1–P6: popup/state design, day plans, task/subtask saves, exams, trips, validation |
-| B6 | Pending B5P | App controls/routines and classification |
-| B7 | Pending B6 | Habits/focus/learning |
-| B7D | Pending B7 | Dictionary D1 data/license/size prototype → D2 conversational lookup → D3 bounded sentence explanations |
-| B8 | Pending B7D | Complete settings/features coverage |
-| B9 | Pending B8 | C1 context → C2 conversation packs → C3 wit/empathy → C4 action separation and review |
-| B10 | Pending B9 | Explicit preferences and restrained suggestions |
-| B11 | Pending B10 | Offline/device/performance/release validation |
+| B2 | Pushed as `1c8618e`; hosted/device checks pending | Shared contracts, schema-derived settings/help, reviewed legacy chips and feature matrix |
+| B3 | Validated locally; device/human gates open | Shared interpretation, safe command arbitration and typo/quote handling |
+| B4 | Validated locally; device/human gates open | Absolute lifetimes, process authority, transactional row guards and repair |
+| B5 | Validated locally; device/human gates open | Combined task views, stable lists, clock/date repairs and checklist edits |
+| B5P | Bounded implementation; P6 device acceptance pending | Guided day/exam/trip drafts, scoped sheets, deadlines, atomic save/receipts/retry |
+| B6 | Implemented; device enforcement pending | Inventory-bound reviews, conversational exceptions, routine toggle undo; existing picker sorting preserved |
+| B7 | Implemented; native device flows pending | Real result recall and native saved-word quiz filtering; existing habit/focus owners reused |
+| B7D | Implemented; device performance/human meaning review pending | Licensed bundled dictionary, contextual source senses/bookmarks and bounded sentence patterns |
+| B8 | Implemented; native delivery checks pending | Schema-backed setting follow-ups/undo, truthful help and diagnostics |
+| B9 | Implemented; human conversational evaluation pending | Finite topic/game/story/joke/listening packs with scoped controls |
+| B10 | Validated locally; device/human gates open | Explicit tone/quiet/suggestion preferences; cooldown/dismiss/forget |
+| B11 | Validated locally: 916 tests and both APK builds; device/hosted gates open | Final regression, artifact/data integrity, APK size/builds and device checklist |
 
-Stopped implementation after validated B2 as requested. The next implementation batch, only when requested, is B3: common interpretation and ambiguity policy. B0/B1 local verification is complete; hosted CI and physical-device checks remain pending. See [B0_B1_IMPLEMENTATION.md](B0_B1_IMPLEMENTATION.md) and [BUILD_AND_TEST.md](BUILD_AND_TEST.md).
+The former stop-after-B2 instruction was superseded by the user’s request to complete remaining batches. The remaining implementation is recorded in OFFLINE_ASSISTANT_IMPLEMENTATION.md; physical and independent human acceptance gates remain open. B0/B1 local verification is complete; hosted CI and physical-device checks remain pending. See [B0_B1_IMPLEMENTATION.md](B0_B1_IMPLEMENTATION.md) and [BUILD_AND_TEST.md](BUILD_AND_TEST.md).
 
 ## B0/B1 validation and handoff
 
@@ -91,7 +91,7 @@ The user requested stopping after B2 and pushing to main, with no version bump. 
 
 ## Plan expansion: dictionary and everyday conversation
 
-User-approved scope added to the plan, not yet implemented:
+Historical planning expansion (implementation status is now in the batch table/current continuation below):
 - B7D introduces a bundled, licensed offline dictionary, building on existing vocabulary data. It requires source/license review, measured size and lookup budgets, contextual follow-ups, native learning integration and honest limits for sentence explanations. No per-word manual authoring project or runtime model/data downloads.
 - B9 now has four sequential slices for general conversation state, broader multi-turn content, responsive wit/empathy and safe transitions to app capabilities. Casual conversation must work without a slash command and must not be forced into task creation or productivity advice.
 - B8 now depends on B7D. Original batch IDs remain stable. At the time of that plan update, B0 was next; this did not mark either new feature implemented. Consult the current batch table above.
@@ -121,3 +121,65 @@ Record:
 - Whether commits were pushed and any CI run/commit it validated. Never equate local success with GitHub success.
 
 Keep this file factual. Do not copy private user data, Notes, credentials or raw personal conversation logs into it.
+
+## Continuation after B2 push
+
+The user superseded the stop instruction and authorized continuing all remaining batches. B2 was pushed and remote main verified at `1c8618e540d066366115b6f65fcaf39cbe6309d3`. GitHub Actions API requests are blocked by the environment proxy (403); hosted CI is unverified. No version bump. Subsequent work at the start of continuation was uncommitted; final checkpoint status is recorded below.
+
+B3/B4: shared interpretation barrier across coordinator/router/legacy NLU; bounded absolute reference/review lifetimes; full-row task/routine confirmation guards. First focused run: 90 tests, 3 failures (two quoted-title regressions and an adjacent-letter typo case). Corrected the policy to preserve literal quoted slot answers and recognize transposed command letters without executing a correction.
+
+Historical B5/B5P progress checkpoint: composable extended task views; versioned day/exam/trip preparation drafts; scoped answer/review sheet; stable draft item IDs, corrections and capacity conflicts; task-only Room 12→13 migration and atomic plan/receipt save with reminder reconciliation. Focused run after fixes: BUILD SUCCESSFUL in 2m31s (`/workspace/scratch/ayva-b3-b5p-tests.log`), including planning rollback/retry, stale question/save, interruption and duplicate-title regressions. Full suite/device/accessibility checks remain pending; do not mark P6 complete from unit tests. Quick existing day planning and protected cards remain intact. At that checkpoint, independent item deadlines were not yet implemented; the current implementation below supports them for separate tasks. Arbitrary conversational scheduling remains unsupported.
+
+## Current continuation implementation
+
+[OFFLINE_ASSISTANT_IMPLEMENTATION.md](OFFLINE_ASSISTANT_IMPLEMENTATION.md) records the delivered grammar, state/mutation paths, constraints and migration details. [DICTIONARY_DATA.md](DICTIONARY_DATA.md) records source/license/size evidence. [DEVICE_ACCEPTANCE.md](DEVICE_ACCEPTANCE.md) records unrun acceptance. Do not call the entire roadmap fully accepted while these hardware/human gates are open.
+
+Version is unchanged. The B2 push is verified; the subsequent implementation is a locally committed checkpoint after the final regression/build. No continuation push or release publication. Existing untracked design mockups are preserved and excluded. The implementation does not promise unrestricted language, calendar/dependency optimization or arbitrary sentence paraphrasing.
+
+Validation progression:
+- B3/B4 initial focus: 90 tests, 3 failures, corrected literal title/typo policy.
+- B3–B5P focus after fixes: 97 tests passed, no failures/errors/skips (2m31s).
+- Broader B3–B7 focus: 140 tests, 2 old capability assertions still labelled newly implemented planning features unavailable; those contracts/assertions were updated.
+- First continuation full run: 890 tests, 16 failures, 0 errors/skips (4m06s). Corrected Android's automatic `.gz` asset expansion, contextual done replies, quoted habit titles, archive-list routing and failure-time confirmation authority. Preserved established task-aware greetings; updated the emotional-disclosure test to require no forced planning and an explicit request for prioritization.
+- Focus after compatibility fixes: 307 tests, 2 failures (archive read routing and an incorrect new test assumption that reluctant has two senses; the pinned source has three). Corrected both without changing source meanings.
+- Full run after corrections: 894 tests passed, no failures/errors/skips (4m06s).
+- Full run including later task/routine transaction guards, routine undo, database migration and hobby tests: 898 tests passed, no failures/errors/skips (4m05s).
+- The final source adds combined priority/overdue filtering and preview/saved-task clock-only repairs, including AM/PM clarification. Final full regression of this source: **901 tests passed, 0 failures/errors/skips**, BUILD SUCCESSFUL in **4m09s** (`/workspace/scratch/ayva-assistant-final-tests.log`). Earlier green runs remain historical evidence. APK assembly is next.
+
+Logs are under `/workspace/scratch/ayva-remaining-*.log` and `/workspace/scratch/ayva-assistant-final-tests.log`; failed/earlier green XML evidence is preserved in separate scratch directories. Standard sequential commands and the cloud test-only JVM workaround remain as documented in BUILD_AND_TEST.md. No native Notes deletion assertion or overlay mechanism was changed.
+
+ADB from the configured Android SDK reported an empty device list. GitHub Actions API access is blocked by proxy HTTP403; no hosted pass is claimed. No version bump or release publication is part of this continuation.
+
+Final review follow-up: the 901-test full run passed in 4m09s. Explicit /talk help/settings and feature questions now take priority over game/hobby continuations; the 902-test full run passed in 4m07s. The first debug/release build passed in 5m30s, followed by a build of that routing revision in 5m05s. Those artifacts precede the last input-rejection review and are not the final checkpoint artifacts.
+
+The last review additionally revokes old task/plan confirmation controls after oversized inputs or an unavailable historical reply target, clears implicit mutation references on exceptions, and keeps ordinary want/like/enjoy statements conversational. These changes have their own added regressions. Their final full run and refreshed artifacts will be recorded below.
+
+Input-boundary review: **905 tests passed, 0 failures/errors/skips**, BUILD SUCCESSFUL in 4m08s (`/workspace/scratch/ayva-assistant-rejection-tests.log`). A subsequent review found that a renewed review revision after a committed save/process failure incorrectly failed receipt matching. The final fix hashes concrete task payloads (excluding generated row IDs/update timestamps) rather than review metadata, while the coordinator still requires the current nonce/revision. A dedicated process-after-commit regression now checks recovery of the same IDs. Verification of that final hash change is pending below.
+
+
+Final continuation verification progression (2026-10-18/19):
+- The receipt-hash/process recovery and opaque quoted-field fixes passed **908 tests**, zero failures/errors/skips, in 4m07s (`/workspace/scratch/ayva-assistant-checkpoint-tests.log`).
+- Goal retention/recap/descriptions, unsupported planning-domain clarification, explicit day budgets and normalized native quiz distractors passed **913 tests**, zero failures/errors/skips, in 4m07s (`/workspace/scratch/ayva-assistant-complete-tests.log`).
+- The subsequent legacy-write/unknown-app-help/dated-prose safety run executed **916 tests**, with one failure and no errors/skips (4m09s; `/workspace/scratch/ayva-assistant-final-checkpoint-tests.log`). The ambiguity policy had caught clear anchored task requests such as moving furniture. Restored the existing direct-capture behavior for anchored requests while retaining a choice for otherwise unrecognized dated messages. The original compatibility assertion is retained. Failed XML evidence: `/workspace/scratch/ayva-assistant-final-checkpoint-first-results/`. Final corrected-source verification is recorded next.
+
+Corrected-source final unit run: **916 tests passed, 0 failures/errors/skips**, BUILD SUCCESSFUL in **4m24s** on 2026-10-19 (`/workspace/scratch/ayva-assistant-validated-tests.log`). This retains the original direct-task regression assertions as well as the new wrong-action checks. Both static guards also passed: 65 chat source files, and all 107,945 dictionary headwords / 163,274 senses with source/asset integrity and byte budgets. Workflow YAML, local documentation links and whitespace checks passed.
+
+The tested source freeze covers 769 files under app/src, app/schemas, tools and .github/workflows: SHA-256 `e7904c7c2abb43098091c3c45e8b5e8b537df0025d93082967bb9e53c5844f41`. Documentation/commit metadata are outside that source freeze. APK builds and final checkpoint details follow below.
+
+
+## Final local continuation checkpoint (2026-10-19)
+
+B3–B10 and the bounded B5P/B7D implementation are complete locally. B11 automated regression, source/data integrity and APK assembly passed; P6/B11 hardware and independent human acceptance remain **open**. The new work is committed locally on main; use `git log` for its commit identity. Only B2 has been pushed. Version remains **2.0.8 / 108**; no release signing/publication or continuation push. The untracked design directory is preserved and excluded.
+
+After the 916-test pass, separate `:app:assembleDebug :app:assembleRelease` completed **BUILD SUCCESSFUL in 5m24s** (`/workspace/scratch/ayva-assistant-validated-apks.log`), using the documented offline/resource flags without the test-only init script. The tested source digest still matched after build. Both APKs contain the final goal, dated-message ambiguity, native quiz and task-only recovery markers. Their exact 259 dictionary assets match source byte-for-byte, including all 256 shard SHA values and the manifest/editorial/license files; no expanded or duplicate dictionary assets are packaged.
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Debug APK | 61,284,908 | `00894bce786fbd6a746ccd6fadaf8a214e7c1306a513d346a54d8285ecafbf91` |
+| Optimized unsigned release APK | 56,711,484 | `28027569fe4bceaf7640fdf9741512e490c8031814829a5b56d7b9f7ec2167ad` |
+
+The release is 9,629,786 bytes larger than the B2 47,081,698-byte baseline; dictionary assets account for 9,530,861 packaged bytes. Debug dictionary assets account for 9,531,377 packaged bytes. Build metadata and `aapt dump badging` independently confirm package com.focusbyrj.app, version 2.0.8 / 108 in both files. `apkanalyzer apk summary` encountered a SAX error rendering an ampersand; the AAPT metadata check succeeded, without changing app manifests to accommodate the analyzer.
+
+Final evidence JSON: `/workspace/scratch/ayva-assistant-checkpoint-evidence.json`. Final local source bundle and README/log/evidence handoff: `/workspace/scratch/ayva-assistant-continuation-handoff.tar.gz`. The bundle requires the pushed B2 prerequisite; its README describes inspection/fast-forward import into a clean checkout. These files are local transfer artifacts, not GitHub publication.
+
+ADB was rechecked on 2026-10-19 and listed no devices. Actual airplane-mode/device latency/heap/battery, speech, TalkBack/large text/lifecycle, OEM overlay/reminder enforcement and human conversational-quality/held-out-language evaluation remain unrun. Existing GitHub Actions API access returned proxy HTTP403; no hosted pass is claimed. See DEVICE_ACCEPTANCE.md for the remaining executable checklist. No further code change is required by the currently passing automated checks; continue with those acceptance gates on available hardware rather than adding test-count targets.

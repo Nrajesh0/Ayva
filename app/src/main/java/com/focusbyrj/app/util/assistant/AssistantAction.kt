@@ -6,7 +6,7 @@ import com.focusbyrj.app.data.TaskType
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class TaskField { TITLE, DUE, PRIORITY, PERSISTENT, RECURRENCE, DETAILS, REOPEN }
+enum class TaskField { TITLE, DUE, PRIORITY, PERSISTENT, RECURRENCE, DETAILS, REOPEN, CHECKLIST }
 enum class HabitField { TITLE, TARGET, REMINDER, ARCHIVED, INTERVAL, WINDOW, REMINDER_TIME }
 
 sealed class AssistantAction {
@@ -18,6 +18,7 @@ sealed class AssistantAction {
     data class LogHabit(val id: Long, val count: Int = 1) : AssistantAction()
     data class EditHabit(val id: Long, val field: HabitField, val value: String, val expected: com.focusbyrj.app.data.Habit) : AssistantAction()
     data class SaveRoutine(val draft: com.focusbyrj.app.data.FocusSchedule, val expected: com.focusbyrj.app.data.FocusSchedule? = null) : AssistantAction()
+    data class SaveDictionaryWord(val key: String, val senseId: String, val expectedId: Int?, val expectedBookmark: Int?) : AssistantAction()
     data class BookmarkWord(val type: String, val id: Int, val bookmarked: Boolean, val expected: Int) : AssistantAction()
     data class SetAppRule(val draft: com.focusbyrj.app.data.AppRestriction, val expected: com.focusbyrj.app.data.AppRestriction?) : AssistantAction()
     data class SetAppRules(val rules: List<SetAppRule>) : AssistantAction()
@@ -36,6 +37,7 @@ sealed class AssistantAction {
             is LogHabit -> { put("kind", "log_habit"); put("id", action.id); put("count", action.count) }
             is EditHabit -> { put("kind", "edit_habit"); put("id", action.id); put("field", action.field.name); put("value", action.value); put("expected", HabitJson.encode(action.expected)) }
             is SaveRoutine -> { put("kind", "save_routine"); put("draft", RoutineJson.encode(action.draft)); put("expected", action.expected?.let(RoutineJson::encode) ?: JSONObject.NULL) }
+            is SaveDictionaryWord -> { put("kind", "save_dictionary_word"); put("key", action.key); put("sense", action.senseId); put("expectedId", action.expectedId ?: JSONObject.NULL); put("expectedBookmark", action.expectedBookmark ?: JSONObject.NULL) }
             is BookmarkWord -> { put("kind", "bookmark_word"); put("type", action.type); put("id", action.id); put("bookmarked", action.bookmarked); put("expected", action.expected) }
             is SetAppRule -> { put("kind", "app_rule"); put("draft", AppRuleJson.encode(action.draft)); put("expected", action.expected?.let(AppRuleJson::encode) ?: JSONObject.NULL) }
             is SetAppRules -> { put("kind", "app_rules"); put("rules", JSONArray(action.rules.map { it.toJson() })) }
@@ -56,6 +58,7 @@ sealed class AssistantAction {
             "log_habit" -> LogHabit(json.getLong("id"), json.getInt("count"))
             "edit_habit" -> EditHabit(json.getLong("id"), HabitField.valueOf(json.getString("field")), json.getString("value"), HabitJson.decode(json.getJSONObject("expected")))
             "save_routine" -> SaveRoutine(RoutineJson.decode(json.getJSONObject("draft")), json.optJSONObject("expected")?.let(RoutineJson::decode))
+            "save_dictionary_word" -> SaveDictionaryWord(json.getString("key"), json.getString("sense"), if (json.isNull("expectedId")) null else json.getInt("expectedId"), if (json.isNull("expectedBookmark")) null else json.getInt("expectedBookmark"))
             "bookmark_word" -> BookmarkWord(json.getString("type"), json.getInt("id"), json.getBoolean("bookmarked"), json.getInt("expected"))
             "app_rule" -> SetAppRule(AppRuleJson.decode(json.getJSONObject("draft")), json.optJSONObject("expected")?.let(AppRuleJson::decode))
             "app_rules" -> json.getJSONArray("rules").let { array ->

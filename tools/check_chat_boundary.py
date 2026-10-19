@@ -12,7 +12,7 @@ paths += list((JAVA / 'util/speech').glob('*.kt'))
 paths += list((JAVA / 'ui/screens/chat').glob('*.kt'))
 paths += [JAVA / 'ui/screens/BubbleChatActivity.kt']
 paths += [JAVA / 'ui/components/TalkActionChips.kt']
-paths += [JAVA / 'util/AyvaTalkEngine.kt', JAVA / 'util/TalkAction.kt',
+paths += [JAVA / 'util/AyvaTalkEngine.kt', JAVA / 'util/TalkAction.kt', JAVA / 'util/VocabQuizChoices.kt',
           JAVA / 'util/backup/TaskRecoveryStore.kt', JAVA / 'util/backup/EncryptedSnapshotFile.kt']
 # A narrow source dependency guard, not a claim of complete transitive isolation.
 forbidden = re.compile(r'\b(?:NoteDatabase|NoteDao|NoteEntity|ArchiveVaultSecurity|VaultPayloadEncryptor|VaultSyncManager|BackupRestoreManager|DataSafetyManager|EncryptedMediaStorage|NoteMediaManager|AudioMemoManager)\b|com\.focusbyrj\.app\.data\.note\.')
