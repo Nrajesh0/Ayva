@@ -73,7 +73,7 @@ object AssistantDictionary {
             val current = link?.let { dao.getOwsById(it.owsId) } ?: dao.findOws(key).singleOrNull { it.term == sense.word && it.definition == sense.definition }
             if (current?.isBookmarked == 1) return FeatureTurn.Reply("**${sense.word}** is already in your vocabulary bookmarks.")
             return FeatureTurn.Preview(listOf(AssistantAction.SaveDictionaryWord(key, sense.id, current?.id, current?.isBookmarked ?: current?.let { 0 })),
-                "Save this meaning of **${sense.word}** to vocabulary bookmarks?\n${sense.definition}\nIt won't be marked learned or stored in Notes.")
+                "Save this meaning of **${sense.word}** to vocabulary bookmarks?\n${sense.definition}\nBookmarking won't mark it learned.")
         }
         if (lower == "quiz me on it") {
             val link = app.vocabDatabase.dictionaryBookmarkDao().get(sense.id)

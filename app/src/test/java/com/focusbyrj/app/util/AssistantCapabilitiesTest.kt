@@ -207,7 +207,10 @@ class AssistantCapabilitiesTest {
         say(confirm(say(setting.query("int", proposed))))
         assertTrue(say("what is it set to now").formattedText.contains(proposed))
         assertTrue(say("what does that do").formattedText.isNotBlank())
-        say("change it back"); assertEquals(before, setting.current(context))
+        val undone = say("change it back").formattedText
+        assertEquals(before, setting.current(context))
+        assertTrue(undone, undone.contains(before))
+        assertFalse(undone, undone.contains("reward", ignoreCase = true))
         val id = db.taskDao().insertTask(Task(title = "Keep task"))
         say("show my tasks"); say("/talk explain reminder interval"); say("change it back")
         assertFalse(db.taskDao().getTaskById(id)!!.isTrashed)

@@ -288,7 +288,20 @@ object AssistantActionExecutor {
             }
         }
         TodoWidgetProvider.updateAllWidgets(context)
-        "Undid my last reversible change. Previously earned rewards are kept; repeating the same completion won't earn them again."
+        val kinds = records.map { it.getString("kind") }.toSet()
+        when (kinds.singleOrNull()) {
+            "pref" -> records.singleOrNull()?.let { record ->
+                val spec = AssistantPreferences.specs.first { it.key == record.getString("key") }
+                "Restored **${spec.title}** to **${AssistantPreferences.display(spec, record.getString("before"))}**."
+            } ?: "Restored the previous settings."
+            "routine_edit" -> "Restored the previous routine settings."
+            "app_rule", "app_rules" -> "Restored the previous manual app lock settings."
+            "vocab_bookmark" -> "Restored the previous vocabulary bookmark."
+            "habit_edit" -> "Restored the previous habit settings."
+            else -> if (kinds.any { it == "task" || it == "habit" })
+                "Undid my last reversible change. Previously earned rewards are kept; repeating the same completion won't earn them again."
+            else "Undid my last reversible change."
+        }
     }
 
     private suspend fun refreshHabit(context: Context, app: FocusApplication, habit: Habit) {

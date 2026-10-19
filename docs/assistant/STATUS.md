@@ -42,7 +42,7 @@ At planning baseline, release CI used JDK 17/Gradle 8.9, the wrapper specified 9
 | B8 | Implemented; native delivery checks pending | Schema-backed setting follow-ups/undo, truthful help and diagnostics |
 | B9 | Implemented; human conversational evaluation pending | Finite topic/game/story/joke/listening packs with scoped controls |
 | B10 | Validated locally; device/human gates open | Explicit tone/quiet/suggestion preferences; cooldown/dismiss/forget |
-| B11 | Validated locally: 916 tests and both APK builds; device/hosted gates open | Final regression, artifact/data integrity, APK size/builds and device checklist |
+| B11 | Local regression/build checks passed; device/human/hosted gates open | Final regression, artifact/data integrity, APK size/builds and device checklist |
 
 The former stop-after-B2 instruction was superseded by the user’s request to complete remaining batches. The remaining implementation is recorded in OFFLINE_ASSISTANT_IMPLEMENTATION.md; physical and independent human acceptance gates remain open. B0/B1 local verification is complete; hosted CI and physical-device checks remain pending. See [B0_B1_IMPLEMENTATION.md](B0_B1_IMPLEMENTATION.md) and [BUILD_AND_TEST.md](BUILD_AND_TEST.md).
 
@@ -183,3 +183,25 @@ The release is 9,629,786 bytes larger than the B2 47,081,698-byte baseline; dict
 Final evidence JSON: `/workspace/scratch/ayva-assistant-checkpoint-evidence.json`. Final local source bundle and README/log/evidence handoff: `/workspace/scratch/ayva-assistant-continuation-handoff.tar.gz`. The bundle requires the pushed B2 prerequisite; its README describes inspection/fast-forward import into a clean checkout. These files are local transfer artifacts, not GitHub publication.
 
 ADB was rechecked on 2026-10-19 and listed no devices. Actual airplane-mode/device latency/heap/battery, speech, TalkBack/large text/lifecycle, OEM overlay/reminder enforcement and human conversational-quality/held-out-language evaluation remain unrun. Existing GitHub Actions API access returned proxy HTTP403; no hosted pass is claimed. See DEVICE_ACCEPTANCE.md for the remaining executable checklist. No further code change is required by the currently passing automated checks; continue with those acceptance gates on available hardware rather than adding test-count targets.
+
+
+## Scripted conversation review and reply polish (2026-10-19)
+
+After the user requested continuation, device availability was rechecked: ADB still listed no devices, and no emulator/system image or /dev/kvm was available. The user deferred reviewing the app. Device and human acceptance therefore remain open.
+
+Ran a scratch-only collector through the real coordinator/reply engine with in-memory stores: six synthetic scenarios, 38 turns. The collector asserts actual task/checklist/bookmark state, records native handoffs without launching them, and is excluded from production and the permanent suite. This is developer-authored exploratory evidence, not an independent or held-out human quality score. [CONVERSATION_REVIEW.md](CONVERSATION_REVIEW.md) contains the resulting dialog.
+
+The initial run passed in 45s and exposed confusing copy: setting undo mentioned completion rewards; planning recaps still promised to ask for already-supplied steps/deadlines; dictionary bookmark preview unnecessarily mentioned Notes. Corrected these messages and omitted routine delivery diagnostics on a successful plan save. Real effect-refresh failure still shows retry instructions; scheduling/delivery behavior is unchanged. Task/habit completion undo retains its existing reward wording, task receipt/reschedule layouts are unchanged, and no Notes capability was added. Other undo receipts now use their own domain.
+
+Extended the existing current-setting/undo regression with restored-value/domain relevance assertions; no permanent test cases were added. The focused capabilities/planning/dictionary regressions plus the scratch collector passed **54 tests, 0 failures/errors/skips**, BUILD SUCCESSFUL in **2m23s** (`/workspace/scratch/ayva-review/polish-tests.log`). Comparing the before/after collection showed the same controls, native handoffs and final task rows for all 38 turns; 11 reply texts changed. The previous full 916-test pass applies to baseline `9015eaf`; it is not represented as a new full run of the reply-polish revision. Its original XML is preserved under `/workspace/scratch/ayva-review/validated-916-results/`.
+
+Current tested source freeze (769 files; same scope as above): `3d7ec30cc616324f165a7ec068f682c12a80d3ef58a6638cbbacfe7fd64bd233`. Both static guards and whitespace checks passed. Build/artifact/checkpoint details follow after assembly; version remains unchanged and there is no push.
+
+Reply-polish artifact verification: `:app:assembleDebug :app:assembleRelease` passed separately in **5m05s**, using the same documented offline/resource flags (`/workspace/scratch/ayva-review/polish-apks.log`). Both APKs contain the updated wording and exclude the scratch collector; all 259 dictionary assets still match source byte-for-byte. The source freeze matched after assembly. AAPT confirmed unchanged version 2.0.8 / 108.
+
+- Debug: 61,284,908 bytes; SHA-256 `00cfbf222f5dfada03f5d982ebfb36341f832b3b439888ff74cd5265e008b688`.
+- Optimized unsigned release: 56,711,484 bytes; SHA-256 `c6635299ca906f79db5957af2bf4479fec91dd688cde508d3df0470d2971c416`.
+- Current evidence: `/workspace/scratch/ayva-review/polish-evidence.json`. Its unit counts are the focused run: 53 existing regression cases plus one scratch collector case. The latter exercised six scenarios, not an addition to the permanent suite.
+- Wording comparison: `/workspace/scratch/ayva-review/wording-diff.json`. Source/collector/transcripts/final logs are retained in the refreshed local continuation handoff; the bundle still requires the pushed B2 base. No model/download/Notes capability, action-policy change, protected UI change or version bump.
+
+This follow-up is committed locally after `9015eaf`; consult Git history for its SHA. There is no push or publication. No new full-suite result is claimed beyond the earlier 916-test baseline. The focused run and actual dialogue-state comparisons are appropriate to these message-only changes. Required physical checks and independent human/held-out evaluation remain deferred, as requested by the user.

@@ -66,7 +66,7 @@ internal object AssistantGuidedPlanning {
             put(state, draft.copy(saved = true, nonce = null)); state.clearPending()
             state.undo = saved.undo(); state.undoId = UUID.randomUUID().toString(); state.focusTasks(saved.tasks.map { it.id }); state.rememberTaskList(saved.tasks.map { it.id })
             val message = "${if (saved.repeated) "This plan was already saved" else "Added ${saved.tasks.size} task(s)"}${if (draft.checklist) " with ${draft.items.size} checklist items" else ""}." +
-                if (saved.effectsPending) " Tasks are saved, but reminder/widget refresh needs a retry. Say ‘retry plan reminders’." else " Reminder scheduling was requested; this doesn't prove Android delivery."
+                if (saved.effectsPending) " Tasks are saved, but reminder/widget refresh needs a retry. Say ‘retry plan reminders’." else ""
             return AssistantPresentation.attach(reply(message, listOf(TalkAction.AskQuery("/ayva undo ${state.undoId}", "Undo plan"))),
                 saved.tasks.singleOrNull()?.let { AssistantItemReference("task", it.id, it.title, AssistantPresentation.due(it.dueDate)) }, AssistantPresentation.taskReceipt(state.undo, saved.effectsPending))
         }
@@ -192,7 +192,8 @@ internal object AssistantGuidedPlanning {
             if (draft.nonce != null) actions += TalkAction.AskQuery("/ayva plan-save ${draft.id} ${draft.revision} ${draft.nonce}", "Add ${if (draft.checklist) 1 else draft.items.size} task(s)")
         }
         actions += TalkAction.AskQuery(command(draft.id, draft.revision, "cancel planning"), "Cancel planning")
-        val response = reply(listOf(prefix, "Planning · ${draft.title ?: draft.domain}", draft.goal?.let { "Goal details: $it\nThese details will be included in saved task descriptions. I’ll ask for concrete steps and deadlines below." }.orEmpty(), question(draft), summary, dates + warning, "Nothing is saved until you use Add tasks in this review.").filter(String::isNotBlank).joinToString("\n\n"), actions)
+        val goal = draft.goal?.let { "Goal: $it" + if (draft.question == "items") "\nI'll keep these details in the saved task descriptions." else "" }.orEmpty()
+        val response = reply(listOf(prefix, "Planning · ${draft.title ?: draft.domain}", goal, question(draft), summary, dates + warning, "Nothing is saved until you use Add tasks in this review.").filter(String::isNotBlank).joinToString("\n\n"), actions)
         val root = JSONObject(response.jsonPayload ?: "{}")
         val display = root.optJSONObject("presentation") ?: JSONObject().put("version", 1)
         display.put("plan", JSONObject().put("id", draft.id).put("revision", draft.revision).put("at", draft.at).put("question", draft.question).put("goal", draft.goal ?: JSONObject.NULL).put("prompt", question(draft)).put("items", JSONArray(draft.items.map { it.json().put("resolvedDue", (if (it.inheritDeadline) draft.deadline else it.dueDate) ?: JSONObject.NULL) })))
