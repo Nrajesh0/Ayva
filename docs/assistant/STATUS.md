@@ -4,7 +4,7 @@ Last updated: 2026-10-19. Master specification: [MASTER_PLAN.md](MASTER_PLAN.md)
 
 ## Current checkpoint
 
-Continuation publication: code through `deaa29748ca63ac3aedf7eb3a2062a69cdee8c6b` was pushed to GitHub main and the remote SHA verified on 2026-10-19. Earlier local-only statements below record historical checkpoints. The publication handoff commit accompanies main; consult Git history for its identity.
+Continuation publication: code through trip-routing fix `7b753f2e53dca7cafd3388d1d0e9674c74fb3398` was pushed to GitHub main and the remote SHA verified on 2026-10-19. Earlier local-only statements below record historical checkpoints. The publication handoff commit accompanies main; consult Git history for its identity.
 
 - Repository: Nrajesh0/Ayva; local branch `main`.
 - HEAD at planning time: `01c692116526e0f78bea043403b6539914f93146`.
@@ -239,3 +239,5 @@ Trip-routing APK verification passed after separate debug/optimized unsigned rel
 - Evidence: `/workspace/scratch/ayva-trip-evidence.json`; source freeze: `/workspace/scratch/ayva-trip-source-freeze.json`.
 
 This regression fix continues the authorized GitHub main update. No version bump, signed release publication, design mockup changes or device-acceptance claim. The existing open hardware/independent human/hosted CI gates remain as recorded above.
+
+Trip-routing fix pushed successfully to GitHub main: normal fast-forward `548c1e4` → `7b753f2`, verified by `git ls-remote` returning `7b753f2e53dca7cafd3388d1d0e9674c74fb3398`. This publication note accompanies the fix. Only handoff documentation changed after the verified build; no redundant tests/builds were run for this note. Hosted Actions remains unverified.
