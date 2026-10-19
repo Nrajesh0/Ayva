@@ -4,6 +4,8 @@ Last updated: 2026-10-19. Master specification: [MASTER_PLAN.md](MASTER_PLAN.md)
 
 ## Current checkpoint
 
+Continuation publication: code through `deaa29748ca63ac3aedf7eb3a2062a69cdee8c6b` was pushed to GitHub main and the remote SHA verified on 2026-10-19. Earlier local-only statements below record historical checkpoints. The publication handoff commit accompanies main; consult Git history for its identity.
+
 - Repository: Nrajesh0/Ayva; local branch `main`.
 - HEAD at planning time: `01c692116526e0f78bea043403b6539914f93146`.
 - Version at planning time: 2.0.8 / 108.
@@ -205,3 +207,14 @@ Reply-polish artifact verification: `:app:assembleDebug :app:assembleRelease` pa
 - Wording comparison: `/workspace/scratch/ayva-review/wording-diff.json`. Source/collector/transcripts/final logs are retained in the refreshed local continuation handoff; the bundle still requires the pushed B2 base. No model/download/Notes capability, action-policy change, protected UI change or version bump.
 
 This follow-up is committed locally after `9015eaf`; consult Git history for its SHA. There is no push or publication. No new full-suite result is claimed beyond the earlier 916-test baseline. The focused run and actual dialogue-state comparisons are appropriate to these message-only changes. Required physical checks and independent human/held-out evaluation remain deferred, as requested by the user.
+
+
+## Continuation pushed to GitHub main
+
+The user explicitly authorized pushing the completed continuation. `git fetch origin main` confirmed the remote was still B2 and local main was two commits ahead, with no divergence. A normal fast-forward push succeeded from `1c8618e` to `deaa297`; `git ls-remote origin refs/heads/main` returned exactly `deaa29748ca63ac3aedf7eb3a2062a69cdee8c6b`. This includes implementation commit `9015eaf` and reply-polish commit `deaa297`. This documentation update follows that verified code push.
+
+Version remains **2.0.8 / 108**; no version bump, signed release or release publication was requested. Untracked design mockups remain excluded. Code/tests/assets are unchanged from the locally validated checkpoints; this follow-up changes only handoff documentation, so no redundant build/test run was performed.
+
+Hosted Actions status is still unverified. Existing local evidence remains the earlier 916-case full run at `9015eaf`, the 54-case focused/scratch run after message-only polish, and both final debug/optimized unsigned APK builds. Physical Android 16, independent human conversation review and performance/accessibility/OEM checks remain deferred.
+
+Publication handoff recorded at 2026-10-19T03:16:10+00:00.
