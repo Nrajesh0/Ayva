@@ -87,6 +87,7 @@ android {
       isIncludeAndroidResources = true
       all {
         it.maxHeapSize = "2048m"
+        it.testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
       }
     }
   }

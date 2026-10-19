@@ -151,48 +151,54 @@ class Batch5SecurityAuditTest {
     // B5-F-003: FocusDatabaseMigrationHelper extracts modern columns when present
     @Test
     fun testFocusDatabaseMigrationHelperPreservesModernTaskColumns() = runBlocking {
-        val legacyDbFile = context.getDatabasePath("focus_database")
-        legacyDbFile.parentFile?.mkdirs()
-        if (legacyDbFile.exists()) legacyDbFile.delete()
+        // Keep migration fixtures separate from application startup's asynchronous trash purge.
+        val migrationDb = Room.inMemoryDatabaseBuilder(context, FocusDatabase::class.java).build()
+        try {
+            val legacyDbFile = context.getDatabasePath("focus_database")
+            legacyDbFile.parentFile?.mkdirs()
+            if (legacyDbFile.exists()) legacyDbFile.delete()
 
-        val rawDb = SQLiteDatabase.openOrCreateDatabase(legacyDbFile, null)
-        rawDb.execSQL("""
-            CREATE TABLE tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                title TEXT NOT NULL,
-                details TEXT NOT NULL DEFAULT '',
-                dueDate INTEGER,
-                isCompleted INTEGER NOT NULL DEFAULT 0,
-                type TEXT NOT NULL DEFAULT 'TASK',
-                recurrence TEXT NOT NULL DEFAULT 'NONE',
-                isPersistent INTEGER NOT NULL DEFAULT 0,
-                isPriority INTEGER NOT NULL DEFAULT 0,
-                completedAt INTEGER,
-                updatedAt INTEGER NOT NULL DEFAULT 0,
-                isTrashed INTEGER NOT NULL DEFAULT 0,
-                trashedAt INTEGER DEFAULT NULL,
-                deletedAt INTEGER DEFAULT NULL,
-                subtasksJson TEXT NOT NULL DEFAULT '[]'
-            )
-        """.trimIndent())
+            val rawDb = SQLiteDatabase.openOrCreateDatabase(legacyDbFile, null)
+            rawDb.execSQL("""
+                CREATE TABLE tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    title TEXT NOT NULL,
+                    details TEXT NOT NULL DEFAULT '',
+                    dueDate INTEGER,
+                    isCompleted INTEGER NOT NULL DEFAULT 0,
+                    type TEXT NOT NULL DEFAULT 'TASK',
+                    recurrence TEXT NOT NULL DEFAULT 'NONE',
+                    isPersistent INTEGER NOT NULL DEFAULT 0,
+                    isPriority INTEGER NOT NULL DEFAULT 0,
+                    completedAt INTEGER,
+                    updatedAt INTEGER NOT NULL DEFAULT 0,
+                    isTrashed INTEGER NOT NULL DEFAULT 0,
+                    trashedAt INTEGER DEFAULT NULL,
+                    deletedAt INTEGER DEFAULT NULL,
+                    subtasksJson TEXT NOT NULL DEFAULT '[]'
+                )
+            """.trimIndent())
 
-        val subtasks = """[{"id":"1","text":"Do homework","isCompleted":false}]"""
-        rawDb.execSQL("""
-            INSERT INTO tasks (id, title, details, dueDate, isCompleted, type, recurrence, isPersistent, isPriority, completedAt, updatedAt, isTrashed, trashedAt, deletedAt, subtasksJson)
-            VALUES (1, 'Legacy Task', 'From unencrypted db', 1700000000000, 0, 'TASK', 'NONE', 0, 1, NULL, 1701111111000, 1, 1702222222000, 1703333333000, '$subtasks')
-        """.trimIndent())
-        rawDb.close()
+            val subtasks = """[{"id":"1","text":"Do homework","isCompleted":false}]"""
+            rawDb.execSQL("""
+                INSERT INTO tasks (id, title, details, dueDate, isCompleted, type, recurrence, isPersistent, isPriority, completedAt, updatedAt, isTrashed, trashedAt, deletedAt, subtasksJson)
+                VALUES (1, 'Legacy Task', 'From unencrypted db', 1700000000000, 0, 'TASK', 'NONE', 0, 1, NULL, 1701111111000, 1, 1702222222000, 1703333333000, '$subtasks')
+            """.trimIndent())
+            rawDb.close()
 
-        FocusDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(context, focusDb)
+            FocusDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(context, migrationDb)
 
-        val migratedTasks = focusDb.taskDao().getAllTasksList()
-        assertEquals("Must migrate 1 task", 1, migratedTasks.size)
-        val migrated = migratedTasks.first()
-        assertEquals(1701111111000L, migrated.updatedAt)
-        assertTrue("isTrashed must be true", migrated.isTrashed)
-        assertEquals(1702222222000L, migrated.trashedAt)
-        assertEquals(1703333333000L, migrated.deletedAt)
-        assertEquals(subtasks, migrated.subtasksJson)
+            val migratedTasks = migrationDb.taskDao().getAllTasksList()
+            assertEquals("Must migrate 1 task", 1, migratedTasks.size)
+            val migrated = migratedTasks.first()
+            assertEquals(1701111111000L, migrated.updatedAt)
+            assertTrue("isTrashed must be true", migrated.isTrashed)
+            assertEquals(1702222222000L, migrated.trashedAt)
+            assertEquals(1703333333000L, migrated.deletedAt)
+            assertEquals(subtasks, migrated.subtasksJson)
+        } finally {
+            migrationDb.close()
+        }
     }
 
     // B5-F-004: NoteDatabaseMigrationHelper extracts fontKey, trashedAt, and deletedAt when present

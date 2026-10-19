@@ -252,3 +252,14 @@ The user explicitly requested a version update and GitHub push. Incremented app/
 Validation: `:app:processDebugMainManifest :app:processReleaseMainManifest` passed with the configured offline toolchain, BUILD SUCCESSFUL in **17s** (`/workspace/scratch/ayva-2.0.9-version-check.log`). Parsed both generated manifests and verified versionName 2.0.9 / versionCode 109. Whitespace checks passed. Runtime source is unchanged from the previous 920-test/full APK validation, so that suite and optimization were not redundantly repeated for metadata-only changes. The existing local APKs remain 2.0.8 artifacts; new 2.0.9 release APK generation/signing/publication belongs to GitHub Actions and has not been verified here.
 
 This version update is included in the authorized main push. The unchanged open physical/human acceptance gates remain recorded above. Untracked design mockups are excluded.
+
+
+## GitHub Actions repair for 2.0.9 (2026-10-19)
+
+Retrieved the actual failed hosted logs after GitHub API/log-storage access became available. Validation run `39198345605` failed because android-actions/setup-android requested the removed SDK package `tools`. Release run `39198345603` executed 920 tests, with one failure in `testFocusDatabaseMigrationHelperPreservesModernTaskColumns`; APK signing/publication was skipped.
+
+Validation now requests platform-tools, platform 35 and build-tools 34.0.0 explicitly. The migration test now owns an isolated Room database: its historical trashed-task fixture can otherwise be removed by the application's asynchronous daily trash purge. Every original migration assertion is retained. A controlled diagnostic interleaving reproduced the zero-row failure before isolation (one failed test, 32s), then passed with isolation while the same maintenance ran against the application database (one passing test, 21s). The temporary diagnostic invocation is excluded from the final test source. No production migration, retention, Notes, overlay or chat behavior was changed.
+
+Final local full suite: **920 tests, zero failures/errors/skips**, BUILD SUCCESSFUL in **1m52s** (`/workspace/scratch/ayva-ci-fix-full-tests.log`), using the default compiler/test JVM configuration and cached dependencies with `--offline --no-daemon --stacktrace --max-workers=2`. Both static guards, workflow YAML validation and whitespace checks passed. Release CI now uploads test reports even on failure; Gradle prints full test exception traces. No test cases or assertions were removed or disabled.
+
+Version remains **2.0.9 / 109**. The repair is intended for GitHub main; hosted validation and an explicit manual release retry must be checked after pushing. Ordinary unchanged-version push publication remains disabled by the existing gate. Historical local APKs are not claimed as 2.0.9 signed releases. Untracked design mockups remain excluded.
