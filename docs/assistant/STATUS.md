@@ -4,6 +4,8 @@ Last updated: 2026-10-19. Master specification: [MASTER_PLAN.md](MASTER_PLAN.md)
 
 ## Current checkpoint
 
+Latest release request: bump to **2.0.9 / 109** and push main. Older version/publication entries below describe their dated checkpoints.
+
 Continuation publication: code through trip-routing fix `7b753f2e53dca7cafd3388d1d0e9674c74fb3398` was pushed to GitHub main and the remote SHA verified on 2026-10-19. Earlier local-only statements below record historical checkpoints. The publication handoff commit accompanies main; consult Git history for its identity.
 
 - Repository: Nrajesh0/Ayva; local branch `main`.
@@ -241,3 +243,12 @@ Trip-routing APK verification passed after separate debug/optimized unsigned rel
 This regression fix continues the authorized GitHub main update. No version bump, signed release publication, design mockup changes or device-acceptance claim. The existing open hardware/independent human/hosted CI gates remain as recorded above.
 
 Trip-routing fix pushed successfully to GitHub main: normal fast-forward `548c1e4` → `7b753f2`, verified by `git ls-remote` returning `7b753f2e53dca7cafd3388d1d0e9674c74fb3398`. This publication note accompanies the fix. Only handoff documentation changed after the verified build; no redundant tests/builds were run for this note. Hosted Actions remains unverified.
+
+
+## Version 2.0.9 / build 109
+
+The user explicitly requested a version update and GitHub push. Incremented app/build.gradle.kts from 2.0.8 / 108 to **2.0.9 / 109**, and updated the README download label. The existing release workflow is triggered by this Gradle-file change; its publication-intent check correctly returns true for the version-changing push. No existing v2.0.9 tag was present when checked.
+
+Validation: `:app:processDebugMainManifest :app:processReleaseMainManifest` passed with the configured offline toolchain, BUILD SUCCESSFUL in **17s** (`/workspace/scratch/ayva-2.0.9-version-check.log`). Parsed both generated manifests and verified versionName 2.0.9 / versionCode 109. Whitespace checks passed. Runtime source is unchanged from the previous 920-test/full APK validation, so that suite and optimization were not redundantly repeated for metadata-only changes. The existing local APKs remain 2.0.8 artifacts; new 2.0.9 release APK generation/signing/publication belongs to GitHub Actions and has not been verified here.
+
+This version update is included in the authorized main push. The unchanged open physical/human acceptance gates remain recorded above. Untracked design mockups are excluded.
