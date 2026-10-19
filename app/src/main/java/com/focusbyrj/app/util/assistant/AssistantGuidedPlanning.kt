@@ -5,6 +5,7 @@ import android.util.Base64
 import com.focusbyrj.app.util.AyvaTalkEngine
 import com.focusbyrj.app.util.SmartDateParser
 import com.focusbyrj.app.util.TalkAction
+import com.focusbyrj.app.util.OfflineNluEngine
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -12,7 +13,27 @@ import java.util.UUID
 /** Bounded planning dialogue. Sheets and typed replies enter this same dispatcher. */
 internal object AssistantGuidedPlanning {
     private fun get(state: AssistantSession) = state.featureState?.optJSONObject("guidedPlan")?.let { runCatching { PlanningDraft.read(it) }.getOrNull() }
-    fun isRequest(input: String) = Regex("(?i)^(?:(?:help me|let's|lets|i want to|i'd like to) )?plan\\b|^(?:help me|let's|lets) prepare for\\b").containsMatchIn(input.trim())
+    private data class StartRequest(val domain: String?, val detail: String)
+    private val requestWrapper = Regex("(?i)^(?:(?:can|could|shall|would) we(?: please)?|let's|lets|help (?:me|us)|i (?:want|would like) to|i'd like to)\\s+")
+    private val requestVerb = Regex("(?i)^(?:plan\\b|prepare for\\b|(?:make|create|build|put together) (?:a |my |our )?plan\\b)\\s*(.*)$")
+    private val domainPattern = Regex("(?i)^(?:(?:my|our|the|a|an|next) )?(trip|trips|vacation|holiday|exam|exams|day|today)(?:\\s+(.*))?$")
+    private fun domain(value: String) = when (value.lowercase(java.util.Locale.ROOT)) {
+        "trip", "trips", "vacation", "holiday" -> "trip"
+        "exam", "exams" -> "exam"
+        else -> "day"
+    }
+    /** One request grammar is shared by interpretation, routing and the draft owner. */
+    private fun startRequest(input: String): StartRequest? {
+        var body = OfflineNluEngine.normalizeRequest(input).trimEnd('?', '.', '!')
+        repeat(3) { body = body.replaceFirst(requestWrapper, "") }
+        val request = requestVerb.matchEntire(body) ?: return null
+        val scope = request.groupValues[1].replaceFirst(Regex("(?i)^(?:(?:some )?(?:things|tasks|steps|preparations?|a checklist) )?for\\s+"), "").trim()
+        val target = domainPattern.matchEntire(scope) ?: return StartRequest(null, scope)
+        val detail = target.groupValues[2].trim()
+        if (target.groupValues[1].lowercase(java.util.Locale.ROOT) in setOf("vacation", "holiday") && Regex("(?i)^mode\\b").containsMatchIn(detail)) return null
+        return StartRequest(domain(target.groupValues[1]), detail)
+    }
+    fun isRequest(input: String) = startRequest(input) != null
     fun acceptsLiteral(state: AssistantSession) = state.topic == "guided_planning" && get(state)?.let { !it.saved && !it.paused && AssistantContext.live(it.at) } == true
     private fun put(state: AssistantSession, draft: PlanningDraft) {
         if (state.featureState == null) state.featureState = JSONObject()
@@ -34,24 +55,32 @@ internal object AssistantGuidedPlanning {
     suspend fun answer(context: Context, state: AssistantSession, input: String): AyvaTalkEngine.TalkResponse? {
         val text = input.trim().trimEnd('?', '.', '!')
         val lower = text.lowercase(java.util.Locale.ROOT)
-        val start = Regex("(?i)^(?:help me |let's |lets |i want to |i'd like to )?(?:plan|prepare for) (?:my |a |an )?(trip|exam|exams|day)(?: (.*))?$").matchEntire(text)
-        val guidedStart = start != null && isRequest(text) && (start.groupValues[1].lowercase() != "day" || Regex("(?i)^(?:together|from scratch)\\b").containsMatchIn(start.groupValues[2]))
+        val choosingScope = state.topic == "planning_scope" && state.expected == "planning_domain"
+        if (choosingScope && lower in setOf("cancel planning", "discard plan", "cancel")) {
+            state.clearPending(); state.switchTopic("conversation")
+            return reply("Cancelled planning. Your saved tasks are unchanged.")
+        }
+        val scopeAnswer = if (choosingScope) startRequest("plan $text")?.takeIf { it.domain != null } else null
+        val start = startRequest(text) ?: scopeAnswer?.let { if (it.domain == "day") it.copy(detail = "from scratch ${it.detail}".trim()) else it }
+        val guidedStart = start?.domain != null && (start.domain != "day" || Regex("(?i)^(?:together|from scratch)\\b").containsMatchIn(start.detail))
         var draft = get(state)
         if (guidedStart) {
             if (draft != null && !draft.saved && AssistantContext.live(draft.at)) return render(state, draft, "An unfinished ${draft.domain} plan is still here. Say ‘cancel planning’ before starting another, or ‘back to my plan’ to continue.")
             AssistantConversation.suspendQuestion(state)
-            val detail = start!!.groupValues[2].replaceFirst(Regex("(?i)^(?:together|from scratch)[: ]*"), "").trim()
-            draft = PlanningDraft(domain = start.groupValues[1].lowercase().removeSuffix("s"), goal = detail.takeIf { it.length in 1..500 })
+            val detail = start!!.detail.replaceFirst(Regex("(?i)^(?:together|from scratch)[: ]*"), "").trim()
+            draft = PlanningDraft(domain = start.domain!!, goal = detail.takeIf { it.length in 1..500 })
             own(state, draft)
             return render(state, draft, if (detail.length > 500) "Keep goal details under 500 characters. You can set them with ‘goal: …’; give concrete steps separately." else "")
         }
         if (lower == "retry plan reminders") return reply("Plan reminder reconciliation requested. ${AssistantPlanStore.retryEffects(context)} saved plan(s) still need a retry. Android delivery still depends on permissions and device settings.")
+        if (start != null && !AssistantPlanning.isDirectRequest(text) && draft != null && !draft.saved && AssistantContext.live(draft.at))
+            return render(state, draft, "An unfinished ${draft.domain} plan is still here. Say ‘cancel planning’ before starting another, or ‘back to my plan’ to continue.")
+        if (start != null && !AssistantPlanning.isDirectRequest(text)) {
+            AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("planning_scope"); state.expected = "planning_domain"
+            return reply("Would you like an order for saved tasks, or a guided checklist for a day, exam or trip? I haven't created a task from that planning request.", listOf(
+                TalkAction.AskQuery("plan my day", "Use saved tasks"), TalkAction.AskQuery("plan my day from scratch", "Build a checklist"), TalkAction.AskQuery("plan my trip", "Trip preparation")))
+        }
         if (draft == null) {
-            if (isRequest(text) && !AssistantPlanning.isDirectRequest(text)) {
-                AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("conversation")
-                return reply("Would you like an order for saved tasks, or a guided checklist for a day, exam or trip? I haven't created a task from that planning request.", listOf(
-                    TalkAction.AskQuery("plan my day", "Use saved tasks"), TalkAction.AskQuery("plan my day from scratch", "Build a checklist"), TalkAction.AskQuery("plan my trip", "Trip preparation")))
-            }
             return if (text.startsWith("/ayva plan")) reply("That planning control is no longer available. Start a fresh plan.") else null
         }
         if (!AssistantContext.live(draft.at)) {

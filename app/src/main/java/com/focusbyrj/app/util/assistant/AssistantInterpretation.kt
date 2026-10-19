@@ -23,10 +23,10 @@ object AssistantInterpretation {
         if (Regex("^[\"“`].*[\"”`]$").matches(text.trim()) ||
             Regex("(?i)^(?:for example|example|suppose|imagine|hypothetically|what if|if i|if you|someone said|they said|my friend said|the app said|i said)\\b").containsMatchIn(text))
             return Interpretation(UtteranceKind.QUOTED, text)
+        if (AssistantGuidedPlanning.isRequest(text)) return Interpretation(UtteranceKind.CONVERSATION, text)
         if (Regex("(?i)^(?:i (?:might|may|could|should|would)|we (?:might|could|should)|let's say|lets say)\\b").containsMatchIn(text))
             return Interpretation(UtteranceKind.HYPOTHETICAL, text)
         if (Regex("(?i)^(?:actually|instead|i meant|no[, ])\\b").containsMatchIn(text)) return Interpretation(UtteranceKind.CORRECTION, text)
-        if (AssistantGuidedPlanning.isRequest(text)) return Interpretation(UtteranceKind.CONVERSATION, text)
         if (OfflineNluEngine.isExplicitCreation(text)) return Interpretation(UtteranceKind.REQUEST, text)
         if (OfflineNluEngine.isQuestion(text)) return Interpretation(UtteranceKind.QUESTION, text)
         if (AssistantDictionary.isLookup(text)) return Interpretation(UtteranceKind.QUESTION, text)

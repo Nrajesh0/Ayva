@@ -218,3 +218,24 @@ Version remains **2.0.8 / 108**; no version bump, signed release or release publ
 Hosted Actions status is still unverified. Existing local evidence remains the earlier 916-case full run at `9015eaf`, the 54-case focused/scratch run after message-only polish, and both final debug/optimized unsigned APK builds. Physical Android 16, independent human conversation review and performance/accessibility/OEM checks remain deferred.
 
 Publication handoff recorded at 2026-10-19T03:16:10+00:00.
+
+
+## Reported trip-planning / Vacation Mode routing regression
+
+The user's screenshot showed `can we plan things for a trip` receiving Vacation Mode help. Reproduced against base `548c1e4`: the exact public-engine request did not create a guided planning frame. The red regression run failed (one executed test; `/workspace/scratch/ayva-trip-routing-red.log`, 45s). Root cause: the planner accepted a narrow opening grammar, while the catalogue included generic `trip` and `holiday` aliases for Vacation Mode.
+
+The fix uses one planning request parser for the interpretation barrier, router and draft owner. It accepts collaborative/polite planning requests, plan-for/things-for constructions and trip/holiday/vacation preparation. Generic requests collect a scoped domain answer, retaining details such as Goa. Existing `plan my day` still orders saved tasks; explicit creation/quoted titles stay literal; negation/hypothetical examples remain non-executable. Explicit Vacation Mode help retains the real setting owner. Removed only the two misleading generic catalogue aliases. No task is saved without the existing reviewed Add control, and planning does not change the Vacation Mode value.
+
+Added four public-entry/state regressions covering the exact screenshot through review/save, grouped paraphrases, scoped follow-ups/settings interruptions, and quoted/negative/hypothetical/explicit-reminder boundaries. Initial focused suite: **91 tests passed, zero failures/errors/skips**, BUILD SUCCESSFUL in **2m31s** (`/workspace/scratch/ayva-trip-routing-focused.log`). The subsequent final source also covers `I would like to …` and retaining a goal supplied with the domain answer. Full regression/build evidence follows below.
+
+Current source freeze: 769 files, SHA-256 `a291a8bfd4f7acfb8f5c391fb8869e00bf282b32c5202e0c030b3b8e7b693761`. Static Notes-boundary/dictionary checks and whitespace checks passed. Protected UI, blocking overlays, Notes isolation, database schemas and version remain unchanged.
+
+Final regression for the trip-routing fix passed **920 tests, 0 failures/errors/skips**, BUILD SUCCESSFUL in **4m17s** (`/workspace/scratch/ayva-trip-routing-full.log`). This is a new full-suite run of the current source, including the earlier reply polish and the four new planning regressions. YAML, documentation links and static guards passed; remote main had no divergence from the `548c1e4` base before publication. Separate APK assembly is in progress.
+
+Trip-routing APK verification passed after separate debug/optimized unsigned release assembly (**5m13s**, `/workspace/scratch/ayva-trip-routing-apks.log`). The post-build source digest matched the tested source. Both APKs contain the new scope/request grammar and the corrected help catalogue; all 259 dictionary assets remain byte-identical to source. AAPT independently confirms unchanged version 2.0.8 / 108.
+
+- Debug APK: 61,284,908 bytes; SHA-256 `901fc8f6d028296f3f9af89a4db697b07b5764fec3843968e60b4a51e6b734ff`.
+- Optimized unsigned release APK: 56,711,480 bytes; SHA-256 `a092d0346c4af0d452f7df66d88c3d4494496b669e3c0f61a62fc802599c759c`.
+- Evidence: `/workspace/scratch/ayva-trip-evidence.json`; source freeze: `/workspace/scratch/ayva-trip-source-freeze.json`.
+
+This regression fix continues the authorized GitHub main update. No version bump, signed release publication, design mockup changes or device-acceptance claim. The existing open hardware/independent human/hosted CI gates remain as recorded above.

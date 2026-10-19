@@ -219,4 +219,73 @@ class AssistantGuidedPlanningTest {
         assertTrue(response.formattedText.contains("guided checklist"))
         assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
     }
+
+    @Test fun collaborativeTripRequestOverridesVacationHelpAndSavesOnlyAfterReview() = runBlocking {
+        val prefs = context.getSharedPreferences("bubble_prefs", 0)
+        prefs.edit().putBoolean("vacation_mode", true).commit()
+        AyvaTalkEngine.answerTalkQueryWithActions("/talk vacation mode", context)
+        val input = "can we plan things for a trip"
+        assertTrue(AyvaIntentRouter.route(input) is RouterDestination.TalkQuery)
+        val response = AyvaTalkEngine.answerTalkQueryWithActions(input, context)
+        assertNotNull(response.formattedText, state().featureState?.optJSONObject("guidedPlan"))
+        assertEquals("trip", plan().domain)
+        assertEquals("items", plan().question)
+        assertTrue(response.formattedText.contains("preparation steps"))
+        assertFalse(response.formattedText.contains("Streak Freeze"))
+        assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
+        assertTrue(prefs.getBoolean("vacation_mode", false))
+        say("steps: Pack bag; Book train"); say("skip")
+        val review = say("skip")
+        assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
+        say(saveQuery(review))
+        assertEquals(setOf("Pack bag", "Book train"), db.taskDao().getAllActiveTasksList().map { it.title }.toSet())
+        assertTrue(prefs.getBoolean("vacation_mode", false))
+    }
+
+    @Test fun collaborativePlanningParaphrasesShareOneDispatcher() = runBlocking {
+        for ((input, domain) in listOf(
+            "could we plan a holiday to Goa" to "trip",
+            "can you help us plan tasks for our trip" to "trip",
+            "let's make a plan for my vacation" to "trip",
+            "I'd like to plan my trip" to "trip",
+            "I would like to plan my exam" to "exam",
+            "can we prepare for an exam" to "exam",
+            "could we plan my day from scratch" to "day"
+        )) {
+            AssistantSessionStore(context).clear(); AyvaTalkEngine.resetConversation()
+            assertTrue(input, AyvaIntentRouter.route(input) is RouterDestination.TalkQuery)
+            AyvaTalkEngine.answerTalkQueryWithActions(input, context)
+            assertEquals(input, domain, plan().domain)
+            assertEquals("items", plan().question)
+            assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
+        }
+    }
+
+    @Test fun planningScopeAnswerStaysInPlanningButSettingsCanInterrupt() = runBlocking {
+        say("can we plan things together")
+        assertEquals("planning_domain", state().expected)
+        say("a trip to Goa")
+        assertEquals("trip", plan().domain)
+        assertEquals("to Goa", plan().goal)
+        say("cancel planning")
+        say("could we make a plan")
+        assertEquals("planning_domain", state().expected)
+        val setting = AyvaTalkEngine.answerTalkQueryWithActions("what is vacation mode", context)
+        assertTrue(setting.formattedText.contains("Vacation", true))
+        assertNull(state().featureState?.optJSONObject("guidedPlan"))
+        assertNotEquals("planning_domain", state().expected)
+        assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
+    }
+
+    @Test fun planningLanguageCannotOverrideQuotesNegationOrExplicitTaskCapture() = runBlocking {
+        for (input in listOf("don't plan a trip", "what if we plan a trip", "\"can we plan things for a trip\"")) {
+            AyvaTalkEngine.answerTalkQueryWithActions(input, context)
+            assertNull(state().featureState?.optJSONObject("guidedPlan"))
+        }
+        say("remind me to plan things for a trip tomorrow")
+        assertTrue(db.taskDao().getAllActiveTasksList().single().title.contains("plan things for a trip", true))
+        val explanation = AyvaTalkEngine.answerTalkQueryWithActions("/talk what is vacation mode", context)
+        assertTrue(explanation.formattedText.contains("Vacation", true))
+        assertNull(state().featureState?.optJSONObject("guidedPlan"))
+    }
 }
