@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.FocusDatabase
 import com.focusbyrj.app.data.Task
+import com.focusbyrj.app.data.TaskPlanning
 import com.focusbyrj.app.util.assistant.*
 import com.focusbyrj.app.util.router.AyvaIntentRouter
 import com.focusbyrj.app.util.router.RouterDestination
@@ -110,7 +111,9 @@ class AssistantOfflineExpansionTest {
         val before = context.getSharedPreferences("ayva_personalization", 0).all.toMap()
         val sympathy = say("I had a rough day").formattedText
         assertTrue(sympathy.contains("sounds like")); assertNull(state().planning)
-        say("just listen"); assertTrue(say("I feel exhausted").formattedText.contains("listening"))
+        say("just listen")
+        assertTrue(say("I feel exhausted").formattedText.contains("I feel exhausted"))
+        assertTrue(AssistantDiscussion.hasContext(state()))
         say("just distract me"); assertTrue(say("piano").formattedText.contains("got it"))
         say("another one"); say("stop")
         assertEquals(before, context.getSharedPreferences("ayva_personalization", 0).all)
@@ -142,8 +145,15 @@ class AssistantOfflineExpansionTest {
     }
     @Test fun composableTaskViewsKeepDisplayedIdsAndFilters() = runBlocking {
         val a = add("Read history", true); add("Call Dad")
-        db.taskDao().insertTask(Task(title = "Read fiction", isPriority = true, dueDate = System.currentTimeMillis() + 86_400_000))
+        val now = System.currentTimeMillis()
+        val dueOnly = db.taskDao().insertTask(Task(title = "Read fiction", isPriority = true, dueDate = now + 86_400_000))
+        val scheduled = db.taskDao().insertTask(Task(title = "Read science", isPriority = true, dueDate = now + 86_400_000,
+            planningJson = TaskPlanning(minutes = 20, start = now + 3_600_000).json()))
         say("show priority unscheduled tasks about read")
+        assertEquals(listOf(dueOnly, a), state().taskListIds)
+        say("complete the first one")
+        assertTrue(task(dueOnly).isCompleted); assertFalse(task(a).isCompleted); assertFalse(task(scheduled).isCompleted)
+        say("show priority undated tasks about read")
         assertEquals(listOf(a), state().taskListIds)
         say("complete the first one"); assertTrue(task(a).isCompleted)
     }

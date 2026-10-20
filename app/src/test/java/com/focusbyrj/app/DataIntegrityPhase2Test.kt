@@ -266,7 +266,7 @@ class DataIntegrityPhase2Test {
         // 2. Validate snapshot JSON contents
         val jsonStr = DataSafetyManager.readAtomically(snapshotFile)
         val json = JSONObject(jsonStr)
-        assertEquals(2, json.getInt("snapshotVersion"))
+        assertEquals(3, json.getInt("snapshotVersion"))
         assertEquals(1, json.getInt("noteCount"))
         assertEquals(1, json.getInt("taskCount"))
         assertEquals(1, json.getInt("habitCount"))

@@ -33,11 +33,12 @@ class AssistantGuidedPlanningTest {
         app.javaClass.getDeclaredField("database\$delegate").apply { isAccessible = true; set(app, lazyOf(db)) }
         context = object : ContextWrapper(base) { override fun getApplicationContext(): Context = app }
         AssistantSessionStore(context).clear()
+        ConversationPlanStore.clearAll(context); ChatModeStore.set(context, ChatMode.CHAT)
         for (name in listOf("focus_prefs", "bubble_prefs", "ayva_action_receipts", "ayva_personalization")) context.getSharedPreferences(name, 0).edit().clear().commit()
         FocusEconomyManager.init(context)
         AyvaTalkEngine.resetConversation()
     }
-    @After fun tearDown() { AssistantSessionStore(context).clear(); db.close(); AyvaTalkEngine.resetConversation() }
+    @After fun tearDown() { AssistantSessionStore(context).clear(); ConversationPlanStore.clearAll(context); ChatModeStore.set(context, ChatMode.CHAT); db.close(); AyvaTalkEngine.resetConversation() }
     private suspend fun say(text: String) = OfflineAssistant.respond(text, context) ?: error("Not handled: $text")
     private fun state() = AssistantSessionStore(context).load()
     private suspend fun add(title: String, priority: Boolean = false) = db.taskDao().insertTask(Task(title = title, isPriority = priority))
@@ -242,21 +243,31 @@ class AssistantGuidedPlanningTest {
         assertTrue(prefs.getBoolean("vacation_mode", false))
     }
 
-    @Test fun collaborativePlanningParaphrasesShareOneDispatcher() = runBlocking {
-        for ((input, domain) in listOf(
-            "could we plan a holiday to Goa" to "trip",
-            "can you help us plan tasks for our trip" to "trip",
-            "let's make a plan for my vacation" to "trip",
-            "I'd like to plan my trip" to "trip",
-            "I would like to plan my exam" to "exam",
-            "can we prepare for an exam" to "exam",
-            "could we plan my day from scratch" to "day"
+    @Test fun collaborativePlanningParaphrasesKeepTheirOwnerAndNeverCreateTasks() = runBlocking {
+        for ((input, domain, durable) in listOf(
+            Triple("could we plan a holiday to Goa", "trip", true),
+            Triple("can you help us plan tasks for our trip", "trip", false),
+            Triple("let's make a plan for my vacation", "trip", false),
+            Triple("I'd like to plan my trip", "trip", false),
+            Triple("I would like to plan my exam", "exam", false),
+            Triple("can we prepare for an exam", "exam", false),
+            Triple("could we plan my day from scratch", "general", true)
         )) {
             AssistantSessionStore(context).clear(); AyvaTalkEngine.resetConversation()
+            ConversationPlanStore.clearAll(context); ChatModeStore.set(context, ChatMode.CHAT)
             assertTrue(input, AyvaIntentRouter.route(input) is RouterDestination.TalkQuery)
             AyvaTalkEngine.answerTalkQueryWithActions(input, context)
-            assertEquals(input, domain, plan().domain)
-            assertEquals("items", plan().question)
+            if (durable) {
+                val workspace = ConversationPlanStore(context).active()!!
+                assertEquals(input, domain, workspace.domain)
+                assertEquals(input, workspace.goal)
+                assertEquals(ChatMode.PLAN, ChatModeStore.get(context))
+                assertNull(state().featureState?.optJSONObject("guidedPlan"))
+            } else {
+                assertEquals(input, domain, plan().domain)
+                assertEquals("items", plan().question)
+                assertNull(ConversationPlanStore(context).active())
+            }
             assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
         }
     }
