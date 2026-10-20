@@ -147,7 +147,7 @@ internal fun AyvaInfoActions(payload: String, onQuery: ((String) -> Unit)?) {
         else scope.launch { if (!action.executeAsync(context)) Toast.makeText(context, "Couldn't open that screen", Toast.LENGTH_SHORT).show() }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        FilledTonalButton(onClick = { run(actions.first()) }, modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp), shape = RoundedCornerShape(12.dp)) { Text(actions.first().label) }
+        SuggestionChip(onClick = { run(actions.first()) }, label = { Text(actions.first().label, style = MaterialTheme.typography.labelMedium) }, modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp), shape = RoundedCornerShape(10.dp))
         if (actions.size > 1) Box {
             TextButton(onClick = { more = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("More"); Icon(Icons.Default.ExpandMore, null, Modifier.size(18.dp)) }
             DropdownMenu(expanded = more, onDismissRequest = { more = false }) {

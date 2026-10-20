@@ -1,5 +1,6 @@
 package com.focusbyrj.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -28,7 +29,9 @@ data class Task(
     val isTrashed: Boolean = false,
     val trashedAt: Long? = null,
     val deletedAt: Long? = null,
-    val subtasksJson: String = "[]"
+    val subtasksJson: String = "[]",
+    @ColumnInfo(defaultValue = "''")
+    val planningJson: String = ""
 )
 
 val Task.subtasks: List<Subtask>

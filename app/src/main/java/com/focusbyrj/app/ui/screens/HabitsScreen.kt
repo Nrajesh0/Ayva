@@ -229,11 +229,11 @@ fun HabitsScreen(
                 showEditorSheet = false
                 editingHabit = null
             },
-            onSave = { habitToSave ->
+            onSave = { habitToSave, stored ->
                 if (editingHabit == null) {
-                    habitViewModel.addHabit(habitToSave)
+                    habitViewModel.addHabit(habitToSave, stored)
                 } else {
-                    habitViewModel.updateHabit(habitToSave)
+                    habitViewModel.updateHabit(habitToSave, stored)
                 }
                 showEditorSheet = false
                 editingHabit = null
@@ -1164,28 +1164,22 @@ fun EmptyHabitsCard(onAddClick: () -> Unit) {
 fun HabitEditorBottomSheet(
     habit: Habit?,
     onDismiss: () -> Unit,
-    onSave: (Habit) -> Unit
+    onSave: (Habit, () -> Unit) -> Unit
 ) {
     val context = LocalContext.current
-    val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val isImeVisible = WindowInsets.isImeVisible
+    val draftStore = com.focusbyrj.app.ui.components.rememberEditorDraft("habit:${habit?.id ?: 0}:${habit?.hashCode() ?: 0}")
+    val restored = remember(draftStore) { draftStore.read() }
+    var title by remember(habit) { mutableStateOf(restored.optString("title", habit?.title ?: "")) }
+    var description by remember(habit) { mutableStateOf(restored.optString("description", habit?.description ?: "")) }
+    var iconEmoji by remember(habit) { mutableStateOf(restored.optString("iconEmoji", habit?.iconEmoji ?: "🥤")) }
+    var colorHex by remember(habit) { mutableStateOf(restored.optString("colorHex", habit?.colorHex ?: "#0284C7")) }
+    var type by remember(habit) { mutableStateOf(runCatching { HabitType.valueOf(restored.getString("type")) }.getOrDefault(habit?.type ?: HabitType.INTERVAL_WINDOW)) }
+    var targetPerDay by remember(habit) { mutableIntStateOf(restored.optInt("targetPerDay", habit?.targetPerDay ?: 6)) }
 
-    BackHandler(enabled = isImeVisible) {
-        focusManager.clearFocus()
-        keyboardController?.hide()
-    }
-    var title by remember(habit) { mutableStateOf(habit?.title ?: "") }
-    var description by remember(habit) { mutableStateOf(habit?.description ?: "") }
-    var iconEmoji by remember(habit) { mutableStateOf(habit?.iconEmoji ?: "🥤") }
-    var colorHex by remember(habit) { mutableStateOf(habit?.colorHex ?: "#0284C7") }
-    var type by remember(habit) { mutableStateOf(habit?.type ?: HabitType.INTERVAL_WINDOW) }
-    var targetPerDay by remember(habit) { mutableIntStateOf(habit?.targetPerDay ?: 6) }
-
-    var windowStartHour by remember(habit) { mutableIntStateOf(habit?.windowStartHour ?: 8) }
-    var windowStartMinute by remember(habit) { mutableIntStateOf(habit?.windowStartMinute ?: 0) }
-    var windowEndHour by remember(habit) { mutableIntStateOf(habit?.windowEndHour ?: 20) }
-    var windowEndMinute by remember(habit) { mutableIntStateOf(habit?.windowEndMinute ?: 0) }
+    var windowStartHour by remember(habit) { mutableIntStateOf(restored.optInt("windowStartHour", habit?.windowStartHour ?: 8)) }
+    var windowStartMinute by remember(habit) { mutableIntStateOf(restored.optInt("windowStartMinute", habit?.windowStartMinute ?: 0)) }
+    var windowEndHour by remember(habit) { mutableIntStateOf(restored.optInt("windowEndHour", habit?.windowEndHour ?: 20)) }
+    var windowEndMinute by remember(habit) { mutableIntStateOf(restored.optInt("windowEndMinute", habit?.windowEndMinute ?: 0)) }
 
     val activeWindowMinutes by remember {
         derivedStateOf {
@@ -1202,11 +1196,11 @@ fun HabitEditorBottomSheet(
     val initialIntervalMins = habit?.let { it.intervalHours * 60 + it.intervalMinutes }
         ?: ((if (20 > 8) (20 - 8) * 60 else 12 * 60) / 6) // default 120m = 2h
 
-    var intervalHours by remember(habit) { mutableIntStateOf(initialIntervalMins / 60) }
-    var intervalMinutes by remember(habit) { mutableIntStateOf(initialIntervalMins % 60) }
+    var intervalHours by remember(habit) { mutableIntStateOf(restored.optInt("intervalHours", initialIntervalMins / 60)) }
+    var intervalMinutes by remember(habit) { mutableIntStateOf(restored.optInt("intervalMinutes", initialIntervalMins % 60)) }
 
-    var fixedHour by remember(habit) { mutableIntStateOf(habit?.fixedReminderHour ?: 9) }
-    var fixedMinute by remember(habit) { mutableIntStateOf(habit?.fixedReminderMinute ?: 0) }
+    var fixedHour by remember(habit) { mutableIntStateOf(restored.optInt("fixedHour", habit?.fixedReminderHour ?: 9)) }
+    var fixedMinute by remember(habit) { mutableIntStateOf(restored.optInt("fixedMinute", habit?.fixedReminderMinute ?: 0)) }
 
     fun autoSplitInterval(target: Int) {
         val totalWin = activeWindowMinutes
@@ -1266,12 +1260,16 @@ fun HabitEditorBottomSheet(
         "#EC4899", "#F43F5E", "#F97316", "#EAB308", "#10B981", "#14B8A6", "#06B6D4"
     )
 
+    com.focusbyrj.app.ui.components.PersistEditorDraft(draftStore, org.json.JSONObject().put("title", title).put("description", description).put("iconEmoji", iconEmoji).put("colorHex", colorHex).put("type", type.name).put("targetPerDay", targetPerDay).put("windowStartHour", windowStartHour).put("windowStartMinute", windowStartMinute).put("windowEndHour", windowEndHour).put("windowEndMinute", windowEndMinute).put("intervalHours", intervalHours).put("intervalMinutes", intervalMinutes).put("fixedHour", fixedHour).put("fixedMinute", fixedMinute))
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
+        com.focusbyrj.app.ui.components.KeyboardFirstBackHandler(onDismiss)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1315,7 +1313,7 @@ fun HabitEditorBottomSheet(
                                 windowEndHour = windowEndHour,
                                 windowEndMinute = windowEndMinute
                             )
-                            onSave(newHabit)
+                            onSave(newHabit, draftStore::discard)
                         }
                     },
                     enabled = title.isNotBlank(),
@@ -1810,7 +1808,7 @@ fun HabitEditorBottomSheet(
                             windowEndHour = windowEndHour,
                             windowEndMinute = windowEndMinute
                         )
-                        onSave(newHabit)
+                        onSave(newHabit, draftStore::discard)
                     }
                 },
                 enabled = title.isNotBlank(),

@@ -51,18 +51,29 @@ class TaskViewModel(
         initialValue = emptyList()
     )
 
-    fun addTask(task: Task) {
+    fun addTask(task: Task, onStored: () -> Unit = {}) {
         viewModelScope.launch {
-            val id = repository.insertTask(task)
+            val id = try { repository.insertTask(task) } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.widget.Toast.makeText(getApplication(), e.message ?: "Couldn't save task; draft retained", android.widget.Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            onStored()
             TaskReminderHelper.scheduleReminder(getApplication(), task.copy(id = id))
             TodoWidgetProvider.updateAllWidgets(getApplication())
         }
     }
 
-    fun updateTask(task: Task) {
+    fun updateTask(task: Task, onStored: () -> Unit = {}) {
         viewModelScope.launch {
             val updatedTask = task.copy(updatedAt = System.currentTimeMillis())
-            repository.updateTask(updatedTask)
+            try { repository.updateTask(updatedTask, task.updatedAt) }
+            catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.widget.Toast.makeText(getApplication(), e.message ?: "Couldn't save task; draft retained", android.widget.Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            onStored()
             TaskReminderHelper.scheduleReminder(getApplication(), updatedTask)
             TodoWidgetProvider.updateAllWidgets(getApplication())
         }
@@ -83,7 +94,7 @@ class TaskViewModel(
     fun restoreTask(task: Task) {
         viewModelScope.launch {
             repository.restoreFromTrash(task.id)
-            if (!task.isCompleted && task.dueDate != null && task.dueDate > System.currentTimeMillis()) {
+            if (!task.isCompleted) {
                 TaskReminderHelper.scheduleReminder(getApplication(), task.copy(isTrashed = false))
             }
             TodoWidgetProvider.updateAllWidgets(getApplication())

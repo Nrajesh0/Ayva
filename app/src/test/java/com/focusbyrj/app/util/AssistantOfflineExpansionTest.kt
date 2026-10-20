@@ -85,7 +85,9 @@ class AssistantOfflineExpansionTest {
         val id = add("Keep me"); val old = confirm(say("delete all tasks"))
         say("what does delete all tasks mean?"); say("yes"); say(old)
         assertFalse(task(id).isTrashed)
-        assertTrue(say("define delete").formattedText.contains("Wordset"))
+        val definition = say("define delete").formattedText
+        assertTrue(definition.contains("delete", true))
+        assertFalse(definition.contains("Wordset")); assertFalse(definition.contains("WordNet")); assertFalse(definition.contains("dictionary credits"))
         assertFalse(task(id).isTrashed)
     }
     @Test fun sentencePatternsPreserveNegationAndUnsupportedConstructionsStayUnknown() = runBlocking {
@@ -165,11 +167,15 @@ class AssistantOfflineExpansionTest {
         val id = old.taskDao().insertTask(Task(title = "Keep through migration", subtasksJson = "[]"))
         old.openHelper.writableDatabase.apply {
             execSQL("DROP TABLE assistant_plan_receipts")
+            execSQL("ALTER TABLE tasks RENAME TO tasks_newer")
+            execSQL("CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL, dueDate INTEGER, isCompleted INTEGER NOT NULL, type TEXT NOT NULL, recurrence TEXT NOT NULL, isPersistent INTEGER NOT NULL, isPriority INTEGER NOT NULL, completedAt INTEGER, updatedAt INTEGER NOT NULL, isTrashed INTEGER NOT NULL, trashedAt INTEGER, deletedAt INTEGER, subtasksJson TEXT NOT NULL)")
+            execSQL("INSERT INTO tasks SELECT id,title,details,dueDate,isCompleted,type,recurrence,isPersistent,isPriority,completedAt,updatedAt,isTrashed,trashedAt,deletedAt,subtasksJson FROM tasks_newer")
+            execSQL("DROP TABLE tasks_newer")
             execSQL("UPDATE room_master_table SET identity_hash = '26cbbdd592e512fbe7c330ba6a8f8063' WHERE id = 42")
             version = 12
         }
         old.close()
-        val migrated = Room.databaseBuilder(context, FocusDatabase::class.java, name).addMigrations(FocusDatabase.MIGRATION_12_13).allowMainThreadQueries().build()
+        val migrated = Room.databaseBuilder(context, FocusDatabase::class.java, name).addMigrations(FocusDatabase.MIGRATION_12_13, FocusDatabase.MIGRATION_13_14).allowMainThreadQueries().build()
         try {
             assertEquals("Keep through migration", migrated.taskDao().getTaskById(id)!!.title)
             assertTrue(migrated.assistantPlanReceiptDao().pending().isEmpty())

@@ -1,5 +1,9 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.data.planning
+import com.focusbyrj.app.data.agendaAt
+import com.focusbyrj.app.data.isInTodayAgenda
+import com.focusbyrj.app.data.isInUpcomingAgenda
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import androidx.compose.animation.*
@@ -125,15 +129,14 @@ fun TodosScreen(
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
-        val todayEnd = todayStart + 86400000L
+        val todayEnd = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }.timeInMillis
 
         val baseList = when (selectedTab) {
             0 -> tasks.filter { 
-                (it.dueDate != null && it.dueDate <= todayEnd) || 
-                (it.dueDate == null && it.type == TaskType.TASK) 
+                it.isInTodayAgenda(todayEnd)
             } // Today & Overdue
             1 -> tasks.filter { 
-                it.type == TaskType.TASK && it.dueDate != null && it.dueDate > todayEnd 
+                it.isInUpcomingAgenda(todayEnd)
             } // Upcoming
             2 -> tasks.filter { it.type == TaskType.TASK } // All
             3 -> tasks.filter { it.type != TaskType.TASK } // Occasions
@@ -143,7 +146,7 @@ fun TodosScreen(
             .filter { !it.isCompleted && it.id !in locallyDeletedTaskIds && it.id != pendingDeleteTask?.id }
             .sortedWith(
                 compareByDescending<Task> { it.isPriority }
-                    .thenBy { it.dueDate ?: Long.MAX_VALUE }
+                    .thenBy { it.agendaAt ?: Long.MAX_VALUE }
                     .thenBy { it.id }
             )
     }
@@ -324,6 +327,7 @@ fun TodosScreen(
 
                                 TaskItem(
                                     task = task,
+                                    relatedTasks = tasks,
                                     modifier = Modifier.animateItem(),
                                     shape = cardShape,
                                     onToggle = {
@@ -444,19 +448,20 @@ fun TodosScreen(
     if (showAddDialog || editingTaskId != null) {
         AddTaskDialog(
             initialTask = editingTask,
+            relatedTasks = tasks,
+            onOpenTask = { editingTaskId = it.id },
             defaultType = if (selectedTab == 3) TaskType.BIRTHDAY else TaskType.TASK,
             onDismiss = { 
                 showAddDialog = false
                 editingTaskId = null
             },
-            onSave = { task ->
+            onSave = { task, stored ->
+                val saved = { stored(); showAddDialog = false; editingTaskId = null }
                 if (editingTask != null) {
-                    viewModel.updateTask(task.copy(id = editingTask.id))
+                    viewModel.updateTask(task.copy(id = editingTask.id), saved)
                 } else {
-                    viewModel.addTask(task)
+                    viewModel.addTask(task, saved)
                 }
-                showAddDialog = false
-                editingTaskId = null
             },
             onDelete = if (editingTask != null) {
                 { taskToDelete ->
@@ -523,7 +528,8 @@ fun TaskItem(
     onToggle: (Task) -> Unit, 
     onDelete: (Task) -> Unit, 
     onEdit: (Task) -> Unit,
-    onToggleSubtask: ((Task, String) -> Unit)? = null
+    onToggleSubtask: ((Task, String) -> Unit)? = null,
+    relatedTasks: List<Task> = emptyList()
 ) {
     val haptic = LocalHapticFeedback.current
     var isLocalCompleted by remember(task.isCompleted) { mutableStateOf(task.isCompleted) }
@@ -700,6 +706,20 @@ fun TaskItem(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+
+                    task.planning?.let { planning ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = planningDescription(planning, relatedTasks, compact = true),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textColor.copy(alpha = 0.7f), maxLines = 3, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    val parentTask = task.planning?.parentTaskId?.let { id -> relatedTasks.firstOrNull { it.id == id } }
+                    val childTasks = relatedTasks.filter { it.planning?.parentTaskId == task.id }
+                    if (parentTask != null) TextButton(onClick = { onEdit(parentTask) }) { Text("Open parent") }
+                    childTasks.forEach { child -> TextButton(onClick = { onEdit(child) }) { Text("↳ ${child.title}") } }
 
                     // Mini-Checklist Subtasks Indicator & List
                     val subtasks = task.subtasks
@@ -1025,28 +1045,38 @@ fun AddTaskDialog(
     initialTask: Task? = null, 
     defaultType: TaskType = TaskType.TASK,
     onDismiss: () -> Unit, 
-    onSave: (Task) -> Unit,
-    onDelete: ((Task) -> Unit)? = null
+    onSave: (Task, () -> Unit) -> Unit,
+    onDelete: ((Task) -> Unit)? = null,
+    relatedTasks: List<Task> = emptyList(),
+    onOpenTask: ((Task) -> Unit)? = null
 ) {
+    val draftStore = com.focusbyrj.app.ui.components.rememberEditorDraft("task:${initialTask?.id ?: 0}:${initialTask?.updatedAt ?: 0}:${defaultType.name}")
+    val restored = remember(draftStore) { draftStore.read() }
     val initialEffectiveType = initialTask?.type ?: defaultType
-    var title by remember(initialTask) { mutableStateOf(initialTask?.title ?: "") }
-    var details by remember(initialTask) { mutableStateOf(initialTask?.details ?: "") }
-    var type by remember(initialTask, defaultType) { mutableStateOf(initialEffectiveType) }
-    var userManuallySelectedType by remember(initialTask) { mutableStateOf(initialTask != null) }
+    var title by remember(initialTask) { mutableStateOf(restored.optString("title", initialTask?.title ?: "")) }
+    var details by remember(initialTask) { mutableStateOf(restored.optString("details", initialTask?.details ?: "")) }
+    var type by remember(initialTask, defaultType) { mutableStateOf(runCatching { TaskType.valueOf(restored.getString("type")) }.getOrDefault(initialEffectiveType)) }
+    var userManuallySelectedType by remember(initialTask) { mutableStateOf(restored.optBoolean("userManuallySelectedType", initialTask != null)) }
     var recurrence by remember(initialTask, defaultType) { 
         mutableStateOf(
-            initialTask?.recurrence ?: if (initialEffectiveType == TaskType.BIRTHDAY || initialEffectiveType == TaskType.ANNIVERSARY) RecurrencePattern.YEARLY else RecurrencePattern.NONE
+            runCatching { RecurrencePattern.valueOf(restored.getString("recurrence")) }.getOrNull() ?: initialTask?.recurrence ?: if (initialEffectiveType == TaskType.BIRTHDAY || initialEffectiveType == TaskType.ANNIVERSARY) RecurrencePattern.YEARLY else RecurrencePattern.NONE
         ) 
     }
     var userManuallySetRecurrence by remember(initialTask) { 
-        mutableStateOf(initialTask?.recurrence != null && initialTask.recurrence != RecurrencePattern.NONE) 
+        mutableStateOf(restored.optBoolean("userManuallySetRecurrence", initialTask?.recurrence != null && initialTask.recurrence != RecurrencePattern.NONE))
     }
-    var isPersistent by remember(initialTask) { mutableStateOf(initialTask?.isPersistent ?: false) }
-    var isPriority by remember(initialTask) { mutableStateOf(initialTask?.isPriority ?: false) }
-    var manualDueDate by remember(initialTask) { mutableStateOf<Long?>(initialTask?.dueDate) }
-    var userManuallySetDate by remember(initialTask) { mutableStateOf(initialTask?.dueDate != null) }
-    var subtasks by remember(initialTask) { mutableStateOf(initialTask?.subtasks ?: emptyList()) }
-    var newStepText by remember { mutableStateOf("") }
+    var isPersistent by remember(initialTask) { mutableStateOf(restored.optBoolean("isPersistent", initialTask?.isPersistent ?: false)) }
+    var isPriority by remember(initialTask) { mutableStateOf(restored.optBoolean("isPriority", initialTask?.isPriority ?: false)) }
+    var manualDueDate by remember(initialTask) { mutableStateOf<Long?>(if (restored.has("manualDueDate")) restored.optLong("manualDueDate").takeUnless { restored.isNull("manualDueDate") } else initialTask?.dueDate) }
+    var userManuallySetDate by remember(initialTask) { mutableStateOf(restored.optBoolean("userManuallySetDate", initialTask?.dueDate != null)) }
+    var subtasks by remember(initialTask) { mutableStateOf(if (restored.has("subtasks")) Subtask.listFromJson(restored.getString("subtasks")) else initialTask?.subtasks ?: emptyList()) }
+    var clearWorkTime by remember(initialTask) { mutableStateOf(restored.optBoolean("clearWorkTime", false)) }
+    var planningFieldsValid by remember(initialTask) { mutableStateOf(true) }
+    var nativePlanning by remember(initialTask) { mutableStateOf(runCatching {
+        com.focusbyrj.app.data.TaskPlanning.read(restored.optString("planningJson", initialTask?.planningJson.orEmpty()))
+    }.getOrNull()) }
+    val planning = nativePlanning?.let { if (clearWorkTime) it.copy(start = null, sessions = emptyList()) else it }
+    var newStepText by remember { mutableStateOf(restored.optString("newStepText", "")) }
     
     val parsedResult = remember(title, userManuallySetDate) {
         if (!userManuallySetDate && title.isNotBlank()) SmartDateParser.parse(title) else null
@@ -1076,6 +1106,7 @@ fun AddTaskDialog(
     }
     
     val effectiveDueDate = parsedResult?.timestamp ?: manualDueDate
+    val workPastDeadline = planning?.end?.let { end -> effectiveDueDate?.let { end > it } } == true
     val effectiveRecurrence = if (!userManuallySetRecurrence && parsedResult?.recurrence != null && parsedResult.recurrence != RecurrencePattern.NONE) {
         parsedResult.recurrence
     } else if (!userManuallySetRecurrence && (type == TaskType.BIRTHDAY || type == TaskType.ANNIVERSARY)) {
@@ -1090,14 +1121,18 @@ fun AddTaskDialog(
         calendar.timeInMillis = effectiveDueDate
     }
 
+    com.focusbyrj.app.ui.components.PersistEditorDraft(draftStore, org.json.JSONObject().put("title", title).put("details", details).put("newStepText", newStepText).put("userManuallySelectedType", userManuallySelectedType).put("userManuallySetRecurrence", userManuallySetRecurrence).put("isPersistent", isPersistent).put("isPriority", isPriority).put("userManuallySetDate", userManuallySetDate).put("type", type.name).put("recurrence", recurrence.name).put("manualDueDate", manualDueDate ?: org.json.JSONObject.NULL).put("subtasks", Subtask.listToJson(subtasks)).put("clearWorkTime", clearWorkTime).put("planningJson", nativePlanning?.json().orEmpty()))
+
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
+        com.focusbyrj.app.ui.components.KeyboardFirstBackHandler(onDismiss)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1150,12 +1185,14 @@ fun AddTaskDialog(
                                     recurrence = effectiveRecurrence, 
                                     isPersistent = isPersistent,
                                     isPriority = isPriority,
-                                    subtasksJson = subtasksJson
-                                )
+                                    subtasksJson = subtasksJson,
+                                    planningJson = planning?.json() ?: base.planningJson
+                                ),
+                                draftStore::discard
                             )
                         }
                     },
-                    enabled = title.isNotBlank()
+                    enabled = title.isNotBlank() && !workPastDeadline && planningFieldsValid
                 ) {
                     Text(
                         text = "Save",
@@ -1210,6 +1247,20 @@ fun AddTaskDialog(
             )
             Spacer(modifier = Modifier.height(10.dp))
             
+            planning?.let { metadata ->
+                com.focusbyrj.app.ui.components.TaskPlanningEditor(initialTask?.id ?: 0, metadata, relatedTasks,
+                    onChange = { nativePlanning = it; clearWorkTime = false }, onOpenTask = onOpenTask, onValidity = { planningFieldsValid = it })
+                if (workPastDeadline) Text("The work session finishes after this deadline. Change the deadline or clear the work time before saving.",
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                if (metadata.start != null) TextButton(onClick = { clearWorkTime = true }) { Text("Clear work time") }
+                Text("Continue in /plan to rearrange work or change task links. Work-start reminders follow the setting above.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+            }
+
+            if (planning == null && type == TaskType.TASK) TextButton(onClick = {
+                nativePlanning = com.focusbyrj.app.data.TaskPlanning(minutes = 30)
+            }) { Text("Plan work or link a parent") }
             // Subtasks / Steps Section
             Text(
                 text = "Steps / Subtasks",
@@ -1525,7 +1576,7 @@ fun AddTaskDialog(
             if (initialTask != null && onDelete != null) {
                 Spacer(modifier = Modifier.height(24.dp))
                 OutlinedButton(
-                    onClick = { onDelete(initialTask) },
+                    onClick = { draftStore.discard(); onDelete(initialTask) },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
@@ -1555,3 +1606,28 @@ fun AddTaskDialog(
 }
 
 
+
+
+private fun planningDescription(p: com.focusbyrj.app.data.TaskPlanning, tasks: List<Task>, compact: Boolean): String = buildList {
+    if (!compact && p.goal.isNotBlank()) add("Plan: ${p.goal}")
+    p.parentTaskId?.let { id ->
+        val parent = tasks.firstOrNull { it.id == id && !it.isTrashed && it.deletedAt == null }
+        add(if (parent != null) "Subtask of: ${parent.title}" else if (tasks.isEmpty()) "Subtask" else "Parent task unavailable")
+    }
+    if (p.parentMissing) add("Parent task unavailable")
+    if (p.prerequisiteTaskIds.isNotEmpty() || p.missingPrerequisites > 0) {
+        if (compact) add("${p.prerequisiteTaskIds.size + p.missingPrerequisites} prerequisite(s)")
+        else {
+            p.prerequisiteTaskIds.forEach { id ->
+                val prerequisite = tasks.firstOrNull { it.id == id && !it.isTrashed && it.deletedAt == null }
+                add(if (prerequisite == null) "Prerequisite unavailable" else "After: ${prerequisite.title}")
+            }
+            if (p.missingPrerequisites > 0) add("${p.missingPrerequisites} prerequisite(s) unavailable")
+        }
+    }
+    p.start?.let {
+        if (p.workSessions.size > 1) add("${p.workSessions.size} work sessions · first ${SmartDateParser.formatDueDate(it)}")
+        else add("Work: ${SmartDateParser.formatDueDate(it)} · ${p.workSessions.first().minutes} min")
+    }
+        ?: p.minutes?.let { add("Estimated work: $it min") }
+}.joinToString("\n")

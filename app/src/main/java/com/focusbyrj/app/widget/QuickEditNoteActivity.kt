@@ -15,7 +15,6 @@ import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -293,6 +292,7 @@ fun QuickEditNoteOverlay(
 
     fun saveNote(andFinish: Boolean = true) {
         scope.launch(Dispatchers.IO) {
+            android.util.Log.d("QuickNoteEditor", "Saving note; close after save: $andFinish")
             val trimmedTitle = title.trim()
             val trimmedContent = content.trim()
             val hasChecklistItems = checklistItems.any { it.text.isNotBlank() }
@@ -370,10 +370,12 @@ fun QuickEditNoteOverlay(
         }
     }
 
-    BackHandler {
+    // A single callback owns both IME dismissal and the next save-and-close Back.
+    com.focusbyrj.app.ui.components.KeyboardFirstBackHandler {
         if (showColorPicker) {
             showColorPicker = false
         } else {
+            android.util.Log.d("QuickNoteEditor", "Back requested save and close")
             saveNote(andFinish = true)
         }
     }

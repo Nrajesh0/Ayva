@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [AppRestriction::class, FocusSchedule::class, Task::class, Habit::class, HabitLog::class, AssistantPlanReceipt::class], version = 13, exportSchema = true)
+@Database(entities = [AppRestriction::class, FocusSchedule::class, Task::class, Habit::class, HabitLog::class, AssistantPlanReceipt::class], version = 14, exportSchema = true)
 abstract class FocusDatabase : RoomDatabase() {
     abstract fun appRestrictionDao(): AppRestrictionDao
     abstract fun scheduleDao(): ScheduleDao
@@ -21,6 +21,12 @@ abstract class FocusDatabase : RoomDatabase() {
     abstract fun assistantPlanReceiptDao(): AssistantPlanReceiptDao
 
     companion object {
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `tasks` ADD COLUMN `planningJson` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         val MIGRATION_12_13 = object : Migration(12, 13) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS `assistant_plan_receipts` (`draftId` TEXT NOT NULL, `revision` INTEGER NOT NULL, `payloadHash` TEXT NOT NULL, `tasksJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `effectsPending` INTEGER NOT NULL, PRIMARY KEY(`draftId`))")

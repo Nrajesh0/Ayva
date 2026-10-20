@@ -277,6 +277,7 @@
             </intent-filter>
         </receiver>
     
+        <receiver android:name=".service.WorkSessionReminderReceiver" android:exported="false" />
         <receiver android:name=".service.TaskReminderReceiver" android:exported="false" />
         <receiver android:name=".service.TaskActionReceiver" android:exported="false" />
         <receiver android:name=".service.DailySummaryReceiver" android:exported="false" />

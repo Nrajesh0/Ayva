@@ -6,7 +6,6 @@ import com.focusbyrj.app.data.*
 import com.focusbyrj.app.util.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,7 +14,7 @@ import java.util.UUID
 
 /** Deterministic, offline conversation coordinator. Only typed actions can change app state. */
 object OfflineAssistant {
-    private val mutex = Mutex()
+    private val mutex = AssistantStateLock.mutex
     private fun token() = UUID.randomUUID().toString()
 
     suspend fun respond(input: String, context: Context, priority: Boolean = false, persistent: Boolean = false, requestId: String? = null, replyTarget: AssistantItemReference? = null, quotedReply: String? = null): AyvaTalkEngine.TalkResponse? = mutex.withLock {
@@ -25,10 +24,10 @@ object OfflineAssistant {
         AssistantContext.expire(state)
         if (requestId != null && requestId in state.acknowledgedActionIds) return@withLock reply("That request has already been processed.")
         try {
-            if (input.length > 4000) return@withLock rejectInput(state, store,
+            if (input.length > 4000) return@withLock rejectInput(context, state, store,
                 "Please keep each request under 4,000 characters, or send it in smaller parts. Previous confirmation controls are cancelled; saved items are unchanged.")
             if (quotedReply != null && !prepareReply(context, state, replyTarget, quotedReply)) {
-                return@withLock rejectInput(state, store,
+                return@withLock rejectInput(context, state, store,
                     "That reply refers to an item that is no longer available. Please choose a task or habit before trying again. Previous confirmation controls are cancelled.")
             }
             var response = turn(input, context, app, state, priority, persistent)
@@ -48,16 +47,27 @@ object OfflineAssistant {
             // A failed interruption cannot leave an unrelated old confirmation live.
             state.clearPending(); state.switchTopic("conversation")
             state.featureState?.optJSONObject("guidedPlan")?.put("nonce", JSONObject.NULL)?.put("paused", true)
+            invalidatePlanReview(context)
             runCatching { store.save(state) }
             // An operation may already have committed: never turn a failure into a generic success reply.
             reply("I couldn't finish that request: ${e.message ?: "an app operation failed"}. Check the affected item before retrying.")
         }
     }
 
-    private fun rejectInput(state: AssistantSession, store: AssistantSessionStore, message: String): AyvaTalkEngine.TalkResponse {
+    private fun invalidatePlanReview(context: Context) {
+        runCatching {
+            val workspaces = ConversationPlanStore(context)
+            workspaces.active()?.takeIf { it.reviewedRevision != null }?.let {
+                workspaces.put(it.copy(reviewedRevision = null, reviewedAt = 0, reviewProcess = null))
+            }
+        }
+    }
+
+    private fun rejectInput(context: Context, state: AssistantSession, store: AssistantSessionStore, message: String): AyvaTalkEngine.TalkResponse {
         AssistantConversation.suspendQuestion(state)
         state.clearPending(); state.switchTopic("conversation")
         state.featureState?.optJSONObject("guidedPlan")?.put("nonce", JSONObject.NULL)?.put("paused", true)
+        invalidatePlanReview(context)
         state.lastReply = message
         store.save(state)
         return reply(message)
@@ -71,7 +81,11 @@ object OfflineAssistant {
         response
     }
 
-    suspend fun reset(context: Context) = mutex.withLock { AssistantSessionStore(context).clear() }
+    suspend fun reset(context: Context) = mutex.withLock {
+        AssistantSessionStore(context).clear()
+        ConversationPlanStore.clearAll(context)
+        ChatModeStore.set(context, ChatMode.CHAT)
+    }
 
     suspend fun clarifyUnknown(context: Context, input: String): AyvaTalkEngine.TalkResponse = mutex.withLock {
         AssistantReplyStyle.unknown(context, input.take(4000), AssistantSessionStore(context).load())
@@ -194,6 +208,81 @@ object OfflineAssistant {
 
     private suspend fun turn(raw: String, context: Context, app: FocusApplication, state: AssistantSession, priority: Boolean, persistent: Boolean): AyvaTalkEngine.TalkResponse? {
         val command = raw.trim().substringBefore(' ').lowercase()
+        val planBody = if (command == "/plan") raw.trim().substringAfter(' ', "").trim().lowercase() else raw.trim().lowercase()
+        val memoryText = (if (command in setOf("/talk", "/ask")) raw.trim().substringAfter(' ', "") else raw.trim())
+        val library = PlanningLibrary(context)
+        Regex("(?i)^save (?:this )?discussion as (.+)$").matchEntire(memoryText)?.let {
+            library.saveDiscussion(it.groupValues[1].trim(), state)
+            return reply("Saved this discussion as ‘${it.groupValues[1].trim()}’. Resume it by name later; old questions and task confirmations are not saved.")
+        }
+        Regex("(?i)^resume (?:saved )?discussion (.+)$").matchEntire(memoryText)?.let {
+            library.resumeDiscussion(it.groupValues[1].trim(), state); ChatModeStore.set(context, ChatMode.TALK)
+            return reply(AssistantDiscussion.answer(state, "what did we decide")!!.text)
+        }
+        Regex("(?i)^delete (?:saved )?(discussion|template) (.+)$").matchEntire(memoryText)?.let {
+            library.delete(if (it.groupValues[1].equals("discussion", true)) "discussions" else "templates", it.groupValues[2].trim())
+            return reply("Deleted that saved ${it.groupValues[1]}. Current drafts and native tasks are unchanged.")
+        }
+        if (memoryText.lowercase() in setOf("list discussions", "saved discussions", "list templates", "my templates")) {
+            val kind = if ("discussion" in memoryText.lowercase()) "discussions" else "templates"
+            return reply("Saved $kind: " + library.list(kind).joinToString().ifBlank { "none" })
+        }
+        if (memoryText.lowercase() in setOf("what do you remember", "planning preferences", "show planning preferences")) return reply(library.preferences())
+        if (memoryText.equals("forget planning preferences", true)) { library.forgetPreferences(); return reply("Forgot saved planning preferences. Templates, discussions and tasks are unchanged.") }
+        if (memoryText.equals("forget planning library", true)) { library.clear(); return reply("Deleted saved discussions, templates and planning preferences. Native tasks and current drafts are unchanged.") }
+        Regex("(?i)^(?:my usual task duration|default task duration) (?:is|:) (.+)$").matchEntire(memoryText)?.let {
+            val minutes = PlanLanguage.duration(it.groupValues[1]) ?: return reply("What default duration should I remember, in minutes or hours?")
+            library.setDefaultMinutes(minutes); return reply("Remembered $minutes minutes as your default for new plan steps without an explicit estimate.")
+        }
+        if ((command == "/plan" || ChatModeStore.get(context) == ChatMode.PLAN) && planBody in setOf("plan history", "saved history", "undo saved changes", "redo saved changes")) {
+            val workspace = ConversationPlanStore(context).active() ?: return reply("There is no active plan")
+            require(!workspace.hypotheticalView) { "Return to the active draft before using saved history" }
+            if (planBody.endsWith("history")) return reply(SavedPlanHistory.describe(context, workspace.id))
+            if (SavedPlanHistory.canUndo(context, workspace.id) || planBody == "redo saved changes") {
+                val message = SavedPlanHistory.move(context, workspace.id, redo = planBody == "redo saved changes")
+                state.clearPending(); state.undo = emptyList(); state.undoId = null
+                return reply(message)
+            }
+        }
+        if ((command == "/plan" || ChatModeStore.get(context) == ChatMode.PLAN) && planBody in setOf("redo", "redo that", "redo draft")) {
+            val workspaces = ConversationPlanStore(context)
+            val workspace = workspaces.active() ?: return reply("There is no active plan draft")
+            require(!workspace.hypotheticalView) { "Return to the active draft before redoing an edit" }
+            workspaces.put(workspace.historyMove(redo = true))
+            state.clearPending()
+            return reply("Redid the draft edit. Saved tasks are unchanged. Say ‘show plan’ to review it.")
+        }
+        if ((command == "/plan" || ChatModeStore.get(context) == ChatMode.PLAN) && planBody in setOf("undo", "undo that", "undo last action", "undo plan", "undo saved changes")) {
+            val workspaces = ConversationPlanStore(context)
+            val workspace = workspaces.active()
+            if (workspace?.hypotheticalView == true)
+                return reply("That was a hypothetical alternative. Say ‘show plan’ to return to your active draft before undoing a change. Your saved tasks are unchanged.")
+            if (workspace?.pending != null && planBody != "undo saved changes") {
+                workspaces.put(workspace.copy(pending = null, reviewedRevision = null, reviewedAt = 0, reviewProcess = null))
+                return reply("Cancelled the unanswered planning change. Draft steps and saved tasks are unchanged.")
+            }
+            if (workspace != null && workspace.savedRevision != workspace.revision && planBody != "undo saved changes") {
+                if (workspace.undoDrafts.isEmpty() && workspace.previousDraft == null) return reply("There is no earlier draft edit to undo. Saved tasks are unchanged.")
+                val restored = workspace.historyMove(redo = false)
+                workspaces.put(restored)
+                return reply("Undid the last draft edit. Saved tasks are unchanged. Say ‘show plan’ to review the draft.")
+            }
+            if (workspace != null && SavedPlanHistory.canUndo(context, workspace.id)) {
+                val message = SavedPlanHistory.move(context, workspace.id, redo = false)
+                state.clearPending(); state.undo = emptyList(); state.undoId = null
+                return reply(message)
+            }
+            if (workspace == null || workspace.savedUndoId == null || workspace.savedUndoId != state.undoId)
+                return reply("There is no current saved change for this plan to undo. Your draft is still here.")
+            val id = state.undoId ?: return reply("There is no current saved-task change to undo. Your plan draft is still here.")
+            return internalCommand("undo $id", context, app, state)
+        }
+        if (command !in setOf("/clear", "/clean", "/wipe")) {
+            ConversationPlanner.respond(context, raw, state)?.let { return it }
+        } else {
+            ConversationPlanStore.clearAll(context)
+            ChatModeStore.set(context, ChatMode.CHAT)
+        }
         if (command in setOf("/clear", "/clean", "/wipe")) { state.clearPending(); state.taskId = null; state.habitId = null; state.topic = null; state.undo = emptyList(); state.undoId = null; state.candidates = emptyList(); state.recentInputs = emptyList(); state.lastReply = null; state.clearTaskReferences(); state.clearSuspended(); state.learning = null; state.learningResultId = null; state.planning = null; state.featureState = null; state.vocabularyCardId = null; return null }
         var text = raw.trim()
         if (command in setOf("/habit", "/habits") && raw.trim().indexOf(' ') < 0) { AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("habits"); return null }
@@ -248,6 +337,7 @@ object OfflineAssistant {
         AssistantDictionary.answer(context, app, state, text)?.let { return featureTurn(context, app, state, it) }
         AssistantPersonalization.handle(context, text)?.let { result ->
             if (result.forgetConversation) {
+                ConversationPlanStore.clearAll(context); ChatModeStore.set(context, ChatMode.CHAT)
                 state.clearPending(); state.taskId = null; state.habitId = null; state.topic = null; state.undo = emptyList(); state.undoId = null; state.recentInputs = emptyList()
                 state.clearTaskReferences(); state.clearSuspended(); state.learning = null; state.planning = null; state.featureState = null
             }
@@ -258,7 +348,7 @@ object OfflineAssistant {
         }
         if (AssistantLanguage.acknowledgement(text)) return pendingReply(context, state, AssistantReplyStyle.acknowledgement(context, state))
         AssistantInitiative.dismiss(context, state, text)?.let { return it }
-        AssistantSocial.answer(context, state, text, raw.removePrefix("/talk ").removePrefix("/ask "), appMode)?.let { return AssistantInitiative.attach(context, app, state, text, it) }
+        AssistantSocial.answer(context, state, text, if (appMode) raw.substringAfter(' ', "") else raw, appMode)?.let { return AssistantInitiative.attach(context, app, state, text, it) }
         AssistantConversationSupport.answer(context, app, state, text)?.let { return pendingReply(context, state, it) }
         AssistantHabitConversation.information(app, state, text)?.let { return pendingReply(context, state, it) }
         if (lower in setOf("not yet", "wait", "hold on") && state.expected == "confirm")
@@ -306,7 +396,7 @@ object OfflineAssistant {
             AssistantAppKnowledge.answer(context, state, text, appMode)?.let { return featureTurn(context, app, state, it) }
         if (appMode && OfflineNluEngine.isExplicitCreation(text) && !AssistantFeatureLanguage.isRequest(text)) {
             state.clearPending(); state.switchTopic("app_help")
-            return reply("/talk is for app information and settings. To save a task, send it as an ordinary message or use /create. What feature would you like help with?", listOf(TalkAction.AskQuery("/talk help", "Explore features")))
+            return reply("We can talk this through here. To make it a saved action, use /plan for a plan or /create for one task.")
         }
         if (!appMode && Regex("(?i)^remind me(?:\\s+.*)?$").matches(text) && !text.lowercase().startsWith("remind me to ") && !Regex("(?i)\\b(?:about|of)\\b").containsMatchIn(text)) {
             val date = SmartDateParser.parse(text.removePrefix("remind me").trim())
@@ -495,7 +585,7 @@ object OfflineAssistant {
         if (question || OfflineNluEngine.isConversationalStatement(text)) {
             state.clearPending()
             if (!(state.topic?.startsWith("faq:") == true && AssistantConversation.isTopicFollowUp(lower))) state.switchTopic("conversation")
-            return if (appMode) appHelpFallback(state) else null
+            return if (appMode) appHelpFallback(state, text) else null
         }
         val fallback = OfflineNluEngine.parse(text, pending)
         if (fallback.intent in setOf(NluIntent.COMPLETE, NluIntent.DELETE, NluIntent.RESCHEDULE)) {
@@ -515,15 +605,20 @@ object OfflineAssistant {
                 else "${if (fallback.intent == NluIntent.START_ROUTINE) "enable" else "disable"} routine ${if (fallback.isAllTasks) "all" else fallback.targetRoutineName.orEmpty()}".trim()
             return featureRequest(context, app, state, query)
         }
-        if (appMode) return appHelpFallback(state)
+        if (appMode) return appHelpFallback(state, text)
         // Keep existing app-specific FAQ and feature dispatch; remember its choices at the UI boundary.
         AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("conversation")
         return null
     }
 
-    private fun appHelpFallback(state: AssistantSession): AyvaTalkEngine.TalkResponse {
+    private fun appHelpFallback(state: AssistantSession, input: String): AyvaTalkEngine.TalkResponse {
         AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("app_help")
-        return reply("I can explain Ayva's features and current settings, preview supported setting changes, or check device permissions. Try ‘soft mode wait’, ‘practice reminders’, ‘notes vault PIN’, or ‘check device health’. For a task, use an ordinary message or /create.", listOf(TalkAction.NavigateAppScreen("preferences_hub", "Open preferences")))
+        if (!Regex("(?i)\\b(?:setting|permission|ayva|app|notification|backup|widget|vault|screen time)\\b").containsMatchIn(input)) {
+            val turn = AssistantDiscussion.answer(state, "let's talk through ${input.take(350)}")!!
+            AssistantDiscussion.resumeArchive(state, turn.frame!!)
+            return reply("Tell me a little more about ${input.take(200)}. What part would you like to work through? I can use the details you give me to compare choices or organize next steps.")
+        }
+        return reply("Which part of Ayva do you mean? Name the setting or screen, or describe what you expected to happen.")
     }
 
     private suspend fun create(context: Context, app: FocusApplication, state: AssistantSession, text: String, priority: Boolean, persistent: Boolean, allowDuplicate: Boolean, literalTitle: Boolean = false): AyvaTalkEngine.TalkResponse {
@@ -1082,7 +1177,15 @@ object OfflineAssistant {
         if (id == null || id != state.undoId || state.undo.isEmpty()) return reply("There's no recent action available to undo.")
         val record = state.undo.singleOrNull()?.takeIf { it.optString("kind") == "task" }
         val restored = record?.let { it.optJSONObject("before") ?: it.optJSONObject("after") }?.let(TaskJson::decode)
+        val planStore = runCatching { ConversationPlanStore(context) }.getOrNull()
+        val owner = planStore?.all()?.singleOrNull { it.savedUndoId == id }
+        if (owner != null && SavedPlanHistory.canUndo(context, owner.id)) {
+            val message = SavedPlanHistory.move(context, owner.id, redo = false)
+            state.undo = emptyList(); state.undoId = null; state.clearPending()
+            return reply(message)
+        }
         val text = AssistantActionExecutor.undo(context, state.undo)
+        planStore?.reconcileUndo(id, state.undo)
         if (state.undo.any { it.optString("kind") == "app_rules" }) state.featureState?.remove("appSelection")
         state.undo = emptyList(); state.undoId = null; state.clearPending()
         return AssistantPresentation.attach(reply(text), restored?.let { AssistantItemReference("task", it.id, it.title, "Restored · ${AssistantPresentation.due(it.dueDate)}") })

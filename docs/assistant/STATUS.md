@@ -1,10 +1,10 @@
 # Assistant roadmap handoff
 
-Last updated: 2026-10-19. Master specification: [MASTER_PLAN.md](MASTER_PLAN.md).
+Last updated: 2026-10-20. Master specification: [MASTER_PLAN.md](MASTER_PLAN.md).
 
 ## Current checkpoint
 
-Latest release request: bump to **2.0.9 / 109** and push main. Older version/publication entries below describe their dated checkpoints.
+Latest release request: bump to **2.0.10 / 110** and push main, including the conversational planner implementation. See [the current implementation ledger](implementation/CURRENT.md) and [delivery record](implementation/COMPLETION_IMPLEMENTATION.md) for implemented behavior, necessary-check evidence and deferred audits. Older version/publication entries below describe their dated checkpoints.
 
 Continuation publication: code through trip-routing fix `7b753f2e53dca7cafd3388d1d0e9674c74fb3398` was pushed to GitHub main and the remote SHA verified on 2026-10-19. Earlier local-only statements below record historical checkpoints. The publication handoff commit accompanies main; consult Git history for its identity.
 
@@ -263,3 +263,10 @@ Validation now requests platform-tools, platform 35 and build-tools 34.0.0 expli
 Final local full suite: **920 tests, zero failures/errors/skips**, BUILD SUCCESSFUL in **1m52s** (`/workspace/scratch/ayva-ci-fix-full-tests.log`), using the default compiler/test JVM configuration and cached dependencies with `--offline --no-daemon --stacktrace --max-workers=2`. Both static guards, workflow YAML validation and whitespace checks passed. Release CI now uploads test reports even on failure; Gradle prints full test exception traces. No test cases or assertions were removed or disabled.
 
 Version remains **2.0.9 / 109**. The repair is intended for GitHub main; hosted validation and an explicit manual release retry must be checked after pushing. Ordinary unchanged-version push publication remains disabled by the existing gate. Historical local APKs are not claimed as 2.0.9 signed releases. Untracked design mockups remain excluded.
+
+
+## Version 2.0.10 / build 110 (2026-10-20)
+
+The user explicitly requested a version bump and GitHub main push of the conversational-planner delivery. Incremented app/build.gradle.kts from 2.0.9 / 109 to **2.0.10 / 110** and updated the README download label. The implementation and deferred audit scope are in [the delivery record](implementation/COMPLETION_IMPLEMENTATION.md).
+
+Validation: `:app:processDebugMainManifest :app:processReleaseMainManifest` passed in **33s** (`/workspace/.setup/ayva-2.0.10-version-check.log`). Both generated manifests were parsed and confirmed as versionName 2.0.10 / versionCode 110. The chat boundary guard passed for 87 files, whitespace checks passed, and the release publication-intent gate returns `publish=true` against the previous main commit. Kotlin runtime/test source is unchanged from the final 80-case affected check and preceding 174-case integration check documented in CURRENT.md; those suites were not repeated for a metadata-only bump. Local existing APKs still embed their earlier version. The existing GitHub Actions workflows build/validate the push and attempt the versioned release; hosted success is not established by local checks or the push alone. No v2.0.10 tag existed at preparation. Use remote main/Git history for the resulting publication commit.

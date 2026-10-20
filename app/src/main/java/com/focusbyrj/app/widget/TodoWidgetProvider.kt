@@ -15,6 +15,8 @@ import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.MainActivity
 import com.focusbyrj.app.R
 import com.focusbyrj.app.data.RecurrencePattern
+import com.focusbyrj.app.data.isInTodayAgenda
+import com.focusbyrj.app.data.isInUpcomingAgenda
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.util.TaskReminderHelper
 import kotlinx.coroutines.CoroutineScope
@@ -223,17 +225,16 @@ class TodoWidgetProvider : AppWidgetProvider() {
                             set(Calendar.SECOND, 0)
                             set(Calendar.MILLISECOND, 0)
                         }.timeInMillis
-                        val todayEnd = todayStart + 86400000L - 1L
+                        val todayEnd = (now2.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }.timeInMillis
 
                         val uncompleted = allTasks.filter { !it.isCompleted && !it.isTrashed }
 
                         val count = when (selectedTab) {
                             0 -> uncompleted.count {
-                                (it.dueDate != null && it.dueDate <= todayEnd) ||
-                                (it.dueDate == null && it.type == com.focusbyrj.app.data.TaskType.TASK)
+                                it.isInTodayAgenda(todayEnd)
                             }
                             1 -> uncompleted.count {
-                                it.type == com.focusbyrj.app.data.TaskType.TASK && it.dueDate != null && it.dueDate > todayEnd
+                                it.isInUpcomingAgenda(todayEnd)
                             }
                             2 -> uncompleted.size
                             else -> uncompleted.size

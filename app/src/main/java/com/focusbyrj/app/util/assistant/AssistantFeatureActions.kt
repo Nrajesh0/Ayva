@@ -68,7 +68,7 @@ object AssistantFeatureActions {
                 if (link == null) app.vocabDatabase.dictionaryBookmarkDao().insert(com.focusbyrj.app.data.DictionaryBookmark(sense.id, action.key, targetId))
                 targetId
             }
-            AssistantActionResult("Saved **${sense.word}** to vocabulary bookmarks. This doesn't mark it learned. Wordset source and license remain available through ‘dictionary credits’.",
+            AssistantActionResult("Saved **${sense.word}** to vocabulary bookmarks. This doesn't mark it learned.",
                 undo = listOf(JSONObject().put("kind", "vocab_bookmark").put("type", "ows").put("id", id).put("before", action.expectedBookmark ?: 0).put("after", 1)))
         }
         is AssistantAction.BookmarkWord -> {

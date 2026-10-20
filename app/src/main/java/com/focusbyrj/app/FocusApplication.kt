@@ -78,6 +78,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
             }
         }
         AutoBackupScheduler.schedule(this, ioScope)
+        runCatching { com.focusbyrj.app.util.WorkSessionReminders.retry(this) }
     }
 
     val database by lazy { 
@@ -118,7 +119,8 @@ class FocusApplication : Application(), ImageLoaderFactory {
                 FocusDatabase.MIGRATION_1_11,
                 FocusDatabase.MIGRATION_11_12,
                 FocusDatabase.MIGRATION_1_12,
-                FocusDatabase.MIGRATION_12_13
+                FocusDatabase.MIGRATION_12_13,
+                FocusDatabase.MIGRATION_13_14
             )
             .build()
         } catch (t: Throwable) {

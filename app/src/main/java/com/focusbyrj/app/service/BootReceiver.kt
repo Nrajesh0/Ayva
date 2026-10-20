@@ -45,10 +45,13 @@ class BootReceiver : BroadcastReceiver() {
                         e.printStackTrace()
                     }
 
+                    try { com.focusbyrj.app.util.WorkSessionReminders.reconcileAll(context) } catch (_: Exception) {
+                        runCatching { com.focusbyrj.app.util.WorkSessionReminders.retry(context) }
+                    }
                     // 2. Reschedule all task reminders on boot or update
                     try {
                         val tasks = app.taskRepository.allTasks.firstOrNull() ?: emptyList()
-                        tasks.filter { !it.isCompleted && !it.isTrashed && it.dueDate != null }.forEach { task ->
+                        tasks.filter { !it.isCompleted && !it.isTrashed }.forEach { task ->
                             TaskReminderHelper.scheduleReminder(context, task)
                         }
                     } catch (e: Exception) {

@@ -2,6 +2,7 @@ package com.focusbyrj.app.util.assistant
 
 import android.content.Context
 import com.focusbyrj.app.FocusApplication
+import com.focusbyrj.app.data.agendaAt
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.util.*
 import kotlinx.coroutines.flow.first
@@ -12,12 +13,14 @@ import java.util.Date
 import java.util.Locale
 
 object AssistantDialogue {
+    fun isClockRequest(input: String) = input.lowercase(Locale.ROOT).trim().trimEnd('.', '!', '?') in
+        setOf("what time is it", "what's the time", "what day is it", "what is today's date", "what's today's date")
     private fun reply(text: String, actions: List<TalkAction> = emptyList(), topic: String = "conversation") =
         AyvaTalkEngine.TalkResponse(text, actions, topic, AyvaTalkEngine.serializeActionsJson(topic, actions))
 
     suspend fun answer(context: Context, app: FocusApplication, state: AssistantSession, input: String, tasks: List<Task>): AyvaTalkEngine.TalkResponse? {
         val lower = input.lowercase().trimEnd('.', '!', '?')
-        val ordered = tasks.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }.thenBy { it.id })
+        val ordered = tasks.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.agendaAt ?: Long.MAX_VALUE }.thenBy { it.id })
         val next = ordered.firstOrNull()
         if (lower in setOf("back to that task list", "back to the task list", "show that task list again", "back to that list")) {
             if (state.taskListIds.isEmpty() || !state.taskListComplete || System.currentTimeMillis() - state.taskListAt !in 0..900_000L)
@@ -52,7 +55,7 @@ object AssistantDialogue {
             val name = context.getSharedPreferences("ayva_personalization", Context.MODE_PRIVATE).getString("name", null)
             return reply(name?.let { "You asked me to call you **$it**." } ?: "You haven't given me a name. Say ‘call me’ followed by your name.")
         }
-        if (lower in setOf("what time is it", "what's the time", "what day is it", "what is today's date", "what's today's date")) { state.switchTopic("clock"); return reply(SimpleDateFormat("EEEE, d MMMM yyyy · h:mm a", Locale.getDefault()).format(Date())) }
+        if (isClockRequest(input)) { state.switchTopic("clock"); return reply(SimpleDateFormat("EEEE, d MMMM yyyy · h:mm a", Locale.getDefault()).format(Date())) }
         if (lower in setOf("no that's not what i meant", "that's wrong", "you misunderstood", "not what i meant", "that isn't what i meant")) { state.clearPending(); return reply("Let's correct it. Tell me what should change—its title, date, priority, or the action itself. Say ‘undo’ to reverse my last reversible change.") }
 
         AssistantCalculator.answer(input)?.let { return reply(it) }
@@ -72,20 +75,23 @@ object AssistantDialogue {
             lower in setOf("my agenda", "what do i have today", "what do i have tomorrow", "show overdue tasks", "overdue tasks", "priority tasks", "completed tasks")
         if (listQuery) {
             val completed = lower.contains("completed")
-            var selected = app.database.taskDao().getAllActiveTasksList().filter { it.isCompleted == completed }
+            val agenda = lower == "my agenda" || lower.startsWith("what do i have")
+            var selected = app.database.taskDao().getAllActiveTasksList().filter { it.isCompleted == completed && it.deletedAt == null && (!agenda || it.type == com.focusbyrj.app.data.TaskType.TASK) }
             val now = System.currentTimeMillis()
+            var viewStart: Long? = null; var viewEnd: Long? = null
             when {
                 lower.contains("overdue") -> selected = selected.filter { it.dueDate?.let { date -> date < now } == true }
                 lower.contains("priority") -> selected = selected.filter { it.isPriority }
-                lower.contains("today") || lower.contains("tomorrow") -> {
+                lower.contains("today") || lower.contains("tomorrow") || agenda -> {
                     val start = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0); if (lower.contains("tomorrow")) add(Calendar.DAY_OF_YEAR, 1) }
                     val end = (start.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }.timeInMillis
-                    selected = selected.filter { it.dueDate?.let { date -> date in start.timeInMillis until end } == true }
+                    viewStart = start.timeInMillis; viewEnd = end
+                    selected = selected.filter { TaskScheduleView.matches(it, start.timeInMillis, end, lower.contains("due")) }
                 }
             }
-            selected = selected.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }.thenBy { it.id })
+            selected = selected.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.agendaAt ?: Long.MAX_VALUE }.thenBy { it.id })
             state.clearPending(); state.switchTopic("tasks"); state.rememberTaskList(selected.take(20).map { it.id })
-            val text = if (selected.isEmpty()) "No tasks match that view." else selected.take(20).mapIndexed { i, t -> "${i + 1}. **${t.title}**${if (t.isPriority) " · priority" else ""}${t.dueDate?.let { " — ${SmartDateParser.formatDueDate(it)}" }.orEmpty()}" }.joinToString("\n") + if (selected.size > 20) "\nShowing 20 of ${selected.size}." else ""
+            val text = if (selected.isEmpty()) "No tasks match that view." else selected.take(20).mapIndexed { i, t -> "${i + 1}. **${t.title}**${if (t.isPriority) " · priority" else ""} — ${TaskScheduleView.describe(t, viewStart, viewEnd)}" }.joinToString("\n") + if (selected.size > 20) "\nShowing 20 of ${selected.size}." else ""
             return AssistantResponseContent.taskList(reply(text + if (selected.isNotEmpty()) "\nSelect a task to act, or tell me what to change." else "", topic = "tasks"), selected, state.taskListAt)
         }
         AssistantPlanning.respond(context, state, input, tasks)?.let { return it }

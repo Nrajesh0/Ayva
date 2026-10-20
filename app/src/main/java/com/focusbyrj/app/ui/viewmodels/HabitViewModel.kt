@@ -33,17 +33,19 @@ class HabitViewModel(
             initialValue = emptyList()
         )
 
-    fun addHabit(habit: Habit) {
+    fun addHabit(habit: Habit, onStored: () -> Unit = {}) {
         viewModelScope.launch {
             val id = repository.insertHabit(habit)
+            onStored()
             val created = habit.copy(id = id)
             HabitAlarmScheduler.scheduleHabitReminder(getApplication(), created)
         }
     }
 
-    fun updateHabit(habit: Habit) {
+    fun updateHabit(habit: Habit, onStored: () -> Unit = {}) {
         viewModelScope.launch {
             repository.updateHabit(habit)
+            onStored()
             HabitAlarmScheduler.scheduleHabitReminder(getApplication(), habit)
         }
     }

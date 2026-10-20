@@ -37,6 +37,9 @@ import com.focusbyrj.app.util.FocusEconomyManager
 import com.focusbyrj.app.util.FocusStatsManager
 import com.focusbyrj.app.util.HabitAlarmScheduler
 import com.focusbyrj.app.util.TaskReminderHelper
+import com.focusbyrj.app.util.assistant.AssistantPlanningArchive
+import com.focusbyrj.app.util.assistant.AssistantStateLock
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -106,7 +109,8 @@ object BackupRestoreManager {
         val restrictionCount: Int,
         val scheduleCount: Int,
         val drillCount: Int,
-        val chatMessageCount: Int = 0
+        val chatMessageCount: Int = 0,
+        val planCount: Int = 0
     )
 
     private data class MediaManifestEntry(
@@ -126,7 +130,8 @@ object BackupRestoreManager {
         val idioms: List<Idiom>,
         val ows: List<Ows>,
         val chatMessages: List<AyvaChatMessageEntity>,
-        val preferences: Map<String, Map<String, *>>
+        val preferences: Map<String, Map<String, *>>,
+        val assistantRecovery: AssistantPlanningArchive.Recovery
     )
 
     /**
@@ -165,6 +170,12 @@ object BackupRestoreManager {
         context: Context,
         destinationUri: Uri,
         password: String
+    ): Result<BackupMetadata> = AssistantStateLock.mutex.withLock {
+        createEncryptedBackupLocked(context, destinationUri, password)
+    }
+
+    private suspend fun createEncryptedBackupLocked(
+        context: Context, destinationUri: Uri, password: String
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
         try {
             if (password.isBlank()) {
@@ -180,6 +191,7 @@ object BackupRestoreManager {
             val restrictions = focusDb.appRestrictionDao().getAllRestrictionsSync()
             val schedules = focusDb.scheduleDao().getAllSchedulesSync()
             val tasks = focusDb.taskDao().getAllTasksList()
+            val assistantPlanning = AssistantPlanningArchive.export(app)
             val habits = focusDb.habitDao().getAllHabitsSync()
             val habitLogs = focusDb.habitDao().getAllLogsSync()
             val notes = noteDb.noteDao().getAllNotesList()
@@ -221,7 +233,8 @@ object BackupRestoreManager {
                 restrictionCount = restrictions.size,
                 scheduleCount = schedules.size,
                 drillCount = drillSessions.size,
-                chatMessageCount = chatMessages.size
+                chatMessageCount = chatMessages.size,
+                planCount = assistantPlanning.getJSONArray("plans").length()
             )
 
             // 2. Build JSON Payload
@@ -239,6 +252,7 @@ object BackupRestoreManager {
                     put("schedules", schedules.size)
                     put("drillSessions", drillSessions.size)
                     put("chatMessages", chatMessages.size)
+                    put("planWorkspaces", metadata.planCount)
                 }
                 put("meta", metaObj)
 
@@ -318,6 +332,7 @@ object BackupRestoreManager {
                         put("isPersistent", t.isPersistent)
                         put("isPriority", t.isPriority)
                         put("subtasksJson", t.subtasksJson)
+                        put("planningJson", t.planningJson)
                         put("updatedAt", t.updatedAt)
                         put("isTrashed", t.isTrashed)
                         put("trashedAt", t.trashedAt ?: JSONObject.NULL)
@@ -325,6 +340,7 @@ object BackupRestoreManager {
                     })
                 }
                 put("tasks", taskArray)
+                put("assistantPlanning", assistantPlanning)
 
                 // Habits
                 val habitArray = JSONArray()
@@ -612,6 +628,12 @@ object BackupRestoreManager {
         password: String,
         cleanRestore: Boolean = false,
         vaultPin: String? = null
+    ): Result<BackupMetadata> = AssistantStateLock.mutex.withLock {
+        restoreEncryptedBackupLocked(context, sourceUri, password, cleanRestore, vaultPin)
+    }
+
+    private suspend fun restoreEncryptedBackupLocked(
+        context: Context, sourceUri: Uri, password: String, cleanRestore: Boolean, vaultPin: String?
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
         val app = context.applicationContext as FocusApplication
         val stagingDir = File(app.cacheDir, "restore_media_stage_${System.currentTimeMillis()}").apply { mkdirs() }
@@ -715,6 +737,8 @@ object BackupRestoreManager {
             // preferences, or live media. This prevents a late malformed entity from producing
             // a successful partial restore.
             validateRestoreManifest(rootJson)
+            val assistantPlanning = if (rootJson.has("assistantPlanning")) rootJson.getJSONObject("assistantPlanning") else null
+            AssistantPlanningArchive.preflight(app, assistantPlanning, cleanRestore)
             validateStagedMedia(rootJson, stagingDir)
             checkNotNull(DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "pre_encrypted_restore", focusDb)) {
                 "Could not create the required pre-restore safety snapshot. No data was changed."
@@ -824,6 +848,7 @@ object BackupRestoreManager {
             val schedArray = rootJson.optJSONArray("schedules") ?: JSONArray()
             val taskArray = rootJson.optJSONArray("tasks") ?: JSONArray()
             val habitArray = rootJson.optJSONArray("habits") ?: JSONArray()
+            val taskIdMapping = mutableMapOf<Long, Long>()
 
             focusDb.withTransaction {
                 if (cleanRestore) {
@@ -884,12 +909,20 @@ object BackupRestoreManager {
                         isPersistent = obj.optBoolean("isPersistent", false),
                         isPriority = obj.optBoolean("isPriority", false),
                         subtasksJson = obj.optString("subtasksJson", "[]"),
+                        planningJson = obj.optString("planningJson", ""),
                         updatedAt = if (obj.has("updatedAt") && !obj.isNull("updatedAt")) obj.optLong("updatedAt") else System.currentTimeMillis(),
                         isTrashed = obj.optBoolean("isTrashed", false),
                         trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
                         deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null
                     )
-                    focusDb.taskDao().insertTask(task)
+                    val restoredId = focusDb.taskDao().insertTask(task)
+                    if (obj.optLong("id", 0L) > 0) taskIdMapping[obj.getLong("id")] = restoredId
+                }
+
+                for (id in taskIdMapping.values) {
+                    val task = focusDb.taskDao().getTaskById(id)!!
+                    if (task.planningJson.isNotEmpty()) focusDb.taskDao().updateTask(task.copy(
+                        planningJson = com.focusbyrj.app.data.TaskPlanning.remap(task.planningJson, taskIdMapping)))
                 }
 
                 // 8. Restore Habits
@@ -1112,6 +1145,8 @@ object BackupRestoreManager {
 
             // 13. Commit Staged Media Files to Internal Storage (re-encrypting with this device's hardware KeyStore key)
             installPreparedMedia(preparedMedia)
+            AssistantPlanningArchive.restore(app, assistantPlanning, taskIdMapping, cleanRestore)
+            com.focusbyrj.app.util.AyvaTalkEngine.resetConversation()
 
             // Reload In-Memory Managers
             try { FocusEconomyManager.init(app) } catch (_: Exception) {}
@@ -1130,7 +1165,8 @@ object BackupRestoreManager {
             try {
                 val now = System.currentTimeMillis()
                 val activeTasks = focusDb.taskDao().getAllTasksList()
-                activeTasks.filter { !it.isCompleted && !it.isTrashed && it.dueDate != null && it.dueDate > now }
+                com.focusbyrj.app.util.WorkSessionReminders.reconcileAll(app)
+                activeTasks.filter { !it.isCompleted && !it.isTrashed }
                     .forEach { TaskReminderHelper.scheduleReminder(app, it) }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to reschedule task reminders post-restore", e)
@@ -1158,7 +1194,8 @@ object BackupRestoreManager {
                 restrictionCount = restrArray.length(),
                 scheduleCount = schedArray.length(),
                 drillCount = drillArray.length(),
-                chatMessageCount = chatArray.length()
+                chatMessageCount = chatArray.length(),
+                planCount = assistantPlanning?.getJSONArray("plans")?.length() ?: 0
             )
 
             Log.i(TAG, "Encrypted backup restored successfully.")
@@ -1244,6 +1281,18 @@ object BackupRestoreManager {
         }
         each("restrictions") { it.getString("packageName") }
         each("tasks") { it.getString("title") }
+        val planningTasks = root.optJSONArray("tasks")?.let { a -> (0 until a.length()).map { i ->
+            val obj = a.getJSONObject(i)
+            Task(id = obj.optLong("id", 0L), title = obj.getString("title"), planningJson = obj.optString("planningJson", ""))
+        } }.orEmpty()
+        com.focusbyrj.app.data.TaskPlanning.validateGraph(planningTasks)
+        val taskIds = root.optJSONArray("tasks")?.let { array ->
+            (0 until array.length()).mapNotNull { array.getJSONObject(it).optLong("id", 0L).takeIf { id -> id > 0 } }
+        }.orEmpty()
+        require(taskIds.distinct().size == taskIds.size) { "Backup contains duplicate task IDs" }
+        if (root.has("assistantPlanning")) {
+            com.focusbyrj.app.util.assistant.validateDocument(root.getJSONObject("assistantPlanning"))
+        }
         each("habits") { it.getString("title") }
         each("habitLogs") { it.getLong("habitId"); it.getString("date") }
         each("drillSessions") { it.getString("sessionId") }
@@ -1252,6 +1301,9 @@ object BackupRestoreManager {
         each("chatMessages") { it.getString("id") }
 
         root.optJSONObject("meta")?.let { meta ->
+            if (meta.has("planWorkspaces")) require(meta.getInt("planWorkspaces") == (root.optJSONObject("assistantPlanning")?.getJSONArray("plans")?.length() ?: 0)) {
+                "Backup manifest count mismatch for plan workspaces"
+            }
             mapOf(
                 "notes" to "notes", "tasks" to "tasks", "habits" to "habits",
                 "restrictions" to "restrictions", "schedules" to "schedules",
@@ -1280,7 +1332,7 @@ object BackupRestoreManager {
         vocabDb: VocabDatabase,
         chatDb: AyvaChatDatabase
     ): RestoreRollbackState {
-        val preferenceNames = (PREF_FILES + ArchiveVaultSecurity.PREFS_NAME).distinct()
+        val preferenceNames = (PREF_FILES + ArchiveVaultSecurity.PREFS_NAME + "ayva_composer").distinct()
         return RestoreRollbackState(
             notes = noteDb.noteDao().getAllNotesList(),
             restrictions = focusDb.appRestrictionDao().getAllRestrictionsSync(),
@@ -1292,6 +1344,7 @@ object BackupRestoreManager {
             idioms = vocabDb.vocabDao().getAllIdioms(),
             ows = vocabDb.vocabDao().getAllOws(),
             chatMessages = chatDb.chatDao().getAllMessagesSync(),
+            assistantRecovery = AssistantPlanningArchive.captureRecovery(context),
             preferences = preferenceNames.associateWith { name ->
                 HashMap(context.getSharedPreferences(name, Context.MODE_PRIVATE).all)
             }
@@ -1347,6 +1400,7 @@ object BackupRestoreManager {
             }
             check(editor.commit()) { "Could not roll back preferences '$name'" }
         }
+        AssistantPlanningArchive.recover(app, state.assistantRecovery)
         ArchiveVaultSecurity.lockVault()
         NotesViewModel.latestNotesCache.clear()
     }

@@ -95,11 +95,11 @@ object AyvaContextEngine {
         } catch (_: Exception) {}
 
         // Task pressure metrics
-        val pending = tasks.filter { !it.isCompleted }
+        val pending = tasks.filter { !it.isCompleted && !it.isTrashed && it.deletedAt == null && it.type == com.focusbyrj.app.data.TaskType.TASK }
         val overdue = pending.filter { it.dueDate != null && it.dueDate < now }
         val priority = pending.filter { it.isPriority }
         val nextDue = pending
-            .filter { it.dueDate != null && it.dueDate >= now }
+            .filter { it.dueDate != null && it.dueDate >= now && it.dueDate <= now + 7 * 86_400_000L }
             .minByOrNull { it.dueDate!! }
 
         // Streak & Screen time

@@ -32,7 +32,7 @@
 
 You can download the latest official APK directly from GitHub Releases:
 
-- 📦 **[Download Latest APK (v2.0.9)](https://github.com/Nrajesh0/Ayva/releases/latest)**
+- 📦 **[Download Latest APK (v2.0.10)](https://github.com/Nrajesh0/Ayva/releases/latest)**
 - 🌐 **[Official Website](https://Nrajesh0.github.io/Ayva/)**
 
 ## Building from Source

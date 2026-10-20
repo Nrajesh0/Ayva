@@ -11,6 +11,10 @@ import android.widget.RemoteViewsService
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.R
 import com.focusbyrj.app.data.RecurrencePattern
+import com.focusbyrj.app.data.agendaAt
+import com.focusbyrj.app.data.planning
+import com.focusbyrj.app.data.isInTodayAgenda
+import com.focusbyrj.app.data.isInUpcomingAgenda
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.data.TaskType
 import kotlinx.coroutines.flow.first
@@ -71,17 +75,16 @@ class TodoWidgetRemoteViewsFactory(
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
             }.timeInMillis
-            val todayEnd = todayStart + 86400000L - 1L
+            val todayEnd = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }.timeInMillis
 
             val uncompleted = allTasks.filter { !it.isCompleted && !it.isTrashed }
 
             tasksList = when (tabIndex) {
                 0 -> uncompleted.filter {
-                    (it.dueDate != null && it.dueDate <= todayEnd) ||
-                    (it.dueDate == null && it.type == TaskType.TASK)
+                    it.isInTodayAgenda(todayEnd)
                 }
                 1 -> uncompleted.filter {
-                    it.type == TaskType.TASK && it.dueDate != null && it.dueDate > todayEnd
+                    it.isInUpcomingAgenda(todayEnd)
                 }
                 2 -> uncompleted
                 else -> uncompleted
@@ -115,11 +118,13 @@ class TodoWidgetRemoteViewsFactory(
         val subtitleSizeSp = (widgetConfig.textSize.spValue * 0.8f).coerceAtLeast(10f)
         val badgeSizeSp = (widgetConfig.textSize.spValue * 0.72f).coerceAtLeast(9f)
 
-        // Format due date / badge
-        if (task.dueDate != null) {
+        // Keep work sessions distinguishable from deadline reminders.
+        val agendaAt = task.agendaAt
+        val isWork = task.planning?.start == agendaAt && agendaAt != null
+        if (agendaAt != null) {
             views.setViewVisibility(R.id.widget_item_due, View.VISIBLE)
             views.setTextViewTextSize(R.id.widget_item_due, TypedValue.COMPLEX_UNIT_SP, subtitleSizeSp)
-            val dueCalendar = Calendar.getInstance().apply { timeInMillis = task.dueDate }
+            val dueCalendar = Calendar.getInstance().apply { timeInMillis = agendaAt }
             val now = Calendar.getInstance()
 
             val isToday = dueCalendar.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
@@ -130,18 +135,18 @@ class TodoWidgetRemoteViewsFactory(
                     dueCalendar.get(Calendar.DAY_OF_YEAR) == tomorrowCalendar.get(Calendar.DAY_OF_YEAR)
 
             val isDifferentYear = dueCalendar.get(Calendar.YEAR) != now.get(Calendar.YEAR)
-            val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(task.dueDate))
+            val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(agendaAt))
 
             val dueText = when {
                 isToday -> "Today, $timeFormat"
                 isTomorrow -> "Tomorrow, $timeFormat"
-                isDifferentYear -> SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.getDefault()).format(Date(task.dueDate))
-                else -> SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(task.dueDate))
+                isDifferentYear -> SimpleDateFormat("MMM d, yyyy, h:mm a", Locale.getDefault()).format(Date(agendaAt))
+                else -> SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(agendaAt))
             }
-            views.setTextViewText(R.id.widget_item_due, dueText)
+            views.setTextViewText(R.id.widget_item_due, if (isWork) "Work: $dueText" else dueText)
 
             val nowMs = System.currentTimeMillis()
-            if (task.dueDate < nowMs) {
+            if (agendaAt < nowMs) {
                 views.setTextColor(R.id.widget_item_due, Color.parseColor("#FF7043")) // Overdue Orange
             } else if (isToday) {
                 views.setTextColor(R.id.widget_item_due, Color.parseColor("#B388FF")) // Today Purple

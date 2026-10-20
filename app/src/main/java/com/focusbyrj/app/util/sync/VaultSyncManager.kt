@@ -108,6 +108,8 @@ object VaultSyncManager {
                 put("trashedAt", task.trashedAt ?: JSONObject.NULL)
                 put("deletedAt", task.deletedAt ?: JSONObject.NULL)
                 put("subtasksJson", task.subtasksJson)
+                put("planningJson", task.planningJson)
+                put("updatedAt", task.updatedAt)
             }
             tasksArray.put(tObj)
         }
@@ -186,7 +188,7 @@ object VaultSyncManager {
                 val deletedAt = if (tObj.has("deletedAt") && !tObj.isNull("deletedAt")) tObj.optLong("deletedAt").takeIf { it > 0L } else null
 
                 val task = Task(
-                    id = if (mergeMode) 0L else tObj.optLong("id", 0L),
+                    id = tObj.optLong("id", 0L),
                     title = tObj.optString("title", "Untitled Task"),
                     details = tObj.optString("details", ""),
                     dueDate = if (tObj.isNull("dueDate")) null else tObj.optLong("dueDate").takeIf { it > 0L },
@@ -199,10 +201,15 @@ object VaultSyncManager {
                     isTrashed = isTrashed,
                     trashedAt = trashedAt,
                     deletedAt = deletedAt,
-                    subtasksJson = tObj.optString("subtasksJson", "[]")
+                    subtasksJson = tObj.optString("subtasksJson", "[]"),
+                    planningJson = tObj.optString("planningJson", "").also { com.focusbyrj.app.data.TaskPlanning.read(it) },
+                    updatedAt = tObj.optLong("updatedAt", System.currentTimeMillis())
                 )
                 tasksToInsert.add(task)
             }
+
+            com.focusbyrj.app.data.TaskPlanning.validateGraph(tasksToInsert)
+            require(tasksToInsert.filter { it.id > 0 }.map { it.id }.distinct().size == tasksToInsert.count { it.id > 0 }) { "Duplicate task IDs" }
 
             // 2. Perform database mutations only AFTER full pre-validation passes
             if (context != null) {
@@ -211,11 +218,10 @@ object VaultSyncManager {
 
             if (!mergeMode) {
                 noteDao.deleteAllNotes()
-                taskDao.deleteAllTasks()
             }
 
             notesToInsert.forEach { noteDao.insertNote(it) }
-            tasksToInsert.forEach { taskDao.insertTask(it) }
+            taskDao.restoreTasks(tasksToInsert, replace = !mergeMode)
 
             Result.success(Pair(notesToInsert.size, tasksToInsert.size))
         } catch (e: Exception) {

@@ -56,6 +56,7 @@ internal object AssistantPlanStore {
         return try {
             val a = JSONArray(receipt.tasksJson)
             for (i in 0 until a.length()) {
+                if (a.getJSONObject(i).optBoolean("noEffects")) continue
                 val saved = TaskJson.decode(a.getJSONObject(i))
                 val current = app.database.taskDao().getTaskById(saved.id) ?: continue
                 // Reconciliation never resurrects a deleted item or overwrites a native edit.

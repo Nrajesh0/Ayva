@@ -56,7 +56,6 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -95,11 +94,12 @@ class QuickAddTaskActivity : ComponentActivity() {
             FocusByRjTheme {
                 QuickAddTaskOverlay(
                     onDismiss = { finish() },
-                    onSave = { task ->
+                    onSave = { task, stored ->
                         val app = applicationContext as? FocusApplication ?: return@QuickAddTaskOverlay
                         val scope = CoroutineScope(Dispatchers.IO)
                         scope.launch {
                             val id = app.database.taskDao().insertTask(task)
+                            stored()
                             TaskReminderHelper.scheduleReminder(applicationContext, task.copy(id = id))
                             TodoWidgetProvider.updateAllWidgets(applicationContext)
                         }
@@ -115,19 +115,24 @@ class QuickAddTaskActivity : ComponentActivity() {
 @Composable
 fun QuickAddTaskOverlay(
     onDismiss: () -> Unit,
-    onSave: (Task) -> Unit
+    onSave: (Task, () -> Unit) -> Unit
 ) {
-    var title by remember { mutableStateOf(TextFieldValue("")) }
-    var details by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf(TaskType.TASK) }
-    var dueDate by remember { mutableStateOf<Long?>(null) }
-    var recurrence by remember { mutableStateOf(RecurrencePattern.NONE) }
-    var userManuallySetRecurrence by remember { mutableStateOf(false) }
-    var isPersistent by remember { mutableStateOf(false) }
+    val draftStore = com.focusbyrj.app.ui.components.rememberEditorDraft("quick-task")
+    val restored = remember(draftStore) { draftStore.read() }
+    com.focusbyrj.app.ui.components.KeyboardFirstBackHandler(onDismiss)
+    var title by remember { mutableStateOf(TextFieldValue(restored.optString("title"), androidx.compose.ui.text.TextRange(restored.optInt("cursor").coerceIn(0, restored.optString("title").length)))) }
+    var details by remember { mutableStateOf(restored.optString("details", "")) }
+    var type by remember { mutableStateOf(runCatching { TaskType.valueOf(restored.getString("type")) }.getOrDefault(TaskType.TASK)) }
+    var dueDate by remember { mutableStateOf<Long?>(restored.optLong("dueDate").takeUnless { restored.isNull("dueDate") || !restored.has("dueDate") }) }
+    var recurrence by remember { mutableStateOf(runCatching { RecurrencePattern.valueOf(restored.getString("recurrence")) }.getOrDefault(RecurrencePattern.NONE)) }
+    var userManuallySetRecurrence by remember { mutableStateOf(restored.optBoolean("userManuallySetRecurrence", false)) }
+    var isPersistent by remember { mutableStateOf(restored.optBoolean("isPersistent", false)) }
 
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var showRecurrenceMenu by remember { mutableStateOf(false) }
+
+    com.focusbyrj.app.ui.components.PersistEditorDraft(draftStore, org.json.JSONObject().put("title", title.text).put("cursor", title.selection.end).put("details", details).put("type", type.name).put("dueDate", dueDate ?: org.json.JSONObject.NULL).put("recurrence", recurrence.name).put("userManuallySetRecurrence", userManuallySetRecurrence).put("isPersistent", isPersistent))
 
     val parsedResult = remember(title.text) {
         SmartDateParser.parse(title.text)
@@ -473,7 +478,8 @@ fun QuickAddTaskOverlay(
                                         type = effectiveType,
                                         recurrence = effectiveRecurrence,
                                         isPersistent = isPersistent
-                                    )
+                                    ),
+                                    draftStore::discard
                                 )
                             }
                         },

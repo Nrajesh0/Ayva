@@ -274,6 +274,7 @@ object FocusDatabaseMigrationHelper {
                             val trashedAtIdx = c.getColumnIndex("trashedAt")
                             val deletedAtIdx = c.getColumnIndex("deletedAt")
                             val subtasksJsonIdx = c.getColumnIndex("subtasksJson")
+                            val planningJsonIdx = c.getColumnIndex("planningJson")
 
                             while (c.moveToNext()) {
                                 val title = if (titleIdx != -1) c.getString(titleIdx) ?: "" else ""
@@ -295,6 +296,7 @@ object FocusDatabaseMigrationHelper {
                                         isPriority = if (isPriorityIdx != -1) c.getInt(isPriorityIdx) == 1 else false,
                                         completedAt = if (completedAtIdx != -1 && !c.isNull(completedAtIdx)) c.getLong(completedAtIdx) else null,
                                         subtasksJson = if (subtasksJsonIdx != -1 && !c.isNull(subtasksJsonIdx)) c.getString(subtasksJsonIdx) ?: "[]" else "[]",
+                                        planningJson = if (planningJsonIdx != -1 && !c.isNull(planningJsonIdx)) c.getString(planningJsonIdx) ?: "" else "",
                                         updatedAt = if (updatedAtIdx != -1 && !c.isNull(updatedAtIdx)) c.getLong(updatedAtIdx) else System.currentTimeMillis(),
                                         isTrashed = if (isTrashedIdx != -1) c.getInt(isTrashedIdx) == 1 else false,
                                         trashedAt = if (trashedAtIdx != -1 && !c.isNull(trashedAtIdx)) c.getLong(trashedAtIdx) else null,

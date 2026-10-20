@@ -605,7 +605,7 @@ fun AccountScreen(
             icon = { Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF10B981)) },
             title = { Text("Backup Saved Successfully") },
             text = {
-                Text("Your encrypted backup has been written.\n\n• Notes: ${meta.noteCount}\n• Tasks: ${meta.taskCount}\n• Habits: ${meta.habitCount}\n• Drill Sessions: ${meta.drillCount}\n• App Restrictions: ${meta.restrictionCount}")
+                Text("Your encrypted backup has been written.\n\n• Notes: ${meta.noteCount}\n• Tasks: ${meta.taskCount}\n• Plans: ${meta.planCount}\n• Habits: ${meta.habitCount}\n• Drill Sessions: ${meta.drillCount}\n• App Restrictions: ${meta.restrictionCount}")
             },
             confirmButton = {
                 Button(onClick = { exportSuccessMetadata = null }) {
@@ -661,7 +661,7 @@ fun AccountScreen(
                             val meta = result.getOrNull()
                             Toast.makeText(
                                 context,
-                                "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits.",
+                                "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits and ${meta?.planCount ?: 0} plans.",
                                 Toast.LENGTH_LONG
                             ).show()
                         } else {
@@ -707,7 +707,7 @@ fun AccountScreen(
                         val meta = result.getOrNull()
                         Toast.makeText(
                             context,
-                            "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits.",
+                            "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits and ${meta?.planCount ?: 0} plans.",
                             Toast.LENGTH_LONG
                         ).show()
                     } else {

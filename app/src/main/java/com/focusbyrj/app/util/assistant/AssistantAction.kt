@@ -86,6 +86,7 @@ internal object TaskJson {
         put("completedAt", task.completedAt ?: JSONObject.NULL); put("updatedAt", task.updatedAt)
         put("trashed", task.isTrashed); put("trashedAt", task.trashedAt ?: JSONObject.NULL)
         put("deletedAt", task.deletedAt ?: JSONObject.NULL); put("subtasks", task.subtasksJson)
+        if (task.planningJson.isNotEmpty()) put("planning", task.planningJson)
     }
     fun decode(json: JSONObject): Task = Task(
         id = json.getLong("id"), title = json.getString("title"), details = json.getString("details"),
@@ -94,7 +95,8 @@ internal object TaskJson {
         isPersistent = json.getBoolean("persistent"), isPriority = json.getBoolean("priority"),
         completedAt = json.nullableLong("completedAt"), updatedAt = json.getLong("updatedAt"),
         isTrashed = json.getBoolean("trashed"), trashedAt = json.nullableLong("trashedAt"),
-        deletedAt = json.nullableLong("deletedAt"), subtasksJson = json.getString("subtasks")
+        deletedAt = json.nullableLong("deletedAt"), subtasksJson = json.getString("subtasks"),
+        planningJson = json.optString("planning", "").also { com.focusbyrj.app.data.TaskPlanning.read(it) }
     )
     private fun JSONObject.nullableLong(key: String) = if (isNull(key)) null else getLong(key)
 }

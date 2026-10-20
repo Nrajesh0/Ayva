@@ -1,5 +1,7 @@
 package com.focusbyrj.app.util.assistant
 
+import com.focusbyrj.app.data.agendaAt
+import com.focusbyrj.app.data.planning
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.data.RecurrencePattern
 import com.focusbyrj.app.util.AyvaTalkEngine
@@ -23,19 +25,21 @@ internal object AssistantTaskViews {
         val end = (week.clone() as Calendar).apply { add(Calendar.WEEK_OF_YEAR, 1) }.timeInMillis
         val day = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0); if (filter.contains("tomorrow")) add(Calendar.DAY_OF_YEAR, 1) }
         val dayEnd = (day.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }.timeInMillis
+        val deadlineWindow = filter.contains("overdue") || Regex("\\bdue\\s+(?:today|tomorrow|this week|next week)\\b").containsMatchIn(filter)
         val selected = tasks.filter { task ->
             !task.isTrashed && task.deletedAt == null && task.isCompleted == filter.contains("completed") &&
                 (!filter.contains("priority") || task.isPriority) &&
                 (!filter.contains("overdue") || task.dueDate?.let { it < now } == true) &&
-                (!Regex("unscheduled|undated|without|no due date").containsMatchIn(filter) || task.dueDate == null) &&
+                (!filter.contains("unscheduled") || task.planning?.workSessions.orEmpty().isEmpty()) &&
+                (!Regex("undated|without|no due date").containsMatchIn(filter) || task.dueDate == null) &&
                 (!Regex("recurring|repeating").containsMatchIn(filter) || task.recurrence != RecurrencePattern.NONE) &&
-                (!(filter.contains("today") || filter.contains("tomorrow")) || task.dueDate?.let { it in day.timeInMillis until dayEnd } == true) &&
-                (!filter.contains("week") || task.dueDate?.let { it in week.timeInMillis until end } == true) &&
+                (!(filter.contains("today") || filter.contains("tomorrow")) || TaskScheduleView.matches(task, day.timeInMillis, dayEnd, deadlineWindow)) &&
+                (!filter.contains("week") || TaskScheduleView.matches(task, week.timeInMillis, end, deadlineWindow)) &&
                 (search == null || task.title.lowercase(Locale.ROOT).contains(search))
-        }.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }.thenBy { it.id })
+        }.sortedWith(compareByDescending<Task> { it.isPriority }.thenBy { it.agendaAt ?: Long.MAX_VALUE }.thenBy { it.id })
         val shown = selected.take(20)
         state.clearPending(); state.switchTopic("tasks"); state.rememberTaskList(shown.map { it.id })
-        val body = if (selected.isEmpty()) "No tasks match those filters." else shown.mapIndexed { i, task -> "${i + 1}. **${task.title}** — ${task.dueDate?.let(SmartDateParser::formatDueDate) ?: "no due date"}" }.joinToString("\n")
+        val body = if (selected.isEmpty()) "No tasks match those filters." else shown.mapIndexed { i, task -> "${i + 1}. **${task.title}** — ${TaskScheduleView.describe(task, if (filter.contains("week")) week.timeInMillis else if (filter.contains("today") || filter.contains("tomorrow")) day.timeInMillis else null, if (filter.contains("week")) end else if (filter.contains("today") || filter.contains("tomorrow")) dayEnd else null)}" }.joinToString("\n")
         val actions = emptyList<com.focusbyrj.app.util.TalkAction>()
         return AssistantResponseContent.taskList(AyvaTalkEngine.TalkResponse(body, actions, "tasks"), selected, state.taskListAt)
     }

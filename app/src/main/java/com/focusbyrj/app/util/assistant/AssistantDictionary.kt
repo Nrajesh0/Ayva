@@ -39,7 +39,7 @@ object AssistantDictionary {
             val first = AssistantDictionaryStore.lookup(context, a); val second = AssistantDictionaryStore.lookup(context, b)
             if (first.isEmpty() || second.isEmpty()) return null // Settings/features own their comparisons.
             state.clearPending(); state.switchTopic("dictionary"); features(state).remove("dictionary")
-            return FeatureTurn.Reply("Source meanings to compare:\n**$a**: ${first.first().definition}\n**$b**: ${second.first().definition}\nWords can have other senses; give the word and context if these aren't the ones you mean. Source: Wordset (dictionary credits).")
+            return FeatureTurn.Reply("Meanings to compare:\n**$a**: ${first.first().definition}\n**$b**: ${second.first().definition}\nWords can have other senses; give the word and context if these aren't the ones you mean.")
         }
         val match = lookup.matchEntire(text)
         val previous = frame(state)
@@ -100,7 +100,7 @@ object AssistantDictionary {
         }
         val alternatives = if (match != null && senses.size > 1) "\nOther source senses (not ranked by frequency):\n" + senses.take(6).mapIndexed { i, s -> "${i + 1}. ${s.part}: ${s.definition}" }.joinToString("\n") + if (senses.size > 6) "\n${senses.size} senses total. Say ‘meaning 7’, or ‘other meaning’." else "" else ""
         val labels = sense.labels.takeIf { it.isNotEmpty() }?.joinToString()?.let { " · $it" }.orEmpty()
-        return FeatureTurn.Reply("**${sense.word}** · ${sense.part}$labels · meaning ${index + 1}/${senses.size}\n$body$alternatives\nSource: Wordset / WordNet. Say ‘dictionary credits’ for attribution and license.",
+        return FeatureTurn.Reply("**${sense.word}** · ${sense.part}$labels · meaning ${index + 1}/${senses.size}\n$body$alternatives",
             listOf(TalkAction.AskQuery(control(key, sense.id, "simple"), "Simpler"), TalkAction.AskQuery(control(key, sense.id, "example"), "Example"), TalkAction.AskQuery(control(key, sense.id, "save"), "Save word")) + if (senses.size > 1) listOf(TalkAction.AskQuery(control(key, sense.id, "next"), "Other meaning")) else emptyList())
     }
 

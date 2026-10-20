@@ -7,6 +7,9 @@
 
 package com.focusbyrj.app.util.backup
 
+import com.focusbyrj.app.util.assistant.AssistantPlanningArchive
+import com.focusbyrj.app.util.assistant.AssistantStateLock
+import kotlinx.coroutines.sync.withLock
 import android.content.Context
 import android.util.Log
 import androidx.room.withTransaction
@@ -315,7 +318,14 @@ object DataSafetyManager {
         snapshotPath: String,
         noteDao: NoteDao,
         focusDb: FocusDatabase? = null
+    ): Result<Int> = AssistantStateLock.mutex.withLock { restoreSnapshotUnlocked(context, snapshotPath, noteDao, focusDb) }
+
+    private suspend fun restoreSnapshotUnlocked(
+        context: Context, snapshotPath: String, noteDao: NoteDao, focusDb: FocusDatabase?
     ): Result<Int> = withContext(Dispatchers.IO) {
+        var priorNotes: List<NoteEntity>? = null
+        var assistantRecovery: AssistantPlanningArchive.Recovery? = null
+        val priorMode = context.getSharedPreferences("ayva_composer", 0).getString("mode", null)
         try {
             val file = File(snapshotPath)
             if (!file.exists()) {
@@ -337,6 +347,20 @@ object DataSafetyManager {
             val jsonStr = readAtomically(file)
             val root = JSONObject(jsonStr)
 
+            // Validate new planning metadata before Notes or native tasks can be changed.
+            root.optJSONArray("tasks")?.let { array ->
+                com.focusbyrj.app.data.TaskPlanning.validateGraph((0 until array.length()).map { i ->
+                    val obj = array.getJSONObject(i)
+                    Task(id = obj.optLong("id", 0L), title = obj.getString("title"), planningJson = obj.optString("planningJson", ""))
+                })
+            }
+            require(!root.has("assistantPlanningRecovery")) { "This snapshot preserved damaged planning storage. Its encrypted recovery bytes were retained; choose a snapshot with readable plans before restoring." }
+            val assistantPlanning = root.optJSONObject("assistantPlanning")
+            if (focusDb != null) {
+                AssistantPlanningArchive.preflight(context, assistantPlanning, clean = assistantPlanning != null)
+                assistantRecovery = AssistantPlanningArchive.captureRecovery(context)
+            }
+            priorNotes = noteDao.getAllNotesList()
             var totalRestored = 0
 
             // 1. Restore Notes
@@ -440,10 +464,12 @@ object DataSafetyManager {
                                     isTrashed = obj.optBoolean("isTrashed", false),
                                     trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
                                     deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null,
-                                    subtasksJson = obj.optString("subtasksJson", "[]")
+                                    subtasksJson = obj.optString("subtasksJson", "[]"),
+                                    planningJson = obj.optString("planningJson", "").also { com.focusbyrj.app.data.TaskPlanning.read(it) }
                                 )
                             )
                         }
+                        com.focusbyrj.app.data.TaskPlanning.validateGraph(restoredTasks)
                         if (restoredTasks.isNotEmpty()) {
                             focusDb.taskDao().insertTasks(restoredTasks)
                             totalRestored += restoredTasks.size
@@ -568,11 +594,28 @@ object DataSafetyManager {
                             Log.i(TAG, "Restored ${restoredRestrictions.size} restrictions from snapshot")
                         }
                     }
+                    if (assistantPlanning != null) {
+                        val tasks = root.optJSONArray("tasks") ?: JSONArray()
+                        val ids = (0 until tasks.length()).map { tasks.getJSONObject(it).optLong("id", 0) }.filter { it > 0 }.associateWith { it }
+                        AssistantPlanningArchive.restore(context, assistantPlanning, ids, clean = true)
+                    } else AssistantPlanningArchive.restore(context, null, emptyMap(), clean = false)
                 }
             }
 
+            if (focusDb != null) {
+                try { com.focusbyrj.app.util.WorkSessionReminders.reconcileAll(context) }
+                catch (_: Exception) { runCatching { com.focusbyrj.app.util.WorkSessionReminders.retry(context) } }
+            }
             Result.success(totalRestored)
         } catch (e: Exception) {
+            try {
+                priorNotes?.let { noteDao.deleteAllNotes(); noteDao.insertNotes(it) }
+                assistantRecovery?.let { AssistantPlanningArchive.recover(context, it) }
+                val editor = context.getSharedPreferences("ayva_composer", 0).edit()
+                if (priorMode == null) editor.remove("mode") else editor.putString("mode", priorMode)
+                editor.commit()
+            } catch (rollback: Exception) { e.addSuppressed(rollback) }
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to restore snapshot: $snapshotPath", e)
             Result.failure(e)
         }
@@ -647,10 +690,17 @@ object DataSafetyManager {
         context: Context? = null
     ): String {
         val root = JSONObject().apply {
-            put("snapshotVersion", 2)
+            put("snapshotVersion", 3)
             put("cryptoVersion", "aes-256-gcm-v1")
             put("createdAt", System.currentTimeMillis())
             put("noteCount", notes.size)
+            if (context != null && focusDb != null) {
+                try { put("assistantPlanning", AssistantPlanningArchive.export(context)) }
+                catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    put("assistantPlanningRecovery", AssistantPlanningArchive.localDamagedRecovery(context))
+                }
+            }
             put("completeness", "METADATA_ONLY")
             put("includesMediaBytes", false)
             if (context != null) {
@@ -704,6 +754,7 @@ object DataSafetyManager {
                         if (t.trashedAt != null) put("trashedAt", t.trashedAt)
                         if (t.deletedAt != null) put("deletedAt", t.deletedAt)
                         put("subtasksJson", t.subtasksJson)
+                        put("planningJson", t.planningJson)
                     })
                 }
                 put("tasks", tasksArr)

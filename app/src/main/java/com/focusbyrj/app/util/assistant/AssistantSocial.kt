@@ -52,8 +52,8 @@ internal object AssistantSocial {
 
     fun answer(context: Context, state: AssistantSession, input: String, original: String = input, appMode: Boolean = false): AyvaTalkEngine.TalkResponse? {
         var text = input.lowercase(java.util.Locale.ROOT).trim().trimEnd('.', '!', '?')
-        if (appMode && !OfflineNluEngine.isConversationalStatement(text) &&
-            !Regex("^(?:tell me (?:a |a short )?(?:joke|story)|give me a riddle|play (?:a game|word chain)|just listen|be serious|less jokes|no advice|i (?:like|enjoy|had))\\b").containsMatchIn(text)) return null
+        if (appMode && !AssistantDiscussion.hasContext(state) && !AssistantDiscussion.requestsResume(text) && !OfflineNluEngine.isConversationalStatement(text) &&
+            !Regex("^(?:tell me (?:a |a short )?(?:joke|story)|give me a riddle|play (?:a game|word chain)|just listen|be serious|less jokes|no advice|i (?:like|enjoy|had)|let'?s (?:talk|think)|(?:can|could) we (?:talk|think)|talk (?:about|through)|help me (?:think|decide))\\b").containsMatchIn(text)) return null
         val previous = frame(state)
         val active = state.topic == "conversation" && previous != null
         if (text.startsWith("/ayva social ")) {
@@ -70,8 +70,10 @@ internal object AssistantSocial {
             return speak(state, "support", "I'm concerned about your immediate safety. Please contact local emergency services or a crisis support service now, and reach out to someone you trust who can stay with you. Move away from anything you could use to hurt yourself. Are you in immediate danger?", tone = "serious")
         if (active && text in setOf("stop", "stop the game", "stop the story", "let's change the subject", "lets change the subject", "change the subject", "just chat"))
             return speak(state, "chat", "Okay, we can leave that there. What's on your mind?")
-        if (text in setOf("just listen", "no advice", "i don't want advice", "no advice just listen"))
-            return speak(state, "listening", "I'm listening. Say as much or as little as you want; I won't turn this into a task list.", tone = "serious")
+        if (text in setOf("just listen", "no advice", "i don't want advice", "no advice just listen")) {
+            val turn = AssistantDiscussion.answer(state, "just listen")!!
+            return speak(state, "discussion", turn.text, tone = "serious", extra = JSONObject().put("discussion", turn.frame))
+        }
         if (text in setOf("be serious", "less jokes", "no jokes"))
             return speak(state, "chat", "Understood. I'll keep this conversation straightforward.", tone = "serious")
         if (text in setOf("be playful", "lighten up")) return speak(state, "chat", "A little lighter, then. What are we chatting about?", tone = "playful")
@@ -119,8 +121,7 @@ internal object AssistantSocial {
             if (previous.optInt("stage") == 0 && text in setOf("open it", "knock")) return speak(state, "story", "${if (text == "knock") "Someone knocked back, then opened the door." else "The door opened into a library of misplaced things."} On a table lay a book titled ‘The Afternoon You Forgot to Rest’. Keep it or return it?", choices = listOf("keep" to "Keep it", "return" to "Return it"), extra = JSONObject().put("stage", 1))
             if (previous.optInt("stage") == 1 && text in setOf("keep the book", "return the book")) return speak(state, "story_done", if (text == "keep the book") "The cat carried the book upstairs. Every page was blank except the last: ‘You may begin again here.’ Then it took a nap on the ending." else "The cat returned the book. In its place appeared a small cushion and a note: ‘Some lost things find their own way home.’ The cat tested the cushion. The end.", choices = listOf("story" to "Another story", "joke" to "A joke"))
         }
-        if (text in setOf("hi", "hello", "hey", "howdy", "how are you", "how are you doing", "what's up", "whats up", "let's chat", "lets chat", "talk to me")) {
-            if (text in setOf("hi", "hello", "hey", "howdy") && !AssistantPersonalization.quiet(context) && AssistantPersonalization.tone(context) == "warm") return null // Preserve the established live task-aware greeting.
+        if (text in setOf("hi", "hello", "hey", "howdy", "hi ayva", "hey ayva", "hello ayva", "good morning", "good afternoon", "good evening", "how are you", "how are you doing", "what's up", "whats up", "let's chat", "lets chat", "talk to me")) {
             val name = context.getSharedPreferences("ayva_personalization", 0).getString("name", null)?.let { ", $it" }.orEmpty()
             val variants = listOf("Hi$name. What's on your mind?", "Hello$name. How's your day going?", "Hey$name. We can chat, play a quick game, or work something out together.")
             val n = ((previous?.optInt("greeting", -1) ?: -1) + 1) % variants.size
@@ -128,13 +129,13 @@ internal object AssistantSocial {
         }
         if (text in setOf("bye", "goodbye", "good night", "goodnight", "see you")) return speak(state, "chat", "Take care. We can pick up a fresh conversation whenever you return.")
         if (text in setOf("my to-do list is judging me", "my todo list is judging me")) return speak(state, "banter", "Awfully confident for a list that needs you to do all the work.", choices = listOf("joke" to "Just a joke", "listen" to "Just listen"))
+        AssistantDiscussion.answer(state, original)?.let { turn ->
+            return speak(state, if (turn.frame == null) "chat" else "discussion", turn.text,
+                extra = turn.frame?.let { JSONObject().put("discussion", it) })
+        }
         if (Regex("(?i)^(?:i(?:'m| am| feel)|feeling|my day (?:was|is)|i had).*(?:sad|rough|tough|lonely|upset|anxious|frustrated|tired|exhausted|overwhelmed|stressed|bad day)\\b").containsMatchIn(text) || text in setOf("tired", "sad", "stressed", "overwhelmed", "i had a rough day"))
             return speak(state, "empathy", if (active && previous!!.optString("family") == "listening") "That sounds hard. I'm listening; you don't have to turn it into a plan." else "That sounds like a lot to carry. Would you rather talk about it, have a small distraction, or just be heard?", tone = "serious", choices = listOf("listen" to "Just listen", "riddle" to "A distraction"))
         if (text in setOf("i did it", "i passed my exam", "i got the job", "i got promoted", "i finally did it", "good news")) return speak(state, "celebration", "That's good news. What was the best part for you?")
-        if (Regex("(?i)^i (?:have|am planning|'m planning) (?:an? |my )?(?:exam|trip)\\b").containsMatchIn(text)) {
-            val domain = if (text.contains("exam")) "exam" else "trip"
-            return speak(state, "planning_offer", "We can talk about your $domain, or build an unsaved preparation checklist from the details you give me. Which would help?", choices = listOf("listen" to "Just chat"), otherActions = listOf(TalkAction.AskQuery("help me plan my $domain", "Plan together")))
-        }
         if (text in setOf("i'm bored", "i am bored", "bored", "something fun")) return speak(state, "boredom", "We could try a riddle, a tiny branching story, or a questionable joke. Pick your kind of fun.", choices = listOf("riddle" to "Riddle", "story" to "Story", "joke" to "Joke"))
         val interestRequest = Regex("^(?:i (?:like|love|enjoy)|let's talk about|lets talk about|talk about) (?:my )?([a-z -]{1,60})$").matchEntire(text)
         val interest = interestRequest?.groupValues?.get(1)?.let { topic -> interests.entries.firstOrNull { topic in it.value.aliases } }

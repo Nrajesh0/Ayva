@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.util.assistant.ChatMode
+import com.focusbyrj.app.util.assistant.ChatModeStore
 import com.focusbyrj.app.util.assistant.OfflineAssistant
 import com.focusbyrj.app.util.assistant.AssistantAction
 import com.focusbyrj.app.util.assistant.AssistantChatState
@@ -526,10 +528,24 @@ fun ChatInterface() {
         }
     }
 
-    var inputTextFieldValue by remember { mutableStateOf(TextFieldValue("")) }
+    val composerDraft = com.focusbyrj.app.ui.components.rememberEditorDraft("chat-composer")
+    val restoredComposer = remember(composerDraft) { composerDraft.read() }
+    var chatMode by remember { mutableStateOf(ChatModeStore.get(context)) }
+    var inputTextFieldValue by remember { mutableStateOf(TextFieldValue(restoredComposer.optString("text"), TextRange(restoredComposer.optInt("cursor").coerceIn(0, restoredComposer.optString("text").length)))) }
+    fun selectMode(mode: ChatMode) {
+        inputTextFieldValue = ChatMode.activate(inputTextFieldValue, mode)
+        chatMode = mode
+        ChatModeStore.set(context, mode)
+    }
+    com.focusbyrj.app.ui.components.KeyboardFirstBackHandler {
+        (context as? android.app.Activity)?.finish()
+    }
+
     val inputText = inputTextFieldValue.text
-    var isHighPriority by remember { mutableStateOf(false) }
-    var isPersistent by remember { mutableStateOf(false) }
+    var isHighPriority by remember { mutableStateOf(restoredComposer.optBoolean("priority")) }
+    var isPersistent by remember { mutableStateOf(restoredComposer.optBoolean("persistent")) }
+
+    com.focusbyrj.app.ui.components.PersistEditorDraft(composerDraft, org.json.JSONObject().put("text", inputTextFieldValue.text).put("cursor", inputTextFieldValue.selection.end).put("priority", isHighPriority).put("persistent", isPersistent))
 
     val audioMemoManager = remember { OnDeviceTranscriber(context.applicationContext) }
     val recordingState by audioMemoManager.recordingState.collectAsState()
@@ -639,7 +655,8 @@ fun ChatInterface() {
 
     val quickActionCommands = remember {
         listOf(
-            QuickActionCommand("💬 /talk", "/talk "),
+            QuickActionCommand("Plan", "/plan "),
+            QuickActionCommand("Talk", "/talk "),
             QuickActionCommand("🎙️ /transcribe", "/transcribe"),
             QuickActionCommand("📋 /tasks", "/tasks "),
             QuickActionCommand("🎯 /habit", "/habit"),
@@ -664,6 +681,8 @@ fun ChatInterface() {
         isCatActionPlaying = false
         if (commandText == "/transcribe") {
             toggleLiveTranscription()
+        } else if (ChatMode.suggested(commandText) != null) {
+            selectMode(ChatMode.suggested(commandText)!!)
         } else {
             inputTextFieldValue = TextFieldValue(
                 text = commandText,
@@ -842,14 +861,18 @@ fun ChatInterface() {
         }
     }
     
-    val suggestions = remember(inputText, installedApps, lockedPackages, pendingTasksList, lastSummaryTasks) {
+    val suggestions = remember(inputText, chatMode, installedApps, lockedPackages, pendingTasksList, lastSummaryTasks) {
+        if (chatMode == ChatMode.DRILL && !inputText.startsWith("/")) {
+            return@remember listOf("easy", "medium", "hard").filter { it.startsWith(inputText.trim(), true) || inputText.isBlank() }
+                .map { Suggestion("$it · 10 questions", "$it 10") }
+        }
         if (!inputText.startsWith("/")) return@remember emptyList<Suggestion>()
         val parts = inputText.split(" ")
         val cmd = parts[0].lowercase()
         
         when {
             parts.size == 1 -> {
-                val available = listOf("/talk", "/habit", "/habits", "/advice", "/breathe", "/screentime", "/tasks", "/tasks all", "/summary", "/summary all", "/drill", "/blitz", "/quests", "/daily", "/chest", "/box", "/mystery", "/freeze", "/wager", "/profile", "/priority", "/postpone all", "/reschedule", "/clear", "/help")
+                val available = listOf("/plan", "/talk", "/habit", "/habits", "/advice", "/breathe", "/screentime", "/tasks", "/tasks all", "/summary", "/summary all", "/drill", "/blitz", "/quests", "/daily", "/chest", "/box", "/mystery", "/freeze", "/wager", "/profile", "/priority", "/postpone all", "/reschedule", "/clear", "/help")
                 available.filter { it.startsWith(cmd) }.map { Suggestion(it, "$it ") }
             }
             (cmd == "/summary" || cmd == "/tasks" || cmd == "/task") && parts.size == 2 -> {
@@ -905,6 +928,20 @@ fun ChatInterface() {
 
         val textToSendOriginal = (overrideText ?: inputText).trim()
         var textToSend = textToSendOriginal
+        if (overrideText == null) {
+            val explicitMode = ChatMode.suggested(textToSendOriginal)
+            if (explicitMode != null && textToSendOriginal.trim().startsWith("/")) {
+                chatMode = explicitMode
+                ChatModeStore.set(context, explicitMode)
+            } else if (!textToSend.startsWith("/")) {
+                textToSend = when (chatMode) {
+                    ChatMode.PLAN -> "/plan $textToSend"
+                    ChatMode.TALK -> "/talk $textToSend"
+                    ChatMode.DRILL -> "/drill $textToSend"
+                    else -> textToSend
+                }
+            }
+        }
         if (textToSend.isNotBlank()) {
             val lowerCheck = textToSend.lowercase()
             if (lowerCheck == "morning brief" || lowerCheck == "morning briefing") {
@@ -947,6 +984,7 @@ fun ChatInterface() {
                     }
                     finalizedVoice?.let { OfflineAssistant.recordTranscript(context, it.first, it.second) }
                     val assisted = OfflineAssistant.respond(sentText, context, wasPriority, wasPersistent, userMsg.id, replyTarget = quotedTarget, quotedReply = quoted?.text)
+                    withContext(Dispatchers.Main) { chatMode = ChatModeStore.get(context) }
                     if (assisted != null && assisted.cliCommandRedirect == null) {
                         withContext(Dispatchers.Main) {
                             messages = messages + ChatMessage(
@@ -2006,6 +2044,8 @@ fun ChatInterface() {
                 exit = shrinkVertically() + fadeOut()
             ) {
                 AyvaComposerBar(
+                    selectedMode = chatMode,
+                    onModeChange = { selectMode(it) },
                     inputTextFieldValue = inputTextFieldValue,
                     onInputChange = { inputTextFieldValue = it },
                     quickActionCommands = quickActionCommands,
@@ -2013,7 +2053,9 @@ fun ChatInterface() {
                     suggestions = suggestions,
                     onSuggestionClick = { suggestion ->
                         val rep = suggestion.replacementText
-                        inputTextFieldValue = TextFieldValue(
+                        val mode = ChatMode.suggested(rep)
+                        if (mode != null && rep.trim() == mode.command) selectMode(mode)
+                        else inputTextFieldValue = TextFieldValue(
                             text = rep,
                             selection = TextRange(rep.length)
                         )
@@ -2022,7 +2064,7 @@ fun ChatInterface() {
                     onToggleHighPriority = { isHighPriority = !isHighPriority },
                     isPersistent = isPersistent,
                     onTogglePersistent = { isPersistent = !isPersistent },
-                    parsedDueDateText = parsedResult?.timestamp?.let { SmartDateParser.formatDueDate(it) },
+                    parsedDueDateText = if (chatMode == ChatMode.CHAT) parsedResult?.timestamp?.let { SmartDateParser.formatDueDate(it) } else null,
                     onSend = { sendMessage() },
                     isLiveTranscribing = recordingState.isRecording,
                     onLiveTranscriptionClick = toggleLiveTranscription
@@ -2042,13 +2084,14 @@ fun ChatInterface() {
         if (showReferencePicker) AyvaReferencePicker(availableReferences, onSelect = { changeReference(it) }, onDismiss = { showReferencePicker = false })
 
         if (showClearHistory) AlertDialog(onDismissRequest = { showClearHistory = false },
-            title = { Text("Clear chat history?") }, text = { Text("This clears the conversation and its active reference. Your saved tasks and habits stay available.") },
+            title = { Text("Clear chat history?") }, text = { Text("This clears chat history, its active reference, and all plan workspaces. Saved tasks, habits, templates, discussions, and planning preferences stay available. To delete saved assistant memories, say ‘forget planning library’.") },
             dismissButton = { TextButton(onClick = { showClearHistory = false }) { Text("Cancel") } },
             confirmButton = { TextButton(enabled = requestsInFlight == 0, onClick = {
                 showClearHistory = false
                 coroutineScope.launch {
                     messageMutex.withLock {
                         withContext(Dispatchers.IO) { OfflineAssistant.reset(context) }
+                        chatMode = ChatMode.CHAT
                         com.focusbyrj.app.util.AyvaTalkEngine.resetConversation()
                         val welcome = ChatMessage("welcome_${System.currentTimeMillis()}", com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context), false, isWelcome = true)
                         messages = listOf(welcome); replyToMessage = null; assistantChatState = AssistantChatState(); referenceRevision++

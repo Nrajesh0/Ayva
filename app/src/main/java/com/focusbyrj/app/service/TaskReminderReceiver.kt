@@ -56,12 +56,16 @@ class TaskReminderReceiver : BroadcastReceiver() {
 
                     if (app != null) {
                         val task = app.database.taskDao().getTaskById(taskId)
-                        if (task == null || task.isCompleted || task.isTrashed) {
+                        if (task == null || task.isCompleted || task.isTrashed || task.deletedAt != null) {
                             // Task is completed, trashed, or deleted, stop nagging!
                             TaskReminderHelper.cancelReminderById(appContext, taskId)
                             return@launch
                         }
 
+                        if (task.dueDate == null) {
+                            TaskReminderHelper.cancelDeadlineReminderById(appContext, taskId)
+                            return@launch
+                        }
                         // If the task was rescheduled to a time in the future, dismiss active notification and overlay.
                         // Do NOT cancel the alarm from AlarmManager, because that is the newly scheduled future alarm!
                         if (task.dueDate != null && task.dueDate > System.currentTimeMillis() + 60000L) {

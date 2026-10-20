@@ -22,7 +22,6 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.speech.RecognizerIntent
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -595,7 +594,7 @@ fun KeepNoteEditor(
     }
 
 
-    BackHandler {
+    com.focusbyrj.app.ui.components.KeyboardFirstBackHandler {
         when {
             isReaderMode -> isReaderMode = false
             isZenMode -> isZenMode = false

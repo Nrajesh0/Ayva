@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.Build
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.RecurrencePattern
+import com.focusbyrj.app.data.planning
+import com.focusbyrj.app.data.forNextOccurrence
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.service.TaskReminderReceiver
 import com.focusbyrj.app.widget.TodoWidgetProvider
@@ -21,10 +23,13 @@ import java.util.Calendar
 object TaskReminderHelper {
 
     fun scheduleReminder(context: Context, task: Task) {
-        if (task.dueDate == null || task.isCompleted || task.isTrashed) {
-            if (task.isTrashed) {
-                cancelReminderById(context, task.id)
-            }
+        try { WorkSessionReminders.reconcile(context, task) }
+        catch (error: Exception) {
+            android.util.Log.e("TaskReminderHelper", "Work reminder reconciliation needs retry", error)
+            runCatching { WorkSessionReminders.retry(context) }
+        }
+        if (task.dueDate == null || task.isCompleted || task.isTrashed || task.deletedAt != null) {
+            cancelDeadlineReminderById(context, task.id)
             return
         }
 
@@ -93,7 +98,8 @@ object TaskReminderHelper {
         CoroutineScope(Dispatchers.IO).launch {
             kotlin.runCatching {
                 val now = System.currentTimeMillis()
-                val tasks = app.database.taskDao().getActivePendingTasks(now)
+                val tasks = app.database.taskDao().getAllActiveTasksList()
+                WorkSessionReminders.reconcileAll(context)
                 tasks.forEach { task ->
                     scheduleReminder(context, task)
                 }
@@ -106,6 +112,11 @@ object TaskReminderHelper {
     }
 
     fun cancelReminderById(context: Context, taskId: Long) {
+        runCatching { WorkSessionReminders.cancel(context, taskId) }.onFailure { runCatching { WorkSessionReminders.retry(context) } }
+        cancelDeadlineReminderById(context, taskId)
+    }
+
+    fun cancelDeadlineReminderById(context: Context, taskId: Long) {
         kotlin.runCatching {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
             
@@ -423,6 +434,7 @@ object TaskReminderHelper {
 
         return completedTask.copy(
             id = 0, // new task
+            planningJson = completedTask.planning?.forNextOccurrence(baseDueDate, calendar.timeInMillis)?.json().orEmpty(),
             isCompleted = false,
             completedAt = null,
             details = updatedDetails,

@@ -7,11 +7,11 @@ class TaskRepository(private val taskDao: TaskDao) {
     val trashedTasks: Flow<List<Task>> = taskDao.getTrashedTasks()
 
     suspend fun insertTask(task: Task): Long {
-        return taskDao.insertTask(task)
+        return taskDao.insertTaskChecked(task)
     }
 
-    suspend fun updateTask(task: Task) {
-        taskDao.updateTask(task)
+    suspend fun updateTask(task: Task, expectedUpdatedAt: Long? = null) {
+        taskDao.updateTaskChecked(task, expectedUpdatedAt)
     }
 
     /**

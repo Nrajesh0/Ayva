@@ -121,11 +121,14 @@ class AyvaChatActionIntegrationTest {
         assertNull(db.taskDao().getTaskById(first)!!.dueDate)
     }
 
-    @Test fun greetingUsesLiveTaskContext() = runBlocking {
+    @Test fun greetingIsConversationalAndTasksRemainAvailableOnRequest() = runBlocking {
         db.taskDao().insertTask(Task(title = "Finish report", dueDate = System.currentTimeMillis() + 3_600_000))
         val response = AyvaTalkEngine.answerTalkQueryWithActions("hello", context)
-        assertTrue(response.formattedText.contains("1 pending"))
-        assertTrue(response.formattedText.contains("Finish report"))
+        assertFalse(response.formattedText.contains("pending"))
+        assertFalse(response.formattedText.contains("Finish report"))
+        assertEquals("conversation", response.topicId)
+        val agenda = AyvaTalkEngine.answerTalkQueryWithActions("show my tasks", context)
+        assertTrue(agenda.formattedText.contains("Finish report"))
     }
 
     @Test fun explainingAnActionCannotExecuteIt() = runBlocking {
@@ -177,7 +180,7 @@ class AyvaChatActionIntegrationTest {
         assertTrue(followUp.formattedText.contains("Soft Mode Wait Timer"))
         assertEquals(2, AyvaTalkEngine.getRecentHistory().size)
         AyvaTalkEngine.answerTalkQueryWithActions("hello", context)
-        assertEquals("greeting", AyvaTalkEngine.getRecentHistory().last().topicId)
+        assertEquals("conversation", AyvaTalkEngine.getRecentHistory().last().topicId)
         AyvaTalkEngine.resetConversation()
         assertTrue(AyvaTalkEngine.getRecentHistory().isEmpty())
         assertNull(AyvaTalkEngine.lastQueriedTopicId)
