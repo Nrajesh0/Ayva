@@ -121,10 +121,12 @@ internal object ConversationPlanCommitter {
         val j = plan.json().put("version", 1) // Schema transport does not change the content-bound receipt identity.
         listOf("reviewedAt", "reviewedRevision", "process", "savedRevision", "selected", "pending", "previousDraft", "savedUndo", "editFocus", "hypotheticalView", "undoDrafts", "redoDrafts", "reviewDeviceTimezone", "dialogue", "alternative", "archived").forEach(j::remove)
         if (plan.policy == PlanPolicy()) j.remove("policy")
+        if (plan.trip == null) j.remove("trip")
         // IDs/snapshots are reconciliation output, not part of the user's intended content.
         for (key in listOf("steps", "removed")) j.getJSONArray(key).let { a ->
             for (i in 0 until a.length()) a.getJSONObject(i).apply {
                 remove("task"); remove("taskLinkMissing")
+                if (optJSONArray("checklist")?.length() == 0) remove("checklist")
                 if (getJSONArray("sessions").length() == 0) remove("sessions")
                 if (!optBoolean("workReminders")) remove("workReminders")
                 if (isNull("earliestStart")) remove("earliestStart")
@@ -169,7 +171,9 @@ internal object ConversationPlanCommitter {
                     val old = step.taskSnapshot?.let { TaskJson.decode(JSONObject(it)) }
                     if (old == null) require(all.none { !it.isCompleted && it.title.equals(step.title, true) }) { "An active task named ‘${step.title}’ already exists. Rename the step or use the existing task." }
                     val candidate = if (old != null && (step.completed || !step.workItem)) old.also { require(step.title == it.title && step.deadline == it.dueDate) { "Read-only context changed; refresh the draft" } } else (old ?: Task(title = step.title, details = "Plan: ${plan.goal}")).copy(
-                        title = step.title, dueDate = step.deadline, updatedAt = now)
+                        title = step.title, dueDate = step.deadline, updatedAt = now,
+                        subtasksJson = if (step.checklist.isNotEmpty() || plan.trip?.rootId == step.id) com.focusbyrj.app.data.Subtask.listToJson(step.checklist) else old?.subtasksJson ?: "[]",
+                        details = if (plan.trip?.rootId == step.id) TripChecklistConversation.details(plan) else old?.details ?: "Plan: ${plan.goal}")
                     before.add(old)
                     if (old == null) candidate.copy(id = app.database.taskDao().insertTask(candidate)) else candidate
                 }

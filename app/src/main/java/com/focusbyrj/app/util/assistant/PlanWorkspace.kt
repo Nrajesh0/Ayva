@@ -36,7 +36,8 @@ internal data class PlanStep(
     val maximumEstimate: Int? = null,
     val afterMinutes: Int = 0,
     val workState: PlanWorkState = PlanWorkState.READY,
-    val blockReason: String? = null
+    val blockReason: String? = null,
+    val checklist: List<com.focusbyrj.app.data.Subtask> = emptyList()
 ) {
     private val snapshotInfo = taskSnapshot?.let(::JSONObject)
     val completed: Boolean = snapshotInfo?.optBoolean("completed") == true
@@ -54,6 +55,7 @@ internal data class PlanStep(
         .put("prerequisites", JSONArray(prerequisites.toList())).put("minutes", minutes ?: JSONObject.NULL)
         .put("deadline", deadline ?: JSONObject.NULL).put("start", start ?: JSONObject.NULL)
         .put("task", taskSnapshot ?: JSONObject.NULL).put("source", source).put("taskLinkMissing", taskLinkMissing)
+        .put("checklist", JSONArray(checklist.map { it.toJsonObject() }))
         .put("sessions", JSONArray(sessions.map { it.json() })).put("workReminders", workReminders)
         .put("earliestStart", earliestStart ?: JSONObject.NULL).put("protected", protected).put("minimumChunk", minimumChunk)
         .put("maximumEstimate", maximumEstimate ?: JSONObject.NULL).put("afterMinutes", afterMinutes)
@@ -64,7 +66,7 @@ internal data class PlanStep(
             j.nullableLong("minutes")?.toInt(), j.nullableLong("deadline"), j.nullableLong("start"), j.nullableString("task"), j.optString("source", "user"), j.optBoolean("taskLinkMissing"),
             WorkSession.readList(j.optJSONArray("sessions")), j.optBoolean("workReminders", false), j.nullableLong("earliestStart"),
             j.optBoolean("protected"), j.optInt("minimumChunk", 15), j.nullableLong("maximumEstimate")?.toInt(), j.optInt("afterMinutes"),
-            PlanWorkState.valueOf(j.optString("workState", "READY")), j.nullableString("blockReason"))
+            PlanWorkState.valueOf(j.optString("workState", "READY")), j.nullableString("blockReason"), com.focusbyrj.app.data.Subtask.listFromJson(j.optJSONArray("checklist")?.toString() ?: "[]"))
     }
 }
 
@@ -95,7 +97,8 @@ internal data class PlanWorkspace(
     val alternative: String? = null,
     val archived: Boolean = false,
     val milestones: List<PlanMilestone> = emptyList(),
-    val goalDeadline: Long? = null
+    val goalDeadline: Long? = null,
+    val trip: TripChecklistState? = null
 ) {
     fun changed(steps: List<PlanStep> = this.steps, facts: Map<String, String> = this.facts, selected: String? = this.selected,
                 pending: JSONObject? = null, removed: List<PlanStep> = this.removed, goal: String = this.goal,
@@ -132,6 +135,7 @@ internal data class PlanWorkspace(
 
     fun validate() {
         policy.validate()
+        trip?.validate(this)
         PlanningDialogueState.read(dialogue.json())
         alternative?.let { raw ->
             require(raw.toByteArray().size <= 200_000)
@@ -174,6 +178,8 @@ internal data class PlanWorkspace(
             visiting.remove(id); visited.add(id)
         }
         steps.forEach {
+            require(it.checklist.size <= 99 && it.checklist.map { item -> item.id }.distinct().size == it.checklist.size)
+            require(it.checklist.all { item -> item.id.length in 1..80 && item.title.isNotBlank() && item.title.length <= 200 })
             require(it.id.length in 1..80 && it.title.isNotBlank() && it.title.length <= 200)
             require(it.minutes == null || it.minutes in 1..1440) { "Use a duration between 1 minute and 24 hours" }
             require(it.blockReason == null || it.workState == PlanWorkState.BLOCKED && it.blockReason.length in 1..500) { "Invalid draft blocker" }
@@ -203,6 +209,7 @@ internal data class PlanWorkspace(
     }
 
     fun json() = JSONObject().put("version", 2).put("id", id).put("revision", revision).put("goal", goal)
+        .put("trip", trip?.json() ?: JSONObject.NULL)
         .put("domain", domain).put("timezone", timezone).put("steps", JSONArray(steps.map { it.json() }))
         .put("facts", JSONObject(facts)).put("selected", selected ?: JSONObject.NULL).put("pending", pending ?: JSONObject.NULL)
         .put("removed", JSONArray(removed.map { it.json() })).put("reviewedRevision", reviewedRevision ?: JSONObject.NULL)
@@ -235,7 +242,7 @@ internal data class PlanWorkspace(
             return PlanWorkspace(j.getString("id"), j.getInt("revision"), j.getString("goal"), j.getString("domain"), j.getString("timezone"),
                 list("steps"), f.keys().asSequence().associateWith { f.getString(it) }, j.nullableString("selected"), j.optJSONObject("pending"),
                 list("removed"), j.nullableLong("reviewedRevision")?.toInt(), j.optLong("reviewedAt"), j.nullableString("process"), j.nullableLong("savedRevision")?.toInt(), j.nullableString("previousDraft"), j.nullableString("savedUndo"),
-                j.optJSONObject("editFocus")?.let(PlanEditFocus::read), j.optBoolean("hypotheticalView"), PlanPolicy.read(j.optJSONObject("policy")), history(j, "undoDrafts"), history(j, "redoDrafts"), j.nullableString("reviewDeviceTimezone"), PlanningDialogueState.read(j.optJSONObject("dialogue")), j.nullableString("alternative"), j.optBoolean("archived"), PlanMilestone.readList(j.optJSONArray("milestones")), j.nullableLong("goalDeadline")).also { it.validate() }
+                j.optJSONObject("editFocus")?.let(PlanEditFocus::read), j.optBoolean("hypotheticalView"), PlanPolicy.read(j.optJSONObject("policy")), history(j, "undoDrafts"), history(j, "redoDrafts"), j.nullableString("reviewDeviceTimezone"), PlanningDialogueState.read(j.optJSONObject("dialogue")), j.nullableString("alternative"), j.optBoolean("archived"), PlanMilestone.readList(j.optJSONArray("milestones")), j.nullableLong("goalDeadline"), j.optJSONObject("trip")?.let(TripChecklistState::read)).also { it.validate() }
         }
         fun overlaps(a: PlanStep, b: PlanStep) = conflicts(a, b)
         fun conflicts(a: PlanStep, b: PlanStep, bufferMinutes: Int = 0) = !a.completed && !b.completed && a.workSessions.any { x ->

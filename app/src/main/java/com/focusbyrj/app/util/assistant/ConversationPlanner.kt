@@ -73,11 +73,11 @@ internal object ConversationPlanner {
         ChatModeStore.set(context, ChatMode.PLAN)
         state.clearPending(); state.switchTopic("plan_workspace")
 
-        if (lower in setOf("exit", "exit plan", "pause", "pause planning", "cancel planning", "leave plan mode")) {
+        if (TripChecklistConversation.pause(lower) || lower in setOf("exit", "exit plan", "pause", "pause planning", "cancel planning", "leave plan mode")) {
             ChatModeStore.set(context, ChatMode.CHAT)
             return reply("Plan paused. Your draft is saved; use /plan to return.")
         }
-        if (lower in setOf("discard plan", "discard this plan")) {
+        if (lower in setOf("discard plan", "discard this plan", "cancel this plan", "cancel the plan")) {
             plan?.let { store.remove(it.id) }
             ChatModeStore.set(context, ChatMode.CHAT)
             return reply("Discarded this plan workspace. Saved tasks were not deleted.")
@@ -119,7 +119,12 @@ internal object ConversationPlanner {
             return reply("Remembered this plan's scheduling preferences and any daily availability window for future plans. One-off dates and today's window were not remembered.")
         }
         if (plan == null && lower in setOf("hi", "hey", "hello")) return reply("Hi. What would you like to work toward? We can talk it through first.")
-        if (handoff != null || plan == null || start && nativeHandoff == null || lower.startsWith("new plan ") || lower.startsWith("new ")) {
+        if (plan?.trip != null && start && !explicit && handoff == null) {
+            TripChecklistConversation.answer(plan, text, now)?.let { turn ->
+                turn.plan.validate(); store.put(turn.plan); return reply(turn.text)
+            }
+        }
+        if (handoff != null || plan == null || plan.goal.isBlank() && PlanLanguage.domain(text) == "trip" || start && nativeHandoff == null || lower.startsWith("new plan ") || lower.startsWith("new ")) {
             val goal = handoff?.goal ?: text.replaceFirst(Regex("(?i)^new (?:plan )?"), "").takeUnless {
                 it.lowercase(Locale.ROOT) in setOf("let's plan together", "lets plan together", "plan together", "help me plan")
             }.orEmpty()
@@ -135,13 +140,21 @@ internal object ConversationPlanner {
             val emptyGreeting = plan?.takeIf { it.steps.isEmpty() && it.facts.isEmpty() && it.goal.lowercase() in setOf("hi", "hey", "hello") }
             plan = PlanningLibrary(context).newPlan(goal, PlanLanguage.facts(goal) + handoff?.facts.orEmpty(), PlanLanguage.domain(goal))
             if (handoff == null) plan = plan.copy(goal = PlanningDialogue.goal(plan.goal), id = emptyGreeting?.id ?: plan.id)
-            val conversation = PlanningDialogue.opening(plan)
+            val conversation = TripChecklistConversation.open(plan, text, now) ?: PlanningDialogue.opening(plan)
             plan = conversation.plan
             store.put(plan)
             return reply(if (handoff != null) "Carried your discussion into a new plan draft, including your details and any current choice. " + opening(plan)
                 else conversation.text)
         }
-        if (text.isBlank() || lower in originalCommands || lower in setOf("show plan", "show my plan", "review plan", "what did we decide", "what are we planning", "what's left") || plan.hypotheticalView && lower in setOf("cancel", "no", "not that")) {
+        if (plan.trip != null && (text.isBlank() || TripChecklistConversation.summaryRequest(text)))
+            return reply(TripChecklistConversation.summary(plan))
+        val tripFinish = plan.trip != null && TripChecklistConversation.finish(text)
+        if (plan.trip != null && !tripFinish) {
+            TripChecklistConversation.answer(plan, text, now)?.let { turn ->
+                turn.plan.validate(); store.put(turn.plan); return reply(turn.text)
+            }
+        }
+        if (text.isBlank() || TripChecklistConversation.summaryRequest(text) || lower in originalCommands || lower in setOf("show plan", "show my plan", "review plan", "what did we decide", "what are we planning", "what's left") || plan.hypotheticalView && lower in setOf("cancel", "no", "not that")) {
             if (plan.hypotheticalView) { plan = plan.copy(hypotheticalView = false); store.put(plan) }
             return render(plan, (if (plan.goal.isBlank()) "What goal should this plan work toward?" else "Here's the active draft. No changes are applied to saved tasks until you review and apply them.") + pendingPrompt(plan, now))
         }
@@ -154,11 +167,15 @@ internal object ConversationPlanner {
 
         if (applyControl != null && (applyControl.groupValues[1] != plan.id || applyControl.groupValues[2].toIntOrNull() != plan.revision || applyControl.groupValues[3] != plan.reviewProcess))
             return reply("That review control belongs to an older plan or revision. Review the active plan again; nothing was saved.")
-        if (applyControl != null || lower in setOf("save", "save plan", "save this plan", "save the agreed tasks", "okay save the agreed tasks", "save these tasks", "apply", "apply plan", "apply those changes", "yes save", "confirm plan")) {
+        if (tripFinish || applyControl != null || lower in setOf("save", "save plan", "save this plan", "save the agreed tasks", "okay save the agreed tasks", "save these tasks", "apply", "apply plan", "apply those changes", "yes save", "confirm plan")) {
             PlanningDialogue.saveProblem(plan)?.let { return reply(it) }
-            if (plan.pending != null) return render(plan, "There's an unanswered plan change. Answer it or say ‘cancel that change’ before reviewing a save; saved tasks are unchanged.")
+            if (plan.pending != null) return if (plan.trip != null) reply(plan.pending.optString("question", "Please resolve the pending change before saving.")) else render(plan, "There's an unanswered plan change. Answer it or say ‘cancel that change’ before reviewing a save; saved tasks are unchanged.")
             if (plan.savedRevision == plan.revision) return render(plan, "This revision is already saved. It won't create duplicate tasks.")
             if (plan.steps.none { it.workItem && !it.completed } && plan.removed.none { it.taskSnapshot != null }) return render(plan, "Add an active work step before applying. Context and facts are already retained in this workspace.")
+            if (tripFinish) {
+                plan = plan.copy(reviewedRevision = plan.revision, reviewedAt = now, reviewProcess = "$process:${UUID.randomUUID()}", reviewDeviceTimezone = java.util.TimeZone.getDefault().id)
+                store.put(plan)
+            }
             if (plan.reviewedRevision == plan.revision && plan.reviewProcess?.startsWith("$process:") == true && now - plan.reviewedAt in 0..900_000L && lower !in setOf("save", "save plan", "save this plan", "save the agreed tasks", "okay save the agreed tasks", "save these tasks")) {
                 val result = ConversationPlanCommitter.commit(context, plan, now, process)
                 state.undo = emptyList(); state.undoId = null
@@ -169,6 +186,8 @@ internal object ConversationPlanner {
                 store.put(result.plan.copy(savedUndoId = state.undoId))
                 state.focusTasks(result.after.filterNot { it.isTrashed }.map { it.id })
                 val actions = state.undoId?.let { listOf(TalkAction.AskQuery("/ayva undo $it", "Undo")) }.orEmpty()
+                if (result.plan.trip != null) return reply("Saved **${result.plan.goal}** with ${result.plan.trip.items.size} checklist item(s) and subtasks." +
+                    (if (result.effectsPending) " Tasks are saved; reminder/widget refresh needs a retry. Say ‘retry plan reminders’." else ""), actions)
                 return reply("Saved ${result.plan.steps.size} plan step(s) as tasks${if (plan.removed.isNotEmpty()) "; removed saved steps were moved to Trash" else ""}. Hierarchy and work-session times are saved with the tasks; due dates remain deadlines. Work-start reminders follow each task’s reminder setting.  " +
                     if (result.effectsPending) "Tasks are saved; reminder/widget refresh needs a retry. Say ‘retry plan reminders’." else "You can keep refining this plan here." + com.focusbyrj.app.util.WorkSessionReminders.availability(context)?.let { " $it" }.orEmpty(), actions)
             }
@@ -177,6 +196,9 @@ internal object ConversationPlanner {
             return render(reviewed, "Review this draft: ${plan.steps.count { it.taskSnapshot == null }} new task(s), ${plan.steps.count { it.taskSnapshot != null }} linked task(s), ${plan.removed.count { it.taskSnapshot != null }} task(s) to move to Trash. Say ‘apply plan’ to save this revision.",
                 listOf(TalkAction.AskQuery("/plan apply revision ${reviewed.id} ${reviewed.revision} ${reviewed.reviewProcess}", "Apply plan")))
         }
+        if (plan.trip != null && lower !in setOf("refresh saved tasks", "reconcile saved tasks", "what changed", "show changes", "what did you change") &&
+            !lower.startsWith("what if "))
+            return reply("I haven't changed the checklist. You can describe an item to include, ask what's on the list, or tell me which item or date to change.")
         if (lower in setOf("refresh saved tasks", "reconcile saved tasks")) {
             val app = context.applicationContext as com.focusbyrj.app.FocusApplication
             val byTaskId = plan.steps.mapNotNull { step -> step.taskSnapshot?.let { raw -> TaskJson.decode(JSONObject(raw)).id to step.id } }.toMap()

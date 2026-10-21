@@ -1,5 +1,7 @@
 # Completed delivery and current handoff
 
+> **Current work is unfinished:** the user reopened trip-planning acceptance after real conversation failures. See the [trip checklist repair handoff](implementation/TRIP_CHECKLIST_CONVERSATION.md) for the WIP implementation, verification, and remaining work. Earlier completion statements below describe historical scope, not acceptance of this repair.
+
 Updated 2026-10-21. The conversation expansion's **finite implementation batches are delivered within documented bounds**. See [the completion record](implementation/CONVERSATION_QUALITY_CURRENT.md) for current scope, focused verification, UI acceptance and remaining limits. [CONVERSATION_QUALITY_PLAN.md](CONVERSATION_QUALITY_PLAN.md) preserves the authorized specification.
 
 ## Release preparation

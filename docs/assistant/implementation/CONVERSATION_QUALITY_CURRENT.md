@@ -1,5 +1,7 @@
 # Conversation quality — implementation completion record
 
+> **Current work is unfinished:** the user reopened trip-planning acceptance after real conversation failures. See the [trip checklist repair handoff](TRIP_CHECKLIST_CONVERSATION.md) for the WIP implementation, verification, and remaining work. Earlier completion statements below describe historical scope, not acceptance of this repair.
+
 Updated 2026-10-21. Authorized by “okay implement them all” and “complete all”. Base `41952ca` on main; release target **2.0.12 / 112** under the user's explicit instruction to publish to main. This is the current implementation ledger for [the specification](../CONVERSATION_QUALITY_PLAN.md). The finite implementation batches are delivered within the bounds below. Broad independent evaluation and the OEM/device matrix are deferred at the user's request; they are not claimed as passed.
 
 ## Delivered behavior

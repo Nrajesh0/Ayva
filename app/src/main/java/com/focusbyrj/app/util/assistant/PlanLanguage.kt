@@ -18,7 +18,7 @@ internal object PlanLanguage {
         aliases[first.lowercase(Locale.ROOT)]?.let { body = it + body.removePrefix(first) }
         return prefix + body
     }
-    fun startsPlanning(text: String) = Regex("""(?i)^(?:i (?:want|would like) to (?:go on|plan) (?:a )?(?:trip|holiday|vacation)\b|(?:let'?s|can we|could we|help me) (?:plan|organize|organise)(?: for)? (?!it\b|that\b|this\b).+)""").containsMatchIn(normalize(text))
+    fun startsPlanning(text: String) = TripChecklistConversation.starts(text) || Regex("""(?i)^(?:i (?:want|would like) to (?:go on|plan) (?:a )?(?:trip|holiday|vacation)\b|(?:let'?s|can we|could we|help me) (?:plan|organize|organise)(?: for)? (?!it\b|that\b|this\b).+)""").containsMatchIn(normalize(text))
     fun domain(text: String) = when {
         Regex("(?i)\\b(trip|holiday|vacation|travel)\\b").containsMatchIn(text) -> "trip"
         Regex("(?i)\\b(exam|study|revision|studying)\\b").containsMatchIn(text) -> "study"
