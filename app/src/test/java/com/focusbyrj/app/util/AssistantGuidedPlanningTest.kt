@@ -49,7 +49,7 @@ class AssistantGuidedPlanningTest {
     private fun plan() = PlanningDraft.read(state().featureState!!.getJSONObject("guidedPlan"))
     private fun saveQuery(response: AyvaTalkEngine.TalkResponse) = response.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva plan-save ") }.query
     private suspend fun review(): AyvaTalkEngine.TalkResponse {
-        say("help me plan my trip"); say("Pack bag; Buy tickets"); say("skip"); return say("skip")
+        say("plan my trip"); say("Pack bag; Buy tickets"); say("skip"); return say("skip")
     }
     @Test fun reviewedSaveIsBoundToRevisionAndOldButtonsDoNotWrite() = runBlocking {
         val old = saveQuery(review())
@@ -87,7 +87,7 @@ class AssistantGuidedPlanningTest {
         assertEquals(2, db.taskDao().getAllActiveTasksList().size)
     }
     @Test fun staleQuestionCannotReplaceAnswersAndCapacityConflictBlocksSaving() = runBlocking {
-        say("help me plan my exam")
+        say("plan my exam")
         val old = plan(); say("Algebra; Geometry"); say("skip"); say("30 minutes")
         say(AssistantGuidedPlanning.command(old.id, old.revision, "Chemistry"))
         assertEquals(listOf("Algebra", "Geometry"), plan().items.map { it.title })
@@ -188,7 +188,7 @@ class AssistantGuidedPlanningTest {
     }
 
     @Test fun tripGoalStaysInDraftAndSavedDescriptionsWithoutInventingTasks() = runBlocking {
-        val start = say("help me plan my trip to Goa next Friday")
+        val start = say("plan my trip to Goa next Friday")
         assertEquals("trip", plan().domain)
         assertEquals("to Goa next Friday", plan().goal)
         assertTrue(start.formattedText.contains("Goa"))
@@ -228,18 +228,17 @@ class AssistantGuidedPlanningTest {
         val input = "can we plan things for a trip"
         assertTrue(AyvaIntentRouter.route(input) is RouterDestination.TalkQuery)
         val response = AyvaTalkEngine.answerTalkQueryWithActions(input, context)
-        assertNotNull(response.formattedText, state().featureState?.optJSONObject("guidedPlan"))
-        assertEquals("trip", plan().domain)
-        assertEquals("items", plan().question)
-        assertTrue(response.formattedText.contains("preparation steps"))
+        val workspace = ConversationPlanStore(context).active()!!
+        assertEquals("trip", workspace.domain)
+        assertTrue(response.formattedText.contains("Where", true))
         assertFalse(response.formattedText.contains("Streak Freeze"))
         assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
         assertTrue(prefs.getBoolean("vacation_mode", false))
-        say("steps: Pack bag; Book train"); say("skip")
-        val review = say("skip")
+        say("we need Pack bag and Book train")
+        val review = say("save the agreed tasks")
         assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
-        say(saveQuery(review))
-        assertEquals(setOf("Pack bag", "Book train"), db.taskDao().getAllActiveTasksList().map { it.title }.toSet())
+        say(review.actions.filterIsInstance<TalkAction.AskQuery>().single { it.query.startsWith("/plan apply revision ") }.query)
+        assertEquals(setOf("pack bag", "book train"), db.taskDao().getAllActiveTasksList().map { it.title.lowercase() }.toSet())
         assertTrue(prefs.getBoolean("vacation_mode", false))
     }
 
@@ -260,7 +259,7 @@ class AssistantGuidedPlanningTest {
             if (durable) {
                 val workspace = ConversationPlanStore(context).active()!!
                 assertEquals(input, domain, workspace.domain)
-                assertEquals(input, workspace.goal)
+                assertEquals(if (domain == "trip") "a holiday to Goa" else "my day from scratch", workspace.goal)
                 assertEquals(ChatMode.PLAN, ChatModeStore.get(context))
                 assertNull(state().featureState?.optJSONObject("guidedPlan"))
             } else {
@@ -273,7 +272,7 @@ class AssistantGuidedPlanningTest {
     }
 
     @Test fun planningScopeAnswerStaysInPlanningButSettingsCanInterrupt() = runBlocking {
-        say("can we plan things together")
+        say("plan things together")
         assertEquals("planning_domain", state().expected)
         say("a trip to Goa")
         assertEquals("trip", plan().domain)

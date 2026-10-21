@@ -10,6 +10,7 @@ on:
       - 'gradle.properties'
       - 'app/proguard-rules.pro'
       - '.github/workflows/release.yml'
+      - 'tools/release_intent.py'
   release:
     types: [published]   # Automatically triggers for any release published on GitHub Web UI
   workflow_dispatch:    # Enables manual trigger button in GitHub Actions

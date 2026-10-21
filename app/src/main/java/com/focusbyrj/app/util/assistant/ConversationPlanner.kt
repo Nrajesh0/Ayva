@@ -20,6 +20,8 @@ internal object ConversationPlanner {
 
     suspend fun respond(context: Context, input: String, state: AssistantSession, now: Long = System.currentTimeMillis()): AyvaTalkEngine.TalkResponse? {
         val raw = PlanLanguage.command(input)
+        // Outside Plan mode, time budgets retain the saved-task planning owner.
+        if (ChatModeStore.get(context) != ChatMode.PLAN && AssistantPlanning.isDirectRequest(raw)) return null
         val command = raw.substringBefore(' ').lowercase(Locale.ROOT)
         val handoffText = if (command in setOf("/plan", "/talk", "/ask"))
             raw.substringAfter(' ', "") else raw
@@ -260,7 +262,10 @@ internal object ConversationPlanner {
         val messages = mutableListOf<String>()
         try {
             for (clause in clauses) {
-                val conversation = PlanningConversation.answer(candidate, clause, now)
+                // Free-form answers cannot absorb an unknown operation in an atomic edit batch.
+                val conversationalView = if (clauses.size > 1 && candidate.dialogue.question in setOf("outcome", "topics") && ConversationMeaning.kind(clause) == ConversationMeaning.Kind.STATEMENT)
+                    candidate.copy(dialogue = candidate.dialogue.copy(question = "")) else candidate
+                val conversation = PlanningConversation.answer(conversationalView, clause, now)
                 val result = conversation?.let { Edit(it.plan, it.text) } ?: edit(candidate, clause, now, occupied)
                 if (clauses.size > 1 && !result.recognized)
                     return reply("I couldn't understand ‘$clause’ as a plan change. No part of that compound request was applied. Send the changes separately so we can clarify it.")

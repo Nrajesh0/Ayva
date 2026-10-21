@@ -130,6 +130,9 @@ internal object MilestonePlanning {
 internal object PlanningConversation {
     fun answer(plan: PlanWorkspace, input: String, now: Long): PlanningDialogue.Turn? {
         if (plan.pending != null || plan.hypotheticalView || input.startsWith('/')) return null
+        // Typed corrections and availability belong to the canonical editor, not goal answers.
+        if (PlanConversationRepairs.parse(plan, input) != null ||
+            Regex("(?i)^(?:i(?:'m| am) free|availability)\\b").containsMatchIn(input)) return null
         PlanningReasoning.answer(plan, input)?.let { return it }
         if (input.startsWith("what if ", true)) return null
         SharedPlanConstraints.answer(plan, input, now)?.let { return it }

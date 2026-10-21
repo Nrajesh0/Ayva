@@ -14,12 +14,16 @@ internal object ConversationRouting {
     fun nativeRequest(input: String): Boolean {
         val text = PlanLanguage.normalize(input)
         if (storyStart.matches(text.trimEnd('.', '!', '?')) || text.equals("give me an example", true)) return false
-        return action.containsMatchIn(text) || appQuestion.containsMatchIn(text) || (Regex("(?i)^(?:show|list|how|what|why|is|are|can|do|set|change|turn|enable|disable|open|check|log|start|stop|pause|resume)\\b").containsMatchIn(text) && (AssistantFeatureLanguage.isRequest(text) || AssistantPreferences.find(text) != null)) || OfflineNluEngine.isExplicitCreation(text)
+        return AssistantPlanning.isDirectRequest(text) || action.containsMatchIn(text) || appQuestion.containsMatchIn(text) || (Regex("(?i)^(?:show|list|how|what|why|is|are|can|do|set|change|turn|enable|disable|open|check|log|start|stop|pause|resume)\\b").containsMatchIn(text) && (AssistantFeatureLanguage.isRequest(text) || AssistantPreferences.find(text) != null)) || OfflineNluEngine.isExplicitCreation(text)
     }
     fun candidates(input: String, state: AssistantSession): List<Candidate> {
         val text = PlanLanguage.normalize(input).trimEnd('.', '!', '?'); val lower = text.lowercase()
         val candidates = mutableListOf<Candidate>()
-        if (nativeRequest(text)) candidates += Candidate(Owner.NATIVE, 110, "explicit app request")
+        val discussionNeed = AssistantDiscussion.hasContext(state) && Regex("(?i)^i (?:need|want) to ").containsMatchIn(text) &&
+            !Regex("(?i)\\b(?:tasks?|habits?|routines?|remind)\\b").containsMatchIn(text)
+        if (nativeRequest(text) && !discussionNeed) candidates += Candidate(Owner.NATIVE, 110, "explicit app request")
+        if (Regex("(?i)^i (?:need|want|would like) to (?:decide|think through|talk through|talk about) ").containsMatchIn(text))
+            candidates += Candidate(Owner.DISCUSSION, 120, "explicit decision discussion")
         if (AssistantDictionary.isLookup(text)) candidates += Candidate(Owner.DICTIONARY, 100, "explicit lookup")
         if (ConversationKnowledge.match(text) != null && Regex("(?i)^(?:what|why|how|explain|tell me about|can you explain|could you explain)\\b").containsMatchIn(text))
             candidates += Candidate(Owner.KNOWLEDGE, 90, "supported concept explanation")

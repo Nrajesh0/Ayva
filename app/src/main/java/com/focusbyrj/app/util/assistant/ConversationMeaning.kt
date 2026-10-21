@@ -32,7 +32,7 @@ internal object ConversationMeaning {
             Regex("^(?:actually|instead|i meant|no[, ])").containsMatchIn(lower) -> Kind.CORRECTION
             lower.endsWith('?') || Regex("^(?:why|what|how|could|would|should|can i|do we)\\b").containsMatchIn(lower) -> Kind.QUESTION
             Regex("^(?:we need|i need|we should add|let'?s add)\\b").containsMatchIn(lower) -> Kind.NEED
-            Regex("^(?:add|remove|drop|rename|move|schedule|give|make|set|split|protect|save|apply|complete|delete|keep|leave)\\b").containsMatchIn(lower) -> Kind.COMMAND
+            Regex("^(?:add|remove|drop|rename|move|shift|schedule|unschedule|give|allocate|make|set|split|protect|save|apply|complete|delete|keep|leave|unlink|cancel|deadline|due|availability)\\b").containsMatchIn(lower) -> Kind.COMMAND
             else -> Kind.STATEMENT
         }
     }

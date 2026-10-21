@@ -24,7 +24,7 @@ internal object ConversationLanguage {
             else if (c == ',' || c == ';') { input.substring(start, i).trim().takeIf(String::isNotBlank)?.let(pieces::add); start = i + 1 }
         }
         input.substring(start).trim().takeIf(String::isNotBlank)?.let(pieces::add)
-        require(pieces.size <= 12) { "Let's work through at most twelve items at a time" }
+        require(pieces.size <= 100) { "A plan can contain at most 100 items" }
         return pieces
     }
 }

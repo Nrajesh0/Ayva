@@ -38,8 +38,8 @@ object OfflineAssistant {
             if (response != null) {
                 response = AssistantPresentation.withReplyTarget(response, AssistantPresentation.reference(response.jsonPayload) ?: itemReference(context, state))
                 val route = ConversationRouting.candidates(input, state).firstOrNull()
-                val features = state.featureState ?: org.json.JSONObject().also { state.featureState = it }
-                route?.let { features.put("lastConversationRoute", "${it.owner.name.lowercase()}: ${it.evidence}") }
+                // Diagnostics must not recreate context that a forget/clear operation removed.
+                route?.let { state.featureState?.put("lastConversationRoute", "${it.owner.name.lowercase()}: ${it.evidence}") }
                 state.lastReply = response.formattedText.take(4000)
                 state.recentInputs = (state.recentInputs + input.take(500)).takeLast(6)
                 requestId?.let { state.acknowledgedActionIds = (state.acknowledgedActionIds + it).takeLast(30) }

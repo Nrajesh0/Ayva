@@ -194,8 +194,9 @@ class AssistantOfflineExpansionTest {
 
     @Test fun hobbyConversationKeepsItsTopicAndExplicitTaskInterruptsIt() = runBlocking {
         assertTrue(say("I like reading").formattedText.contains("Books"))
-        assertTrue(say("fantasy").formattedText.contains("worldbuilding"))
-        assertTrue(say("tell me more").formattedText.contains("character"))
+        assertTrue(say("fantasy").formattedText.contains("world"))
+        assertTrue(say("tell me more").formattedText.contains("world"))
+        assertEquals("reading", state().featureState!!.getJSONObject("social").getString("interest"))
         assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
         say("buy milk tomorrow")
         assertEquals(1, db.taskDao().getAllActiveTasksList().size)

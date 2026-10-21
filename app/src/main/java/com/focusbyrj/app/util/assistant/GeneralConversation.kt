@@ -69,7 +69,7 @@ internal object GeneralConversation {
         if (lower in setOf("forget this conversation", "forget this topic")) { root(state).remove(KEY); root(state).remove("generalTopics"); return response("Forgot this general-chat topic. Explicitly saved memories and plans remain available.") }
         if (lower in setOf("just listen", "no advice", "i don't want advice", "ask fewer questions", "don't ask questions")) {
             // Existing structured discussion retains its listening owner.
-            if (AssistantDiscussion.hasContext(state) && lower !in setOf("ask fewer questions", "don't ask questions")) return null
+            if ((!active || AssistantDiscussion.hasContext(state)) && lower !in setOf("ask fewer questions", "don't ask questions")) return null
             val frame = previous ?: frame("what's on your mind")
             frame.put("stance", "listen").put("questions", false)
             return say(state, frame.optString("topic"), "I'll follow your lead and leave advice aside.", frame)
@@ -141,6 +141,8 @@ internal object GeneralConversation {
             "simpler", "shorter" -> strings(previous, "notes").lastOrNull()?.let { "Your main point was: $it" } ?: "We're discussing ${previous.optString("topic")}."
             else -> "We were discussing ${previous.optString("topic")}. ${strings(previous, "notes").lastOrNull()?.let { "You said: $it. " }.orEmpty()}Which part would you like me to explain?"
         }, previous)
+        if (fallback && active && previous!!.optString("stance") == "listen")
+            return say(state, previous.optString("topic"), "I hear you — ${text.take(220)}. We can leave advice aside.", previous, text)
         if (fallback && active && !Regex("(?i)\\b(?:tasks?|habits?|routine|settings?|permission|vocabulary|word|focus|drill)\\b").containsMatchIn(text))
             return say(state, previous!!.optString("topic"), "How does ‘${text.take(180)}’ connect to ${previous.optString("topic")}? I don't want to guess the connection.", previous)
         return null

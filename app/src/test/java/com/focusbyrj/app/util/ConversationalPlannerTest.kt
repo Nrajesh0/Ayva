@@ -89,7 +89,9 @@ class ConversationalPlannerTest {
         assertTrue(answer.formattedText.contains("Alternative only"))
         // The conversation records that an alternative is being viewed; the active graph is unchanged.
         assertTrue(plan().hypotheticalView)
-        assertEquals(original, plan().copy(hypotheticalView = false).json().toString())
+        assertEquals(original, plan().copy(hypotheticalView = false, alternative = null).json().toString())
+        assertEquals("Try something else", PlanWorkspace.read(JSONObject(plan().alternative!!)).steps.single().title)
+        assertTrue(db.taskDao().getAllTasksList().isEmpty())
     }
     @Test fun ambiguousReferenceIsClarifiedWithStableIds() = runBlocking {
         say("/plan trip"); say("add Book train, Book hotel")

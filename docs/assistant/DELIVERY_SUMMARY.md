@@ -6,6 +6,10 @@ Updated 2026-10-21. The conversation expansion's **finite implementation batches
 
 The user requested a version bump and publication to GitHub main. Source metadata is **2.0.12 / 112**, including the conversation-quality expansion and README update. Existing focused test/build evidence is retained at its original source/version checkpoint. The push triggers hosted validation and the release workflow; their success and APK publication must be checked separately. P3 keyboard/popup acceptance remains blocked as documented.
 
+## CI correction
+
+The initial 2.0.12 runs failed during unit tests. The repair restores typed edit/discussion ownership, clear/forget behavior and long reviews, updates legacy checklist fixtures while preserving authority/privacy checks, and allows the still-unpublished version to retry publication. All 57 affected/safety checks and debug assembly pass locally; hosted validation/publication is recorded separately. See the completion record for source fingerprints and evidence.
+
 ## Completed implementation
 
 - **Conversation-quality expansion: implemented for 2.0.12 / 112.** Restored composer/functions and blue mode suggestions; conversational goal discovery and edits; milestone-scoped context, accepted smaller-step proposals, shared-date reconciliation, progress/capacity and truthful change history; bounded premise/rule reasoning, authored explanations, explicit memory and personality controls. Existing native-task review and offline/no-model boundaries remain. Exact validation and UI acceptance are in the completion record.

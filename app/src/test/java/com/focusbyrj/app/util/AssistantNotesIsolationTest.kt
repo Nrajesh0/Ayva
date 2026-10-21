@@ -222,7 +222,7 @@ class AssistantNotesIsolationTest {
             say("define reluctant"); say("simpler")
             val bookmark = say("save this word").actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }
             say(bookmark.query)
-            say("help me plan my trip"); say("Review my notes; Pack charger"); say("skip")
+            say("plan my trip"); say("Review my notes; Pack charger"); say("skip")
             val review = say("skip"); val save = review.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva plan-save ") }
             say(save.query); say("undo"); say("tell me a joke"); say("I had a rough day"); say("just listen")
             assertNoNoteAccess()

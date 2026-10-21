@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep ordinary source/build-infrastructure pushes from replacing an existing release."""
+"""Protect existing releases while allowing an unpublished version to retry after CI repairs."""
 import os
 from pathlib import Path
 import re
@@ -14,10 +14,10 @@ def version(text):
     return name.group(1), int(code.group(1))
 
 
-def should_publish(event, current, previous):
+def should_publish(event, current, previous, target_tag_exists=True):
     if event in ('release', 'workflow_dispatch'):
         return True
-    return event == 'push' and previous is not None and current != previous
+    return event == 'push' and previous is not None and (current != previous or not target_tag_exists)
 
 
 def main():
@@ -29,7 +29,15 @@ def main():
         result = subprocess.run(['git', 'show', f'{before}:app/build.gradle.kts'], capture_output=True, text=True)
         if result.returncode == 0:
             previous = version(result.stdout)
-    output = f'publish={str(should_publish(event, current, previous)).lower()}\n'
+    target_tag_exists = True
+    if event == 'push' and previous == current:
+        # A failed version-bump run never created its tag. Let the next repair
+        # publish that pending version, without replacing an existing release.
+        tag = subprocess.run(['git', 'show-ref', '--verify', '--quiet', f'refs/tags/v{current[0]}'])
+        if tag.returncode not in (0, 1):
+            raise RuntimeError('Cannot establish whether the target release tag exists')
+        target_tag_exists = tag.returncode == 0
+    output = f'publish={str(should_publish(event, current, previous, target_tag_exists)).lower()}\n'
     target = os.environ.get('GITHUB_OUTPUT')
     if target:
         with open(target, 'a') as stream:
