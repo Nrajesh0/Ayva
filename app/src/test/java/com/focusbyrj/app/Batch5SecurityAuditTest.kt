@@ -204,47 +204,53 @@ class Batch5SecurityAuditTest {
     // B5-F-004: NoteDatabaseMigrationHelper extracts fontKey, trashedAt, and deletedAt when present
     @Test
     fun testNoteDatabaseMigrationHelperPreservesFontKeyAndDeletedAt() = runBlocking {
-        val legacyDbFile = context.getDatabasePath("keep_notes.db")
-        legacyDbFile.parentFile?.mkdirs()
-        if (legacyDbFile.exists()) legacyDbFile.delete()
+        // Startup trash cleanup must not purge the intentionally old migrated fixture.
+        val migrationDb = Room.inMemoryDatabaseBuilder(context, NoteDatabase::class.java).build()
+        try {
+            val legacyDbFile = context.getDatabasePath("keep_notes.db")
+            legacyDbFile.parentFile?.mkdirs()
+            if (legacyDbFile.exists()) legacyDbFile.delete()
 
-        val rawDb = SQLiteDatabase.openOrCreateDatabase(legacyDbFile, null)
-        rawDb.execSQL("""
-            CREATE TABLE keep_notes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                title TEXT NOT NULL,
-                content TEXT NOT NULL,
-                isChecklist INTEGER NOT NULL DEFAULT 0,
-                checklistJson TEXT NOT NULL DEFAULT '[]',
-                colorKey TEXT NOT NULL DEFAULT 'default',
-                isPinned INTEGER NOT NULL DEFAULT 0,
-                isArchived INTEGER NOT NULL DEFAULT 0,
-                isTrashed INTEGER NOT NULL DEFAULT 0,
-                labelsJson TEXT NOT NULL DEFAULT '[]',
-                imageUrisJson TEXT NOT NULL DEFAULT '[]',
-                audioUrisJson TEXT NOT NULL DEFAULT '[]',
-                fontKey TEXT NOT NULL DEFAULT 'default',
-                createdAt INTEGER NOT NULL DEFAULT 0,
-                updatedAt INTEGER NOT NULL DEFAULT 0,
-                trashedAt INTEGER DEFAULT NULL,
-                deletedAt INTEGER DEFAULT NULL
-            )
-        """.trimIndent())
+            val rawDb = SQLiteDatabase.openOrCreateDatabase(legacyDbFile, null)
+            rawDb.execSQL("""
+                CREATE TABLE keep_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    isChecklist INTEGER NOT NULL DEFAULT 0,
+                    checklistJson TEXT NOT NULL DEFAULT '[]',
+                    colorKey TEXT NOT NULL DEFAULT 'default',
+                    isPinned INTEGER NOT NULL DEFAULT 0,
+                    isArchived INTEGER NOT NULL DEFAULT 0,
+                    isTrashed INTEGER NOT NULL DEFAULT 0,
+                    labelsJson TEXT NOT NULL DEFAULT '[]',
+                    imageUrisJson TEXT NOT NULL DEFAULT '[]',
+                    audioUrisJson TEXT NOT NULL DEFAULT '[]',
+                    fontKey TEXT NOT NULL DEFAULT 'default',
+                    createdAt INTEGER NOT NULL DEFAULT 0,
+                    updatedAt INTEGER NOT NULL DEFAULT 0,
+                    trashedAt INTEGER DEFAULT NULL,
+                    deletedAt INTEGER DEFAULT NULL
+                )
+            """.trimIndent())
 
-        rawDb.execSQL("""
-            INSERT INTO keep_notes (id, title, content, fontKey, trashedAt, deletedAt, isTrashed)
-            VALUES (1, 'Legacy Note', 'Migrated content', 'mono', 1705555555000, 1706666666000, 1)
-        """.trimIndent())
-        rawDb.close()
+            rawDb.execSQL("""
+                INSERT INTO keep_notes (id, title, content, fontKey, trashedAt, deletedAt, isTrashed)
+                VALUES (1, 'Legacy Note', 'Migrated content', 'mono', 1705555555000, 1706666666000, 1)
+            """.trimIndent())
+            rawDb.close()
 
-        NoteDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(context, noteDb)
+            NoteDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(context, migrationDb)
 
-        val migratedNotes = noteDb.noteDao().getAllNotesList()
-        assertEquals("Must migrate 1 note", 1, migratedNotes.size)
-        val migrated = migratedNotes.first()
-        assertEquals("mono", migrated.fontKey)
-        assertEquals(1705555555000L, migrated.trashedAt)
-        assertEquals(1706666666000L, migrated.deletedAt)
+            val migratedNotes = migrationDb.noteDao().getAllNotesList()
+            assertEquals("Must migrate 1 note", 1, migratedNotes.size)
+            val migrated = migratedNotes.first()
+            assertEquals("mono", migrated.fontKey)
+            assertEquals(1705555555000L, migrated.trashedAt)
+            assertEquals(1706666666000L, migrated.deletedAt)
+        } finally {
+            migrationDb.close()
+        }
     }
 
     // B5-F-006: ArticleDocxGenerator strips illegal XML control characters and includes xml:space="preserve"
