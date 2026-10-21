@@ -10,6 +10,7 @@ enum class ChatMode(val label: String, val command: String) {
     companion object {
         fun suggested(text: String): ChatMode? {
             val trimmed = text.trim().lowercase()
+            if (PlanLanguage.startsPlanning(trimmed)) return PLAN
             return entries.firstOrNull { it != CHAT && (trimmed == it.label.lowercase() || trimmed.startsWith(it.label.lowercase() + " ") || trimmed == it.command || trimmed.startsWith(it.command + " ")) }
         }
 

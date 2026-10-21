@@ -31,11 +31,15 @@ object OfflineAssistant {
                     "That reply refers to an item that is no longer available. Please choose a task or habit before trying again. Previous confirmation controls are cancelled.")
             }
             var response = turn(input, context, app, state, priority, persistent)
+            if (response != null) response = ConversationVoice.finish(context, state, response)
             if (response != null && state.expected != null && AssistantPresentation.data(response.jsonPayload)?.has("receipt") != true) {
                 response = AssistantPresentation.attach(response, itemReference(context, state))
             }
             if (response != null) {
                 response = AssistantPresentation.withReplyTarget(response, AssistantPresentation.reference(response.jsonPayload) ?: itemReference(context, state))
+                val route = ConversationRouting.candidates(input, state).firstOrNull()
+                val features = state.featureState ?: org.json.JSONObject().also { state.featureState = it }
+                route?.let { features.put("lastConversationRoute", "${it.owner.name.lowercase()}: ${it.evidence}") }
                 state.lastReply = response.formattedText.take(4000)
                 state.recentInputs = (state.recentInputs + input.take(500)).takeLast(6)
                 requestId?.let { state.acknowledgedActionIds = (state.acknowledgedActionIds + it).takeLast(30) }
@@ -208,8 +212,21 @@ object OfflineAssistant {
 
     private suspend fun turn(raw: String, context: Context, app: FocusApplication, state: AssistantSession, priority: Boolean, persistent: Boolean): AyvaTalkEngine.TalkResponse? {
         val command = raw.trim().substringBefore(' ').lowercase()
+        val supportText = if (command in setOf("/plan", "/talk", "/ask")) raw.trim().substringAfter(' ', "") else raw.trim()
+        // Preserve the existing immediate-support owner before planning and general-topic handlers.
+        if (Regex("(?i)^i (?:am going to|plan to|will) (?:kill myself|end my life|hurt myself now)\\b").containsMatchIn(supportText)) {
+            invalidatePlanReview(context)
+            ChatModeStore.set(context, ChatMode.TALK)
+            return AssistantSocial.answer(context, state, supportText, supportText)
+        }
         val planBody = if (command == "/plan") raw.trim().substringAfter(' ', "").trim().lowercase() else raw.trim().lowercase()
         val memoryText = (if (command in setOf("/talk", "/ask")) raw.trim().substringAfter(' ', "") else raw.trim())
+        ConversationVoice.preference(context, state, memoryText)?.let { return it }
+        AyvaPersonality.preference(context, state, memoryText)?.let { return it }
+        AyvaPersonality.answer(context, state, memoryText)?.let {
+            if (command in setOf("/talk", "/ask")) ChatModeStore.set(context, ChatMode.TALK)
+            return it
+        }
         val library = PlanningLibrary(context)
         Regex("(?i)^save (?:this )?discussion as (.+)$").matchEntire(memoryText)?.let {
             library.saveDiscussion(it.groupValues[1].trim(), state)
@@ -227,7 +244,7 @@ object OfflineAssistant {
             val kind = if ("discussion" in memoryText.lowercase()) "discussions" else "templates"
             return reply("Saved $kind: " + library.list(kind).joinToString().ifBlank { "none" })
         }
-        if (memoryText.lowercase() in setOf("what do you remember", "planning preferences", "show planning preferences")) return reply(library.preferences())
+        if (memoryText.lowercase() in setOf("what do you remember", "planning preferences", "show planning preferences")) return reply(library.preferences() + "\n" + library.describeFacts())
         if (memoryText.equals("forget planning preferences", true)) { library.forgetPreferences(); return reply("Forgot saved planning preferences. Templates, discussions and tasks are unchanged.") }
         if (memoryText.equals("forget planning library", true)) { library.clear(); return reply("Deleted saved discussions, templates and planning preferences. Native tasks and current drafts are unchanged.") }
         Regex("(?i)^(?:my usual task duration|default task duration) (?:is|:) (.+)$").matchEntire(memoryText)?.let {
@@ -327,13 +344,16 @@ object OfflineAssistant {
             AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("app_help")
         }
         val lower = text.lowercase().trimEnd('.', '!', '?')
+        ConversationReasoning.general(context, state, text)?.let { return it }
         val interpretation = AssistantInterpretation.interpret(text)
         if (interpretation.blocksDispatch) {
             AssistantConversation.suspendQuestion(state); state.clearPending()
             state.switchTopic("conversation")
             return reply(AssistantInterpretation.explanation(interpretation))
         }
+        ConversationRegistry.answer(state, text)?.let { return reply(it) }
         AssistantGuidedPlanning.answer(context, state, text)?.let { return it }
+        if (ConversationRouting.winner(text, state) == ConversationRouting.Owner.KNOWLEDGE) GeneralConversation.answer(context, state, text)?.let { return it }
         AssistantDictionary.answer(context, app, state, text)?.let { return featureTurn(context, app, state, it) }
         AssistantPersonalization.handle(context, text)?.let { result ->
             if (result.forgetConversation) {
@@ -348,6 +368,7 @@ object OfflineAssistant {
         }
         if (AssistantLanguage.acknowledgement(text)) return pendingReply(context, state, AssistantReplyStyle.acknowledgement(context, state))
         AssistantInitiative.dismiss(context, state, text)?.let { return it }
+        GeneralConversation.answer(context, state, text)?.let { return it }
         AssistantSocial.answer(context, state, text, if (appMode) raw.substringAfter(' ', "") else raw, appMode)?.let { return AssistantInitiative.attach(context, app, state, text, it) }
         AssistantConversationSupport.answer(context, app, state, text)?.let { return pendingReply(context, state, it) }
         AssistantHabitConversation.information(app, state, text)?.let { return pendingReply(context, state, it) }
@@ -605,6 +626,7 @@ object OfflineAssistant {
                 else "${if (fallback.intent == NluIntent.START_ROUTINE) "enable" else "disable"} routine ${if (fallback.isAllTasks) "all" else fallback.targetRoutineName.orEmpty()}".trim()
             return featureRequest(context, app, state, query)
         }
+        GeneralConversation.answer(context, state, text, fallback = true)?.let { return it }
         if (appMode) return appHelpFallback(state, text)
         // Keep existing app-specific FAQ and feature dispatch; remember its choices at the UI boundary.
         AssistantConversation.suspendQuestion(state); state.clearPending(); state.switchTopic("conversation")

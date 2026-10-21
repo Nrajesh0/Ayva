@@ -26,7 +26,7 @@ internal class ConversationPlanStore(private val context: Context) {
     fun all(): List<PlanWorkspace> = data.getJSONArray("plans").let { a ->
         require(a.length() <= 10); (0 until a.length()).map { PlanWorkspace.read(a.getJSONObject(it)) }
     }
-    fun active(): PlanWorkspace? = all().find { it.id == data.optString("active") }
+    fun active(): PlanWorkspace? = all().find { it.id == data.optString("active") && !it.archived }
     fun document(): JSONObject = JSONObject(data.toString())
     fun replaceDocument(document: JSONObject) {
         validateDocument(document)
@@ -39,8 +39,24 @@ internal class ConversationPlanStore(private val context: Context) {
         plan.validate()
         val existing = all()
         require(existing.size < 10 || existing.any { it.id == plan.id }) { "You have ten saved plan workspaces. Discard an unused workspace before starting another." }
-        data.put("plans", JSONArray((existing.filterNot { it.id == plan.id } + plan).map { it.json() })).put("active", plan.id)
+        val published = PlanChangeTrail.record(existing.singleOrNull { it.id == plan.id }, plan)
+        data.put("plans", JSONArray((existing.filterNot { it.id == plan.id } + published).map { it.json() })).put("active", plan.id)
         persist()
+    }
+    fun putTogether(active: PlanWorkspace, additional: PlanWorkspace) {
+        active.validate(); additional.validate()
+        val before = all()
+        val observed = PlanChangeTrail.record(before.singleOrNull { it.id == active.id }, active)
+        val plans = before.filterNot { it.id in setOf(active.id, additional.id) } + observed + additional
+        require(plans.size <= 10) { "Discard an unused draft before splitting another plan" }
+        replaceDocument(document().put("plans", JSONArray(plans.map { it.json() })).put("active", active.id))
+    }
+    fun replaceAndRemove(active: PlanWorkspace, removedId: String) {
+        active.validate()
+        val before = all()
+        val observed = PlanChangeTrail.record(before.singleOrNull { it.id == active.id }, active)
+        val plans = before.filterNot { it.id == removedId || it.id == active.id } + observed
+        replaceDocument(document().put("plans", JSONArray(plans.map { it.json() })).put("active", active.id))
     }
     fun remove(id: String) {
         data.put("plans", JSONArray(all().filterNot { it.id == id }.map { it.json() }))
@@ -103,7 +119,7 @@ internal object ConversationPlanCommitter {
     data class Result(val plan: PlanWorkspace, val before: List<Task?>, val after: List<Task>, val effectsPending: Boolean)
     fun hash(plan: PlanWorkspace): String {
         val j = plan.json().put("version", 1) // Schema transport does not change the content-bound receipt identity.
-        listOf("reviewedAt", "reviewedRevision", "process", "savedRevision", "selected", "pending", "previousDraft", "savedUndo", "editFocus", "hypotheticalView", "undoDrafts", "redoDrafts", "reviewDeviceTimezone").forEach(j::remove)
+        listOf("reviewedAt", "reviewedRevision", "process", "savedRevision", "selected", "pending", "previousDraft", "savedUndo", "editFocus", "hypotheticalView", "undoDrafts", "redoDrafts", "reviewDeviceTimezone", "dialogue", "alternative", "archived").forEach(j::remove)
         if (plan.policy == PlanPolicy()) j.remove("policy")
         // IDs/snapshots are reconciliation output, not part of the user's intended content.
         for (key in listOf("steps", "removed")) j.getJSONArray(key).let { a ->
@@ -122,6 +138,7 @@ internal object ConversationPlanCommitter {
     }
     suspend fun commit(context: Context, plan: PlanWorkspace, now: Long, process: String): Result {
         plan.validate()
+        require(!plan.archived) { "Resume the archived plan before reviewing saved changes" }
         require(!plan.hypotheticalView) { "Return to the active draft before saving" }
         require((plan.steps + plan.removed).none { it.taskLinkMissing }) { "A restored task link is missing. Remove that step or say ‘unlink <step name>’ to keep it as a new draft task, then review again" }
         require(plan.steps.any { it.workItem && !it.completed } || plan.removed.any { it.taskSnapshot != null }) { "Add an active work step before applying; context is already saved in the workspace" }

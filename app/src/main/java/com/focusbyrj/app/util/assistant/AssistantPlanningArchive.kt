@@ -14,7 +14,7 @@ internal object AssistantPlanningArchive {
 
     private fun withoutAuthority(plan: PlanWorkspace) = plan.copy(
         reviewedRevision = null, reviewedAt = 0, reviewProcess = null, reviewDeviceTimezone = null, savedUndoId = null,
-        pending = null, previousDraft = null, undoDrafts = emptyList(), redoDrafts = emptyList(), editFocus = null, hypotheticalView = false
+        pending = null, previousDraft = null, undoDrafts = emptyList(), redoDrafts = emptyList(), editFocus = null, hypotheticalView = false, alternative = null
     )
 
     fun export(context: Context): JSONObject {

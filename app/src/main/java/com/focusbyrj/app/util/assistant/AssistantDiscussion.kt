@@ -46,7 +46,7 @@ internal object AssistantDiscussion {
         !result.accepted || (result.state.rules.none { it.source == note.text } && result.state.evidence.none { it.source == note.text })
     }
     private fun current(state: AssistantSession): Frame? {
-        if (state.topic != "conversation" || state.expected != null) return null
+        if (state.topic != "conversation" || state.expected != null || state.featureState?.optString("activeDialogue").orEmpty() !in setOf("", "discussion")) return null
         return stored(state)
     }
     private fun stored(state: AssistantSession): Frame? {
@@ -80,6 +80,7 @@ internal object AssistantDiscussion {
         val frame = sanitizeArchive(json)
         state.clearPending(); state.clearSuspended(); state.switchTopic("conversation")
         val features = state.featureState ?: JSONObject().also { state.featureState = it }
+        features.put("activeDialogue", "discussion")
         features.put("social", JSONObject().put("family", "discussion").put("at", System.currentTimeMillis()).put("discussion", frame))
     }
 

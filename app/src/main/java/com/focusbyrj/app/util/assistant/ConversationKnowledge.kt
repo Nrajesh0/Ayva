@@ -1,0 +1,147 @@
+package com.focusbyrj.app.util.assistant
+
+/** Small authored relation index. Answers contain only reviewed propositions, never scraped guesses. */
+internal object ConversationKnowledge {
+    data class Concept(val id: String, val aliases: List<String>, val explanation: String, val reason: String,
+                       val example: String, val simple: String, val related: List<String> = emptyList(), val version: Int = 1, val language: String = "en", val provenance: String = "Ayva authored guidance")
+    val concepts = listOf(
+        Concept("retrieval", listOf("active recall", "retrieval practice", "testing yourself"),
+            "Active recall means trying to retrieve an answer before looking it up, then checking it.",
+            "It reveals what you can actually retrieve and where the gaps are; recognizing a familiar page can feel easier than remembering its contents.",
+            "After reading a topic, close the material and write three things you remember. Check what was missing or incorrect.",
+            "Try remembering first, then check.", listOf("spacing", "errors")),
+        Concept("spacing", listOf("spaced repetition", "spaced practice", "spacing", "spaced retrieval"),
+            "Spaced practice revisits material across separate sessions rather than doing all the practice at once.",
+            "A later attempt checks whether you can still retrieve it after a gap. The useful interval depends on the material and how well you recall it.",
+            "Review a topic in one session, try recalling it later, and adjust the next gap based on what you remembered.",
+            "Come back after a gap and see what you still remember.", listOf("retrieval")),
+        Concept("errors", listOf("review mistakes", "reviewing mistakes", "error review", "review errors"),
+            "Reviewing an error means finding why it happened, not just copying the correct answer.",
+            "A knowledge gap, misread question and rushed calculation need different changes. Separating them makes practice more focused.",
+            "Label one mistake as a missing concept or an execution slip, explain the correct approach, then try a similar problem.",
+            "Find the cause, then practise the part that went wrong.", listOf("retrieval")),
+        Concept("buffer", listOf("buffer", "spare time", "arrival margin"),
+            "A buffer is time left between commitments to absorb small delays.",
+            "Without a margin, a delay in one activity can push every following commitment back. A buffer reduces that coupling; it cannot guarantee an on-time arrival.",
+            "If a session ends at 10:00, leave a gap before the next commitment instead of scheduling it at exactly 10:00.",
+            "Leave some room for things to take longer.", listOf("dependencies", "travel")),
+        Concept("dependencies", listOf("dependency", "dependencies", "prerequisite", "prerequisites"),
+            "A dependency means one piece of work needs another result before it can proceed.",
+            "Recognizing that order helps prevent a plan that reserves time for work whose inputs are not ready.",
+            "Confirm the event location before choosing transport to it. The location is an input to the travel decision.",
+            "Do the thing that unlocks the next thing first.", listOf("scope")),
+        Concept("scope", listOf("project scope", "scope creep", "smallest useful", "minimum viable", "milestone"),
+            "Scope describes what a project includes and what counts as a finished result. A milestone is a meaningful intermediate result.",
+            "A concrete boundary makes trade-offs visible. New requirements consume time even when each sounds small.",
+            "For a simple website, an initial milestone might be one usable page. Extra pages can follow after that result works.",
+            "Decide what a useful finished version contains.", listOf("dependencies", "tradeoff")),
+        Concept("tradeoff", listOf("trade-off", "tradeoff", "trade off", "pros and cons"),
+            "A trade-off is a choice where improving one concern may make another worse.",
+            "There may be no best option on every dimension. A useful decision separates hard constraints from preferences and asks which differences matter most.",
+            "A cheaper journey may arrive later. If the arrival deadline is fixed, lower cost alone does not make it feasible.",
+            "Compare what you gain with what you give up.", listOf("uncertainty", "travel")),
+        Concept("uncertainty", listOf("uncertainty", "assumption", "assumptions", "unknowns"),
+            "An assumption is something used provisionally before it has been established. An unknown is information we do not have.",
+            "Keeping these visible prevents a plan from sounding more certain than its evidence. Verify an assumption when a consequential decision depends on it.",
+            "An unconfirmed journey duration is a planning assumption, not a published timetable.",
+            "Keep guesses separate from what you know.", listOf("tradeoff")),
+        Concept("habit", listOf("habit cue", "habit formation", "small habit", "starting cue"),
+            "A starting cue is a specific situation that reminds you to begin a repeated action.",
+            "Connecting a manageable action to a recognizable situation reduces the number of decisions needed to start. The routine still needs to fit your circumstances.",
+            "After putting your cup away, spend two minutes reviewing the first item you chose.",
+            "Pick a small action and a clear moment to start it.", listOf("friction")),
+        Concept("friction", listOf("procrastination", "getting started", "task friction"),
+            "Difficulty starting can come from unclear next steps, excessive scope, missing resources or simply not having enough capacity right now.",
+            "Those obstacles need different responses. Making a task smaller helps only when size or uncertainty is the obstacle; it is not a diagnosis or a universal solution.",
+            "Instead of ‘finish the project’, identify one concrete action such as listing the unanswered requirements.",
+            "Find what is making the start difficult before choosing a fix.", listOf("scope", "rest")),
+        Concept("rest", listOf("rest and study", "study breaks", "taking breaks", "rest versus work"),
+            "Rest and work compete for time, but a plan also needs to account for the capacity you actually have.",
+            "Filling every available minute can make the plan brittle. A smaller realistic commitment can be more useful than a schedule you cannot follow.",
+            "If you have little energy today, choose one essential piece of work and leave the rest open rather than pretending all of it will fit.",
+            "Plan around the capacity you have, not the capacity you wish you had.", listOf("buffer", "friction")),
+        Concept("travel", listOf("overnight travel", "travel reliability", "arrival planning"),
+            "Arrival planning works backwards from when and where you need to be, including the final journey to the venue.",
+            "A station arrival time is not the same as being at the destination. Transfers and delays can affect whether an option meets your actual deadline.",
+            "Compare the actual arrival time, time to reach the venue and a delay margin before deciding whether overnight travel works.",
+            "Check the entire route to the place you need to reach.", listOf("buffer", "tradeoff"))
+        ,Concept("criticalpath", listOf("critical path", "longest dependency chain"),
+            "A critical path is a longest dependency chain through a project under the stated duration assumptions.",
+            "Shortening unrelated work may not shorten the finish date. The chain can change when durations or dependencies change.",
+            "If testing needs a finished build and release needs testing, making a separate optional graphic faster may not unlock release.",
+            "Look for the dependency chain controlling the finish.", listOf("dependencies", "uncertainty")),
+        Concept("estimates", listOf("effort estimate", "estimating tasks", "time estimate"),
+            "An effort estimate describes work, while elapsed time also includes waiting and interruptions.",
+            "Separating them avoids assuming a two-hour task can finish two hours after it is mentioned. Ranges can represent explicit uncertainty.",
+            "A 30-minute application may still wait two days for a required document.",
+            "Estimate the work and identify waiting separately.", listOf("dependencies", "uncertainty")),
+        Concept("capacity", listOf("daily capacity", "available energy", "workload planning"),
+            "Capacity is the amount of work you can realistically take on in the stated window.",
+            "Calendar space alone does not establish that every minute is usable. Your supplied capacity can be lower than the available hours.",
+            "With a three-hour opening but only 45 minutes of capacity, choose work fitting 45 minutes.",
+            "Use the time and capacity you actually have.", listOf("rest", "buffer")),
+        Concept("priorities", listOf("urgent versus important", "prioritization", "prioritisation"),
+            "Urgency concerns time pressure; importance concerns the outcome or consequence you care about.",
+            "A priority decision should account for both and for prerequisites. A fixed deadline is a constraint, not proof that every related task is equally valuable.",
+            "Choose the required document before polishing an optional trip checklist.",
+            "Ask what matters, what is time-sensitive and what unlocks it.", listOf("dependencies", "scope")),
+        Concept("opportunity", listOf("opportunity cost", "cost of choosing"),
+            "Opportunity cost is what you give up by using limited time or resources for one option.",
+            "The relevant alternative depends on what you could actually do; it is not always a monetary cost.",
+            "An extra practice session may use the evening you intended for rest or travel preparation.",
+            "Ask what this choice leaves less room for.", listOf("tradeoff", "capacity")),
+        Concept("reversible", listOf("reversible decision", "irreversible decision"),
+            "A reversible choice can be changed with limited cost; some choices are much harder to undo.",
+            "A small reversible trial can supply information before a harder commitment. Its usefulness depends on whether the trial resembles the real decision.",
+            "Try a short study routine before committing every evening to it.",
+            "Learn cheaply before making a costly commitment.", listOf("uncertainty", "feedback")),
+        Concept("feedback", listOf("feedback loop", "learning from attempts"),
+            "A feedback loop compares an actual result with the intended result and uses the difference to adjust the next attempt.",
+            "A useful loop needs observable evidence and a specific change. Constantly changing everything makes the source of improvement harder to identify.",
+            "After a practice set, identify one recurring error and change the next set to address it.",
+            "Try, observe and adjust one relevant thing.", listOf("errors", "experiment")),
+        Concept("experiment", listOf("small experiment", "test a hypothesis", "controlled comparison"),
+            "A small experiment tests a stated expectation using an observable result.",
+            "Changing one relevant factor can make interpretation easier, but a small comparison may still be affected by other differences.",
+            "Try two short revision approaches on similar material and compare later recall, while noting the material may differ.",
+            "State what you expect and what evidence would change your mind.", listOf("uncertainty", "feedback")),
+        Concept("constraints", listOf("hard constraint", "hard constraints", "soft preference"),
+            "A hard constraint rules an option out; a preference helps rank options that remain feasible.",
+            "Combining both into an unexplained score can allow a preferred benefit to hide a forbidden outcome.",
+            "If arrival before 8am is required, a cheaper option arriving at 9am is still infeasible.",
+            "Check requirements before ranking preferences.", listOf("tradeoff", "travel")),
+        Concept("sensitivity", listOf("sensitivity analysis", "what could change the decision"),
+            "Sensitivity analysis asks whether a conclusion changes when a stated input or preference changes.",
+            "An option that wins only under one uncertain estimate is a fragile recommendation. The changed input must be explicit.",
+            "Check whether the cheaper route still works if the final transfer takes longer than the supplied estimate.",
+            "Check which uncertain input the choice depends on.", listOf("uncertainty", "tradeoff")),
+        Concept("active-listening", listOf("active listening", "listening without advice"),
+            "Active listening means attending to what someone actually says and checking understanding when useful.",
+            "An explanation or solution can miss the point when the speaker wants space to describe an experience. Stated feelings should not be turned into a diagnosis.",
+            "Reflect the specific difficulty someone described before asking whether they want suggestions.",
+            "Understand the point before trying to fix it.", listOf("uncertainty")),
+        Concept("analogy", listOf("using an analogy", "analogy"),
+            "An analogy connects one relationship with a similar relationship in another setting.",
+            "It can make an idea easier to grasp, but similarity is not proof and the differences still matter.",
+            "A travel buffer resembles spare capacity in a schedule: both absorb variation, while the actual risks differ.",
+            "Use a familiar comparison, then check where it stops fitting.", listOf("buffer", "uncertainty"))
+    )
+    fun match(text: String): Concept? {
+        val lower = text.lowercase()
+        return concepts.map { concept -> concept to concept.aliases.filter { alias ->
+            Regex("(?<![\\p{L}])${Regex.escape(alias)}(?![\\p{L}])").containsMatchIn(lower)
+        }.maxOfOrNull { it.length } }.filter { it.second != null }.maxByOrNull { it.second!! }?.first
+    }
+    fun find(id: String) = concepts.firstOrNull { it.id == id }
+    fun explain(text: String, previous: String? = null): String? {
+        val concept = match(text) ?: previous?.let(::find) ?: return null
+        val lower = text.lowercase()
+        return when {
+            Regex("\\b(example|for instance)\\b").containsMatchIn(lower) -> concept.example
+            Regex("\\b(simpler|shorter|simple terms)\\b").containsMatchIn(lower) -> concept.simple
+            Regex("^(why|how does|how would|what makes)\\b").containsMatchIn(lower) -> concept.reason
+            lower in setOf("more", "tell me more", "more detail", "explain further") -> concept.reason + " " + concept.example
+            else -> concept.explanation + " " + concept.reason
+        }
+    }
+}

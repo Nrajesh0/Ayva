@@ -20,6 +20,7 @@ object AssistantPersonalization {
         val prefs = prefs(context)
         if (lower in setOf("forget me", "forget my preferences", "forget what i told you", "forget all preferences", "forget everything you remember about me")) {
             check(context.getSharedPreferences("ayva_suggestion_receipts", 0).edit().clear().commit())
+            if (lower in setOf("forget me", "forget what i told you", "forget everything you remember about me")) PlanningLibrary(context).forgetFacts()
             check(prefs.edit().clear().commit()) { "Couldn't clear saved preferences" }
             return PersonalizationReply("I've cleared my conversational context, plan workspaces and your chat preferences. Saved tasks, habits and notes are unchanged.", true)
         }

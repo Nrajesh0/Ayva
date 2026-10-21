@@ -1,5 +1,7 @@
 # Ayva: offline conversation and action batches
 
+> Completed historical implementation record. The active queue is [the conversation-quality plan](assistant/CONVERSATION_QUALITY_PLAN.md); current status is consolidated in [delivery summary](assistant/DELIVERY_SUMMARY.md).
+
 This implementation extends the existing deterministic assistant. It adds no language model, network service, model download, or new dependency. Natural chat, slash aliases, clarification choices and action chips share the same action grammar and validated task execution. Existing arithmetic, vocabulary, profile, economy and diagnostic cards remain available.
 
 ## What changed

@@ -9,7 +9,8 @@ internal data class PlanPolicy(
     val workingDays: Set<Int> = (1..7).toSet(),
     val excludedDates: Set<String> = emptySet(),
     val maximumSession: Int? = null,
-    val dailyMinutes: Int? = null
+    val dailyMinutes: Int? = null,
+    val dateBudgets: Map<String, Int> = emptyMap()
 ) {
     val dayLabels get() = workingDays.sorted().joinToString { listOf("", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")[it] }
     fun validate() {
@@ -17,10 +18,12 @@ internal data class PlanPolicy(
         require(excludedDates.size <= 100 && excludedDates.all { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) })
         require(maximumSession == null || maximumSession in 1..1440)
         require(dailyMinutes == null || dailyMinutes in 1..1440)
+        require(dateBudgets.size <= 100 && dateBudgets.all { (date, minutes) -> date.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) && minutes in 1..1440 })
     }
+    fun budget(day: Calendar): Int? = dateBudgets["%04d-%02d-%02d".format(java.util.Locale.ROOT, day.get(Calendar.YEAR), day.get(Calendar.MONTH) + 1, day.get(Calendar.DAY_OF_MONTH))]?.let { minOf(it, dailyMinutes ?: it) } ?: dailyMinutes
     fun json() = JSONObject().put("buffer", bufferMinutes).put("days", JSONArray(workingDays.sorted()))
         .put("excludedDates", JSONArray(excludedDates.sorted())).put("maximumSession", maximumSession ?: JSONObject.NULL)
-        .put("dailyMinutes", dailyMinutes ?: JSONObject.NULL)
+        .put("dailyMinutes", dailyMinutes ?: JSONObject.NULL).apply { if (dateBudgets.isNotEmpty()) put("dateBudgets", JSONObject(dateBudgets)) }
     fun allows(day: Calendar): Boolean {
         val date = "%04d-%02d-%02d".format(java.util.Locale.ROOT, day.get(Calendar.YEAR), day.get(Calendar.MONTH) + 1, day.get(Calendar.DAY_OF_MONTH))
         return day.get(Calendar.DAY_OF_WEEK) in workingDays && date !in excludedDates
@@ -41,7 +44,7 @@ internal data class PlanPolicy(
             if (j == null) return PlanPolicy()
             val dates = j.getJSONArray("excludedDates"); require(dates.length() <= 100)
             return PlanPolicy(j.getInt("buffer"), j.getJSONArray("days").let { a -> require(a.length() <= 7); (0 until a.length()).map { a.getInt(it) }.toSet() },
-                (0 until dates.length()).map { dates.getString(it) }.toSet(), j.nullableLong("maximumSession")?.toInt(), j.nullableLong("dailyMinutes")?.toInt()).also { it.validate() }
+                (0 until dates.length()).map { dates.getString(it) }.toSet(), j.nullableLong("maximumSession")?.toInt(), j.nullableLong("dailyMinutes")?.toInt(), j.optJSONObject("dateBudgets")?.let { values -> values.keys().asSequence().associateWith { values.getInt(it) } }.orEmpty()).also { it.validate() }
         }
     }
 }

@@ -1,5 +1,7 @@
 # Conversational planner — implementation ledger
 
+> Historical implementation ledger — bounded core complete. This file preserves checkpoint evidence, not the active queue. Use [the current summary](../DELIVERY_SUMMARY.md) and [new batch plan](../CONVERSATION_QUALITY_PLAN.md). Earlier uncommitted/pending statements below are historical.
+
 This ledger records implementation of the [roadmap](../../AYVA_CONVERSATIONAL_PLANNER_ROADMAP.md). The bounded core delivery is implemented; the open research frontier and deferred acceptance audits are not marked complete. The newest section and requirement table describe current behavior; older sections retain checkpoint history. The foundation and backup/conversational-repair checkpoint passed functional and release validation. All six Android 10 editor/mode scenarios subsequently obtained passing focused runs. Further continuations add structured discussion context, explicit discussion-to-plan handoff, quieter dictionary replies, typed cost/time reasoning, qualitative requirements/preferences, and native hierarchy/work-interval persistence. Evidence belongs to each recorded source checkpoint.
 
 ## Latest continuation: remaining core implementation

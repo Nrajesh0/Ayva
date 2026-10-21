@@ -32,9 +32,10 @@ import java.util.concurrent.TimeUnit
 internal fun prepareKeyboard() {
     IdlingPolicies.setMasterPolicyTimeout(120, TimeUnit.SECONDS)
     IdlingPolicies.setIdlingResourceTimeout(120, TimeUnit.SECONDS)
-    val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation
-        .executeShellCommand("settings put secure show_ime_with_hard_keyboard 1")
-    ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+    listOf("svc power stayon true", "input keyevent 224", "wm dismiss-keyguard", "settings put system screen_off_timeout 2147483647", "settings put secure show_ime_with_hard_keyboard 1").forEach { command ->
+        val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+        ParcelFileDescriptor.AutoCloseInputStream(descriptor).bufferedReader().use { it.readText() }
+    }
 }
 
 internal fun imeVisible(): Boolean = WindowInspector.getGlobalWindowViews()
@@ -107,25 +108,30 @@ class ChatModeDeviceTest {
     @Before fun prepare() = prepareKeyboard()
 
     @Test fun modeSelectionAndRecreationPreserveUnsentText() {
+        listOf("Plan", "Talk", "Drill").forEach { mode ->
+            if (compose.onAllNodesWithContentDescription("Exit $mode mode").fetchSemanticsNodes().isNotEmpty())
+                compose.onNodeWithContentDescription("Exit $mode mode").performClick()
+        }
         val field = compose.onAllNodes(hasSetTextAction()).onFirst()
-        field.performClick()
-        field.performTextClearance()
-        field.performTextInput("plan")
+        field.performClick(); field.performTextClearance(); field.performTextInput("/plan")
         compose.waitUntil(60_000) { imeVisible() }
+        compose.onNodeWithText("Use plan mode").assertIsDisplayed()
+        screenshot("chat-plan-suggestion-keyboard-open.png")
+        compose.onNodeWithText("Use plan mode").performClick()
+        compose.onNodeWithContentDescription("Exit Plan mode").assertIsDisplayed()
+        field.performTextInput("Device planning draft\nKeep this second line")
+        compose.onNodeWithContentDescription("Send").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Talk to Ayva").assertIsDisplayed()
+        screenshot("chat-composer-keyboard-open.png")
         Espresso.pressBack()
         compose.waitUntil(60_000) { !imeVisible() }
         assertFalse(compose.activity.isFinishing)
-        compose.onNodeWithText("plan").assertIsDisplayed()
-        compose.onNodeWithText("Use Plan mode").performClick()
-        compose.onNodeWithText("Plan mode").assertIsDisplayed()
-        compose.onAllNodes(hasSetTextAction()).onFirst().performTextInput("Device planning draft")
-        compose.onNodeWithContentDescription("Choose conversation mode").performClick()
-        compose.onNodeWithText("Talk").performClick()
-        compose.onNodeWithText("Talk mode").assertIsDisplayed()
-        compose.onNodeWithText("Device planning draft").assertIsDisplayed()
+        compose.onNodeWithText("Device planning draft\nKeep this second line").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Talk to Ayva").performClick()
+        compose.onNodeWithContentDescription("Exit Talk mode").assertIsDisplayed()
         compose.activityRule.scenario.recreate()
-        compose.onNodeWithText("Talk mode").assertIsDisplayed()
-        compose.onNodeWithText("Device planning draft").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Exit Talk mode").assertIsDisplayed()
+        compose.onNodeWithText("Device planning draft\nKeep this second line").assertIsDisplayed()
         screenshot("chat-mode-restored-draft.png")
         val reopened = compose.activity
         compose.waitUntil(60_000) { !imeVisible() }

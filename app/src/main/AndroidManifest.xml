@@ -424,6 +424,7 @@
             android:exported="false" />
         <activity
             android:name=".ui.screens.BubbleChatActivity"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:launchMode="singleInstance"
             android:taskAffinity=":bubble"

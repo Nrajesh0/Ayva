@@ -88,15 +88,15 @@ internal fun PersistEditorDraft(store: EditorDraftStore, value: JSONObject) {
     }
 }
 
-/** Install inside the actual dialog/sheet window so its Back callback wins locally. */
+/** Shared by the system Back callback and the chat header's Back control. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun KeyboardFirstBackHandler(onDismiss: () -> Unit) {
+internal fun rememberKeyboardFirstBackAction(onDismiss: () -> Unit): () -> Unit {
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     val view = LocalView.current
     val visible = WindowInsets.isImeVisible
-    BackHandler {
+    return {
         // Insets can change before a translucent editor recomposes after IME dismissal.
         val currentVisible = ViewCompat.getRootWindowInsets(view)
             ?.isVisible(WindowInsetsCompat.Type.ime()) ?: visible
@@ -104,4 +104,10 @@ internal fun KeyboardFirstBackHandler(onDismiss: () -> Unit) {
         if (currentVisible) { keyboard?.hide(); focus.clearFocus() }
         else onDismiss()
     }
+}
+
+/** Install inside the actual dialog/sheet window so its Back callback wins locally. */
+@Composable
+internal fun KeyboardFirstBackHandler(onDismiss: () -> Unit) {
+    BackHandler(onBack = rememberKeyboardFirstBackAction(onDismiss))
 }

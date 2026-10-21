@@ -1,5 +1,7 @@
 # Assistant roadmap handoff
 
+> Historical checkpoint log. B0–B11 and the conversational planner bounded implementation are complete. Start with [the concise delivery summary](DELIVERY_SUMMARY.md) and [the new conversation-quality batches](CONVERSATION_QUALITY_PLAN.md). Pending statements below belong to their recorded checkpoints; unresolved acceptance gates are consolidated in the summary.
+
 Last updated: 2026-10-20. Master specification: [MASTER_PLAN.md](MASTER_PLAN.md).
 
 ## Current checkpoint

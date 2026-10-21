@@ -17,7 +17,7 @@ internal suspend fun occupiedWork(context: Context, plan: PlanWorkspace, store: 
     val tasks = (context.applicationContext as FocusApplication).database.taskDao().getAllActiveTasksList()
     val own = (plan.steps + plan.removed).mapNotNull { it.taskSnapshot?.let { raw -> TaskJson.decode(org.json.JSONObject(raw)).id } }.toSet()
     val byId = tasks.associateBy { it.id }
-    val otherDrafts = store.all().filterNot { it.id == plan.id }.flatMap { workspace -> workspace.steps.filter { step ->
+    val otherDrafts = store.all().filterNot { it.id == plan.id || it.archived }.flatMap { workspace -> workspace.steps.filter { step ->
         val snapshot = step.taskSnapshot?.let { TaskJson.decode(org.json.JSONObject(it)) }
         val current = snapshot?.id?.let(byId::get)
         val native = current?.planning

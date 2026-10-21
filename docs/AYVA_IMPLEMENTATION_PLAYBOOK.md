@@ -1,21 +1,18 @@
 # Ayva implementation playbook
 
-This document makes the [conversational planner roadmap](AYVA_CONVERSATIONAL_PLANNER_ROADMAP.md) executable across many development sessions. Implementation is authorized; the foundation and backup/conversational-repair continuation have passed functional validation. Use [the current ledger](assistant/implementation/CURRENT.md) for actual delivered behavior, validation, and the remaining roadmap.
+This document defines the continuing development workflow. Use [the delivery summary](assistant/DELIVERY_SUMMARY.md) for completed work and [the conversation-quality plan](assistant/CONVERSATION_QUALITY_PLAN.md) for the next batches.
 
 ## Validation preference
 
-The user explicitly requested necessary tests only. Use focused checks for data persistence, scheduling/authority logic, and reported keyboard/draft regressions. Routine UI and low-impact changes need an appropriate build or lightweight check; do not repeat the full suite, device matrix, or optimized release for every edit. Broaden validation only when a concrete risk, failure, migration, or cross-cutting change warrants it. Record exactly which source and scenarios were checked.
+The latest user instruction is **absolutely necessary tests only**. Do not add/run tests for routine prose, personality, layout or reversible low-impact changes. Run the smallest relevant check only for a concrete consequential risk (data loss, privacy, unintended writes, migrations or scheduling corruption) or a reported failure; state the reason. Use inspection/compilation as needed. No routine full-suite reruns, benchmark projects or broad device/language audits. Defer audits until requested or needed to investigate something broken. Retain existing CI and distinct regression coverage; this is not permission to disable safeguards.
 
 ## Current handoff
 
-- Stage: bounded core implementation complete; independent audits, device/release acceptance and the roadmap's expansion frontier remain open. See [the delivery record](assistant/implementation/COMPLETION_IMPLEMENTATION.md) and the current requirement table in the ledger.
-- Delivered: keyboard/draft recovery, compact modes/actions, relevant greetings/agenda, structured listening/discussion and comparisons, durable conversational planning, native hierarchy/multiple sessions, work-start reminders, constraints/dependent replanning, reusable templates/explicit memory/preferences, multi-level draft/saved undo/redo and full/rolling archive recovery. Ordinary dictionary replies omit repeated credit footers; dedicated attribution remains.
-- New native-task adoption preserves existing IDs/details and parent/prerequisite closure, with completed tasks and occasions retained as read-only context. Review/apply remains mandatory for native writes. Chat agenda uses work intervals and deadlines distinctly.
-- Validation: the final affected-only 80-case check and debug build passed (3m 13s), after the broader 174-case integration checkpoint (3m 34s). Source hashes matched during final verification; boundary and whitespace checks passed. Use the exact source fingerprints, suite scopes and logs in CURRENT.md. Earlier 96-case native, full-suite, release and Android 10 evidence belongs to earlier checkpoints. Do not combine separate runs into an inflated count or claim old APKs verify current code.
-- User preference: only necessary correctness tests now; conduct independent conversation, performance, visual/accessibility, device/OEM/lifecycle and release audits later. Do not restart the emulator or full suite for routine edits.
-- Open expansion: graded/weighted reasoning, richer knowledge and languages, deeper dialogue arbitration, progress-aware replanning and advanced optimization. Promote through concrete journeys and evidence; bounded grammar is not unrestricted understanding.
-- Verification was performed on uncommitted branch `work`, based on `e5378ede1869d41be5642fd96fbeff1e6e223aa7`. The user subsequently requested version 2.0.10 / 110 and a push to `main`; consult Git history and the remote ref for publication identity. The debug APK is current only after the latest recorded build; release/instrumentation APKs retain earlier evidence. No rollout occurred. The emulator is stopped.
-- No unresolved product question prevents completing the handoff. Preserve all existing changes; never infer a tested source from the base commit alone.
+The original bounded implementation is **complete**. Start with [the delivery summary](assistant/DELIVERY_SUMMARY.md), then use [the conversation-quality batches](assistant/CONVERSATION_QUALITY_PLAN.md) as the sole active queue. The new batches are in progress; use [the active implementation record](assistant/implementation/CONVERSATION_QUALITY_CURRENT.md) for actual scope, check results and the next slice. Older ledger entries preserve historical evidence and are not instructions to repeat completed work.
+
+Version metadata is 2.0.11 / 111; code was pushed to main. Hosted validation of the preceding CI-repair commit passed full unit tests and debug/release builds. Later release publication has not been rechecked during this cleanup. Inspect actual Git state and workflow results before claiming a newer checkpoint verified.
+
+Keep necessary-test-only validation, offline/no-model operation, private-data boundaries, existing execution safeguards and WindowManager blocking. Open acceptance and expansion work are explicitly carried into the new plan.
 
 ## Start-of-session procedure
 
@@ -90,14 +87,15 @@ Before adopting a new library, check offline operation, Android compatibility, l
 
 ## Validation discipline
 
-- Reproduce a bug before claiming a fix. Write meaningful tests at the layer that can expose the failure.
-- For language and planning changes, test full conversations through routing, state persistence, proposal, and execution as appropriate—not only isolated helper functions.
-- For data changes, include schema migration, backup/restore, widgets/reminders, native editing, and failure recovery.
-- For IME, sheets, predictive Back, animation, and focus, use relevant device tests; report unsupported device coverage as outstanding.
-- Run targeted checks during development and required broader checks at integration gates. Reuse valid outputs; repeat expensive full builds when changes or unresolved risks justify them.
-- Record actual command results, test counts, skipped cases, and artifacts from the current run. Do not conflate a successful build with functional validation.
-- Preserve independent evaluation examples. Once tuned against, move them to regression coverage and refresh the held-out corpus.
-- After a change, check diff scope and working-tree status. Do not remove unrelated user changes or silently alter tests to approve new behavior.
+The latest validation preference above supersedes broader testing language in historical documents and earlier batch notes.
+
+- Inspect the relevant failure path before claiming a fix. Add or run a focused test only when absolutely necessary to establish correctness for the concrete risk or reported failure.
+- Use existing checks wherever possible; do not build a new test framework or broad corpus for routine implementation.
+- For the reported keyboard overlap and lost drafts, use a focused reproduction/check when feasible. Record unavailable device verification honestly; do not silently call it verified.
+- Inspect diffs and compile when needed. Keep existing hosted CI enabled; do not repeatedly rerun expensive local checks without a new reason.
+- Record checks actually run, failures and unverified limitations. A build is not proof of conversational quality.
+- Preserve unrelated changes and distinct existing tests. Deletion needs an equivalent retained-coverage mapping.
+- Broad audits, held-out quality scoring and device/performance matrices remain deferred until requested or needed for a concrete failure investigation.
 
 ## Ending a session without losing the project
 
@@ -109,6 +107,6 @@ When resuming, verify those facts before acting. If a prior design is demonstrab
 
 ## Milestone completion review
 
-Before closing a milestone, verify its user journey, R01–R12 coverage changes, integration behavior, migrations, device requirements, and known limitations. Review what the milestone taught us and select the next capability expansion using evidence.
+Before closing a milestone, record its implemented user journey, affected requirements, integration changes and known limitations. Run only absolutely necessary checks under the policy above; unperformed audits remain explicit and do not imply unfinished code. Review what the milestone taught us and select the next capability expansion using evidence.
 
 Declare separately what is ready for development, what is implemented, what is device-verified, and what is release-ready. Baseline gates stay visible even when new ambitious capabilities are added. The long-term objective is sustained, measurable improvement across sessions, not the appearance of completing a checklist.

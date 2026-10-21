@@ -1,5 +1,7 @@
 # Ayva offline personal assistant: sequential development plan
 
+> Historical specification — B0–B11 bounded implementation complete; independent acceptance gaps remain explicit. Superseded as the active queue by [the conversation-quality plan](CONVERSATION_QUALITY_PLAN.md). See [delivery summary](DELIVERY_SUMMARY.md).
+
 Planning baseline: 2026-10-18. This is the original specification; implementation/acceptance status is tracked in [STATUS.md](STATUS.md). See [OFFLINE_ASSISTANT_IMPLEMENTATION.md](OFFLINE_ASSISTANT_IMPLEMENTATION.md) for the current bounded implementation and explicit remaining gates. A proposed feature below is not automatically implemented or accepted.
 
 ## Product goal and limits

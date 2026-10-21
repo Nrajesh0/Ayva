@@ -13,6 +13,7 @@ import java.util.UUID
 
 /** Plan owns its input. Unsupported conversation never falls through to task creation. */
 internal object ConversationPlanner {
+    private const val UNRECOGNIZED = "unrecognized planning turn"
     private val process = UUID.randomUUID().toString()
     private val originalCommands = setOf("back to original", "back to the original", "show original", "return to original", "back to active plan")
     private data class Edit(val plan: PlanWorkspace, val message: String, val recognized: Boolean = true)
@@ -28,7 +29,7 @@ internal object ConversationPlanner {
             ChatModeStore.set(context, ChatMode.TALK)
             return reply(it)
         }
-        val handoff = AssistantDiscussion.handoff(state, discussionRequest)
+        val handoff = AssistantDiscussion.handoff(state, discussionRequest) ?: GeneralConversation.handoff(state, discussionRequest) ?: ConversationReasoning.handoff(state, discussionRequest)
         val nativeHandoff = if (handoff == null && state.topic == "tasks" && state.expected == null && AssistantContext.live(state.referenceAt) &&
             (AssistantDiscussion.requestsHandoff(handoffText) || command == "/plan" && handoffText.isBlank()))
             state.taskId ?: state.selectedTaskIds.singleOrNull() else null
@@ -41,11 +42,18 @@ internal object ConversationPlanner {
                 return null
             }
         }
+        // Explicit native-task completion keeps its existing authoritative owner.
+        if (Regex("(?i)^(?:complete task |mark task )").containsMatchIn(raw)) return null
         if (raw.startsWith("/") && command != "/plan" && handoff == null && nativeHandoff == null) return null
+        if (Regex("(?i)^(?:let'?s talk about|can we talk about|change the subject to) ").containsMatchIn(raw)) {
+            ChatModeStore.set(context, ChatMode.TALK)
+            return null // Discussion is an explicit interruption; the durable plan stays intact.
+        }
         val explicit = command == "/plan"
         if (AssistantDiscussion.requestsHandoff(handoffText) && handoff == null && nativeHandoff == null && !PlanLanguage.startsPlanning(raw) && state.expected == null)
             return missingDiscussionGoal()
-        val start = PlanLanguage.startsPlanning(raw) || handoff != null || nativeHandoff != null
+        val explicitGoal = command == "/plan" && Regex("(?i)^(?:a |an |my |the )?(?:trip|holiday|vacation|exam|study|project|event|routine|errands)\\b").containsMatchIn(handoffText)
+        val start = PlanLanguage.startsPlanning(raw) || explicitGoal || handoff != null || nativeHandoff != null
         val resume = Regex("(?i)^(?:back to (?:my |the )?(?:trip|exam|study|project|plan)(?: plan)?|resume plan .+)$").matches(raw)
         if (!explicit && !start && !resume && ChatModeStore.get(context) != ChatMode.PLAN) return null
         if (raw.equals("/plan discard all plan drafts", true)) {
@@ -55,7 +63,7 @@ internal object ConversationPlanner {
         }
         val store = ConversationPlanStore(context)
         var plan = store.active()
-        if (resume && !explicit && plan == null) return null // compatibility with the old short-lived planner
+        if (resume && !explicit && plan == null && store.all().isEmpty()) return null // compatibility with the old short-lived planner
         val text = if (explicit || handoff != null) handoffText else raw
         val lower = text.lowercase(Locale.ROOT).trimEnd('.', '!', '?')
         val applyControl = Regex("^apply revision ([A-Za-z0-9-]{1,80}) (\\d+) ([A-Za-z0-9:-]{1,160})$").matchEntire(text)
@@ -75,7 +83,7 @@ internal object ConversationPlanner {
         if (lower in setOf("my plans", "list plans", "show plans")) {
             val plans = store.all()
             return reply(if (plans.isEmpty()) "No plan workspaces yet. What would you like to work toward?" else
-                plans.mapIndexed { i, p -> "${i + 1}. ${p.goal.ifBlank { "Untitled plan" }}${if (p.id == plan?.id) " — active" else ""}" }.joinToString("\n") + "\nSay ‘resume plan 2’ or use its title.")
+                plans.mapIndexed { i, p -> "${i + 1}. ${p.goal.ifBlank { "Untitled plan" }}${if (p.archived) " — archived" else if (p.id == plan?.id) " — active" else ""}" }.joinToString("\n") + "\nSay ‘resume plan 2’ or use its title.")
         }
         if (lower.startsWith("resume plan ") || lower.startsWith("back to ") && lower !in originalCommands) {
             val ref = text.drop(if (lower.startsWith("resume plan ")) 12 else 8).replaceFirst(Regex("(?i)^(?:my|the) "), "").trim()
@@ -83,7 +91,7 @@ internal object ConversationPlanner {
             val domainRef = ref.removeSuffix(" plan")
             val matches = if (ref.equals("plan", true)) listOfNotNull(plan) else ref.toIntOrNull()?.let { listOfNotNull(plans.getOrNull(it - 1)) }
                 ?: plans.filter { it.goal.contains(ref, true) || it.domain.equals(domainRef, true) || domainRef.equals("exam", true) && it.domain == "study" }
-            if (matches.size == 1) { plan = matches.single().copy(hypotheticalView = false); store.put(plan); return render(plan, "Welcome back. Your draft and decisions are still here. I'll check saved tasks again before applying changes." + pendingPrompt(plan, now)) }
+            if (matches.size == 1) { plan = matches.single().copy(hypotheticalView = false, archived = false); store.put(plan); return render(plan, "Welcome back. Your draft and decisions are still here. I'll check saved tasks again before applying changes." + pendingPrompt(plan, now)) }
             return reply("Which plan? Say ‘list plans’ to see their names.")
         }
         if (nativeHandoff != null) {
@@ -108,30 +116,48 @@ internal object ConversationPlanner {
             PlanningLibrary(context).rememberPreferences(plan ?: throw IllegalArgumentException("Set up a plan's preferences first"))
             return reply("Remembered this plan's scheduling preferences and any daily availability window for future plans. One-off dates and today's window were not remembered.")
         }
-        if (handoff != null || plan == null || lower.startsWith("new plan ") || lower.startsWith("new ")) {
+        if (plan == null && lower in setOf("hi", "hey", "hello")) return reply("Hi. What would you like to work toward? We can talk it through first.")
+        if (handoff != null || plan == null || start && nativeHandoff == null || lower.startsWith("new plan ") || lower.startsWith("new ")) {
             val goal = handoff?.goal ?: text.replaceFirst(Regex("(?i)^new (?:plan )?"), "").takeUnless {
                 it.lowercase(Locale.ROOT) in setOf("let's plan together", "lets plan together", "plan together", "help me plan")
             }.orEmpty()
             require(goal.length <= 500) { "Keep the planning goal under 500 characters; we can add details in later messages" }
+            fun signature(value: String) = PlanningDialogue.goal(value).lowercase(Locale.ROOT).replaceFirst(Regex("^(?:a|an|my|the) "), "").trim()
+            val matching = if (handoff == null && start) store.all().singleOrNull { signature(it.goal) == signature(goal) && signature(goal).isNotBlank() } else null
+            if (matching != null) {
+                store.put(matching.copy(archived = false, hypotheticalView = false, reviewedRevision = null, reviewedAt = 0, reviewProcess = null))
+                return reply("We're already working on ${matching.goal}. Your details and steps are still here. What would you like to work through next?")
+            }
+            if (handoff == null && signature(goal).isBlank() && plan != null && plan.goal.isNotBlank())
+                return reply("We can continue ${plan.goal}. What would you like to work through next?")
+            val emptyGreeting = plan?.takeIf { it.steps.isEmpty() && it.facts.isEmpty() && it.goal.lowercase() in setOf("hi", "hey", "hello") }
             plan = PlanningLibrary(context).newPlan(goal, PlanLanguage.facts(goal) + handoff?.facts.orEmpty(), PlanLanguage.domain(goal))
+            if (handoff == null) plan = plan.copy(goal = PlanningDialogue.goal(plan.goal), id = emptyGreeting?.id ?: plan.id)
+            val conversation = PlanningDialogue.opening(plan)
+            plan = conversation.plan
             store.put(plan)
-            return render(plan, if (handoff != null) "Carried your discussion into a new plan draft, including your details and any current choice. " + opening(plan)
-                else if (goal.isBlank()) "What would you like to plan? We can keep everything here in chat." else opening(plan))
+            return reply(if (handoff != null) "Carried your discussion into a new plan draft, including your details and any current choice. " + opening(plan)
+                else conversation.text)
         }
         if (text.isBlank() || lower in originalCommands || lower in setOf("show plan", "show my plan", "review plan", "what did we decide", "what are we planning", "what's left") || plan.hypotheticalView && lower in setOf("cancel", "no", "not that")) {
             if (plan.hypotheticalView) { plan = plan.copy(hypotheticalView = false); store.put(plan) }
             return render(plan, (if (plan.goal.isBlank()) "What goal should this plan work toward?" else "Here's the active draft. No changes are applied to saved tasks until you review and apply them.") + pendingPrompt(plan, now))
+        }
+        PlanCollaboration.answer(context, plan, text, now)?.let { turn ->
+            turn.plan.validate(); ConversationPlanStore(context).put(turn.plan)
+            return reply(turn.text)
         }
         if (plan.hypotheticalView && !lower.startsWith("what if "))
             return reply("That was a hypothetical alternative. Say ‘show plan’ to return to your active draft, then describe the change you want to make. Nothing has been applied to saved tasks.")
 
         if (applyControl != null && (applyControl.groupValues[1] != plan.id || applyControl.groupValues[2].toIntOrNull() != plan.revision || applyControl.groupValues[3] != plan.reviewProcess))
             return reply("That review control belongs to an older plan or revision. Review the active plan again; nothing was saved.")
-        if (applyControl != null || lower in setOf("save", "save plan", "save this plan", "apply", "apply plan", "apply those changes", "yes save", "confirm plan")) {
+        if (applyControl != null || lower in setOf("save", "save plan", "save this plan", "save the agreed tasks", "okay save the agreed tasks", "save these tasks", "apply", "apply plan", "apply those changes", "yes save", "confirm plan")) {
+            PlanningDialogue.saveProblem(plan)?.let { return reply(it) }
             if (plan.pending != null) return render(plan, "There's an unanswered plan change. Answer it or say ‘cancel that change’ before reviewing a save; saved tasks are unchanged.")
             if (plan.savedRevision == plan.revision) return render(plan, "This revision is already saved. It won't create duplicate tasks.")
             if (plan.steps.none { it.workItem && !it.completed } && plan.removed.none { it.taskSnapshot != null }) return render(plan, "Add an active work step before applying. Context and facts are already retained in this workspace.")
-            if (plan.reviewedRevision == plan.revision && plan.reviewProcess?.startsWith("$process:") == true && now - plan.reviewedAt in 0..900_000L && lower !in setOf("save", "save plan", "save this plan")) {
+            if (plan.reviewedRevision == plan.revision && plan.reviewProcess?.startsWith("$process:") == true && now - plan.reviewedAt in 0..900_000L && lower !in setOf("save", "save plan", "save this plan", "save the agreed tasks", "okay save the agreed tasks", "save these tasks")) {
                 val result = ConversationPlanCommitter.commit(context, plan, now, process)
                 state.undo = emptyList(); state.undoId = null
                 if (result.before.size == result.after.size) {
@@ -146,7 +172,7 @@ internal object ConversationPlanner {
             }
             val reviewed = plan.copy(reviewedRevision = plan.revision, reviewedAt = now, reviewProcess = "$process:${UUID.randomUUID()}", reviewDeviceTimezone = java.util.TimeZone.getDefault().id)
             store.put(reviewed)
-            return render(reviewed, "Review revision ${plan.revision}: ${plan.steps.count { it.taskSnapshot == null }} new task(s), ${plan.steps.count { it.taskSnapshot != null }} linked task(s), ${plan.removed.count { it.taskSnapshot != null }} task(s) to move to Trash. Say ‘apply plan’ to save this revision.",
+            return render(reviewed, "Review this draft: ${plan.steps.count { it.taskSnapshot == null }} new task(s), ${plan.steps.count { it.taskSnapshot != null }} linked task(s), ${plan.removed.count { it.taskSnapshot != null }} task(s) to move to Trash. Say ‘apply plan’ to save this revision.",
                 listOf(TalkAction.AskQuery("/plan apply revision ${reviewed.id} ${reviewed.revision} ${reviewed.reviewProcess}", "Apply plan")))
         }
         if (lower in setOf("refresh saved tasks", "reconcile saved tasks")) {
@@ -177,6 +203,11 @@ internal object ConversationPlanner {
             "Scheduling uses the availability and estimates you've supplied, plus any preferences you explicitly saved. Ranges reserve their upper estimate. " +
             "${plan.policy.bufferMinutes}-minute buffer; working days ${plan.policy.dayLabels}; session limit ${plan.policy.maximumSession ?: "not set"}; daily budget ${plan.policy.dailyMinutes ?: "not set"}. " +
             "Only work recorded in Ayva is checked; deadlines are not busy intervals. Saved changes always need a current review.")
+        (if (PlanLanguage.clauses(text).size == 1) PlanningConversation.answer(plan, text, now) else null)?.let { turn ->
+            turn.plan.validate()
+            store.put(turn.plan.copy(reviewedRevision = null, reviewedAt = 0, reviewProcess = null))
+            return reply(turn.text)
+        }
         if (lower in setOf("suggest steps", "suggest a plan", "help me break it down", "what should i prepare")) {
             val titles = template(plan.domain)
             val question = if (plan.domain == "trip" && plan.facts["destination"] == null) "Do you have a destination in mind, or are we deciding that too?" else "Which of these fit your goal? Say ‘use suggested steps’, or tell me your own steps."
@@ -215,7 +246,9 @@ internal object ConversationPlanner {
                 "availability" -> "That alternative needs a choice between today's and daily availability."
                 else -> "That alternative has an unresolved detail."
             } } ?: hypothetical.message
-            return render(hypothetical.plan, "Alternative only: $explanation Your active draft is unchanged. Say ‘show plan’ to return before making changes.")
+            val branch = hypothetical.plan.copy(hypotheticalView = false, alternative = null).checkpoint()
+            if (branch.toByteArray().size <= 200_000) store.put(plan.copy(alternative = branch))
+            return render(hypothetical.plan, "Alternative only: $explanation Your active draft is unchanged. We can compare the alternative, use this alternative, or return to the active plan.")
         }
 
         // An attempted edit cancels earlier save authority even if that edit needs repair.
@@ -227,7 +260,8 @@ internal object ConversationPlanner {
         val messages = mutableListOf<String>()
         try {
             for (clause in clauses) {
-                val result = edit(candidate, clause, now, occupied)
+                val conversation = PlanningConversation.answer(candidate, clause, now)
+                val result = conversation?.let { Edit(it.plan, it.text) } ?: edit(candidate, clause, now, occupied)
                 if (clauses.size > 1 && !result.recognized)
                     return reply("I couldn't understand ‘$clause’ as a plan change. No part of that compound request was applied. Send the changes separately so we can clarify it.")
                 candidate = result.plan; messages.add(result.message)
@@ -238,7 +272,12 @@ internal object ConversationPlanner {
             if (candidate.revision != plan.revision) candidate = candidate.copy(previousDraft = plan.checkpoint().takeIf { it.toByteArray().size <= 200_000 },
                 undoDrafts = PlanWorkspace.boundedHistory(plan.undoDrafts + plan.checkpoint()), redoDrafts = emptyList())
             store.put(candidate)
-            return render(candidate, messages.joinToString(" "))
+            if (messages.size == 1 && messages.single() == UNRECOGNIZED) {
+                val repaired = MilestonePlanning.repair(candidate, text)
+                store.put(repaired.plan)
+                return reply(repaired.text)
+            }
+            return reply(messages.joinToString(" "))
         } catch (error: IllegalArgumentException) {
             return render(plan, "${error.message ?: "That edit isn't valid"}. The draft is unchanged. Tell me which constraint or step to change.")
         }
@@ -247,7 +286,9 @@ internal object ConversationPlanner {
     private fun missingDiscussionGoal() = reply("What would you like to plan? Tell me the goal with /plan, or start a discussion with ‘let's talk through …’.")
 
     private fun edit(plan: PlanWorkspace, input: String, now: Long, occupied: List<PlanStep>): Edit {
-        val text = PlanLanguage.normalize(input).trimEnd('.', '!', '?')
+        val normalized = PlanLanguage.normalize(input).trimEnd('.', '!', '?')
+        val text = if (plan.dialogue.question == "availability_hours" && Regex("(?i)^(?:from )?\\d{1,2}(?::\\d{2})?\\s*(?:am|pm) (?:to|-) \\d{1,2}(?::\\d{2})?\\s*(?:am|pm)$").matches(normalized))
+            "I'm free from ${normalized.removePrefix("from ")} today" else normalized
         val lower = text.lowercase(Locale.ROOT)
         if (Regex("(?i)^(?:don't|do not|not|leave|keep)\\b").containsMatchIn(text))
             return Edit(plan, "I left the draft unchanged. To protect a session, keep its explicit time; automatic scheduling preserves existing sessions.")
@@ -350,14 +391,14 @@ internal object ConversationPlanner {
             return Edit(plan.changed(steps = plan.steps + step, selected = step.id), "Added a subtask under ‘${parent.single().title}’.")
         }
         Regex("(?i)^(?:add|include|steps:|tasks:)\\s+(.+)$").matchEntire(text)?.let { m ->
-            val pieces = m.groupValues[1].split(Regex("\\s*[,;]\\s*")).filter { it.isNotBlank() }
+            val pieces = ConversationLanguage.list(m.groupValues[1])
             val added = pieces.map { title ->
                 val duration = Regex("(?i)\\s+for (.+)$").find(title)
                 val minutes = duration?.let { PlanLanguage.duration(it.groupValues[1]) }
                 require(duration == null || minutes != null || !Regex("(?i)(?:minutes?|mins?|hours?|hrs?)$").containsMatchIn(duration.groupValues[1])) {
                     "Use a whole duration between 1 minute and 24 hours for that step"
                 }
-                PlanStep(title = if (minutes != null) title.substring(0, duration!!.range.first).trim() else title, minutes = minutes ?: plan.facts["default task minutes"]?.toIntOrNull())
+                PlanStep(title = ConversationLanguage.unquote(if (minutes != null) title.substring(0, duration!!.range.first).trim() else title), minutes = minutes ?: plan.facts["default task minutes"]?.toIntOrNull())
             }
             require(added.map { it.title.lowercase(Locale.ROOT) }.distinct().size == added.size) { "That request repeats the same step title. Give each new step a distinct name" }
             require(added.none { next -> plan.steps.any { it.title.equals(next.title, true) } }) { "That step is already in this draft" }
@@ -367,6 +408,14 @@ internal object ConversationPlanner {
         Regex("(?i)^(?:remove|drop|delete) (.+)$").matchEntire(text)?.let { return target(plan, it.groupValues[1], "remove", "", now, occupied) }
         Regex("(?i)^(?:duration(?: for)?|time for) (.+?) (?:is|to|:) (.+)$").matchEntire(text)?.let { return target(plan, it.groupValues[1], "duration", it.groupValues[2], now, occupied) }
         Regex("(?i)^(?:deadline(?: for)?|due date for) (.+?) (?:is|to|:) (.+)$").matchEntire(text)?.let { return target(plan, it.groupValues[1], "deadline", it.groupValues[2], now, occupied) }
+        Regex("(?i)^(?:move|schedule|put) (.+?) ((?:today|tomorrow|(?:next |this )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|\\d{4}-\\d{2}-\\d{2})\\b.*)$").matchEntire(text)?.let { match ->
+            val ref = match.groupValues[1]
+            // A date word inside a quoted title is literal, not a scheduling boundary.
+            val explicitTime = Regex("(?i)^(?:move|schedule|put) (.+?) (?:to|on|at) (.+)$").matchEntire(text)
+            val explicitTargetExists = explicitTime?.groupValues?.get(1)?.let { PlanLanguage.references(plan, it).isNotEmpty() } == true
+            if (!explicitTargetExists && ref.count { it == '\"' || it == '“' || it == '”' } % 2 == 0)
+                return target(plan, ref, "schedule", match.groupValues[2], now, occupied)
+        }
         Regex("(?i)^(?:move|schedule|put) (.+?) (?:to|on|at) (.+)$").matchEntire(text)?.let {
             val ref = it.groupValues[1]; val value = it.groupValues[2]
             return target(plan, ref, "schedule", value, now, occupied)
@@ -412,7 +461,7 @@ internal object ConversationPlanner {
         // A bare destination only answers the currently unresolved trip question, never changes a task.
         if (plan.domain == "trip" && plan.facts["destination"] == null && plan.steps.isEmpty() && text.matches(Regex("[\\p{L}][\\p{L} -]{1,45}")))
             return Edit(plan.changed(facts = plan.facts + ("destination" to text)), "Destination noted. Do you have dates in mind, or should we work out the preparation first?")
-        return Edit(plan, "I haven't changed the draft. Tell me a step with ‘add …’, ask for suggested steps, or describe a change such as ‘move packing to Saturday at 9am’. To switch subjects, choose Talk.", recognized = false)
+        return Edit(plan, UNRECOGNIZED, recognized = false)
     }
 
     private fun target(plan: PlanWorkspace, phrase: String, operation: String, value: String, now: Long, occupied: List<PlanStep>): Edit {
@@ -552,15 +601,19 @@ internal object ConversationPlanner {
     }
     private fun render(plan: PlanWorkspace, message: String, actions: List<TalkAction> = emptyList()): AyvaTalkEngine.TalkResponse = reply(buildString {
         append(message)
-        if (plan.goal.isNotBlank()) append("\n\n**${plan.goal}** · revision ${plan.revision} · ${plan.timezone}")
+        if (plan.goal.isNotBlank()) append("\n\n**${plan.goal}**")
         if (plan.facts.isNotEmpty()) append("\n" + plan.facts.entries.joinToString(" · ") { "${it.key}: ${it.value}" })
+        if (plan.milestones.isNotEmpty()) append("\nMilestones: " + plan.milestones.joinToString { it.title })
+        plan.milestones.firstOrNull { it.id == plan.dialogue.focusMilestone }?.let { append("\nWorking on: ${it.title}") }
         val visibleSteps = if (actions.isNotEmpty()) plan.steps else plan.steps.take(15)
         visibleSteps.forEachIndexed { index, step ->
             append("\n${index + 1}. ${step.title}")
+            plan.milestones.filter { step.id in it.stepIds }.takeIf { it.isNotEmpty() }?.let { append(" · " + it.joinToString { group -> group.title }) }
             if (step.taskLinkMissing) append(" · saved task link missing; remove or unlink this step")
             step.parentId?.let { parent -> append(" — under ${plan.steps.first { it.id == parent }.title}") }
             step.minutes?.let { append(" · $it${step.maximumEstimate?.let { maximum -> "–$maximum" }.orEmpty()} min estimated") }
             if (step.completed) append(" · completed context") else if (!step.workItem) append(" · occasion context")
+            if (!step.completed && step.workState != PlanWorkState.READY) append(" · ${step.workState.name.lowercase()}${step.blockReason?.let { ": $it" }.orEmpty()}")
             if (step.protected) append(" · protected")
             if (step.start != null && step.workItem && !step.completed) append(" · work reminders ${if (step.workReminders) "on" else "off"}")
             if (step.workSessions.size > 1) {

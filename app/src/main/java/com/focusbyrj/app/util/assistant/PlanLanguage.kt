@@ -6,18 +6,19 @@ import java.util.TimeZone
 
 /** Small compositional grammar. Unknown clauses are repaired, never executed as tasks. */
 internal object PlanLanguage {
-    fun normalize(text: String) = text.trim().replace('’', '\'').replace(Regex("\\s+"), " ")
+    fun normalize(text: String) = ConversationLanguage.space(text)
     fun command(text: String): String {
         val raw = normalize(text)
         val prefix = if (raw.startsWith("/plan ", true)) "/plan " else ""
         var body = if (prefix.isEmpty()) raw else raw.substringAfter(' ')
         body = body.replaceFirst(Regex("(?i)^(?:please |could you |can you )"), "")
+        body = body.replaceFirst(Regex("(?i)^i need to (?=(?:move|reschedule|schedule|rename)\\b)"), "")
         val aliases = mapOf("schudle" to "schedule", "schdule" to "schedule", "schedual" to "schedule", "scheduel" to "schedule", "reschudle" to "move")
         val first = body.substringBefore(' ')
         aliases[first.lowercase(Locale.ROOT)]?.let { body = it + body.removePrefix(first) }
         return prefix + body
     }
-    fun startsPlanning(text: String) = Regex("(?i)^(?:i (?:want|would like) to (?:go on|plan) (?:a )?(?:trip|holiday|vacation)\\b|let'?s plan (?:together|a |an |my |the )|(?:can|could) we plan (?:a |an |my |the ))").containsMatchIn(normalize(text))
+    fun startsPlanning(text: String) = Regex("""(?i)^(?:i (?:want|would like) to (?:go on|plan) (?:a )?(?:trip|holiday|vacation)\b|(?:let'?s|can we|could we|help me) (?:plan|organize|organise)(?: for)? (?!it\b|that\b|this\b).+)""").containsMatchIn(normalize(text))
     fun domain(text: String) = when {
         Regex("(?i)\\b(trip|holiday|vacation|travel)\\b").containsMatchIn(text) -> "trip"
         Regex("(?i)\\b(exam|study|revision|studying)\\b").containsMatchIn(text) -> "study"
@@ -84,7 +85,7 @@ internal object PlanLanguage {
         return null
     }
     fun correctionValue(text: String): String? = Regex("(?i)^(?:actually|no|instead|i meant|make that),?\\s+(.+)$").matchEntire(normalize(text))?.groupValues?.get(1)
-    fun clauses(text: String): List<String> = normalize(text).split(Regex(";\\s*|,?\\s+(?:and then|then|and)\\s+(?=(?:add|remove|drop|rename|move|schedule|give|make|set|keep|leave|don't|do not)\\b)", RegexOption.IGNORE_CASE)).filter { it.isNotBlank() }
+    fun clauses(text: String): List<String> = ConversationMeaning.clauses(normalize(text)).map { it.text }
     fun references(plan: PlanWorkspace, phrase: String): List<PlanStep> {
         val text = normalize(phrase).lowercase(Locale.ROOT).trim('"', '\'').removePrefix("the ")
             .replace(Regex("^(?:step|item|task)\\s+"), "").removeSuffix(" task").removeSuffix(" step")

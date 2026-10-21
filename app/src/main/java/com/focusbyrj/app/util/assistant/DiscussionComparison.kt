@@ -12,7 +12,8 @@ internal data class DiscussionComparison(
     val priority: Metric? = null,
     val pending: Question? = null,
     val view: Metric? = null,
-    val criteria: DiscussionCriteria = DiscussionCriteria()
+    val criteria: DiscussionCriteria = DiscussionCriteria(),
+    val weights: Map<Metric, Int> = emptyMap()
 ) {
     enum class Metric(val label: String) { COST("cost"), TIME("travel time") }
     data class Quantity(val amount: BigDecimal, val unit: String, val upper: BigDecimal? = null) {
@@ -34,7 +35,7 @@ internal data class DiscussionComparison(
     })).put("priority", priority?.name ?: JSONObject.NULL).put("view", view?.name ?: JSONObject.NULL).put("pending", pending?.let {
         JSONObject().put("option", it.option).put("metric", it.metric.name).put("currency", it.currency ?: JSONObject.NULL)
             .put("deferredCost", it.deferredCost?.toPlainString() ?: JSONObject.NULL).put("deferredUpper", it.deferredUpper?.toPlainString() ?: JSONObject.NULL)
-    } ?: JSONObject.NULL).put("criteria", criteria.json())
+    } ?: JSONObject.NULL).put("criteria", criteria.json()).put("weights", JSONObject(weights.mapKeys { it.key.name }))
 
     fun retain(options: List<String>) = copy(observations = observations.mapNotNull { observation ->
         options.singleOrNull { it.equals(observation.option, true) }?.let { observation.copy(option = it) }
@@ -56,11 +57,19 @@ internal data class DiscussionComparison(
 
     /** Only a currently asked measurement can consume a short answer. Corrections otherwise need a named option. */
     fun answer(input: String, options: List<String>): Turn? {
+        val weighted = Regex("(?i)^(?:use )?weights? (?:of )?(?:cost|price) (\\d+) (?:and |, ?)?(?:time|travel time) (\\d+)$").matchEntire(PlanLanguage.normalize(input))
+        if (weighted != null) {
+            val cost = weighted.groupValues[1].toIntOrNull(); val time = weighted.groupValues[2].toIntOrNull()
+            require(cost != null && time != null && cost in 1..100 && time in 1..100) { "Use explicit cost and time weights from 1 to 100" }
+            val next = copy(weights = mapOf(Metric.COST to cost, Metric.TIME to time), priority = null, pending = null, view = null, criteria = criteria.copy(primary = null, pending = null))
+            return Turn(next, "Using your cost:time weights of $cost:$time. " + next.weightedReport(options))
+        }
+        if (input.lowercase() in setOf("clear weights", "remove weights")) return Turn(copy(weights = emptyMap()), "Removed numerical weights. Qualitative requirements remain in place.")
         numericAnswer(input, options)?.let { result ->
             return result.copy(state = result.state.copy(criteria = result.state.criteria.copy(pending = null)))
         }
         criteria.answer(input, options)?.let { result ->
-            return Turn(copy(criteria = result.state, pending = null, view = null, priority = if (result.setsPriority) null else priority), result.text)
+            return Turn(copy(criteria = result.state, pending = null, view = null, priority = if (result.setsPriority) null else priority, weights = if (result.setsPriority) emptyMap() else weights), result.text)
         }
         return null
     }
@@ -83,7 +92,7 @@ internal data class DiscussionComparison(
             ?.groupValues?.get(1) ?: Regex("(?i)^(cost|price|time|travel time) matters more than (?:cost|price|time|travel time)$").matchEntire(body)?.groupValues?.get(1)
         if (preference != null) {
             val metric = metric(preference)
-            return Turn(copy(priority = metric, pending = null, view = null, criteria = criteria.copy(primary = null)), "I'll compare by lower ${metric.label} first, while keeping your stated limits. You can change that priority.")
+            return Turn(copy(priority = metric, pending = null, view = null, criteria = criteria.copy(primary = null), weights = emptyMap()), "I'll compare by lower ${metric.label} first, while keeping your stated limits. You can change that priority.")
         }
         if (bodyLower == "clear comparison priority") return Turn(copy(priority = null, pending = null, view = null, criteria = criteria.copy(primary = null)), "Cleared the comparison priority. We can look at the trade-offs together.")
         if (bodyLower == "forget comparison figures") return Turn(DiscussionComparison(criteria = criteria.copy(pending = null)), "Cleared comparison figures, limits and cost/time priority. Your qualitative criteria, discussion topic and options remain.")
@@ -176,6 +185,29 @@ internal data class DiscussionComparison(
             ?: criteria.conflict(option)
     }
 
+    private fun weightedReport(options: List<String>): String {
+        if (weights.isEmpty()) return "No numerical weights are set."
+        val eligible = options.filter { choiceProblem(it) == null }
+        if (eligible.size < 2) return "A weighted comparison needs at least two options satisfying the known requirements."
+        if (criteria.nextQuestion(eligible) != null) return "Confirm the required qualities before using a weighted recommendation."
+        for (metric in weights.keys) {
+            val quantities = eligible.map { value(it, metric) }
+            if (quantities.any { it == null || it.upper != null }) return "Weighted ranking needs exact known cost and time figures; unknowns and ranges won't be replaced with averages."
+            if (quantities.filterNotNull().map { it.unit }.distinct().size != 1) return "Use comparable units for each dimension before weighting. I won't convert currencies."
+        }
+        val scores = eligible.associateWith { option -> weights.entries.fold(BigDecimal.ZERO) { total, (metric, weight) ->
+            val low = eligible.minOf { value(it, metric)!!.amount }; val high = eligible.maxOf { value(it, metric)!!.amount }
+            val normalized = if (high.compareTo(low) == 0) BigDecimal.ZERO else
+                (value(option, metric)!!.amount - low).divide(high - low, java.math.MathContext.DECIMAL64)
+            total + normalized * weight.toBigDecimal()
+        } }
+        val best = scores.values.minOrNull()!!
+        val leaders = scores.filterValues { it.compareTo(best) == 0 }.keys
+        return "On your explicit weights, ${leaders.joinToString(" / ")} ${if (leaders.size == 1) "ranks first" else "tie"}. " +
+            "Each dimension is scaled from the lowest to highest supplied figure among feasible options, then weighted; lower is better. " +
+            "This is a preference heuristic, not an objective quality score. Changing weights or the option set can change the ranking; other qualities remain separate."
+    }
+
     fun compare(options: List<String>): Turn {
         if (observations.any { it.quantity.upper != null }) return compareRanges(options)
         if (options.size < 2) return Turn(copy(pending = null), "We need at least two options before comparing. Say ‘options are A or B’.")
@@ -227,6 +259,7 @@ internal data class DiscussionComparison(
                     if (delta.signum() > 0) append("\n$low has ${Quantity(delta, value(low, metric)!!.unit).display()} less ${metric.label} than $high.")
                 }
             }
+            if (weights.isNotEmpty()) append("\n" + weightedReport(options))
             append("\nYour choice remains yours; say ‘I choose [option]’ when ready.")
         }
         return Turn(copy(pending = if (qualityQuestion == null) missing else null, view = null, criteria = criteria.copy(pending = qualityQuestion)), report)
@@ -381,7 +414,11 @@ internal data class DiscussionComparison(
             val criteria = DiscussionCriteria.read(json.optJSONObject("criteria"), options)
             require(pending == null || criteria.pending == null)
             require(priority == null || criteria.primary == null)
-            return DiscussionComparison(observations, limits, priority, pending, view, criteria)
+            val weights = json.optJSONObject("weights")?.let { w ->
+                w.keys().asSequence().associate { key -> Metric.valueOf(key) to w.getInt(key).also { require(it in 1..100) } }
+            }.orEmpty()
+            require(weights.isEmpty() || weights.keys == setOf(Metric.COST, Metric.TIME))
+            return DiscussionComparison(observations, limits, priority, pending, view, criteria, weights)
         }
     }
 }

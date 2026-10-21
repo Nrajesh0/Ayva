@@ -30,10 +30,30 @@ internal class PlanningLibrary(private val context: Context) {
                 item.put("name", name); old.put(item)
             }
         }
+        if (!clean && payload != null) {
+            val facts = result.optJSONObject("conversationFacts") ?: JSONObject()
+            payload.optJSONObject("conversationFacts")?.let { imported -> imported.keys().asSequence().forEach { name ->
+                val existing = facts.keys().asSequence().firstOrNull { it.equals(name, true) }
+                require(existing == null || facts.getString(existing) == imported.getString(name)) { "Conflicting conversation memory: $name" }
+                facts.put(existing ?: name, imported.getString(name))
+            } }
+            result.put("conversationFacts", facts)
+        }
         write(result)
     }
     fun preflight(payload: JSONObject?, clean: Boolean) {
         payload?.let(::validate)
+        if (!clean && payload != null) {
+            val current = read().optJSONObject("conversationFacts") ?: JSONObject()
+            val incoming = payload.optJSONObject("conversationFacts") ?: JSONObject()
+            val names = current.keys().asSequence().map { it.lowercase() }.toMutableSet()
+            incoming.keys().asSequence().forEach { name ->
+                val old = current.keys().asSequence().firstOrNull { it.equals(name, true) }
+                require(old == null || current.getString(old) == incoming.getString(name)) { "Conflicting conversation memory: $name" }
+                names.add(name.lowercase())
+            }
+            require(names.size <= 30) { "Combined conversation memory exceeds thirty facts" }
+        }
         if (!clean && payload != null) require(read().toString().toByteArray().size + payload.toString().toByteArray().size <= 2_000_000) { "The combined planning library exceeds local storage limits" }
         if (!clean && payload != null) for (kind in listOf("templates", "discussions"))
             require(read().getJSONArray(kind).length() + payload.getJSONArray(kind).length() <= if (kind == "templates") 20 else 10) { "Too many saved $kind to merge; remove an unused entry first" }
@@ -56,20 +76,49 @@ internal class PlanningLibrary(private val context: Context) {
         require(kept.size < a.length()) { "That saved name was not found" }
         root.put(kind, JSONArray(kept)); write(root)
     }
+    fun rememberFact(name: String, value: String) {
+        require(name.isNotBlank() && name.length <= 80 && value.isNotBlank() && value.length <= 500) { "Use a short name and a definition under 500 characters" }
+        val root = read(); val facts = root.optJSONObject("conversationFacts") ?: JSONObject()
+        val key = facts.keys().asSequence().firstOrNull { it.equals(name, true) } ?: name
+        require(!facts.has(key) || facts.getString(key) == value) { "That memory already has a different value. Use ‘correct remembered <name> to <value>’ to change it explicitly" }
+        require(facts.has(key) || facts.length() < 30) { "Conversation memory is full. Forget an old fact first" }
+        facts.put(key, value); root.put("conversationFacts", facts); write(root)
+    }
+    fun correctFact(name: String, value: String) {
+        require(name.isNotBlank() && name.length <= 80 && value.isNotBlank() && value.length <= 500) { "Use a short name and a definition under 500 characters" }
+        val root = read()
+        val facts = root.optJSONObject("conversationFacts") ?: throw IllegalArgumentException("There are no saved conversation facts to correct")
+        val key = facts.keys().asSequence().firstOrNull { it.equals(name, true) }
+            ?: throw IllegalArgumentException("There is no saved fact named ‘$name’. Ask what facts I remember first")
+        facts.put(key, value); write(root)
+    }
+    fun fact(name: String): String? = read().optJSONObject("conversationFacts")?.let { facts ->
+        facts.keys().asSequence().firstOrNull { it.equals(name, true) }?.let(facts::getString)
+    }
+    fun describeFacts(): String = read().optJSONObject("conversationFacts")?.let { facts ->
+        facts.keys().asSequence().map { "• $it: ${facts.getString(it)} (you supplied this)" }.joinToString("\n")
+    }?.takeIf { it.isNotBlank() } ?: "No conversation facts are explicitly saved."
+    fun forgetFact(name: String): Boolean {
+        val root = read(); val facts = root.optJSONObject("conversationFacts") ?: return false
+        val key = facts.keys().asSequence().firstOrNull { it.equals(name, true) } ?: return false
+        facts.remove(key); write(root); return true
+    }
+    fun forgetFacts() { val root = read(); root.remove("conversationFacts"); write(root) }
     fun saveTemplate(name: String, plan: PlanWorkspace) {
         val workIds = plan.steps.filter { it.workItem }.map { it.id }.toSet()
         val template = plan.copy(id = UUID.randomUUID().toString(), revision = 1, facts = emptyMap(),
-            steps = plan.steps.filter { it.id in workIds }.map { it.copy(parentId = it.parentId?.takeIf(workIds::contains), prerequisites = it.prerequisites.filter(workIds::contains).toSet(), taskSnapshot = null, taskLinkMissing = false, start = null, sessions = emptyList(), deadline = null, earliestStart = null, protected = false) },
+            steps = plan.steps.filter { it.id in workIds }.map { it.copy(parentId = it.parentId?.takeIf(workIds::contains), prerequisites = it.prerequisites.filter(workIds::contains).toSet(), taskSnapshot = null, taskLinkMissing = false, start = null, sessions = emptyList(), deadline = null, earliestStart = null, protected = false, workState = PlanWorkState.READY, blockReason = null) },
             removed = emptyList(), pending = null, reviewedRevision = null, reviewedAt = 0, reviewProcess = null, savedRevision = null,
             previousDraft = null, savedUndoId = null, undoDrafts = emptyList(), redoDrafts = emptyList(), hypotheticalView = false, selected = null, editFocus = null,
-            policy = plan.policy.copy(excludedDates = emptySet()))
+            milestones = plan.milestones.map { it.copy(stepIds = it.stepIds.intersect(workIds), facts = emptyMap(), bindings = emptyMap(), boundDeadline = null) },
+            goalDeadline = null, policy = plan.policy.copy(excludedDates = emptySet(), dateBudgets = emptyMap()), dialogue = PlanningDialogueState(), alternative = null, archived = false)
         put("templates", name, template.json())
     }
     fun useTemplate(name: String) = PlanWorkspace.read(get("templates", name)).copy(id = UUID.randomUUID().toString())
-    fun saveDiscussion(name: String, state: AssistantSession) = put("discussions", name, AssistantDiscussion.archive(state))
+    fun saveDiscussion(name: String, state: AssistantSession) = put("discussions", name, if (AssistantDiscussion.hasContext(state)) AssistantDiscussion.archive(state) else if (state.featureState?.optString("activeDialogue") == "reasoning") ConversationReasoning.archive(state) else GeneralConversation.archive(state))
     fun resumeDiscussion(name: String, state: AssistantSession) = AssistantDiscussion.resumeArchive(state, get("discussions", name))
     fun rememberPreferences(plan: PlanWorkspace) {
-        val root = read().put("policy", plan.policy.copy(excludedDates = emptySet()).json())
+        val root = read().put("policy", plan.policy.copy(excludedDates = emptySet(), dateBudgets = emptyMap()).json())
         plan.facts["availability"]?.takeIf { "daily" in it }?.let { root.put("availability", it) }
         write(root)
     }
@@ -94,6 +143,14 @@ internal class PlanningLibrary(private val context: Context) {
     companion object {
         fun validate(root: JSONObject) {
             require(root.getInt("version") == 1 && root.toString().toByteArray().size <= 2_000_000)
+            root.optJSONObject("conversationFacts")?.let { facts ->
+                require(facts.length() <= 30)
+                val names = mutableSetOf<String>()
+                facts.keys().asSequence().forEach { name ->
+                    require(name.isNotBlank() && name.length <= 80 && names.add(name.lowercase()))
+                    require(facts.getString(name).length in 1..500)
+                }
+            }
             PlanPolicy.read(root.optJSONObject("policy"))
             root.nullableLong("defaultMinutes")?.let { require(it in 1..1440) }
             root.nullableString("availability")?.let { require(it.length <= 100 && Regex("^\\d{1,2}:00–\\d{1,2}:00 daily.*$").matches(it)) }

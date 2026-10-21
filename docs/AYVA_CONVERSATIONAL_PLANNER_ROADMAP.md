@@ -1,5 +1,7 @@
 # Ayva: conversational planning without models
 
+> Historical roadmap — bounded core implementation complete. The open expansion frontier now belongs to [the new conversation-quality plan](assistant/CONVERSATION_QUALITY_PLAN.md). See [delivery summary](assistant/DELIVERY_SUMMARY.md) for completed scope and remaining acceptance work. The original design and checkpoint descriptions below are retained as reference.
+
 Status: living product and engineering roadmap. The bounded core delivery now includes canonical multi-session tasks, reminders, native editing, conversational planning and discussion, templates/memory, constraint scheduling, undo/redo and recovery. Necessary checks and debug packaging are recorded per source checkpoint. Independent audits, device/release acceptance and the research frontier remain open at the user’s request. Earlier optimized-release evidence applies only to its recorded checkpoint. See [the implementation ledger](assistant/implementation/CURRENT.md) for actual code and validation. The findings in section 2 describe the pre-implementation baseline. The baseline below is a starting design, not a ceiling on capability. Sections 14–20 define how implementation must discover and incorporate better approaches. Use [the implementation playbook](AYVA_IMPLEMENTATION_PLAYBOOK.md) to carry this work across sessions without losing requirements or overstating progress.
 
 ## 1. Product objective

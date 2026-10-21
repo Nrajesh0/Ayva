@@ -310,6 +310,8 @@ class BubbleChatActivity : ComponentActivity() {
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Compose owns the IME/navigation insets for this translucent chat window.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         
         val filter = IntentFilter("com.focusbyrj.app.CLOSE_CHAT")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -421,6 +423,7 @@ class BubbleChatActivity : ComponentActivity() {
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun ChatInterface() {
     val context = LocalContext.current
@@ -538,6 +541,9 @@ fun ChatInterface() {
         ChatModeStore.set(context, mode)
     }
     com.focusbyrj.app.ui.components.KeyboardFirstBackHandler {
+        (context as? android.app.Activity)?.finish()
+    }
+    val closeChatWithKeyboardFirst = com.focusbyrj.app.ui.components.rememberKeyboardFirstBackAction {
         (context as? android.app.Activity)?.finish()
     }
 
@@ -1827,7 +1833,10 @@ fun ChatInterface() {
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
-                .padding(top = 110.dp)
+                // Consume IME insets once at the chat boundary so the complete composer
+                // (including its restored function row) stays inside the visible window.
+                .imePadding()
+                .padding(top = if (WindowInsets.isImeVisible) WindowInsets.statusBars.asPaddingValues().calculateTopPadding() else 110.dp)
                 .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .background(MaterialTheme.colorScheme.surface)
                 .pointerInput(Unit) { 
@@ -1835,7 +1844,7 @@ fun ChatInterface() {
                 }
         ) {
             AyvaCompactHeader(
-                onClose = { (context as? android.app.Activity)?.finish() },
+                onClose = closeChatWithKeyboardFirst,
                 onSearch = { showSearch = true },
                 onColors = { showNotificationColorsDialog = true },
                 onTextSize = { showFontSizeDialog = true },
