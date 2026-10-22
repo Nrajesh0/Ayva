@@ -151,7 +151,7 @@ internal object ConversationPlanner {
             val emptyGreeting = plan?.takeIf { it.steps.isEmpty() && it.facts.isEmpty() && it.goal.lowercase() in setOf("hi", "hey", "hello") }
             plan = PlanningLibrary(context).newPlan(goal, PlanLanguage.facts(goal) + handoff?.facts.orEmpty(), PlanLanguage.domain(goal))
             if (handoff == null) plan = plan.copy(goal = PlanningDialogue.goal(plan.goal), id = emptyGreeting?.id ?: plan.id)
-            if (lower.startsWith("advanced ") || Regex("(?i)prepare for (?:an? )?exam trip").containsMatchIn(goal)) plan = plan.copy(facts = plan.facts + ("planning style" to "advanced"))
+            if (handoff != null && PlanLanguage.domain(goal) == "trip" || lower.startsWith("advanced ") || Regex("(?i)prepare for (?:an? )?exam trip").containsMatchIn(goal)) plan = plan.copy(facts = plan.facts + ("planning style" to "advanced"))
             val conversation = TripChecklistConversation.open(plan, text, now) ?: PlanningDialogue.opening(plan)
             plan = conversation.plan
             store.put(plan)

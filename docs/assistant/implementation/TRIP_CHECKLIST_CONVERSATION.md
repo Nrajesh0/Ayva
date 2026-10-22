@@ -44,6 +44,8 @@ Broader audits and OEM/UI testing are deferred. No new model or network dependen
 
 ## Verification evidence
 
+- GitHub Actions for the initial v2.0.13 push exposed five regressions in existing discussion-to-plan handoffs: the trip checklist owner replaced the original discussion goal and discarded handoff facts. The correction marks trip discussion handoffs for the advanced graph owner while retaining the facts and older workspace. All five previously failing `AssistantDiscussionTest` cases now pass locally, along with all 15 trip conversation checks. The full GitHub unit suite is pending on the follow-up commit.
+
 - Original eight Plan-prefixed journeys after routing fix: **8 passed, 0 failures/errors/skips**.
 - First compatibility run: **15 passed** (eight original journeys plus seven named handoff cases).
 - Persistence regression run exposed a completed-checklist refresh omission: **15 passed, 1 failed**. Fixed the filter that omitted completed native checklist entries; retained the failing regression.
