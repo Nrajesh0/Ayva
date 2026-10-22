@@ -107,3 +107,25 @@ Use the existing Plan composer, retaining its `/plan` prefix. Inspect the native
 3. Check keyboard/composer, reply scrolling and unchanged cards/cats/briefs/Drill on the device. Record device, Android version and observed result here. A physical screenshot/test result has not yet been supplied for this repair.
 
 Continue from this implementation; do not restart a broad architecture or UI redesign. The remaining acceptance is device verification, followed by any separately authorized version/release work.
+
+## Follow-up context refinement (2026-10-22)
+
+This increment repairs two routing collisions: accepting suggestions is handled before ordinary item creation, and a full date answering an unresolved exam/return-date question retains that question's role. Accepting the same suggestions twice cannot create a literal “those” item.
+
+Short factual questions about departure, exam and return dates read the draft without changing its revision or pending question. “Make that 4” adjusts the selected item's quantity; “make it 28th” retains its travel-date meaning. Items can move between preparation, during-trip and after-return groups using the existing stable-ID reference and ambiguity handling. Return before the exam is now a blocking date conflict, alongside travel after the exam and return before departure.
+
+Acknowledgements and suggestion prompts are shorter. Suggestions remain opt-in. Two focused journey regressions cover these changes through the actual Plan-prefixed assistant entry and native task saves. All 17 focused trip conversation checks passed (zero failures/errors/skips), including both new journeys. The final noun-only quantity correction also passed its focused journey rerun (1 passed). Its first rerun caught a case-sensitive test expectation; the assertion now checks the unchanged noun and quantity without requiring lowercase. The chat data-boundary guard passed for 109 files. Device acceptance above remains open.
+
+## Longer conversation transitions (2026-10-22)
+
+The next increment covers these continuation patterns through the same trip owner:
+
+- Select numbered suggestions (`add first and third suggestions`) or exclude named suggestions (`add those except accommodation`). Invalid or ambiguous selections do not add anything. The original suggestion numbering remains stable after partial acceptance, and duplicate acceptance remains harmless.
+- Ask what is on the checklist, when an individual item is due, the destination, trip length, or what detail is needed next. These replies read the current draft without consuming its pending question or changing its revision.
+- Correct the destination while retaining the checklist. Explicitly change exam/return dates or clear a named date. A bare day in an explicitly named date correction uses that role's established month before falling back to travel context.
+- Move an existing item to a deadline relative to departure. Those deadlines follow later travel-date changes. Relative dates also answer an already pending item-date question.
+- Clarify an unmatched item name without repeating the original edit. An interrupted date question resumes after item reference/date clarification; nested travel/exam date questions retain their separate roles.
+- `skip` does not erase pending edits or conflicts and thereby authorize an unintended save. Users can keep planning, resolve the change, or explicitly cancel it.
+- Polite requests (`can you change…`, `could you remove…`) reach the same typed edit handlers.
+
+Three focused conversation journeys exercise these transitions, pending-state persistence, summaries, and final native task/checklist saves. All 20 focused trip conversation checks passed (zero failures/errors/skips); production and test compilation passed, as did the 109-file chat boundary guard and diff formatting check. Existing device acceptance remains open; this does not claim unrestricted natural-language understanding or validation of every possible conversation.

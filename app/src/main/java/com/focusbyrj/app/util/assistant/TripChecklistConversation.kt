@@ -64,6 +64,7 @@ internal data class TripChecklistState(val rootId: String, val items: List<TripC
 internal object TripChecklistConversation {
     private fun clean(s: String) = PlanLanguage.normalize(s).replace('’', '\'').trim().trimEnd('.', '!', '?', ',')
     private fun rx(s: String) = Regex(s, RegexOption.IGNORE_CASE)
+    private val relativeDate = rx("^(?:the )?(day|[1-9][0-9]{0,2} days?) (before|after) (?:leaving|departure|travel|(?:the |my )?trip)$")
     private val tripWord = rx("\\b(?:trip|holiday|vacation|journey)\\b")
     private val action = "(?:buy|book|pack|bring|take|download|print|carry|check|arrange|visit|explore|rent|reserve|collect|prepare|charge|call|pay|renew|get|keep|research|confirm|purchase|pick up)"
     fun starts(input: String): Boolean = rx("^(?:i(?:'m| am) planning(?: for)?|i (?:want|would like) to plan(?: for)?) .+").containsMatchIn(clean(input)) && tripWord.containsMatchIn(input)
@@ -96,7 +97,7 @@ internal object TripChecklistConversation {
         val question = if (dateLine.isNotEmpty()) "" else if (destination == null) {
             if (purpose != null) " Which city is the exam in?" else " Where would you like to go?"
         } else " What dates are you travelling? You can leave the date open."
-        return PlanningDialogue.Turn(next, "I'll build **$name** as your main task with a checklist as we talk. Say ‘that's it’ when you're ready to save.$dateLine$question")
+        return PlanningDialogue.Turn(next, "I'll build **$name** as your main task with a checklist as we talk. Say ‘that's it’ to save.$dateLine$question")
     }
 
     private fun destination(input: String): String? = rx("\\b(?:trip|holiday|vacation|journey|going|travel(?:ling|ing)?) to ([\\p{L}][\\p{L} .'-]*?)(?= on | for | in | next | tomorrow|,|;|$)")
@@ -185,6 +186,22 @@ internal object TripChecklistConversation {
         if (lower in setOf("cancel", "cancel that change", "never mind", "nevermind")) return PlanningDialogue.Turn(withoutReview(plan, plan.pending?.optJSONObject("suspended")), "Cancelled that change. The checklist is unchanged.")
         // Canonical graph operations remain available; do not let free text consume them.
         if (lower in setOf("undo", "undo that", "redo", "undo saved changes", "redo saved changes", "save", "save plan", "apply plan", "show changes", "refresh saved tasks") || lower.startsWith("apply revision ")) return null
+        if (lower in setOf("add those", "use those", "use suggested steps", "add those steps")) {
+            if (plan.dialogue.proposals.isEmpty()) return PlanningDialogue.Turn(plan, "Which items would you like to add?")
+            val turn = add(plan.copy(dialogue = plan.dialogue.copy(stance = "organize")), plan.dialogue.proposals.joinToString(";"), true, now)
+            return turn.copy(plan = turn.plan.copy(dialogue = turn.plan.dialogue.copy(proposals = emptyList())))
+        }
+        suggestionSelection(plan, text, now)?.let { return it }
+        contextQuestion(plan, text)?.let { return it }
+        val dateQuestion = when {
+            rx("^(?:when (?:are we|am i) (?:leaving|travelling|traveling)|what(?:'s| is) (?:the |my |our )?(?:travel|trip|departure) date)$").matches(lower) -> "travel date"
+            rx("^(?:when is (?:the |my )?exam|what(?:'s| is) (?:the |my )?exam date)$").matches(lower) -> "exam date"
+            rx("^(?:when (?:are we|am i) (?:returning|coming back)|what(?:'s| is) (?:the |my |our )?return date)$").matches(lower) -> "return date"
+            else -> null
+        }
+        if (dateQuestion != null) return PlanningDialogue.Turn(plan,
+            plan.facts[dateQuestion]?.let { "${dateQuestion.replaceFirstChar { c -> c.uppercase() }}: ${display(it)}." }
+                ?: "${dateQuestion.replaceFirstChar { c -> c.uppercase() }} isn't set yet.")
         if (plan.pending?.optString("kind") == "trip_reference") {
             val pending = plan.pending
             val matches = references(plan, text).filter { it.id in (0 until pending.getJSONArray("ids").length()).map { i -> pending.getJSONArray("ids").getString(i) } }
@@ -193,7 +210,7 @@ internal object TripChecklistConversation {
         if (plan.pending?.optString("kind") == "trip_item_date") {
             val pending = plan.pending
             val date = TripDate.complete(pending, text) ?: text
-            if (TripDate.read(date, plan, now)?.date != null) {
+            if (TripDate.read(date, plan, now)?.date != null || relativeDate.matches(date)) {
                 val item = children(plan).singleOrNull { it.id == pending.optString("item") }
                 if (item != null) return itemEdit(plan.copy(pending = pending.optJSONObject("suspended")), item, "date", date, now)
             }
@@ -201,7 +218,8 @@ internal object TripChecklistConversation {
         val datePending = plan.pending?.takeIf { it.optString("kind") == "trip_date" }
         if (datePending != null) {
             val combined = TripDate.complete(datePending, text)
-            if (combined != null) return setDate(plan, combined, datePending.optString("role", "travel date"), now)
+            if (combined != null || TripDate.read(text, plan, now) != null)
+                return setDate(plan, combined ?: text, datePending.optString("role", "travel date"), now)
         }
         if (plan.dialogue.question == "destination" && text.contains(',')) {
             val city = text.substringBefore(',').trim()
@@ -229,8 +247,11 @@ internal object TripChecklistConversation {
         }
         single(plan, text, now)?.let { return it }
         if (lower in setOf("hi", "hey", "hello")) return PlanningDialogue.Turn(plan, "Hi. We can keep working on ${root(plan).title}.")
-        if (lower in setOf("thanks", "thank you", "okay", "ok", "yes")) return PlanningDialogue.Turn(plan, "You're welcome. The checklist is here whenever you're ready.")
-        if (lower in setOf("skip", "leave it open", "not sure", "i don't know", "dates aren't fixed")) return PlanningDialogue.Turn(withoutReview(plan, null).copy(dialogue = plan.dialogue.copy(question = "")), "We can leave that open and keep building the checklist.")
+        if (lower in setOf("thanks", "thank you", "okay", "ok", "yes")) return PlanningDialogue.Turn(plan, if (lower in setOf("thanks", "thank you")) "You’re welcome." else "Okay.")
+        if (lower in setOf("skip", "leave it open", "not sure", "i don't know", "dates aren't fixed")) {
+            if (plan.pending != null) return PlanningDialogue.Turn(plan, "We can keep planning. ${plan.pending.optString("question")} Say ‘cancel that change’ to keep the earlier details.")
+            return PlanningDialogue.Turn(plan.copy(dialogue = plan.dialogue.copy(question = "")), "We can leave that open.")
+        }
         if (lower in setOf("just listen", "just discuss", "just talk it through first", "don't add anything yet")) return PlanningDialogue.Turn(plan.copy(dialogue = plan.dialogue.copy(stance = "listen")), "Of course. We'll discuss it first; I won't add checklist items until you ask.")
         if (lower in setOf("help me organize it", "let's make the tasks", "lets make the tasks")) return PlanningDialogue.Turn(plan.copy(dialogue = plan.dialogue.copy(stance = "organize")), "Ready. Tell me what you want on the checklist.")
         if (lower in setOf("suggest steps", "what should i prepare", "give me ideas", "what am i missing", "what are we missing")) {
@@ -238,11 +259,7 @@ internal object TripChecklistConversation {
                 listOf("Download admit card", "Check the exam's document requirements", "Bring required photos", "Pack pens", "Book transport")
             else listOf("Book transport", "Arrange accommodation", "Pack clothes", "Check travel documents")
             val available = suggestions.filter { title -> children(plan).none { key(it.title) == key(title) } }
-            return PlanningDialogue.Turn(plan.copy(dialogue = plan.dialogue.copy(proposals = available)), if (available.isEmpty()) "Those essentials are already on your checklist." else "You could include:\n" + available.joinToString("\n") { "• $it" } + "\nSay ‘add those’ if they fit. These are suggestions, not booking or exam requirements I've verified.")
-        }
-        if (lower in setOf("add those", "use those", "use suggested steps", "add those steps") && plan.dialogue.proposals.isNotEmpty()) {
-            val turn = add(plan.copy(dialogue = plan.dialogue.copy(stance = "organize")), plan.dialogue.proposals.joinToString(";"), true, now)
-            return turn.copy(plan = turn.plan.copy(dialogue = turn.plan.dialogue.copy(proposals = emptyList())))
+            return PlanningDialogue.Turn(plan.copy(dialogue = plan.dialogue.copy(proposals = available)), if (available.isEmpty()) "Those essentials are already on your checklist." else "You could include:\n" + available.mapIndexed { i, title -> "${i + 1}. $title" }.joinToString("\n") + "\nSay ‘add those’ to include them.")
         }
         if (plan.dialogue.discussion != null || rx("^(?:options (?:are|:)|i(?:'m| am) (?:choosing|deciding) between) ").containsMatchIn(text)) {
             PlanningDialogue.answer(plan, text)?.let { return it }
@@ -255,14 +272,86 @@ internal object TripChecklistConversation {
         return null
     }
 
+    private fun suggestionSelection(plan: PlanWorkspace, text: String, now: Long): PlanningDialogue.Turn? {
+        val allExcept = rx("^(?:add|use) (?:those|all suggestions|the suggestions) except (.+)$").matchEntire(text)
+        val subset = rx("^(?:add|use) (?:only |just )?(.+?) (?:suggestions?|suggested steps?)$").matchEntire(text)
+        if (allExcept == null && subset == null) return null
+        val proposals = plan.dialogue.proposals
+        if (proposals.isEmpty()) return PlanningDialogue.Turn(plan, "There are no open suggestions. Ask for ideas or name an item to add.")
+        val refs = (allExcept ?: subset)!!.groupValues[1].split(rx("\\s*(?:,|\\band\\b)\\s*")).filter { it.isNotBlank() }
+        val picked = mutableSetOf<String>()
+        for (ref in refs) {
+            val normalized = key(ref).removeSuffix(" one")
+            val index = normalized.toIntOrNull() ?: mapOf("first" to 1, "second" to 2, "third" to 3, "fourth" to 4, "fifth" to 5, "last" to proposals.size)[normalized]
+            val matches = if (index != null) listOfNotNull(proposals.getOrNull(index - 1))
+                else proposals.filter { title -> normalized.split(' ').all { word -> rx("\\b${Regex.escape(word)}\\b").containsMatchIn(key(title)) } }
+            if (matches.size != 1) return PlanningDialogue.Turn(plan, "Which suggestion do you mean by ‘$ref’?\n" + proposals.mapIndexed { i, v -> "${i + 1}. $v" }.joinToString("\n"))
+            picked += matches.single()
+        }
+        val accepted = proposals.filter { if (allExcept != null) it !in picked else it in picked }
+        if (accepted.isEmpty()) return PlanningDialogue.Turn(plan, "No suggestions selected.")
+        val turn = add(plan.copy(dialogue = plan.dialogue.copy(stance = "organize")), accepted.joinToString(";"), true, now)
+        return turn.copy(plan = turn.plan.copy(dialogue = turn.plan.dialogue.copy(proposals = proposals)))
+    }
+
+    /** Read-only turns must not consume a pending answer or change the draft. */
+    private fun contextQuestion(plan: PlanWorkspace, text: String): PlanningDialogue.Turn? {
+        val lower = text.lowercase(Locale.ROOT)
+        if (lower in setOf("what next", "what's next", "what should we decide next", "what else do you need")) {
+            val next = plan.pending?.optString("question")?.takeIf { it.isNotBlank() }
+                ?: if (plan.facts["destination"] == null) "Where are you travelling?"
+                else if (plan.facts["travel date"] == null) "When are you travelling? You can leave the date open."
+                else if (plan.facts["purpose"]?.contains("exam", true) == true && plan.facts["exam date"] == null) "When is the exam?"
+                else if (children(plan).isEmpty()) "What would you like to prepare or do there?"
+                else "You can add more items, ask for ideas, or say ‘that's it’ to save."
+            return PlanningDialogue.Turn(plan, next)
+        }
+        if (lower in setOf("where are we going", "where am i going", "what's the destination"))
+            return PlanningDialogue.Turn(plan, plan.facts["destination"]?.let { "Destination: $it." } ?: "The destination isn't set yet.")
+        if (lower in setOf("how long is the trip", "how many days is the trip")) {
+            val start = day(plan, "travel date"); val end = day(plan, "return date")
+            return PlanningDialogue.Turn(plan, if (start != null && end != null)
+                "${java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1} calendar days, including departure and return." else "I need both the travel and return dates to work that out.")
+        }
+        rx("^(?:do we have|did we add|have we added|is there) (.+?)(?: on (?:the |my )?(?:list|checklist))?$").matchEntire(text)?.let {
+            val found = references(plan, it.groupValues[1])
+            return PlanningDialogue.Turn(plan, if (found.isEmpty()) "That isn't on the checklist yet." else "On the checklist: ${found.joinToString { item -> item.title }}.")
+        }
+        rx("^when (?:should (?:i|we)|do (?:i|we)) (.+)$").matchEntire(text)?.let {
+            val found = references(plan, it.groupValues[1])
+            if (found.size != 1) return PlanningDialogue.Turn(plan, if (found.isEmpty()) "That isn't on the checklist yet." else "Which item: ${found.joinToString { item -> item.title }}?")
+            val item = found.single()
+            val date = item.date ?: item.offset?.let { offset -> day(plan, "travel date")?.plusDays(offset.toLong())?.toString() }
+            return PlanningDialogue.Turn(plan, "${item.title}: " + (date?.let(::display) ?: item.offset?.let { offset -> "${kotlin.math.abs(offset)} days ${if (offset < 0) "before" else "after"} travel; travel date not set" } ?: "${item.phase.lowercase(Locale.ROOT)}; no specific date") + ".")
+        }
+        return null
+    }
+
     private fun single(plan: PlanWorkspace, input: String, now: Long, validateDates: Boolean = true): PlanningDialogue.Turn? {
         val text = clean(input).replaceFirst(rx("^(?:actually|no|also|and|please)[, ]+"), "")
+            .replaceFirst(rx("^(?:can|could|would) you (?:please )?(?=add |remove |delete |move |rename |change |include |set )"), "")
         val lower = text.lowercase(Locale.ROOT)
         rx("^(?:yes[,]? |use |choose |go with |let's )(?:travel )?overnight$").matchEntire(text)?.let {
             return PlanningDialogue.Turn(update(plan, facts = plan.facts + ("travel choice" to "overnight travel (arrival time still needs checking)")), "Noted overnight travel; check the actual arrival time before booking.")
         }
         rx("^(?:i |we )?(?:need to |must )?(?:arrive|be there|report)(?: there)? (?:by|at) ([0-9: .]+(?:am|pm))$").matchEntire(text)?.let {
             return PlanningDialogue.Turn(update(plan, facts = plan.facts + ("arrive by" to it.groupValues[1])), "Arrival needed by ${it.groupValues[1]}.")
+        }
+        rx("^(?:change|set|switch) (?:the |my |our )?destination to (.+)$").matchEntire(text)?.let {
+            val city = it.groupValues[1]
+            if (!rx("[\\p{L}][\\p{L} .'-]{1,60}").matches(city)) return PlanningDialogue.Turn(plan, "Which city should the trip be for?")
+            return PlanningDialogue.Turn(update(plan, facts = plan.facts + ("destination" to city), question = if (plan.facts["travel date"] == null) "date" else ""), "Destination changed to $city. Your checklist is kept.")
+        }
+        rx("^(?:remove|clear|unset) (?:the |my )?(travel|trip|exam|return) date$").matchEntire(text)?.let {
+            val role = if (it.groupValues[1].equals("trip", true)) "travel date" else "${it.groupValues[1].lowercase(Locale.ROOT)} date"
+            val unresolved = plan.pending?.takeUnless { pending -> pending.optString("kind") == "trip_date" && pending.optString("role") == role }
+            return PlanningDialogue.Turn(update(plan, facts = plan.facts - role, pending = unresolved), "${role.replaceFirstChar { c -> c.uppercase() }} cleared.")
+        }
+        rx("^(?:change|move|set|shift) (?:the |my )?(exam|return) date (?:to|for) (.+)$").matchEntire(text)?.let {
+            return setDate(plan, it.groupValues[2], "${it.groupValues[1].lowercase(Locale.ROOT)} date", now, validateDates)
+        }
+        rx("^make that ([1-9][0-9]{0,2})$").matchEntire(text)?.let {
+            if (plan.trip!!.selected != null) return target(plan, "that", "quantity", it.groupValues[1], now)
         }
         val dateEdit = rx("^(?:(?:change|move|set|make|shift) (?:the |my )?(?:travel date|trip date|date|trip|it|that)(?: (?:to|for|on))? |(?:i(?:'m| am) (?:thinking|leaving|travelling|traveling)|we(?:'re| are) leaving|i leave|we leave|it(?:'s|s| is)|travel date(?: is|:)?|leaving|departing)(?: on)? )(.+)$").matchEntire(text)
         val roleEdit = rx("^(?:the |my )?(exam(?: date)?|return(?: date)?)(?: is|:| on)? (.+)$").matchEntire(text)
@@ -295,6 +384,14 @@ internal object TripChecklistConversation {
         rx("^(.+?) instead of (.+)$").matchEntire(text)?.let {
             val replacement = it.groupValues[1].replaceFirst(rx("^(?:let'?s |we should |i want to )"), "")
             return target(plan, it.groupValues[2], "rename", replacement, now)
+        }
+        rx("^(?:move|put) (.+?) (?:to|in) (before (?:leaving|the trip)|during (?:the trip|the stay)|after (?:returning|the trip))$").matchEntire(text)?.let {
+            val phase = when {
+                it.groupValues[2].startsWith("before", true) -> "Before leaving"
+                it.groupValues[2].startsWith("during", true) -> "During the trip"
+                else -> "After returning"
+            }
+            return target(plan, it.groupValues[1], "phase", phase, now)
         }
         rx("^(?:move|schedule|do) (.+?) (?:on|to|for) (.+)$").matchEntire(text)?.let {
             return target(plan, it.groupValues[1], "date", it.groupValues[2], now)
@@ -349,7 +446,7 @@ internal object TripChecklistConversation {
                 existing += item; added += item
             }
         }
-        if (added.isEmpty()) return PlanningDialogue.Turn(plan, "Already on the checklist; I haven't added duplicates.")
+        if (added.isEmpty()) return PlanningDialogue.Turn(plan, "Already on the checklist.")
         val next = update(plan, items = existing, selected = added.last().id)
         val message = "Added ${added.joinToString { "**${it.title}**" }} to ${if (added.all { it.phase == "Before leaving" }) "the preparation checklist" else "the trip checklist"}."
         return PlanningDialogue.Turn(next, message + warnings(next, now) + if (added.any { it.offset != null } && day(plan, "travel date") == null) " I'll date the relative items when you choose the travel date." else "")
@@ -371,7 +468,13 @@ internal object TripChecklistConversation {
         val plan = withoutReview(original, original.pending)
         val matches = references(plan, ref)
         if (matches.size == 1) return itemEdit(plan, matches.single(), op, value, now)
-        if (matches.isEmpty()) return PlanningDialogue.Turn(plan, "I couldn't find ‘$ref’ on the checklist. Which item did you mean?")
+        if (matches.isEmpty()) {
+            val question = "I couldn't find ‘$ref’. Which checklist item did you mean?"
+            if (children(plan).isEmpty()) return PlanningDialogue.Turn(plan, "The checklist is empty.")
+            return PlanningDialogue.Turn(withoutReview(plan, JSONObject().put("kind", "trip_reference")
+                .put("ids", JSONArray(children(plan).map { it.id })).put("operation", op).put("value", value)
+                .put("question", question).put("suspended", plan.pending ?: JSONObject.NULL)), question)
+        }
         val question = "Which one: ${matches.joinToString { it.title }}?"
         return PlanningDialogue.Turn(withoutReview(plan, JSONObject().put("kind", "trip_reference").put("ids", JSONArray(matches.map { it.id }))
             .put("operation", op).put("value", value).put("question", question).put("suspended", plan.pending ?: JSONObject.NULL)), question)
@@ -381,12 +484,23 @@ internal object TripChecklistConversation {
         var changed = item
         when (op) {
             "rename" -> changed = item.copy(title = value.replaceFirstChar { it.uppercase() })
+            "phase" -> changed = item.copy(phase = value)
             "quantity" -> {
                 val noun = item.title.replaceFirst(rx("^$action\\s+"), "").replaceFirst(rx("^\\d+\\s+"), "")
-                if (!value.contains(noun, true)) return PlanningDialogue.Turn(plan, "Do you mean changing **${item.title}**? Tell me the new item wording.")
-                changed = item.copy(title = item.title.substringBefore(' ') + " " + value)
+                val quantity = if (rx("[1-9][0-9]{0,2}").matches(value)) "$value $noun" else value
+                if (!quantity.contains(noun, true)) return PlanningDialogue.Turn(plan, "Do you mean changing **${item.title}**? Tell me the new item wording.")
+                val verb = rx("^$action\\s+").find(item.title)?.value.orEmpty()
+                changed = item.copy(title = (verb + quantity).replaceFirstChar { it.uppercase() })
             }
             "date" -> {
+                val relative = relativeDate.matchEntire(value)
+                if (relative != null) {
+                    val count = if (relative.groupValues[1].equals("day", true)) 1 else relative.groupValues[1].substringBefore(' ').toInt()
+                    require(count <= 365) { "Keep relative deadlines within a year of travel" }
+                    val offset = count * if (relative.groupValues[2].equals("before", true)) -1 else 1
+                    val revised = update(plan, items = children(plan).map { if (it.id == item.id) it.copy(date = null, offset = offset) else it }, selected = item.id)
+                    return PlanningDialogue.Turn(revised, "${item.title}: $count day(s) ${relative.groupValues[2].lowercase(Locale.ROOT)} travel." + warnings(revised, now))
+                }
                 val date = TripDate.read(value, plan, now)
                 if (date?.date == null) return PlanningDialogue.Turn(withoutReview(plan, JSONObject().put("kind", "trip_item_date").put("item", item.id).put("day", date?.day ?: 0).put("suspended", plan.pending ?: JSONObject.NULL).put("question", "Which date should ${item.title} have? Include the month.")), "Which date should **${item.title}** have? Include the month, for example ‘move ${item.title} to 25 July 2027’.")
                 changed = item.copy(date = date.date.toString(), offset = null)
@@ -395,31 +509,39 @@ internal object TripChecklistConversation {
         require(changed.title.length in 1..200)
         if (children(plan).any { it.id != item.id && key(it.title) == key(changed.title) }) return PlanningDialogue.Turn(plan, "**${changed.title}** is already on the checklist. I haven't created a duplicate.")
         return PlanningDialogue.Turn(update(plan, items = children(plan).map { if (it.id == item.id) changed else it }, selected = item.id, pending = plan.pending?.takeUnless { it.optString("kind") == "trip_reference" }),
-            if (op == "date") "Set **${item.title}** for ${display(changed.date!!)} as a dated subtask." + warnings(update(plan, items = children(plan).map { if (it.id == item.id) changed else it }), now) else "Changed **${item.title}** to **${changed.title}**.")
+            if (op == "phase") "Moved **${item.title}** to ${changed.phase.lowercase(Locale.ROOT)}." + warnings(update(plan, items = children(plan).map { if (it.id == item.id) changed else it }), now)
+            else if (op == "date") "Set **${item.title}** for ${display(changed.date!!)} as a dated subtask." + warnings(update(plan, items = children(plan).map { if (it.id == item.id) changed else it }), now) else "Changed **${item.title}** to **${changed.title}**.")
     }
     private fun withoutReview(plan: PlanWorkspace, pending: JSONObject?) = plan.copy(
         pending = pending, reviewedRevision = null, reviewedAt = 0, reviewProcess = null, reviewDeviceTimezone = null)
 
     private fun conflict(plan: PlanWorkspace, question: String) = PlanningDialogue.Turn(
-        withoutReview(plan, JSONObject().put("kind", "trip_conflict").put("question", question)), question)
+        withoutReview(plan, JSONObject().put("kind", "trip_conflict").put("question", question)
+            .put("suspended", (if (plan.pending?.optString("kind") == "trip_conflict") plan.pending.optJSONObject("suspended") else plan.pending) ?: JSONObject.NULL)), question)
     private fun dateConflict(facts: Map<String, String>): String? {
         fun date(key: String) = facts[key]?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val travel = date("travel date"); val exam = date("exam date"); val back = date("return date")
         return when {
             travel != null && exam != null && travel > exam -> "That puts travel after the exam. Should we change the travel date or the exam date?"
+            exam != null && back != null && back < exam -> "That puts the return before the exam. Should we change the return date or the exam date?"
             travel != null && back != null && back < travel -> "That puts the return before departure. Which date should we change?"
             else -> null
         }
     }
     private fun setDate(plan: PlanWorkspace, value: String, role: String, now: Long, validateDates: Boolean = true): PlanningDialogue.Turn {
-        val result = TripDate.read(value, plan, now) ?: return PlanningDialogue.Turn(plan, "Which date did you mean?")
+        val dateContext = plan.facts[role]?.let { plan.copy(facts = plan.facts + ("travel date" to it)) } ?: plan
+        val result = TripDate.read(value, dateContext, now) ?: return PlanningDialogue.Turn(plan, "Which date did you mean?")
         if (result.date == null) {
             val pending = JSONObject().put("kind", "trip_date").put("role", role).put("value", value).put("day", result.day ?: 0).put("question", result.question)
+                .put("suspended", (if (plan.pending?.optString("kind") == "trip_date" && plan.pending.optString("role") == role) plan.pending.optJSONObject("suspended") else plan.pending) ?: JSONObject.NULL)
             return PlanningDialogue.Turn(withoutReview(plan, pending), result.question ?: "Which month?")
         }
         val date = result.date
         if (validateDates) dateConflict(plan.facts + (role to date.toString()))?.let { return conflict(plan, it) }
-        val next = update(plan, facts = plan.facts + (role to date.toString()), pending = plan.pending?.takeUnless { it.optString("kind") == "trip_conflict" || it.optString("kind") == "trip_date" && it.optString("role") == role },
+        var unresolved = plan.pending
+        while (unresolved != null && (unresolved.optString("kind") == "trip_conflict" || unresolved.optString("kind") == "trip_date" && unresolved.optString("role") == role))
+            unresolved = unresolved.optJSONObject("suspended")
+        val next = update(plan, facts = plan.facts + (role to date.toString()), pending = unresolved,
             question = if (plan.facts["destination"] == null) "destination" else "")
         return PlanningDialogue.Turn(next, "${role.replaceFirstChar { it.uppercase() }} ${if (plan.facts[role] == null) "set to" else "changed to"} ${display(date.toString())}." +
             (if (children(plan).isEmpty() && role == "travel date") " What would you like to prepare or do during the trip?" else "") + warnings(next, now))
