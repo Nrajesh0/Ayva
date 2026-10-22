@@ -80,7 +80,7 @@ class ConversationalPlannerTest {
         say("perhaps the second option would be more relaxing")
         say("yes")
         assertTrue(db.taskDao().getAllTasksList().isEmpty())
-        assertTrue(plan().steps.isEmpty())
+        assertTrue(plan().trip!!.items.isEmpty())
     }
     @Test fun hypotheticalDoesNotChangeTheActivePlan() = runBlocking {
         say("/plan project"); say("add Build prototype for 30 minutes")
@@ -98,7 +98,7 @@ class ConversationalPlannerTest {
         say("rename book to Booking")
         assertNotNull(plan().pending)
         say("the second one")
-        assertEquals(listOf("Book train", "Booking"), plan().steps.map { it.title })
+        assertEquals(listOf("Book train", "Booking"), plan().trip!!.items.map { it.title })
     }
     @Test fun invalidCompoundRequestDoesNotPartlyApply() = runBlocking {
         say("/plan project"); say("add Prototype")

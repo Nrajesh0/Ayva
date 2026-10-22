@@ -172,7 +172,7 @@ internal object ConversationPlanCommitter {
                     if (old == null) require(all.none { !it.isCompleted && it.title.equals(step.title, true) }) { "An active task named ‘${step.title}’ already exists. Rename the step or use the existing task." }
                     val candidate = if (old != null && (step.completed || !step.workItem)) old.also { require(step.title == it.title && step.deadline == it.dueDate) { "Read-only context changed; refresh the draft" } } else (old ?: Task(title = step.title, details = "Plan: ${plan.goal}")).copy(
                         title = step.title, dueDate = step.deadline, updatedAt = now,
-                        subtasksJson = if (step.checklist.isNotEmpty() || plan.trip?.rootId == step.id) com.focusbyrj.app.data.Subtask.listToJson(step.checklist) else old?.subtasksJson ?: "[]",
+                        subtasksJson = if (step.checklist.isNotEmpty() || plan.trip?.rootId == step.id || step.source == "trip main task") com.focusbyrj.app.data.Subtask.listToJson(step.checklist) else old?.subtasksJson ?: "[]",
                         details = if (plan.trip?.rootId == step.id) TripChecklistConversation.details(plan) else old?.details ?: "Plan: ${plan.goal}")
                     before.add(old)
                     if (old == null) candidate.copy(id = app.database.taskDao().insertTask(candidate)) else candidate

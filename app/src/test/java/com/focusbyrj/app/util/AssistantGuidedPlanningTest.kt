@@ -1,5 +1,6 @@
 package com.focusbyrj.app.util
 
+import com.focusbyrj.app.data.subtasks
 import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
@@ -238,7 +239,7 @@ class AssistantGuidedPlanningTest {
         val review = say("save the agreed tasks")
         assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
         say(review.actions.filterIsInstance<TalkAction.AskQuery>().single { it.query.startsWith("/plan apply revision ") }.query)
-        assertEquals(setOf("pack bag", "book train"), db.taskDao().getAllActiveTasksList().map { it.title.lowercase() }.toSet())
+        assertEquals(setOf("pack bag", "book train"), db.taskDao().getAllActiveTasksList().single().subtasks.map { it.title.lowercase() }.toSet())
         assertTrue(prefs.getBoolean("vacation_mode", false))
     }
 
@@ -259,7 +260,7 @@ class AssistantGuidedPlanningTest {
             if (durable) {
                 val workspace = ConversationPlanStore(context).active()!!
                 assertEquals(input, domain, workspace.domain)
-                assertEquals(if (domain == "trip") "a holiday to Goa" else "my day from scratch", workspace.goal)
+                assertEquals(if (domain == "trip") "Trip to Goa" else "my day from scratch", workspace.goal)
                 assertEquals(ChatMode.PLAN, ChatModeStore.get(context))
                 assertNull(state().featureState?.optJSONObject("guidedPlan"))
             } else {

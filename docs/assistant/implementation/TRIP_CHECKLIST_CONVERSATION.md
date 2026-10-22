@@ -1,8 +1,8 @@
 # Trip checklist conversation repair
 
-Status: **WIP handoff, not release-ready.** Production compilation passes. The final eight-case test run using actual Plan-mode message prefixing has **6 passes and 2 failures**. Existing-planner compatibility remains unfinished.
+Status (2026-10-22): **Implementation and 30 targeted conversation/compatibility checks pass; device acceptance remains open.** Continued from main `0a6d35d`. The original two failing Plan-prefixed conversations now pass. The final 15-trip-check rerun and debug APK build also pass. Actual Android UI replay is the only remaining acceptance gate.
 
-The 2.0.12 screenshots reopen planning acceptance. Prior feature completion and passing command checks did not demonstrate a useful full conversation. The reported failures are purpose becoming destination, ordinal dates becoming speculative text, and summary/stop requests falling into a generic clarification.
+Version bumped to **2.0.13 / 113** at the user’s request for GitHub delivery. The version push triggers the existing GitHub build/release workflow; device acceptance is still open. The chat layout, cats, slash composer, briefs, native Drill windows, task receipt/reschedule cards and Android blocking overlays were not changed. Everything remains offline with no model or new network dependency. Chat's Notes data boundary is unchanged.
 
 ## Contract
 
@@ -30,69 +30,78 @@ Use full conversations through OfflineAssistant and inspect saved native rows:
 
 Broader audits and OEM/UI testing are deferred. No new model or network dependency is introduced. This is bounded compositional English understanding, not a claim of unrestricted AI conversation.
 
-## Handoff requested by the user
+## Numbered work disposition
 
-The user asked to push the current work to `main` and continue in another Codex session. This is a **work-in-progress checkpoint, not completed planning acceptance or a new release**. Keep version 2.0.12 / 112 unchanged for this handoff.
+0. **Fixed Plan-mode date routing.** Active trip facts get first refusal even when the composer adds `/plan`; an exam date no longer replaces the workspace. Explicit `new plan …` still starts another goal. The eight original journey checks passed immediately after this fix.
+1. **Unified simple trip entry and safe old-draft migration.** Bare and detailed trip requests use the checklist owner. Eligible unsaved old lists migrate with workspace/item IDs, facts, order and dated deadlines retained. Graphs with native links, work sessions, constraints, milestones or unresolved edits stay with the advanced owner; they are not collapsed into checklist entries. Migration revokes old save authority.
+2. **Restored advanced capabilities.** Typed duration/dependency/subtask/milestone requests promote the draft to the canonical planner, preserving IDs and saved links. `use advanced planning` explicitly exposes the full graph planner. A fresh `/plan advanced trip` starts there directly. Exam-trip preparation retains its milestone flow. Open saved checklist entries become linked task drafts only on review/apply; completed entries remain completed on the parent. Templates remove task links/dates while retaining the work. Hypothetical scheduling from checklist mode explains the advanced route without changing the draft.
+3. **Added compositional facts and choices.** Destination/date/arrival answers, noun needs, overnight choice plus checklist edits, and joint exam/travel corrections work through the public assistant entry. Date pairs are checked together, atomically. An initial date attached to the exam is stored as the exam date, not departure. Unsupported compound edits leave the items/facts unchanged.
+4. **Hardened pending questions and reviews.** Unrelated additions/renames/removals retain pending dates. Ambiguous item references and item dates suspend and restore the earlier clarification. Pending edits, failed references and cancellations invalidate save review. Refresh preserves unresolved questions. Bare destination answers reject questions/control words; adding items preserves an unanswered destination question. Save reviews show the native checklist contents.
+5. **Hardened projection and reconciliation.** Semantic item IDs/titles/dates must match native checklist or dated child projections. Refresh reads native checklist IDs/titles/completion, retains a native parent rename, and preserves relative dates when the native deadline still matches. Removal/re-addition of a saved dated item before committing reuses its ID/link rather than creating and deleting the same work. Native snapshot conflicts, receipt hashes, saved undo, archive/resume and encrypted archive guards remain in place. Preparation after departure and relative preparation moved into the past produce warnings.
+6. **Broadened bounded wording.** Flying resolves to flights; noun additions, transport replacement, quantities, ordinal references and before/during/after wording for the actual destination are supported. Suggestions stay separate from accepted entries. This remains bounded English interpretation, not unrestricted conversation or verified travel/exam advice.
+7. **Targeted checks passed.** Thirty selected checks passed: 15 trip journeys/projection regressions, the seven handoff compatibility cases, five additional existing cases affected by common trip entry, and three receipt/history/archive checks. No full suite or broad audit was run. Old assertions were changed only where the intentional native checklist shape replaced separate task rows. Final evidence is below.
+8. **Device acceptance still required.** Build the debug APK and replay the journeys below on Android 16. `adb devices` reports no connected device; this environment has no installed emulator or `/dev/kvm`. Automated public-entry conversations inspect real Room task rows, but do not validate the actual keyboard, UI layout, popups or rendering. Do not call the repair release-ready until the device replay passes.
 
-### Implemented in this checkpoint
+## Verification evidence
 
-- `TripChecklistConversation.kt` introduces persistent trip/checklist state, calendar-date parsing, intent precedence, short change acknowledgements, before/during/after grouping, stable item references, draft review, explicit completion, and pause/resume.
-- `PlanWorkspace.kt` stores optional trip state and native checklist entries on a step; older documents still read with defaults.
-- `ConversationPlanner.kt` integrates natural trip entry and the checklist conversation, summary/stop/finish controls, and explicit completion into the existing transactional save path.
-- `ConversationPlanStore.kt` saves ordinary entries in the main task's native `subtasksJson`; dated items are real child tasks. Existing receipt deduplication, snapshot guards, reminder retry and saved history are retained. Empty new fields are excluded from legacy content hashes.
-- `TripChecklistConversationTest.kt` contains eight complete conversation/database checks. The final helper mirrors the composer by prefixing messages with `/plan` while Plan mode is active.
+- Original eight Plan-prefixed journeys after routing fix: **8 passed, 0 failures/errors/skips**.
+- First compatibility run: **15 passed** (eight original journeys plus seven named handoff cases).
+- Persistence regression run exposed a completed-checklist refresh omission: **15 passed, 1 failed**. Fixed the filter that omitted completed native checklist entries; retained the failing regression.
+- Expanded targeted run: **30 passed, 0 failures/errors/skips**; Gradle `BUILD SUCCESSFUL` in 2m 38s. Included migration, simultaneous date corrections, clarification/review lifecycle, native refresh/completion, dated identity reuse, advanced saved conversion, suggestions, warnings, archive/resume and projection validation.
+- Final focused trip run after preserving clarification through refresh: **15 passed, 0 failures/errors/skips**. Combined test/debug build: `BUILD SUCCESSFUL` in 3m 3s.
+- Debug APK: **built successfully**, `app/build/outputs/apk/debug/app-debug.apk` (2.0.13 / 113, debug build; rebuilt successfully after the version bump).
+- Chat data-boundary dependency guard: **passed (109 source files)**. No Notes dependency was added.
+- `git diff --check`: passed for the final tree.
+- Version bumped to 2.0.13 / 113 for the requested GitHub push. Local verification does not claim CI success or device validation.
 
-### Verification at handoff
+Local logs for this cloud workspace are `/workspace/scratch/trip-routing-eight.log`, `trip-compatibility.log`, `trip-persistence.log`, `trip-final-targeted.log`, and `trip-debug-build.log`. They are diagnostic conveniences, not required repository artifacts.
 
-- Initial production Kotlin compilation passed.
-- Initial eight-case conversation run: **7 passed, 1 failed**, no errors/skips. The compound-change case exposed a trailing comma in `remove apples, and add ...`. Normalization now removes the trailing comma before resolving the reference.
-- Final run, with composer-equivalent `/plan` prefixing: **6 passed, 2 failed**, zero errors/skips; production and test compilation succeeded. Total Gradle run 6m 48s. The comma/compound-edit regression now passes.
-- Remaining failing methods: `examPurposeDatesAndQuantitiesSurviveRestartAndPause` (trip state becomes null) and `newDetailsDoNotDiscardPendingMonthAndFinishDoesNotSilentlySaveAnOldDate` (expected native save never occurs). Log in the current environment: `/workspace/.setup/trip-conversation-handoff-checks.log`. The failures remain reproducible in the committed tests; no assertion has been disabled.
-- CI is not expected to pass this WIP checkpoint. The user explicitly requested pushing the unfinished work to main for another Codex session. No version bump or new APK publication is part of this handoff.
-- Source boundary guard (108 files) and whitespace check passed.
-- No full-suite audit or device/UI validation has been performed for this change.
+## Targeted reproduction
 
-### Remaining work, in order
-
-0. **Fix actual Plan-mode date routing first.** `BubbleChatActivity.sendMessage` prefixes normal input with `/plan`. `ConversationPlanner.respond` computes `explicitGoal` from prefixes such as `the exam ...`, so `/plan the exam is on 27 July 2029` is classified as a fresh goal and replaces the active trip with a study workspace before the trip interpreter gets the message. This explains the two final failures. Resolve new-goal versus current-plan edit precedence using active context; preserve an explicit way to start a genuinely new plan. Do not remove the test helper's `/plan` prefix to make the tests pass. Rerun the eight-case suite after fixing this.
-
-1. **Unify entry and old drafts.** Bare `/plan trip` and `/plan a trip` deliberately still use the old graph workspace for compatibility. Detailed/natural trip goals use the new checklist flow. This is an unresolved product inconsistency: provide a safe common entry or explicit advanced route, and migrate eligible old trip drafts without losing stored steps, dates, links, or IDs. Fix the reported behavior for existing drafts as well as fresh ones.
-2. **Integrate existing advanced planning.** The new trip owner currently intercepts many turns before canonical graph/milestone handlers. Detailed trip goals used by existing scheduling/dependency tests and `/plan prepare for an exam trip` milestone flows can regress. Preserve those capabilities through explicit typed delegation/promotion. Do not merely weaken tests. The changed native checklist shape does legitimately require some assertions to inspect `Task.subtasks` instead of expecting separate tasks.
-3. **Finish natural multi-fact turns.** Support compact destination/date/arrival answers (`Chennai, next Friday, I need to be there by 8am`), noun needs (`we need train tickets and somewhere to stay`), discussion-to-choice replies (`yes overnight, remove accommodation, add checking the admit card`), and event/travel date corrections in one message. Route purpose before arbitrary destination filling, but let typed dates win over purpose. Initial dates attached specifically to the exam must not be assumed to be departure dates.
-4. **Tighten pending-question and review lifecycle.** Adding an item preserves a pending month, but item rename/removal currently clears pending state too broadly. Keep unrelated clarification intact; clear it only when answered/cancelled. Invalidate prior review authority for pending edits and cancellations. Bare destination handling must reject questions/control utterances, and adding an item must not erase an unanswered destination question. Summaries and stopping must always remain available.
-5. **Harden reconciliation and projection.** `refresh saved tasks` should reconcile native checklist IDs/titles/completion with trip items, rather than retaining stale in-memory checklist data. Validate consistency between trip items, the root's checklist, and dated child steps. Check removal/re-addition of a previously saved dated item, outside native edits, archive/restore and saved undo; retain snapshot/receipt safeguards. Warn about preparation dated after departure and relative preparation dates moved into the past.
-6. **Broaden wording without changing meaning.** Improve transport references (`flying` versus `Book flights`), object-only additions, replacement and quantity edits, and before/during/after phrasing for arbitrary destinations. The current code still has generic fallback replies and should not be claimed to understand unrestricted conversation. Keep suggestions distinct from accepted items; do not introduce repeated mandatory follow-up questions.
-7. **Run only necessary compatibility checks.** Start with the eight new journey checks, then the affected existing cases below. Fix behavior where it regressed; update expectations only for the intentional native checklist change. CI may surface those older expectations on this WIP push. Do not disable tests or perform broad audits by default.
-8. **Verify the actual app and finish delivery.** Build a debug APK, replay a Goa and an exam conversation in the chat UI (including Plan prefixing, finish, pause, and task/checklist rendering), and update this handoff with results. Do not claim the UI/keyboard/popup has been revalidated; no UI code was changed here. Only then mark this repair complete and prepare any separately requested version/release.
-
-Affected existing cases to examine first:
-
-- `ConversationQualitySafetyTest.reportedJourneyReplacesIrrelevantGoalAndEditsDraftWithoutNativeWrites`
-- `ConversationQualitySafetyTest.milestonesKeepTravelAndStudyFactsSeparateAndRetainReviewedNativeSave`
-- `ConversationQualitySafetyTest.planComparisonRetainsFactsAndBlocksInvalidChoicesWithoutTaskWrites`
-- `ConversationalPlannerTest.planningIsConversationOnlyAndNeverWritesBeforeReview`
-- `ConversationalPlannerTest.planningTogetherAsksForTheGoalWithoutLosingTheNextRepliesFacts`
-- `AssistantGuidedPlanningTest.collaborativeTripRequestOverridesVacationHelpAndSavesOnlyAfterReview`
-- `AssistantGuidedPlanningTest.collaborativePlanningParaphrasesKeepTheirOwnerAndNeverCreateTasks`
-- Relevant canonical receipt/hash, persistence, saved undo and archive checks if those paths change.
-
-### Reproduction command
-
-Use the repository's Android setup and JDK 21. In this environment, source `/workspace/.setup/java-env.sh`; other environments may need their own SDK/JDK paths. The checked-in init script works around the already-observed cloud Robolectric JDK C2 crash without skipping assertions:
+Use JDK 21 and the repository Android SDK setup. In this workspace, source `/workspace/toolchains/ayva-env.sh`. Do not edit Kotlin during verification. The checked-in init script handles the previously observed cloud Robolectric C2 crash without disabling assertions.
 
 ```sh
 ./gradlew :app:testDebugUnitTest \
-  --tests 'com.focusbyrj.app.util.TripChecklistConversationTest' \
-  -I tools/gradle/cloud-test-jvm.gradle \
-  -Pkotlin.compiler.execution.strategy=in-process \
-  '-Dorg.gradle.jvmargs=-Xmx8192m -XX:MaxMetaspaceSize=1024m -XX:ReservedCodeCacheSize=512m -XX:+UseParallelGC -XX:TieredStopAtLevel=1 -XX:ActiveProcessorCount=2' \
-  --no-daemon --max-workers=2
+ --tests 'com.focusbyrj.app.util.TripChecklistConversationTest' \
+ --tests 'com.focusbyrj.app.util.ConversationQualitySafetyTest.reportedJourneyReplacesIrrelevantGoalAndEditsDraftWithoutNativeWrites' \
+ --tests 'com.focusbyrj.app.util.ConversationQualitySafetyTest.milestonesKeepTravelAndStudyFactsSeparateAndRetainReviewedNativeSave' \
+ --tests 'com.focusbyrj.app.util.ConversationQualitySafetyTest.planComparisonRetainsFactsAndBlocksInvalidChoicesWithoutTaskWrites' \
+ --tests 'com.focusbyrj.app.util.ConversationalPlannerTest.planningIsConversationOnlyAndNeverWritesBeforeReview' \
+ --tests 'com.focusbyrj.app.util.ConversationalPlannerTest.planningTogetherAsksForTheGoalWithoutLosingTheNextRepliesFacts' \
+ --tests 'com.focusbyrj.app.util.ConversationalPlannerTest.ordinaryUnrecognizedPlanRepliesCannotCreateTasks' \
+ --tests 'com.focusbyrj.app.util.ConversationalPlannerTest.ambiguousReferenceIsClarifiedWithStableIds' \
+ --tests 'com.focusbyrj.app.util.ConversationalPlannerTest.scheduledSubtasksRetainTheirOwnDurationsAndTimesAcrossReload' \
+ --tests 'com.focusbyrj.app.util.ConversationalPlannerTest.multipleFactsAreCapturedWithoutRepeatingDestinationQuestion' \
+ --tests 'com.focusbyrj.app.util.ConversationalPlannerTest.unresolvedChangesCannotSaveAndCancellationRequiresANewReview' \
+ --tests 'com.focusbyrj.app.util.ConversationalPlannerTest.planIntentHashRemainsCompatibleWithPreContextReceipts' \
+ --tests 'com.focusbyrj.app.util.AssistantGuidedPlanningTest.collaborativeTripRequestOverridesVacationHelpAndSavesOnlyAfterReview' \
+ --tests 'com.focusbyrj.app.util.AssistantGuidedPlanningTest.collaborativePlanningParaphrasesKeepTheirOwnerAndNeverCreateTasks' \
+ --tests 'com.focusbyrj.app.util.PlanningCompletionEssentialsTest.savedHistoryUndoRedoSurvivesSessionResetAndDoesNotDuplicateTasks' \
+ --tests 'com.focusbyrj.app.util.PlanningArchiveIntegrationTest.encryptedBackupRoundTripPreservesGraphAndRequiresFreshReview' \
+ -I tools/gradle/cloud-test-jvm.gradle -Pkotlin.compiler.execution.strategy=in-process \
+ -Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8' --no-daemon --max-workers=2 --offline
 python tools/check_chat_boundary.py
 git diff --check
 ```
 
-Do not edit Kotlin sources during a Gradle verification run. Local logs under `/workspace/.setup` and draft helper scripts under `/tmp` are not repository artifacts and are not needed to resume. Use the committed source and this handoff as authoritative. The previous environment's GitHub API access does not guarantee API access in a new environment; normal Git fetch/push was verified here.
+For just the final trip journeys and debug build, put the test filter immediately after the test task:
 
-### Suggested next-session prompt
+```sh
+./gradlew :app:testDebugUnitTest \
+  --tests 'com.focusbyrj.app.util.TripChecklistConversationTest' \
+  :app:assembleDebug \
+  -I tools/gradle/cloud-test-jvm.gradle \
+  -Pkotlin.compiler.execution.strategy=in-process \
+  '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8' \
+  --no-daemon --max-workers=2 --offline
+```
 
-> Read AGENTS.md and docs/assistant/implementation/TRIP_CHECKLIST_CONVERSATION.md. Continue the WIP trip-planning repair from main. Complete the numbered remaining work, preserve existing planning capabilities and the current UI, keep everything offline with no model, and run only the necessary conversation/save/compatibility checks. Do not restart with another broad plan or call it complete until the end-to-end experience and native task contents are verified.
+## Remaining device acceptance
+
+Use the existing Plan composer, retaining its `/plan` prefix. Inspect the native task editor as well as chat replies. Future dates below are intentional reproducible examples; change the year when they are no longer in the future.
+
+1. Goa: `I want to plan a trip to Goa` → `it's 26th` → `July 2029` → `Book a bus and pack clothes` → `I also want to buy apples` → `We should visit Baga beach there` → `Actually make it 28th` → `Remove buying apples from the list` → `what do we have till now` → `that's it`. Verify one main task dated July 28 with bus, clothes and Baga beach native checklist entries, no apples, and no duplicate after repeating `that's it`.
+2. Exam: `new plan ibps exam trip` → `I'm thinking 26th` → `July 2029` → `the exam is on 27 July 2029` → `to Chennai` → `add Download admit card and bring photos and take 3 pens` → `summary` → `end`. Reopen `/plan`, confirm the draft survived, then `that's it`. Verify separate travel/exam dates in the conversation and details, one main task with the agreed checklist, correct native rendering, and no writes before finish.
+3. Check keyboard/composer, reply scrolling and unchanged cards/cats/briefs/Drill on the device. Record device, Android version and observed result here. A physical screenshot/test result has not yet been supplied for this repair.
+
+Continue from this implementation; do not restart a broad architecture or UI redesign. The remaining acceptance is device verification, followed by any separately authorized version/release work.

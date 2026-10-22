@@ -103,7 +103,7 @@ internal object ConversationPlanner {
         }
         Regex("(?i)^(?:use|link|plan) (?:an? )?existing task (.+)$").matchEntire(text)?.let {
             val base = if (plan == null || text.startsWith("plan existing", true)) PlanningLibrary(context).newPlan("Plan saved work", emptyMap(), "general") else plan
-            val adopted = ExistingTaskPlanning.adopt(context, base, it.groupValues[1]); store.put(adopted)
+            val adopted = ExistingTaskPlanning.adopt(context, if (base.trip != null) TripPlanningBridge.promote(base) else base, it.groupValues[1]); store.put(adopted)
             return render(adopted, "Linked the saved task and its parent/prerequisite context into this draft. Completed tasks and occasions stay read-only. Existing records are unchanged until review and apply.")
         }
         Regex("(?i)^save (?:this )?plan as template (.+)$").matchEntire(text)?.let {
@@ -119,13 +119,24 @@ internal object ConversationPlanner {
             return reply("Remembered this plan's scheduling preferences and any daily availability window for future plans. One-off dates and today's window were not remembered.")
         }
         if (plan == null && lower in setOf("hi", "hey", "hello")) return reply("Hi. What would you like to work toward? We can talk it through first.")
-        if (plan?.trip != null && start && !explicit && handoff == null) {
+        if (plan != null && !start) {
+            val migrated = TripPlanningBridge.migrate(plan, now)
+            if (migrated != plan) { plan = migrated; store.put(plan) }
+        }
+        if (plan?.trip != null && TripPlanningBridge.advancedRequest(text)) {
+            plan = TripPlanningBridge.promote(plan); store.put(plan)
+            if (lower in setOf("advanced planning", "use advanced planning"))
+                return render(plan, "Advanced planning is ready. Checklist items retain their identities as draft steps; saved tasks change only after review and apply.")
+        }
+        // The composer prefixes every Plan-mode reply. Give the active trip first
+        // refusal on typed edits; /plan alone does not mean "replace this goal".
+        if (plan?.trip != null && start && handoff == null && !lower.startsWith("new ")) {
             TripChecklistConversation.answer(plan, text, now)?.let { turn ->
                 turn.plan.validate(); store.put(turn.plan); return reply(turn.text)
             }
         }
         if (handoff != null || plan == null || plan.goal.isBlank() && PlanLanguage.domain(text) == "trip" || start && nativeHandoff == null || lower.startsWith("new plan ") || lower.startsWith("new ")) {
-            val goal = handoff?.goal ?: text.replaceFirst(Regex("(?i)^new (?:plan )?"), "").takeUnless {
+            val goal = handoff?.goal ?: text.removePrefix("advanced ").replaceFirst(Regex("(?i)^new (?:plan )?"), "").takeUnless {
                 it.lowercase(Locale.ROOT) in setOf("let's plan together", "lets plan together", "plan together", "help me plan")
             }.orEmpty()
             require(goal.length <= 500) { "Keep the planning goal under 500 characters; we can add details in later messages" }
@@ -140,6 +151,7 @@ internal object ConversationPlanner {
             val emptyGreeting = plan?.takeIf { it.steps.isEmpty() && it.facts.isEmpty() && it.goal.lowercase() in setOf("hi", "hey", "hello") }
             plan = PlanningLibrary(context).newPlan(goal, PlanLanguage.facts(goal) + handoff?.facts.orEmpty(), PlanLanguage.domain(goal))
             if (handoff == null) plan = plan.copy(goal = PlanningDialogue.goal(plan.goal), id = emptyGreeting?.id ?: plan.id)
+            if (lower.startsWith("advanced ") || Regex("(?i)prepare for (?:an? )?exam trip").containsMatchIn(goal)) plan = plan.copy(facts = plan.facts + ("planning style" to "advanced"))
             val conversation = TripChecklistConversation.open(plan, text, now) ?: PlanningDialogue.opening(plan)
             plan = conversation.plan
             store.put(plan)
@@ -169,7 +181,7 @@ internal object ConversationPlanner {
             return reply("That review control belongs to an older plan or revision. Review the active plan again; nothing was saved.")
         if (tripFinish || applyControl != null || lower in setOf("save", "save plan", "save this plan", "save the agreed tasks", "okay save the agreed tasks", "save these tasks", "apply", "apply plan", "apply those changes", "yes save", "confirm plan")) {
             PlanningDialogue.saveProblem(plan)?.let { return reply(it) }
-            if (plan.pending != null) return if (plan.trip != null) reply(plan.pending.optString("question", "Please resolve the pending change before saving.")) else render(plan, "There's an unanswered plan change. Answer it or say ‘cancel that change’ before reviewing a save; saved tasks are unchanged.")
+            if (plan.pending != null) return if (plan.trip != null) reply("There is an unanswered change. " + plan.pending.optString("question", "Please resolve it before saving.")) else render(plan, "There's an unanswered plan change. Answer it or say ‘cancel that change’ before reviewing a save; saved tasks are unchanged.")
             if (plan.savedRevision == plan.revision) return render(plan, "This revision is already saved. It won't create duplicate tasks.")
             if (plan.steps.none { it.workItem && !it.completed } && plan.removed.none { it.taskSnapshot != null }) return render(plan, "Add an active work step before applying. Context and facts are already retained in this workspace.")
             if (tripFinish) {
@@ -211,14 +223,14 @@ internal object ConversationPlanner {
                     (metadata.prerequisiteTaskIds + listOfNotNull(metadata.parentTaskId)).all { it in byTaskId }) {
                     "‘${current.title}’ has a parent or prerequisite outside this draft. The draft was left unchanged. Say ‘unlink ${step.title}’ to make a separate draft copy, then rename and reschedule it before saving. The original task will stay unchanged."
                 }
-                step.copy(title = current.title, deadline = current.dueDate, taskSnapshot = TaskJson.encode(current).toString(),
+                step.copy(title = current.title, deadline = current.dueDate, checklist = com.focusbyrj.app.data.Subtask.listFromJson(current.subtasksJson), taskSnapshot = TaskJson.encode(current).toString(),
                     parentId = if (metadata == null) step.parentId else metadata.parentTaskId?.let(byTaskId::getValue),
                     prerequisites = if (metadata == null) step.prerequisites else metadata.prerequisiteTaskIds.map(byTaskId::getValue).toSet(),
                     minutes = if (metadata == null) step.minutes else metadata.minutes,
                     start = if (metadata == null) step.start else metadata.start,
                     sessions = if (metadata == null) step.sessions else metadata.sessions, workReminders = metadata?.workReminders ?: step.workReminders, afterMinutes = metadata?.afterMinutes ?: step.afterMinutes)
             }
-            plan = plan.changed(steps = updated); store.put(plan)
+            plan = TripPlanningBridge.reconcile(plan, updated); store.put(plan)
             return render(plan, "Refreshed linked titles, deadlines, hierarchy and work sessions from current saved tasks. Review again before applying.")
         }
         if (lower in setOf("what changed", "show changes", "what did you change")) return reply(PlanDiff.describe(plan))
@@ -649,6 +661,7 @@ internal object ConversationPlanner {
             }
             if (step.workSessions.size <= 1) step.start?.let { append(" · work ${PlanClock.format(it, plan.timezone)}") }
             step.deadline?.let { append(" · due ${PlanClock.format(it, plan.timezone)}") }
+            step.checklist.forEach { append("\n   ${if (it.isDone) "✓" else "•"} ${it.title}") }
         }
         if (plan.removed.isNotEmpty() && actions.isNotEmpty()) append("\nMove to Trash: " + plan.removed.filter { it.taskSnapshot != null }.joinToString { it.title })
         if (plan.steps.size > visibleSteps.size) append("\n…and ${plan.steps.size - visibleSteps.size} more. Use a step's name to select it; saving shows the complete review.")

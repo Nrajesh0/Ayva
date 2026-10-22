@@ -104,9 +104,10 @@ internal class PlanningLibrary(private val context: Context) {
         facts.remove(key); write(root); return true
     }
     fun forgetFacts() { val root = read(); root.remove("conversationFacts"); write(root) }
-    fun saveTemplate(name: String, plan: PlanWorkspace) {
+    fun saveTemplate(name: String, original: PlanWorkspace) {
+        val plan = if (original.trip != null) TripPlanningBridge.promote(original) else original
         val workIds = plan.steps.filter { it.workItem }.map { it.id }.toSet()
-        val template = plan.copy(id = UUID.randomUUID().toString(), revision = 1, facts = emptyMap(),
+        val template = plan.copy(id = UUID.randomUUID().toString(), revision = 1, facts = plan.facts.filterKeys { it == "planning style" },
             steps = plan.steps.filter { it.id in workIds }.map { it.copy(parentId = it.parentId?.takeIf(workIds::contains), prerequisites = it.prerequisites.filter(workIds::contains).toSet(), taskSnapshot = null, taskLinkMissing = false, start = null, sessions = emptyList(), deadline = null, earliestStart = null, protected = false, workState = PlanWorkState.READY, blockReason = null) },
             removed = emptyList(), pending = null, reviewedRevision = null, reviewedAt = 0, reviewProcess = null, savedRevision = null,
             previousDraft = null, savedUndoId = null, undoDrafts = emptyList(), redoDrafts = emptyList(), hypotheticalView = false, selected = null, editFocus = null,
