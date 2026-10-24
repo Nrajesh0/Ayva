@@ -24,7 +24,7 @@ internal object PlanLanguage {
         Regex("(?i)\\b(exam|study|revision|studying)\\b").containsMatchIn(text) -> "study"
         Regex("(?i)\\b(project|launch|build|release)\\b").containsMatchIn(text) -> "project"
         Regex("(?i)\\b(event|party|wedding|celebration|conference)\\b").containsMatchIn(text) -> "event"
-        Regex("(?i)\\b(errand|errands|shopping|groceries)\\b").containsMatchIn(text) -> "errands"
+        Regex("(?i)\\b(errand|errands|shopping|groceries|grocery)\\b").containsMatchIn(text) -> "errands"
         Regex("(?i)\\b(routine|morning|evening|weekly review)\\b").containsMatchIn(text) -> "routine"
         else -> "general"
     }

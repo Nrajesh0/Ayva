@@ -17,7 +17,6 @@ import android.graphics.Paint
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.TypefaceSpan
-import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
@@ -53,10 +52,14 @@ class NoteWidgetRemoteViewsFactory(
         }
     }
 
-    private var currentNote: NoteEntity? = null
-    private var checklistItems: List<ChecklistItem> = emptyList()
-    private var textParagraphs: List<String> = emptyList()
-    private var widgetConfig: NoteWidgetConfig = NoteWidgetConfig()
+    private data class Snapshot(
+        val note: NoteEntity? = null,
+        val checklist: List<ChecklistItem> = emptyList(),
+        val paragraphs: List<String> = emptyList(),
+        val config: NoteWidgetConfig = NoteWidgetConfig()
+    )
+
+    @Volatile private var snapshot = Snapshot()
 
     override fun onCreate() {
         loadData()
@@ -68,7 +71,8 @@ class NoteWidgetRemoteViewsFactory(
 
     private fun loadData() {
         try {
-            widgetConfig = NoteWidgetConfigHelper.getConfig(context, appWidgetId)
+            if (appWidgetId <= 0) { snapshot = Snapshot(); return }
+            val widgetConfig = NoteWidgetConfigHelper.getConfig(context, appWidgetId)
             val noteDao = NoteDatabase.getInstance(context).noteDao()
 
             val targetNote = runBlocking {
@@ -129,7 +133,8 @@ class NoteWidgetRemoteViewsFactory(
                 null
             }
 
-            currentNote = resolvedNote
+            val checklistItems: List<ChecklistItem>
+            val textParagraphs: List<String>
             if (resolvedNote != null && resolvedNote.isChecklist) {
                 val rawItems = resolvedNote.getChecklistItems()
                 val (uncompleted, completed) = rawItems.partition { !it.isChecked }
@@ -149,23 +154,21 @@ class NoteWidgetRemoteViewsFactory(
                 checklistItems = emptyList()
                 textParagraphs = emptyList()
             }
+            // Publish note content and its styling together; binder callbacks must never
+            // combine new preferences with a partially loaded previous note.
+            snapshot = Snapshot(resolvedNote, checklistItems, textParagraphs, widgetConfig)
         } catch (e: Exception) {
             e.printStackTrace()
-            checklistItems = emptyList()
-            textParagraphs = emptyList()
-            currentNote = null
+            snapshot = Snapshot(config = NoteWidgetConfigHelper.getConfig(context, appWidgetId))
         }
     }
 
-    override fun onDestroy() {
-        checklistItems = emptyList()
-        textParagraphs = emptyList()
-        currentNote = null
-    }
+    override fun onDestroy() { snapshot = Snapshot() }
 
     override fun getCount(): Int {
-        val note = currentNote ?: return 0
-        return if (note.isChecklist) checklistItems.size else textParagraphs.size
+        val state = snapshot
+        val note = state.note ?: return 0
+        return if (note.isChecklist) state.checklist.size else state.paragraphs.size
     }
 
     private fun applyNoteTypeface(text: CharSequence, fontKey: String?): CharSequence {
@@ -187,7 +190,11 @@ class NoteWidgetRemoteViewsFactory(
     }
 
     override fun getViewAt(position: Int): RemoteViews? {
-        val note = currentNote ?: return null
+        val state = snapshot
+        val note = state.note ?: return null
+        val widgetConfig = state.config
+        val checklistItems = state.checklist
+        val textParagraphs = state.paragraphs
 
         val isSystemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         val isDark = if (widgetConfig.matchNoteColor && !note.colorKey.isNullOrEmpty() && note.colorKey != "default") isSystemDark else widgetConfig.theme.isDark
@@ -223,7 +230,7 @@ class NoteWidgetRemoteViewsFactory(
             // Render Text & Strike-through
             val formattedItemText = applyNoteTypeface(item.text, note.fontKey)
             views.setTextViewText(R.id.widget_note_item_text, formattedItemText)
-            views.setTextViewTextSize(R.id.widget_note_item_text, TypedValue.COMPLEX_UNIT_SP, widgetConfig.textSize.spValue)
+            NoteWidgetTypography.apply(context, views, R.id.widget_note_item_text, widgetConfig.textSize.spValue)
             if (item.isChecked) {
                 views.setTextColor(R.id.widget_note_item_text, bgColors.secondaryTextColor)
                 views.setInt(
@@ -292,11 +299,7 @@ class NoteWidgetRemoteViewsFactory(
             val displayText = applyNoteTypeface(rawDisplayText, note.fontKey)
             views.setTextViewText(R.id.widget_note_text_item_body, displayText)
             views.setTextColor(R.id.widget_note_text_item_body, bgColors.primaryTextColor)
-            views.setTextViewTextSize(
-                R.id.widget_note_text_item_body,
-                TypedValue.COMPLEX_UNIT_SP,
-                widgetConfig.textSize.spValue
-            )
+            NoteWidgetTypography.apply(context, views, R.id.widget_note_text_item_body, widgetConfig.textSize.spValue)
 
             // Top Image (only on position 0 if image exists)
             val imageUris = note.getImageUris()
@@ -324,7 +327,12 @@ class NoteWidgetRemoteViewsFactory(
         }
     }
 
-    override fun getLoadingView(): RemoteViews? = null
+    override fun getLoadingView(): RemoteViews = RemoteViews(context.packageName, R.layout.widget_note_text_item).apply {
+        // The platform's default loading row uses the launcher's text appearance and can
+        // flash at a different size on every data refresh.
+        setTextViewText(R.id.widget_note_text_item_body, " ")
+        NoteWidgetTypography.apply(context, this, R.id.widget_note_text_item_body, snapshot.config.textSize.spValue)
+    }
 
     override fun getViewTypeCount(): Int = 2
 

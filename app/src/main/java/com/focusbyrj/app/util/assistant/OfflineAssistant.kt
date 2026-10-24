@@ -219,7 +219,10 @@ object OfflineAssistant {
             ChatModeStore.set(context, ChatMode.TALK)
             return AssistantSocial.answer(context, state, supportText, supportText)
         }
-        val planBody = if (command == "/plan") raw.trim().substringAfter(' ', "").trim().lowercase() else raw.trim().lowercase()
+        val planBodyRaw = if (command == "/plan") raw.trim().substringAfter(' ', "").trim().lowercase() else raw.trim().lowercase()
+        // Dotted plan history controls must use the same authoritative undo/redo owner.
+        val planBody = if ((command == "/plan" || ChatModeStore.get(context) == ChatMode.PLAN) && planBodyRaw.startsWith("."))
+            planBodyRaw.drop(1).trim() else planBodyRaw
         val memoryText = (if (command in setOf("/talk", "/ask")) raw.trim().substringAfter(' ', "") else raw.trim())
         ConversationVoice.preference(context, state, memoryText)?.let { return it }
         AyvaPersonality.preference(context, state, memoryText)?.let { return it }
@@ -293,6 +296,29 @@ object OfflineAssistant {
                 return reply("There is no current saved change for this plan to undo. Your draft is still here.")
             val id = state.undoId ?: return reply("There is no current saved-task change to undo. Your plan draft is still here.")
             return internalCommand("undo $id", context, app, state)
+        }
+        // Normal chat gives a parsed calendar date/clock time task ownership before
+        // planning, discussion and feature ambiguity. Explicit modes and live task edits
+        // retain their handlers; date-only replies must never create a task named "tomorrow".
+        if (ChatModeStore.get(context) == ChatMode.CHAT && !raw.trimStart().startsWith("/") &&
+            !(state.topic == "tasks" && state.expected != null)) {
+            val datedText = AssistantTaskLanguage.normalize(raw)
+            val correction = Regex("(?i)^(?:actually|instead|make (?:it|that)|change (?:it|that)|move |reschedule )").containsMatchIn(datedText)
+            if (!correction && AssistantTaskLanguage.request(datedText) == null) {
+                val parsed = SmartDateParser.parse(datedText)
+                if (parsed.timestamp != null) {
+                    if (parsed.hasTaskText) {
+                        state.clearPending(); state.clearSuspended()
+                        return create(context, app, state, datedText, priority, persistent, false)
+                    }
+                    if (state.expected == null && state.taskId == null) {
+                        state.clearPending(); state.switchTopic("tasks"); state.expected = "task_title"
+                        state.pendingPriority = priority; state.pendingPersistent = persistent
+                        state.pending = listOf(AssistantAction.CreateTask(Task(title = "", dueDate = parsed.timestamp)))
+                        return reply("What should I remind you about on ${SmartDateParser.formatDueDate(parsed.timestamp)}?")
+                    }
+                }
+            }
         }
         if (command !in setOf("/clear", "/clean", "/wipe")) {
             ConversationPlanner.respond(context, raw, state)?.let { return it }

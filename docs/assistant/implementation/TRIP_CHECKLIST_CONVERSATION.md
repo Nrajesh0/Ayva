@@ -129,3 +129,47 @@ The next increment covers these continuation patterns through the same trip owne
 - Polite requests (`can you change…`, `could you remove…`) reach the same typed edit handlers.
 
 Three focused conversation journeys exercise these transitions, pending-state persistence, summaries, and final native task/checklist saves. All 20 focused trip conversation checks passed (zero failures/errors/skips); production and test compilation passed, as did the 109-file chat boundary guard and diff formatting check. Existing device acceptance remains open; this does not claim unrestricted natural-language understanding or validation of every possible conversation.
+
+## Dated additions and checklist edits (2026-10-23)
+
+- Natural additions such as `book flights by 20 July 2029` create dated child tasks directly. A later addition of the same title with a different date reschedules that item's stable ID instead of creating a duplicate.
+- An incomplete date on a new item opens an item-date clarification, preserving an earlier travel/exam question. Finishing stays blocked until that clarification is resolved or cancelled. Explicitly rescheduling that item resolves its pending question; deleting it removes the obsolete question and resumes any suspended one.
+- Group removals (`remove apples and photos`, `remove first and third`) resolve every item against the original ordering and apply as one undoable change. A missing or ambiguous item prevents all removals. Exact titles containing `and` are treated as one item.
+- Phase-specific questions (`show preparation`, `what are we doing there?`) show the relevant checklist entries with their full-summary numbering and do not change the draft.
+- Addition replies acknowledge the actual items and calendar dates concisely. Multiple incomplete dates in one addition require clarification before the batch changes the draft.
+
+Three public-entry conversation regressions cover linked native task saves, stable rescheduling, clarification recovery/deletion, atomic removal and undo. All 23 focused trip conversation checks passed (zero failures/errors/skips), including the three new journeys. Production/test compilation, the 109-file chat data-boundary guard and diff formatting check passed. Device acceptance remains open.
+
+## Contextual shifts and shared edits (2026-10-23)
+
+- `move flights two days later` shifts the flight task's own deadline. Travel, exam and return shifts use the named date and retain existing conflict checks. An undated item asks for a date instead of using departure or today as an implicit starting point.
+- Shifting an item already relative to departure adjusts its offset, so subsequent departure changes continue moving it. Explicit calendar dates remain independent.
+- Date and phase edits accept several named or numbered items, resolve references against the original list, apply atomically and produce one undo checkpoint. Ambiguous or incomplete edits leave every item unchanged.
+- Comma-form dates such as `June 20, 2029` are preserved inside additions instead of splitting the year into another checklist item.
+
+Three necessary public-entry journeys cover date anchors, relative links, native task deadlines, shared edit rollback/undo and exam conflicts. All 26 focused conversation checks passed (zero failures/errors/skips), including these three journeys. Production/test compilation, the chat boundary check and diff formatting passed. Device acceptance remains open.
+
+## Checklist progress in conversation (2026-10-23)
+
+- `check off apples`, `mark apples as done`, `apples is done`, `reopen apples` and `mark apples as not done` update native checklist completion in the draft. Named/numbered groups resolve fully before changing progress; ambiguous or mixed dated/checklist groups leave everything unchanged.
+- `what's left?` and `show completed items` read progress without changing the revision or consuming pending questions. Numbering matches the full plan; the full summary marks completed entries.
+- Completion survives ordinary edits, draft persistence, undo and native checklist saves. Repeating the same progress update is a no-op. Progress does not silently finish or save the planning conversation.
+- Dated task completion remains managed in Tasks; refresh saved tasks to bring it into the plan. Completed checklist entries must be reopened before conversion to dated tasks so completion is not silently lost. A completed main task must be reopened in Tasks before its checklist can change.
+
+Validation: all 28 focused conversation checks passed (zero failures/errors/skips), including the two new progress journeys. Production/test compilation, the 109-file chat boundary guard and diff formatting passed. Physical-device acceptance remains open.
+
+## Explicit plan controls and relevant checklist contexts (2026-10-24)
+
+- A leading `.` in Plan mode marks an explicit question/change. It is stripped before command routing, and unknown dotted messages cannot become checklist items or generic topic answers. Existing plain summary/edit commands remain supported. Dotted commands without an active plan ask for a goal without creating one.
+- Simple exam and grocery/shopping plans reuse the checklist engine and native parent/checklist save path. They retain exam/target dates and use checklist prompts instead of travel-city prompts. Explicit study/revision and advanced planning retain the graph workflow.
+- Bare ordinals use the named date's established month, then the plan's primary date month, then the current month in the plan timezone. Past or invalid dates require clarification. Explicitly undecided months remain pending; regression journeys that need this state now state that uncertainty explicitly.
+- Non-command item phrases can be added directly to a checklist. Summary questions read the current plan; `remove that` uses the last selected item. `clear` asks which scope; `clear checklist` removes draft items as one undoable edit, retaining the main task and date.
+- Native refresh retains the correct primary date role for exam/list plans. Completion and existing transactional save protections are preserved.
+
+Validation: all 31 focused conversation checks passed (zero failures/errors/skips), including new exam opening/date, dotted command, grocery checklist and calendar-default coverage. Production/test compilation, the 109-file chat boundary guard and diff formatting passed. The regression run also caught and resolved exam-date goal replacement, dotted undo routing and archive-as-item fallback. Device acceptance remains open.
+
+## Normal-chat date/time task priority — v2.0.14 (114)
+
+Normal Chat uses the existing SmartDateParser before implicit planning/discussion routing. A recognized date or clock time with task text enters the existing task creation, duplicate-check and action-execution path. Date-only input without a selected task opens a title question and retains its due date and composer flags. Explicit slash commands, Talk/Plan/Drill modes, live task questions and recognized task edits/corrections retain their existing handlers. This deliberately makes dated normal-chat text task-oriented; use Talk for discussion or Plan for a draft conversation.
+
+Release validation: all 4 targeted task-routing/correction/duplicate checks passed, production/test compilation passed, and the chat boundary and diff formatting checks passed; prior planning and notes-widget verification is recorded above and in docs/widgets/NOTE_WIDGET_FONT_STABILITY.md. Physical-device verification remains open.

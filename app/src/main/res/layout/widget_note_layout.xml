@@ -52,6 +52,8 @@
 
                 <TextView
                     android:id="@+id/widget_note_title"
+        android:autoSizeTextType="none"
+        android:textSize="18sp"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Groceries"
@@ -193,6 +195,8 @@
 
                 <TextView
                     android:id="@+id/widget_note_text_content"
+        android:autoSizeTextType="none"
+        android:textSize="16sp"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingLeft="6dp"

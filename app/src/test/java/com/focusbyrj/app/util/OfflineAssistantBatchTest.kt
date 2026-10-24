@@ -34,6 +34,8 @@ class OfflineAssistantBatchTest {
         context = object : ContextWrapper(base) { override fun getApplicationContext(): Context = app }
         for (name in listOf("focus_prefs", "bubble_prefs", "ayva_action_receipts", "ayva_personalization", "focus_completed_tasks_history")) context.getSharedPreferences(name, 0).edit().clear().commit()
         AssistantSessionStore(context).clear()
+        ChatModeStore.set(context, ChatMode.CHAT)
+        ConversationPlanStore.clearAll(context)
         FocusEconomyManager.init(context)
         AyvaTalkEngine.resetConversation()
     }
@@ -51,6 +53,37 @@ class OfflineAssistantBatchTest {
         (response.actions.first { it.label.contains(label, true) } as TalkAction.AskQuery).query
     private suspend fun allTasks() = db.taskDao().getAllActiveTasksList()
     private suspend fun add(title: String, priority: Boolean = false, due: Long? = null): Long = db.taskDao().insertTask(Task(title = title, isPriority = priority, dueDate = due))
+
+    @Test fun datedNormalChatPrioritizesTasksOverPlanningAndFeatureConflicts() = runBlocking {
+        say("let's plan a trip tomorrow at 6pm")
+        assertEquals(1, allTasks().size)
+        assertNotNull(allTasks().single().dueDate)
+        assertNull(ConversationPlanStore(context).active())
+        assertEquals(ChatMode.CHAT, ChatModeStore.get(context))
+        say("study vocabulary at 7pm")
+        assertEquals(2, allTasks().size)
+        assertTrue(allTasks().all { it.dueDate != null })
+        val before = allTasks().size
+        say("/talk let's discuss a trip tomorrow")
+        assertEquals(before, allTasks().size)
+        ChatModeStore.set(context, ChatMode.PLAN)
+        say("/plan trip to Goa on 26 July 2029")
+        assertNotNull(ConversationPlanStore(context).active())
+        assertEquals(before, allTasks().size)
+    }
+
+    @Test fun dateOnlyNormalChatRetainsDateUntilTitleAndKeepsRescheduleOwner() = runBlocking {
+        say("tomorrow at 6pm", priority = true)
+        assertTrue(allTasks().isEmpty())
+        say("Buy milk")
+        val task = allTasks().single()
+        assertNotNull(task.dueDate)
+        assertTrue(task.isPriority)
+        say("reschedule it to 27 July 2029 at 7pm")
+        assertEquals(1, allTasks().size)
+        assertEquals(task.id, allTasks().single().id)
+        assertNotEquals(task.dueDate, allTasks().single().dueDate)
+    }
 
     @Test fun ordinaryTaskAndCorrectionsUseOneEntity() = runBlocking {
         say("Could you remind me to buy milk tomorrow at 6pm?")

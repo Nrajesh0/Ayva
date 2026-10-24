@@ -46,6 +46,114 @@ class TripChecklistConversationTest {
     private fun items() = plan().trip!!.items.map { it.title }
     private fun date(at: Long?) = at?.let { Instant.ofEpochMilli(it).atZone(ZoneId.of(plan().timezone)).toLocalDate().toString() }
 
+    @Test fun examOpeningKeepsBareDateAndDotCommandsNeverBecomeTopics() = runBlocking {
+        val today = java.time.LocalDate.now()
+        val reply = say("/plan rrb je exam on ${today.dayOfMonth}th")
+        assertFalse(reply, reply.contains("city", true))
+        assertEquals(today.toString(), plan().facts["exam date"])
+        assertEquals(today.toString(), date(plan().steps.single().deadline))
+        assertEquals("Rrb je exam", plan().goal)
+        say("download admit card")
+        say("bring 3 pens")
+        val before = plan().revision
+        val summary = say(".what do we have so far")
+        assertTrue(summary, summary.contains("3 pens", true))
+        assertEquals(before, plan().revision)
+        assertNull(plan().facts["topics"])
+        say(".remove that")
+        assertEquals(listOf("Download admit card"), items())
+        say(".change date to 28 July 2029")
+        assertEquals("2029-07-28", plan().facts["exam date"])
+        val unchanged = plan().json().toString()
+        say(".something unclear about this")
+        assertEquals(unchanged, plan().json().toString())
+        say(".that's it")
+        assertEquals("2029-07-28", date(db.taskDao().getAllActiveTasksList().single().dueDate))
+    }
+
+    @Test fun groceryChecklistAcceptsItemsAndKeepsQuestionsAndClearSeparate() = runBlocking {
+        say("/plan trip to Goa")
+        val reply = say("/plan grocery list")
+        assertFalse(reply, reply.contains("city", true) || reply.contains("travelling", true))
+        say("apples and milk")
+        assertEquals(listOf("Apples", "Milk"), items())
+        val before = plan().revision
+        assertTrue(say("what do we have so far").contains("Milk"))
+        say(".why do we need milk?")
+        assertEquals(before, plan().revision)
+        say("clear")
+        assertEquals(2, items().size)
+        say("remove that")
+        assertEquals(listOf("Apples"), items())
+        say(".clear checklist")
+        assertTrue(items().isEmpty())
+        say(".undo")
+        assertEquals(listOf("Apples"), items())
+        say(".change date to 26 July 2029")
+        assertEquals("2029-07-26", plan().facts["target date"])
+        say(".that's it")
+        val task = db.taskDao().getAllActiveTasksList().single()
+        assertEquals("Grocery list", task.title)
+        assertEquals(listOf("Apples"), task.subtasks.map { it.title })
+        assertEquals("2029-07-26", date(task.dueDate))
+    }
+
+    @Test fun bareDatesUseLocalMonthAndRejectInvalidOrPastDays() {
+        val now = Instant.parse("2026-10-24T12:00:00Z").toEpochMilli()
+        val draft = PlanWorkspace(goal = "Trip", domain = "trip", timezone = "Asia/Kolkata")
+        assertEquals("2026-10-26", TripDate.read("26th", draft, now)!!.date.toString())
+        assertNull(TripDate.read("23rd", draft, now)!!.date)
+        val february = Instant.parse("2027-02-01T12:00:00Z").toEpochMilli()
+        assertNull(TripDate.read("30th", draft, february)!!.date)
+        val established = draft.copy(facts = mapOf("travel date" to "2029-07-26"))
+        assertEquals("2029-07-28", TripDate.read("28th", established, now)!!.date.toString())
+    }
+
+    @Test fun checklistProgressSurvivesEditsUndoAndNativeSave() = runBlocking {
+        say("/plan trip to Goa on 26 July 2029")
+        say("add buy apples")
+        say("add pack dresses")
+        say("mark apples as done")
+        assertTrue(plan().steps.first().checklist.first { it.title.contains("apples", true) }.isDone)
+        val revision = plan().revision
+        say("check off apples")
+        assertEquals(revision, plan().revision)
+        val remaining = say("what's left")
+        assertTrue(remaining, remaining.contains("dresses", true))
+        assertFalse(remaining, remaining.contains("apples", true))
+        say("rename apples to buy green apples")
+        assertTrue(plan().steps.first().checklist.first { it.title.contains("apples", true) }.isDone)
+        say("reopen apples")
+        assertFalse(plan().steps.first().checklist.first { it.title.contains("apples", true) }.isDone)
+        say("undo")
+        assertTrue(plan().steps.first().checklist.first { it.title.contains("apples", true) }.isDone)
+        say("that's it")
+        val saved = db.taskDao().getAllActiveTasksList().single()
+        assertTrue(Subtask.listFromJson(saved.subtasksJson).first { it.title.contains("apples", true) }.isDone)
+    }
+
+    @Test fun progressDoesNotPartiallyChangeAmbiguousOrDatedGroups() = runBlocking {
+        say("/plan trip to Goa on 26 July 2029")
+        say("add buy apples")
+        say("add book flights by 20 July 2029")
+        val before = plan().revision
+        say("check off apples and flights")
+        assertEquals(before, plan().revision)
+        say("check off apples and missing item")
+        assertEquals(before, plan().revision)
+        say("apples is done")
+        assertTrue(plan().steps.first().checklist.single().isDone)
+        val completedRevision = plan().revision
+        say("move apples to 21 July 2029")
+        assertEquals(completedRevision, plan().revision)
+        assertTrue(plan().steps.first().checklist.single().isDone)
+        say("add pack dresses by 20th")
+        val pending = plan().pending.toString()
+        say("mark apples as not done")
+        assertEquals(pending, plan().pending.toString())
+        assertFalse(plan().steps.first().checklist.first { it.title.contains("apples", true) }.isDone)
+    }
+
     @Test fun suggestionAcceptanceUsesProposalsAndKeepsNativeChecklistIdentity() = runBlocking {
         say("/plan trip to Goa on 26 July 2029")
         say("give me ideas")
@@ -78,7 +186,7 @@ class TripChecklistConversationTest {
 
     @Test fun fullDateAnswersKeepPendingRoleAndQuestionsNeverMutateDraft() = runBlocking {
         say("/plan ibps exam trip")
-        say("the exam is on 26th")
+        say("the exam is on 26th of an undecided month")
         assertEquals("exam date", plan().pending!!.optString("role"))
         say("bring photos")
         val before = plan().json().toString()
@@ -106,7 +214,7 @@ class TripChecklistConversationTest {
 
     @Test fun selectiveSuggestionsAndContextQuestionsSurviveInterruptions() = runBlocking {
         say("/plan trip to Goa")
-        say("26th")
+        say("26th of an undecided month")
         say("give me ideas")
         val suggestions = plan().dialogue.proposals.toList()
         say("add first and third suggestions")
@@ -132,7 +240,7 @@ class TripChecklistConversationTest {
 
     @Test fun relativeFollowupsRecoverMissingReferencesWithoutLosingDateQuestions() = runBlocking {
         say("/plan trip to Goa")
-        say("26th")
+        say("26th of an undecided month")
         say("pack clothes")
         say("book flights")
         say("move luggage to sometime")
@@ -158,8 +266,8 @@ class TripChecklistConversationTest {
 
     @Test fun interruptedDateRolesAndConflictsCannotBeSkippedIntoASave() = runBlocking {
         say("/plan ibps exam trip")
-        say("travel date is 26th")
-        say("exam date is 27th")
+        say("travel date is 26th of an undecided month")
+        say("exam date is 27th of an undecided month")
         say("bring photos")
         say("August 2029")
         assertEquals("2029-08-27", plan().facts["exam date"])
@@ -182,10 +290,123 @@ class TripChecklistConversationTest {
         assertEquals(1, db.taskDao().getAllActiveTasksList().size)
     }
 
+    @Test fun datedAdditionsRescheduleInPlaceAndSaveLinkedNativeTasks() = runBlocking {
+        say("/plan trip to Goa on 26 July 2029")
+        say("book flights by 20 July 2029")
+        val id = plan().trip!!.items.single().id
+        assertEquals("Book flights", items().single())
+        assertEquals("2029-07-20", plan().trip!!.items.single().date)
+        say("I need to book flights on 21 July 2029")
+        assertEquals(id, plan().trip!!.items.single().id)
+        assertEquals("2029-07-21", plan().trip!!.items.single().date)
+        say("visit Baga beach on 27 July 2029")
+        val revision = plan().revision
+        val activities = say("what are we doing there?")
+        assertTrue(activities.contains("Baga beach")); assertFalse(activities.contains("Book flights"))
+        assertEquals(revision, plan().revision)
+        say("that's it")
+        val tasks = db.taskDao().getAllActiveTasksList()
+        val parent = tasks.single { it.title == "Trip to Goa" }
+        assertEquals(2, tasks.count { it.planning?.parentTaskId == parent.id })
+        assertEquals("2029-07-21", date(tasks.single { it.title == "Book flights" }.dueDate))
+    }
+
+    @Test fun itemDateClarificationCanBeReplacedOrRemovedWithoutChangingTravelDate() = runBlocking {
+        say("/plan trip to Goa")
+        say("travel date is 26th of an undecided month")
+        say("download admit card on 24th of an undecided month")
+        assertEquals("trip_item_date", plan().pending!!.optString("kind"))
+        say("bring photos")
+        say("that's it")
+        assertTrue(db.taskDao().getAllTasksList().isEmpty())
+        say("move admit card to 25 July 2029")
+        assertEquals("trip_date", plan().pending!!.optString("kind"))
+        say("July 2029")
+        assertEquals("2029-07-26", plan().facts["travel date"])
+        say("move photos to sometime")
+        say("remove photos")
+        assertNull(plan().pending)
+        say("that's it")
+        assertEquals(2, db.taskDao().getAllActiveTasksList().size)
+    }
+
+    @Test fun groupedRemovalIsAtomicUndoableAndKeepsCombinedTitlesWhole() = runBlocking {
+        say("/plan trip to Goa on 26 July 2029")
+        say("buy apples; bring photos; pack clothes")
+        val before = plan().trip!!.items
+        say("remove apples and missing luggage")
+        assertEquals(before, plan().trip!!.items)
+        say("remove first and third")
+        assertEquals(listOf("Bring photos"), items())
+        say("undo")
+        assertEquals(before, plan().trip!!.items)
+        say("add Pack shirts and socks")
+        say("remove Pack shirts and socks")
+        assertEquals(before, plan().trip!!.items)
+        say("remove apples and photos")
+        say("that's it")
+        assertEquals(listOf("Pack clothes"), db.taskDao().getAllActiveTasksList().single().subtasks.map { it.title })
+    }
+
+    @Test fun dateShiftsUseEachItemsOwnDateAndKeepRelativePreparationLinked() = runBlocking {
+        say("/plan trip to Goa on 26 July 2029")
+        say("book flights by June 20, 2029")
+        assertEquals("2029-06-20", plan().trip!!.items.single().date)
+        say("move flights two days later")
+        assertEquals("2029-06-22", plan().trip!!.items.single().date)
+        assertEquals("2029-07-26", plan().facts["travel date"])
+        say("pack clothes 2 days before leaving")
+        say("move clothes one day later")
+        assertEquals(-1, plan().trip!!.items.single { it.title == "Pack clothes" }.offset)
+        say("move trip two days later")
+        assertEquals("2029-07-28", plan().facts["travel date"])
+        assertTrue(say("when should I pack clothes?").contains("July 27, 2029"))
+        say("that's it")
+        val tasks = db.taskDao().getAllActiveTasksList()
+        assertEquals("2029-06-22", date(tasks.single { it.title == "Book flights" }.dueDate))
+        assertEquals("2029-07-27", date(tasks.single { it.title == "Pack clothes" }.dueDate))
+    }
+
+    @Test fun movingSeveralItemsIsAtomicAndOneUndoRestoresAllDates() = runBlocking {
+        say("/plan trip to Goa on 26 July 2029")
+        say("book flights on 20 July 2029; pack clothes on 24 July 2029")
+        val before = plan().trip!!.items
+        say("move flights and clothes to July 23, 2029")
+        assertTrue(plan().trip!!.items.all { it.date == "2029-07-23" })
+        say("undo")
+        assertEquals(before, plan().trip!!.items)
+        say("move flights and missing luggage to 22 July 2029")
+        assertEquals(before, plan().trip!!.items)
+        say("move flights and clothes to during the trip")
+        assertTrue(plan().trip!!.items.all { it.phase == "During the trip" })
+        say("undo")
+        assertEquals(before, plan().trip!!.items)
+    }
+
+    @Test fun undatedItemShiftAsksForDateAndExplicitExamShiftChecksConflicts() = runBlocking {
+        say("/plan trip to Goa on 26 July 2029")
+        say("bring photos")
+        say("move photos two days later")
+        assertEquals("trip_item_date", plan().pending!!.optString("kind"))
+        assertNull(plan().trip!!.items.single().date)
+        say("25 July 2029")
+        say("exam date is 27 July 2029")
+        say("move exam two days earlier")
+        assertEquals("2029-07-27", plan().facts["exam date"])
+        assertEquals("trip_conflict", plan().pending!!.optString("kind"))
+        say("that's it")
+        assertTrue(db.taskDao().getAllTasksList().isEmpty())
+        say("cancel that change")
+        say("move exam one day later")
+        assertEquals("2029-07-28", plan().facts["exam date"])
+        say("that's it")
+        assertEquals(2, db.taskDao().getAllActiveTasksList().size)
+    }
+
     @Test fun goaConversationCreatesOneNativeChecklistWithFinalDateAndNoDuplicateSave() = runBlocking {
         assertTrue(say("I want to plan a trip to Goa").contains("main task"))
         assertEquals("Goa", plan().facts["destination"])
-        assertTrue(say("it's 26th").contains("month"))
+        assertTrue(say("it's 26th of an undecided month").contains("month"))
         say("July 2029")
         assertEquals("2029-07-26", plan().facts["travel date"])
         say("Book a bus and pack clothes")
@@ -207,7 +428,7 @@ class TripChecklistConversationTest {
         say("I'm planning for ibps exam trip")
         say("ibps exam")
         assertEquals("IBPS exam", plan().facts["purpose"]); assertNull(plan().facts["destination"])
-        say("I'm thinking 26th")
+        say("I'm thinking 26th of an undecided month")
         val checkpoint = plan().json().toString()
         AssistantSessionStore(context).clear()
         assertEquals(checkpoint, plan().json().toString())
@@ -255,7 +476,7 @@ class TripChecklistConversationTest {
     }
     @Test fun newDetailsDoNotDiscardPendingMonthAndFinishDoesNotSilentlySaveAnOldDate() = runBlocking {
         say("I want to plan a trip to Goa")
-        say("26th"); say("bring photos")
+        say("26th of an undecided month"); say("bring photos")
         assertEquals("trip_date", plan().pending!!.getString("kind"))
         assertTrue(say("what we got till now").contains("Bring photos"))
         say("that's it"); assertTrue(db.taskDao().getAllTasksList().isEmpty())
@@ -329,7 +550,7 @@ class TripChecklistConversationTest {
         assertNull(plan().facts["destination"])
         say("add Book train and book hotel")
         assertEquals("destination", plan().dialogue.question)
-        say("26th")
+        say("26th of an undecided month")
         say("rename book to Booking")
         say("the second one")
         assertEquals("trip_date", plan().pending!!.getString("kind"))

@@ -19,7 +19,11 @@ internal object ConversationPlanner {
     private data class Edit(val plan: PlanWorkspace, val message: String, val recognized: Boolean = true)
 
     suspend fun respond(context: Context, input: String, state: AssistantSession, now: Long = System.currentTimeMillis()): AyvaTalkEngine.TalkResponse? {
-        val raw = PlanLanguage.command(input)
+        val incoming = PlanLanguage.command(input)
+        val body = if (incoming.startsWith("/plan ", true)) incoming.substringAfter(' ') else incoming
+        val controlOnly = body.startsWith(".") && (incoming.startsWith("/plan ", true) || ChatModeStore.get(context) == ChatMode.PLAN)
+        val raw = if (controlOnly) (if (incoming.startsWith("/plan ", true)) "/plan " else "") +
+            PlanLanguage.command(body.drop(1).trim()) else incoming
         // Outside Plan mode, time budgets retain the saved-task planning owner.
         if (ChatModeStore.get(context) != ChatMode.PLAN && AssistantPlanning.isDirectRequest(raw)) return null
         val command = raw.substringBefore(' ').lowercase(Locale.ROOT)
@@ -54,8 +58,8 @@ internal object ConversationPlanner {
         val explicit = command == "/plan"
         if (AssistantDiscussion.requestsHandoff(handoffText) && handoff == null && nativeHandoff == null && !PlanLanguage.startsPlanning(raw) && state.expected == null)
             return missingDiscussionGoal()
-        val explicitGoal = command == "/plan" && Regex("(?i)^(?:a |an |my |the )?(?:trip|holiday|vacation|exam|study|project|event|routine|errands)\\b").containsMatchIn(handoffText)
-        val start = PlanLanguage.startsPlanning(raw) || explicitGoal || handoff != null || nativeHandoff != null
+        val explicitGoal = command == "/plan" && Regex("(?i)^(?:a |an |my |the )?(?:trip|holiday|vacation|exam|study|project|event|routine|errands|grocery list|shopping list)\\b").containsMatchIn(handoffText)
+        val start = !controlOnly && (PlanLanguage.startsPlanning(raw) || explicitGoal || handoff != null || nativeHandoff != null)
         val resume = Regex("(?i)^(?:back to (?:my |the )?(?:trip|exam|study|project|plan)(?: plan)?|resume plan .+)$").matches(raw)
         if (!explicit && !start && !resume && ChatModeStore.get(context) != ChatMode.PLAN) return null
         if (raw.equals("/plan discard all plan drafts", true)) {
@@ -118,6 +122,9 @@ internal object ConversationPlanner {
             PlanningLibrary(context).rememberPreferences(plan ?: throw IllegalArgumentException("Set up a plan's preferences first"))
             return reply("Remembered this plan's scheduling preferences and any daily availability window for future plans. One-off dates and today's window were not remembered.")
         }
+        if (controlOnly && plan == null) return reply("Start a plan first, then use . for questions and changes.")
+        if (controlOnly && text.isBlank()) return reply("After . type a question or change, such as .show plan or .remove that.")
+        if (lower == "clear") return reply("Clear the checklist or cancel the pending change? Say ‘clear checklist’ or ‘cancel that change’.")
         if (plan == null && lower in setOf("hi", "hey", "hello")) return reply("Hi. What would you like to work toward? We can talk it through first.")
         if (plan != null && !start) {
             val migrated = TripPlanningBridge.migrate(plan, now)
@@ -130,12 +137,12 @@ internal object ConversationPlanner {
         }
         // The composer prefixes every Plan-mode reply. Give the active trip first
         // refusal on typed edits; /plan alone does not mean "replace this goal".
-        if (plan?.trip != null && start && handoff == null && !lower.startsWith("new ")) {
-            TripChecklistConversation.answer(plan, text, now)?.let { turn ->
+        if (plan?.trip != null && start && handoff == null && !lower.startsWith("new ") && (PlanLanguage.domain(text) != "errands" || plan.domain == "errands")) {
+            TripChecklistConversation.answer(plan, text, now, controlOnly)?.let { turn ->
                 turn.plan.validate(); store.put(turn.plan); return reply(turn.text)
             }
         }
-        if (handoff != null || plan == null || plan.goal.isBlank() && PlanLanguage.domain(text) == "trip" || start && nativeHandoff == null || lower.startsWith("new plan ") || lower.startsWith("new ")) {
+        if (handoff != null || plan == null || plan.goal.isBlank() && PlanLanguage.domain(text) != "general" || start && nativeHandoff == null || lower.startsWith("new plan ") || lower.startsWith("new ")) {
             val goal = handoff?.goal ?: text.removePrefix("advanced ").replaceFirst(Regex("(?i)^new (?:plan )?"), "").takeUnless {
                 it.lowercase(Locale.ROOT) in setOf("let's plan together", "lets plan together", "plan together", "help me plan")
             }.orEmpty()
@@ -162,7 +169,7 @@ internal object ConversationPlanner {
             return reply(TripChecklistConversation.summary(plan))
         val tripFinish = plan.trip != null && TripChecklistConversation.finish(text)
         if (plan.trip != null && !tripFinish) {
-            TripChecklistConversation.answer(plan, text, now)?.let { turn ->
+            TripChecklistConversation.answer(plan, text, now, controlOnly)?.let { turn ->
                 turn.plan.validate(); store.put(turn.plan); return reply(turn.text)
             }
         }
@@ -239,7 +246,7 @@ internal object ConversationPlanner {
             "Scheduling uses the availability and estimates you've supplied, plus any preferences you explicitly saved. Ranges reserve their upper estimate. " +
             "${plan.policy.bufferMinutes}-minute buffer; working days ${plan.policy.dayLabels}; session limit ${plan.policy.maximumSession ?: "not set"}; daily budget ${plan.policy.dailyMinutes ?: "not set"}. " +
             "Only work recorded in Ayva is checked; deadlines are not busy intervals. Saved changes always need a current review.")
-        (if (PlanLanguage.clauses(text).size == 1) PlanningConversation.answer(plan, text, now) else null)?.let { turn ->
+        (if (!controlOnly && PlanLanguage.clauses(text).size == 1) PlanningConversation.answer(plan, text, now) else null)?.let { turn ->
             turn.plan.validate()
             store.put(turn.plan.copy(reviewedRevision = null, reviewedAt = 0, reviewProcess = null))
             return reply(turn.text)
@@ -299,7 +306,7 @@ internal object ConversationPlanner {
                 // Free-form answers cannot absorb an unknown operation in an atomic edit batch.
                 val conversationalView = if (clauses.size > 1 && candidate.dialogue.question in setOf("outcome", "topics") && ConversationMeaning.kind(clause) == ConversationMeaning.Kind.STATEMENT)
                     candidate.copy(dialogue = candidate.dialogue.copy(question = "")) else candidate
-                val conversation = PlanningConversation.answer(conversationalView, clause, now)
+                val conversation = if (controlOnly) null else PlanningConversation.answer(conversationalView, clause, now)
                 val result = conversation?.let { Edit(it.plan, it.text) } ?: edit(candidate, clause, now, occupied)
                 if (clauses.size > 1 && !result.recognized)
                     return reply("I couldn't understand ‘$clause’ as a plan change. No part of that compound request was applied. Send the changes separately so we can clarify it.")

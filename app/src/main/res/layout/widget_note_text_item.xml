@@ -22,6 +22,8 @@
     <!-- Text Paragraph / Line -->
     <TextView
         android:id="@+id/widget_note_text_item_body"
+        android:autoSizeTextType="none"
+        android:textSize="16sp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textColor="#E8EAED"

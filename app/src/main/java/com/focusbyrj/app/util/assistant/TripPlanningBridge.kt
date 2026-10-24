@@ -60,8 +60,8 @@ internal object TripPlanningBridge {
             (prior ?: TripChecklistItem(id = step.id, title = step.title)).copy(title = step.title, date = date.takeIf { offset == null }, offset = offset)
         }
         val facts = plan.facts.toMutableMap().apply { put("main task title", root.title) }
-        root.deadline?.let { facts["travel date"] = Instant.ofEpochMilli(it).atZone(ZoneId.of(plan.timezone)).toLocalDate().toString() }
-            ?: facts.remove("travel date")
+        root.deadline?.let { facts[TripChecklistConversation.primaryDateKey(plan)] = Instant.ofEpochMilli(it).atZone(ZoneId.of(plan.timezone)).toLocalDate().toString() }
+            ?: facts.remove(TripChecklistConversation.primaryDateKey(plan))
         val items = checks + dated
         return plan.changed(steps = steps, facts = facts, goal = root.title, pending = plan.pending).copy(trip = trip.copy(items = items,
             selected = trip.selected?.takeIf { id -> items.any { it.id == id } }))

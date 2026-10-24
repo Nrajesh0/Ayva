@@ -15,7 +15,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
-import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import com.focusbyrj.app.MainActivity
@@ -27,6 +26,8 @@ import com.focusbyrj.app.ui.screens.notes.NotesViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -34,6 +35,7 @@ import org.json.JSONObject
 class NoteWidgetProvider : AppWidgetProvider() {
 
     companion object {
+        private val updateMutex = Mutex()
         const val ACTION_PREV_NOTE = "com.focusbyrj.app.widget.ACTION_PREV_NOTE"
         const val ACTION_NEXT_NOTE = "com.focusbyrj.app.widget.ACTION_NEXT_NOTE"
         const val ACTION_CYCLE_FILTER = "com.focusbyrj.app.widget.ACTION_CYCLE_FILTER"
@@ -63,7 +65,9 @@ class NoteWidgetProvider : AppWidgetProvider() {
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
             val appContext = context.applicationContext
             CoroutineScope(Dispatchers.IO).launch {
-                updateWidgetInternal(appContext, appWidgetManager, appWidgetId)
+                updateMutex.withLock {
+                    updateWidgetInternal(appContext, appWidgetManager, appWidgetId)
+                }
             }
         }
 
@@ -145,6 +149,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 val isVeryShort = config.adaptiveLayout && minHeight in 1..95
 
                 val views = RemoteViews(context.packageName, R.layout.widget_note_layout)
+                NoteWidgetTypography.applyHeader(context, views, config)
 
                 // Background & theme colors
                 val bgColors = NoteWidgetDrawableGenerator.createWidgetBackground(
@@ -192,7 +197,6 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 // Add item hint and icon styling
                 val addHintText = if (currentNote == null) "Take a note..." else if (currentNote.isChecklist) "Tap to edit checklist..." else "Tap to edit note..."
                 views.setTextViewText(R.id.widget_note_add_hint, addHintText)
-                views.setTextViewTextSize(R.id.widget_note_add_hint, TypedValue.COMPLEX_UNIT_SP, (config.textSize.spValue - 2f).coerceAtLeast(12f))
                 views.setTextColor(R.id.widget_note_add_hint, bgColors.secondaryTextColor)
                 views.setInt(R.id.widget_note_add_icon, "setColorFilter", bgColors.accentColor)
                 views.setInt(R.id.widget_note_btn_voice, "setColorFilter", bgColors.primaryTextColor)
@@ -203,10 +207,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 views.setTextColor(R.id.widget_note_btn_filter_mode, bgColors.secondaryTextColor)
 
                 // Common Remote Adapter & PendingIntent template setup for ListView
-                val serviceIntent = Intent(context, NoteWidgetService::class.java).apply {
-                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                    data = Uri.parse("widget://note/$appWidgetId")
-                }
+                val serviceIntent = NoteWidgetTypography.adapterIntent(context, appWidgetId, config)
                 views.setRemoteAdapter(R.id.widget_note_list_view, serviceIntent)
                 views.setEmptyView(R.id.widget_note_list_view, R.id.widget_note_empty_view)
 
@@ -226,8 +227,6 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 if (currentNote != null) {
                     val displayTitle = if (currentNote.title.isNotBlank()) currentNote.title else if (currentNote.isChecklist) "Checklist" else "Note"
                     views.setTextViewText(R.id.widget_note_title, displayTitle)
-                    views.setTextViewTextSize(R.id.widget_note_title, TypedValue.COMPLEX_UNIT_SP, (config.textSize.spValue + 2f).coerceAtLeast(14f))
-                    views.setTextViewTextSize(R.id.widget_note_text_content, TypedValue.COMPLEX_UNIT_SP, config.textSize.spValue)
 
                     // Pin badge
                     if (currentNote.isPinned) {
@@ -408,6 +407,9 @@ class NoteWidgetProvider : AppWidgetProvider() {
                     PendingIntent.getActivity(context, 90_000_000 + appWidgetId, newNoteIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 )
 
+                // Settings may be saved while the database/bitmap work is in flight. The
+                // queued refresh will render those settings; never publish this older snapshot.
+                if (config != NoteWidgetConfigHelper.getConfig(context, appWidgetId)) return@runCatching
                 appWidgetManager.updateAppWidget(appWidgetId, views)
                 kotlin.runCatching {
                     appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_note_list_view)
@@ -416,6 +418,7 @@ class NoteWidgetProvider : AppWidgetProvider() {
                 e.printStackTrace()
                 kotlin.runCatching {
                     val fallbackViews = RemoteViews(context.packageName, R.layout.widget_note_layout)
+                    NoteWidgetTypography.applyHeader(context, fallbackViews, NoteWidgetConfigHelper.getConfig(context, appWidgetId))
                     fallbackViews.setTextViewText(R.id.widget_note_title, "Notes")
                     fallbackViews.setViewVisibility(R.id.widget_note_empty_view, View.VISIBLE)
                     fallbackViews.setViewVisibility(R.id.widget_note_list_view, View.GONE)
