@@ -446,7 +446,7 @@ class TripChecklistConversationTest {
         assertEquals(3, task.subtasks.size); assertTrue(task.title.contains("IBPS exam")); assertEquals("2029-07-26", date(task.dueDate))
     }
     @Test fun compoundEditsAreOneUndoAndAmbiguousRemovalNeverGuesses() = runBlocking {
-        say("Let's plan a trip to Goa on 26 July 2029")
+        say("/plan trip to Goa on 26 July 2029")
         say("Book flights and book a car")
         say("buy apples")
         say("make it 28th, remove apples, and add pack dresses")
@@ -462,7 +462,7 @@ class TripChecklistConversationTest {
         assertEquals(before, plan().trip)
     }
     @Test fun relativePreparationDatesMoveButIndependentDatesStayPut() = runBlocking {
-        say("I want to plan a trip to Goa on 26 July 2029")
+        say("/plan trip to Goa on 26 July 2029")
         say("pack clothes the day before leaving")
         say("book flights")
         say("move flights to 20 July 2029")
@@ -487,7 +487,7 @@ class TripChecklistConversationTest {
         assertEquals("2029-02-26", date(db.taskDao().getAllActiveTasksList().single().dueDate))
     }
     @Test fun savedChecklistEditsReuseTaskIdentityAndRefuseOutsideEdits() = runBlocking {
-        say("I want to plan a trip to Goa on 26 July 2029")
+        say("/plan trip to Goa on 26 July 2029")
         say("buy apples"); say("save it")
         val original = db.taskDao().getAllActiveTasksList().single()
         say("remove apples"); say("bring photos"); say("save it")

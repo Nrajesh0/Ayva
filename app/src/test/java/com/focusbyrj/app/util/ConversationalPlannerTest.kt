@@ -289,7 +289,9 @@ class ConversationalPlannerTest {
         assertTrue(say(old).formattedText.contains("older plan"))
         assertTrue(db.taskDao().getAllTasksList().isEmpty())
         say("apply plan")
-        assertEquals("Algebra", db.taskDao().getAllTasksList().single().title)
+        val saved = db.taskDao().getAllTasksList().single()
+        assertEquals("Exam preparation", saved.title)
+        assertEquals(listOf("Algebra"), com.focusbyrj.app.data.Subtask.listFromJson(saved.subtasksJson).map { it.title })
     }
     @Test fun availabilityDoesNotSilentlyBecomeADailyRecurringWindow() = runBlocking {
         say("/plan project"); say("add Research for 30 minutes")

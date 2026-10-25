@@ -85,7 +85,7 @@ internal object TripChecklistConversation {
         val destination = destination(input)
         val purpose = purpose(input)
         val kind = if (plan.domain == "trip") "trip" else if (simpleExam) "exam" else "list"
-        val name = if (kind != "trip") PlanningDialogue.goal(input).replace(rx("""\s+(?:on|by) .+$"""), "").replaceFirstChar { it.uppercase() }
+        val name = if (kind != "trip") PlanningDialogue.goal(plan.goal).replace(rx("""\s+(?:on|by) .+$"""), "").replaceFirstChar { it.uppercase() }
             else if (purpose != null) "${purpose.replaceFirstChar { it.uppercase() }} trip" else "Trip" + destination?.let { " to $it" }.orEmpty()
         val root = PlanStep(title = name, source = "trip main task", workReminders = false)
         var next = plan.copy(goal = name, steps = listOf(root), facts = plan.facts - "destination" +

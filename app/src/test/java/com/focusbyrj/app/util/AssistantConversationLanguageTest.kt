@@ -75,15 +75,17 @@ class AssistantConversationLanguageTest {
         assertFalse(task(id).isCompleted)
     }
 
-    @Test fun ambiguousDatedStatementRequiresChoiceButExplicitCaptureStillWorks() = runBlocking {
+    @Test fun datedNormalChatCapturesTasksWithoutAmbiguityChoices() = runBlocking {
         val input = "Dad will visit tomorrow"
         assertTrue(AyvaIntentRouter.route(input) is RouterDestination.ConflictCard)
         assertEquals(NluIntent.CONFLICT, OfflineNluEngine.parse(input, emptyList()).intent)
         val clarification = say(input)
-        assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
-        assertTrue(clarification.actions.filterIsInstance<TalkAction.AskQuery>().isNotEmpty())
+        val first = db.taskDao().getAllActiveTasksList().single()
+        assertNotNull(first.dueDate)
+        assertTrue(first.title.contains("Dad", true))
         say("buy milk tomorrow")
-        assertEquals("buy milk", db.taskDao().getAllActiveTasksList().single().title.lowercase())
+        assertEquals(2, db.taskDao().getAllActiveTasksList().size)
+        assertTrue(db.taskDao().getAllActiveTasksList().any { it.title.equals("buy milk", true) })
     }
 
     @Test fun titleContentsRemainLiteralAfterExplicitCapture() = runBlocking {

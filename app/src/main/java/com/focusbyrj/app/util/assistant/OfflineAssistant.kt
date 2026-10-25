@@ -301,11 +301,16 @@ object OfflineAssistant {
         // planning, discussion and feature ambiguity. Explicit modes and live task edits
         // retain their handlers; date-only replies must never create a task named "tomorrow".
         if (ChatModeStore.get(context) == ChatMode.CHAT && !raw.trimStart().startsWith("/") &&
-            !(state.topic == "tasks" && state.expected != null)) {
+            state.expected == null && state.topic != "planning" && !AssistantGuidedPlanning.acceptsLiteral(state)) {
             val datedText = AssistantTaskLanguage.normalize(raw)
-            val correction = Regex("(?i)^(?:actually|instead|make (?:it|that)|change (?:it|that)|move |reschedule )").containsMatchIn(datedText)
-            if (!correction && AssistantTaskLanguage.request(datedText) == null) {
-                val parsed = SmartDateParser.parse(datedText)
+            val correction = Regex("(?i)^(?:actually|instead|not |make (?:it|that)|change (?:it|that)|move |reschedule )").containsMatchIn(datedText)
+            val explicitOwner = AssistantFeatureLanguage.isRequest(datedText) || AssistantPlanning.isDirectRequest(datedText) ||
+                Regex("(?i)^(?:remind me|set|change|edit|update|start|stop|focus|enable|disable|block|unblock|restrict|log|complete|delete|rename|archive|restore|show|list)\\b").containsMatchIn(datedText) ||
+                Regex("(?i)^(?:create|add|new) (?:a )?(?:habit|routine)\\b").containsMatchIn(datedText)
+            // "for 20 minutes" is a duration, not a 20:00 appointment.
+            val calendarProbe = datedText.replace(Regex("(?i)\\bfor \\d+(?:\\.\\d+)?\\s*(?:minutes?|mins?|hours?|hrs?|seconds?|secs?)\\b"), "")
+            if (!correction && !explicitOwner && AssistantCompoundParser.split(datedText).size == 1 && AssistantTaskLanguage.request(datedText) == null) {
+                val parsed = SmartDateParser.parse(calendarProbe)
                 if (parsed.timestamp != null) {
                     if (parsed.hasTaskText) {
                         state.clearPending(); state.clearSuspended()

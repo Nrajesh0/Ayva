@@ -189,9 +189,9 @@ class AssistantGuidedPlanningTest {
     }
 
     @Test fun tripGoalStaysInDraftAndSavedDescriptionsWithoutInventingTasks() = runBlocking {
-        val start = say("plan my trip to Goa next Friday")
+        val start = say("plan my trip to Goa")
         assertEquals("trip", plan().domain)
-        assertEquals("to Goa next Friday", plan().goal)
+        assertEquals("to Goa", plan().goal)
         assertTrue(start.formattedText.contains("Goa"))
         assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
         say("goal: Visit Kochi!")
@@ -215,11 +215,12 @@ class AssistantGuidedPlanningTest {
         assertEquals(2, db.taskDao().getAllActiveTasksList().size)
     }
 
-    @Test fun unsupportedPlanningTopicAsksForScopeInsteadOfAddingTask() = runBlocking {
+    @Test fun datedNormalChatPlanningProseCreatesATask() = runBlocking {
         assertTrue(AyvaIntentRouter.route("plan my wedding Friday", emptyList()) is RouterDestination.TalkQuery)
         val response = say("plan my wedding Friday")
-        assertTrue(response.formattedText.contains("guided checklist"))
-        assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
+        val task = db.taskDao().getAllActiveTasksList().single()
+        assertTrue(task.title.contains("wedding", true))
+        assertNotNull(task.dueDate)
     }
 
     @Test fun collaborativeTripRequestOverridesVacationHelpAndSavesOnlyAfterReview() = runBlocking {

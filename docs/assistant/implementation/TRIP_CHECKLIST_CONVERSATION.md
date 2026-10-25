@@ -173,3 +173,9 @@ Validation: all 31 focused conversation checks passed (zero failures/errors/skip
 Normal Chat uses the existing SmartDateParser before implicit planning/discussion routing. A recognized date or clock time with task text enters the existing task creation, duplicate-check and action-execution path. Date-only input without a selected task opens a title question and retains its due date and composer flags. Explicit slash commands, Talk/Plan/Drill modes, live task questions and recognized task edits/corrections retain their existing handlers. This deliberately makes dated normal-chat text task-oriented; use Talk for discussion or Plan for a draft conversation.
 
 Release validation: all 4 targeted task-routing/correction/duplicate checks passed, production/test compilation passed, and the chat boundary and diff formatting checks passed; prior planning and notes-widget verification is recorded above and in docs/widgets/NOTE_WIDGET_FONT_STABILITY.md. Physical-device verification remains open.
+
+### v2.0.14 release-gate repair
+
+The first release run stopped at unit tests, before APK build/signing/publication. Full-suite reproduction exposed normal-chat date priority stealing explicit focus, settings, routine and habit commands, incomplete reminders, live answers and compound operations. These retain their existing owners; duration-only phrases are excluded from the calendar probe. Ordinary dated chat still creates tasks. Tests for the previous dated-chat conflict behavior now assert task creation, draft journeys explicitly select Plan, and simple exam saves assert the parent/checklist representation. New checklist titles use the normalized goal rather than retaining a `new plan` prefix.
+
+Validation: all 1,153 unit tests passed with zero failures/errors/skips; chat boundary, dictionary and diff checks passed. No CI gates were removed. Version remains 2.0.14 (114), which had not been published.
