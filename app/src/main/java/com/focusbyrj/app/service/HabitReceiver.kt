@@ -95,7 +95,7 @@ class HabitReceiver : BroadcastReceiver() {
                 val app = appContext as? FocusApplication ?: return@launch
                 val habit = app.habitRepository.getHabitById(habitId) ?: return@launch
 
-                if (!habit.isReminderEnabled || habit.isArchived) {
+                if (!habit.isReminderEnabled || habit.isArchived || habit.isPaused) {
                     HabitAlarmScheduler.cancelHabitReminder(appContext, habitId)
                     return@launch
                 }

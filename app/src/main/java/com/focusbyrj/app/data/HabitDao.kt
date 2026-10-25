@@ -34,6 +34,15 @@ interface HabitDao {
     @Delete
     suspend fun deleteHabit(habit: Habit)
 
+    @androidx.room.Transaction
+    suspend fun setPaused(id: Long, paused: Boolean): Habit? {
+        val habit = getHabitById(id) ?: return null
+        if (habit.isArchived) return habit
+        val updated = habit.withPaused(paused)
+        updateHabit(updated)
+        return updated
+    }
+
     @Query("UPDATE habits SET isArchived = 1 WHERE id = :habitId")
     suspend fun archiveHabit(habitId: Long)
 

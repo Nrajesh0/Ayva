@@ -766,6 +766,13 @@ object HabitFloatingOverlayManager {
         }
     }
 
+    fun dismissHabit(habitId: Long) {
+        UnifiedOverlayCoordinator.removeQueuedHabit(habitId)
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            if (currentHabitId == habitId) dismissOverlay()
+        }
+    }
+
     fun dismissOverlay() {
         handler.post {
             dismissOverlayInternal(animated = true)

@@ -13,6 +13,15 @@ object AssistantHabitEditing {
             val field = when (it.groupValues[2].lowercase()) { "interval" -> HabitField.INTERVAL; "window" -> HabitField.WINDOW; else -> HabitField.REMINDER_TIME }
             return HabitEditRequest(it.groupValues[1], field, it.groupValues[3].ifBlank { null })
         }
+        match("^(pause|resume|unpause) (?:my )?habit (.+)$")?.let {
+            return HabitEditRequest(it.groupValues[2], HabitField.PAUSED, it.groupValues[1].equals("pause", true).toString())
+        }
+        match("^(pause|resume|unpause) (?:my )?(.+?) habit$")?.let {
+            return HabitEditRequest(it.groupValues[2], HabitField.PAUSED, it.groupValues[1].equals("pause", true).toString())
+        }
+        if (state.topic == "habits") match("^(pause|resume|unpause) (?:it|that)$")?.let {
+            return HabitEditRequest("it", HabitField.PAUSED, it.groupValues[1].equals("pause", true).toString())
+        }
         match("^rename habit (.+?)(?: to (.+))?$")?.let { return HabitEditRequest(it.groupValues[1], HabitField.TITLE, it.groupValues[2].ifBlank { null }) }
         match("^(?:set|change) (?:the )?(?:daily )?(?:target|goal) (?:of|for) habit (.+?)(?: to (.+))?$")?.let {
             return HabitEditRequest(it.groupValues[1], HabitField.TARGET, it.groupValues[2].ifBlank { null })
@@ -60,7 +69,7 @@ object AssistantHabitEditing {
             HabitField.REMINDER_TIME -> if (text.startsWith("@")) text.drop(1).toIntOrNull()?.takeIf { it in 0..1439 }?.let { "@$it" } else AssistantFeatureLanguage.clock(text.replaceFirst(Regex("(?i)^at "), ""))?.let { "@$it" }
             HabitField.TITLE -> text.removeSurrounding("\"").takeIf { it.isNotBlank() && it.length <= 200 }
             HabitField.TARGET -> Regex("(?i)^(\\d+)(?:\\s+times?)?(?:\\s+(?:a|per)\\s+day|\\s+daily)?$").matchEntire(text)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it in 1..100 }?.toString()
-            HabitField.REMINDER, HabitField.ARCHIVED -> text.lowercase().takeIf { it in setOf("true", "false") }
+            HabitField.REMINDER, HabitField.ARCHIVED, HabitField.PAUSED -> text.lowercase().takeIf { it in setOf("true", "false") }
         }
     }
 
@@ -81,6 +90,7 @@ internal object HabitJson {
         put("type", h.type.name); put("target", h.targetPerDay); put("hours", h.intervalHours); put("minutes", h.intervalMinutes)
         put("startHour", h.windowStartHour); put("startMinute", h.windowStartMinute); put("endHour", h.windowEndHour); put("endMinute", h.windowEndMinute)
         put("reminderHour", h.fixedReminderHour); put("reminderMinute", h.fixedReminderMinute); put("reminder", h.isReminderEnabled)
+        put("pausedAt", h.pausedAt ?: JSONObject.NULL); put("pauseHistory", h.pauseHistoryJson)
         put("sound", h.reminderSound); put("created", h.createdAt); put("archived", h.isArchived)
     }
     fun decode(j: JSONObject) = Habit(id = j.getLong("id"), title = j.getString("title"), description = j.getString("description"),
@@ -88,5 +98,5 @@ internal object HabitJson {
         targetPerDay = j.getInt("target"), intervalHours = j.getInt("hours"), intervalMinutes = j.getInt("minutes"),
         windowStartHour = j.getInt("startHour"), windowStartMinute = j.getInt("startMinute"), windowEndHour = j.getInt("endHour"), windowEndMinute = j.getInt("endMinute"),
         fixedReminderHour = j.getInt("reminderHour"), fixedReminderMinute = j.getInt("reminderMinute"), isReminderEnabled = j.getBoolean("reminder"),
-        reminderSound = j.getString("sound"), createdAt = j.getLong("created"), isArchived = j.getBoolean("archived"))
+        reminderSound = j.getString("sound"), createdAt = j.getLong("created"), isArchived = j.getBoolean("archived"), pausedAt = if (j.isNull("pausedAt")) null else j.optLong("pausedAt"), pauseHistoryJson = j.optString("pauseHistory", "[]"))
 }

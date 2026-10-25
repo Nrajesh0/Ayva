@@ -503,7 +503,9 @@ object DataSafetyManager {
                                     isReminderEnabled = obj.optBoolean("isReminderEnabled", false),
                                     reminderSound = obj.optString("reminderSound", "default"),
                                     createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                                    isArchived = obj.optBoolean("isArchived", false)
+                                    isArchived = obj.optBoolean("isArchived", false),
+                                    pausedAt = if (obj.isNull("pausedAt")) null else obj.optLong("pausedAt"),
+                                    pauseHistoryJson = obj.optString("pauseHistoryJson", "[]")
                                 )
                             )
                         }
@@ -784,6 +786,8 @@ object DataSafetyManager {
                         put("reminderSound", h.reminderSound)
                         put("createdAt", h.createdAt)
                         put("isArchived", h.isArchived)
+                        put("pausedAt", h.pausedAt ?: org.json.JSONObject.NULL)
+                        put("pauseHistoryJson", h.pauseHistoryJson)
                     })
                 }
                 put("habits", habitsArr)

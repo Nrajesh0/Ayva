@@ -12,6 +12,7 @@ internal object AssistantHabitConversation {
         HabitField.INTERVAL -> "every ${action.value} minutes"
         HabitField.TARGET -> "${action.value} per day"
         HabitField.REMINDER -> if (action.value == "true") "On" else "Off"
+        HabitField.PAUSED -> if (action.value == "true") "paused" else "active"
         HabitField.ARCHIVED -> if (action.value == "true") "archived" else "active"
         HabitField.TITLE -> action.value
     }
@@ -25,7 +26,7 @@ internal object AssistantHabitConversation {
         if (text !in setOf("what is its goal", "what's its goal", "what is its target", "what is its schedule", "what's its schedule", "when does it remind me", "when will it remind me", "what is its interval", "what's its interval", "are its reminders on", "is its reminder on", "show that habit")) return null
         val habit = state.habitId?.let { app.database.habitDao().getHabitById(it) }
             ?: return "Which habit do you mean? Say ‘show habit’ followed by its name."
-        return "**${habit.title}**\nSaved daily target: ${habit.targetPerDay}. Reminders ${if (habit.isReminderEnabled) "on" else "off"}.\nSaved schedule: ${schedule(habit)} (device local time).${if (habit.isArchived) " This habit is archived." else ""}\nThis is the configured schedule; Android permissions and background restrictions affect delivery." +
+        return "**${habit.title}**\nSaved daily target: ${habit.targetPerDay}. Reminders ${if (habit.isReminderEnabled) "on" else "off"}.\nSaved schedule: ${schedule(habit)} (device local time).${if (habit.isArchived) " This habit is archived." else if (habit.isPaused) " This habit is paused; reminders are suspended." else ""}\nThis is the configured schedule; Android permissions and background restrictions affect delivery." +
             if (state.expected == "confirm") "\nYour proposed edit is still waiting for confirmation; these are the currently saved values." else ""
     }
 

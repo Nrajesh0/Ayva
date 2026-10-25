@@ -54,6 +54,94 @@ class OfflineAssistantBatchTest {
     private suspend fun allTasks() = db.taskDao().getAllActiveTasksList()
     private suspend fun add(title: String, priority: Boolean = false, due: Long? = null): Long = db.taskDao().insertTask(Task(title = title, isPriority = priority, dueDate = due))
 
+    @Test fun habitPauseTalkPreservesHistoryAndUndoUsesSnapshotGuards() = runBlocking {
+        val id = db.habitDao().insertHabit(Habit(title = "Reading", targetPerDay = 3))
+        val repo = (context.applicationContext as FocusApplication).habitRepository
+        repo.incrementHabitProgress(id)
+        val original = db.habitDao().getHabitById(id)!!
+        val preview = say("/talk pause habit Reading")
+        assertFalse(db.habitDao().getHabitById(id)!!.isPaused)
+        assertTrue(preview.formattedText, preview.actions.any { it.label.contains("Confirm", true) })
+        say(command(preview, "Confirm"))
+        val paused = db.habitDao().getHabitById(id)!!
+        assertTrue(paused.isPaused)
+        assertEquals(original.isReminderEnabled, paused.isReminderEnabled)
+        assertNull(com.focusbyrj.app.util.HabitAlarmScheduler.calculateNextTriggerTime(paused))
+        assertEquals(1, db.habitDao().getLogForHabitAndDate(id, repo.getTodayDateString())!!.completedCount)
+        assertTrue(runCatching { repo.incrementHabitProgress(id) }.isFailure)
+        say("undo")
+        assertFalse(db.habitDao().getHabitById(id)!!.isPaused)
+        val stale = command(say("/talk pause habit Reading"), "Confirm")
+        db.habitDao().setPaused(id, true)
+        say(stale)
+        assertTrue(db.habitDao().getHabitById(id)!!.isPaused)
+        say(command(say("/talk resume habit Reading"), "Confirm"))
+        val resumed = db.habitDao().getHabitById(id)!!
+        assertFalse(resumed.isPaused)
+        assertTrue(org.json.JSONArray(resumed.pauseHistoryJson).length() > 0)
+        assertEquals(original.fixedReminderHour, resumed.fixedReminderHour)
+        assertEquals(1, db.habitDao().getLogForHabitAndDate(id, repo.getTodayDateString())!!.completedCount)
+    }
+
+    @Test fun habitPauseDatesBridgeStreaksWithoutFabricatingCompletions() = runBlocking {
+        val repo = (context.applicationContext as FocusApplication).habitRepository
+        val today = java.time.LocalDate.now()
+        val zone = java.time.ZoneId.systemDefault()
+        val start = today.minusDays(3).atStartOfDay(zone).toInstant().toEpochMilli()
+        val habit = Habit(title = "Walk").withPaused(true, start).withPaused(false)
+        val id = db.habitDao().insertHabit(habit)
+        db.habitDao().insertOrUpdateLog(HabitLog(habitId = id, date = today.minusDays(4).toString(), completedCount = 1, targetCount = 1))
+        repo.incrementHabitProgress(id)
+        val streak = repo.calculateStreaks(id, 1, db.habitDao().getLogForHabitAndDate(id, today.toString()))
+        assertEquals(2 to 2, streak)
+        assertEquals(2, db.habitDao().getAllLogsForHabitSync(id).size)
+        assertFalse(HabitPause.isPausedOn(habit, today.minusDays(4).toString()))
+        assertTrue(HabitPause.isPausedOn(habit, today.minusDays(2).toString()))
+    }
+
+    @Test fun habitPauseMigrationKeepsExistingHabitsAndLogs() = runBlocking {
+        val name = "habit-pause-migration.db"
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name)
+        file.parentFile!!.mkdirs()
+        val old = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(file, null)
+        val schema = org.json.JSONObject(java.io.File("schemas/com.focusbyrj.app.data.FocusDatabase/14.json").readText()).getJSONObject("database")
+        val entities = schema.getJSONArray("entities")
+        for (i in 0 until entities.length()) {
+            val entity = entities.getJSONObject(i)
+            val table = entity.getString("tableName")
+            old.execSQL(entity.getString("createSql").replace("\${TABLE_NAME}", table))
+            val indices = entity.getJSONArray("indices")
+            for (j in 0 until indices.length()) old.execSQL(indices.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}", table))
+        }
+        val values = android.content.ContentValues()
+        val habitEntity = (0 until entities.length()).map { entities.getJSONObject(it) }.first { it.getString("tableName") == "habits" }
+        val fields = habitEntity.getJSONArray("fields")
+        for (i in 0 until fields.length()) {
+            val field = fields.getJSONObject(i)
+            val column = field.getString("columnName")
+            if (field.getString("affinity") == "INTEGER") values.put(column, 0)
+            else values.put(column, "")
+        }
+        values.put("id", 7); values.put("title", "Existing reading")
+        values.put("type", "ONCE_DAILY"); values.put("targetPerDay", 3)
+        old.insertOrThrow("habits", null, values)
+        old.execSQL("INSERT INTO habit_logs (habitId,date,completedCount,targetCount,lastCompletedTimestamp) VALUES (7,'2026-10-24',2,3,1234)")
+        old.version = 14
+        old.close()
+        val upgraded = Room.databaseBuilder(context, FocusDatabase::class.java, name)
+            .addMigrations(FocusDatabase.MIGRATION_14_15).allowMainThreadQueries().build()
+        try {
+            val existing = upgraded.habitDao().getHabitById(7)!!
+            assertEquals("Existing reading", existing.title)
+            assertFalse(existing.isPaused)
+            assertEquals(3, existing.targetPerDay)
+            assertEquals(2, upgraded.habitDao().getLogForHabitAndDate(7, "2026-10-24")!!.completedCount)
+            val id = upgraded.habitDao().insertHabit(Habit(title = "After upgrade"))
+            assertFalse(upgraded.habitDao().getHabitById(id)!!.isPaused)
+        } finally { upgraded.close(); context.deleteDatabase(name) }
+    }
+
     @Test fun datedNormalChatPrioritizesTasksOverPlanningAndFeatureConflicts() = runBlocking {
         say("let's plan a trip tomorrow at 6pm")
         assertEquals(1, allTasks().size)

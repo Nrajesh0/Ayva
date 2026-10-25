@@ -7,7 +7,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 enum class TaskField { TITLE, DUE, PRIORITY, PERSISTENT, RECURRENCE, DETAILS, REOPEN, CHECKLIST }
-enum class HabitField { TITLE, TARGET, REMINDER, ARCHIVED, INTERVAL, WINDOW, REMINDER_TIME }
+enum class HabitField { TITLE, TARGET, REMINDER, ARCHIVED, PAUSED, INTERVAL, WINDOW, REMINDER_TIME }
 
 sealed class AssistantAction {
     data class CreateTask(val draft: Task) : AssistantAction()

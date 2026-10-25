@@ -177,6 +177,13 @@ class AssistantOfflineExpansionTest {
         val id = old.taskDao().insertTask(Task(title = "Keep through migration", subtasksJson = "[]"))
         old.openHelper.writableDatabase.apply {
             execSQL("DROP TABLE assistant_plan_receipts")
+            // Recreate the pre-pause habit schema as well as the old task schema.
+            val entities = org.json.JSONObject(java.io.File("schemas/com.focusbyrj.app.data.FocusDatabase/14.json").readText())
+                .getJSONObject("database").getJSONArray("entities")
+            val habitTable = (0 until entities.length()).map { entities.getJSONObject(it) }
+                .single { it.getString("tableName") == "habits" }
+            execSQL("DROP TABLE habits")
+            execSQL(habitTable.getString("createSql").replace("\${TABLE_NAME}", "habits"))
             execSQL("ALTER TABLE tasks RENAME TO tasks_newer")
             execSQL("CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL, dueDate INTEGER, isCompleted INTEGER NOT NULL, type TEXT NOT NULL, recurrence TEXT NOT NULL, isPersistent INTEGER NOT NULL, isPriority INTEGER NOT NULL, completedAt INTEGER, updatedAt INTEGER NOT NULL, isTrashed INTEGER NOT NULL, trashedAt INTEGER, deletedAt INTEGER, subtasksJson TEXT NOT NULL)")
             execSQL("INSERT INTO tasks SELECT id,title,details,dueDate,isCompleted,type,recurrence,isPersistent,isPriority,completedAt,updatedAt,isTrashed,trashedAt,deletedAt,subtasksJson FROM tasks_newer")
@@ -185,7 +192,7 @@ class AssistantOfflineExpansionTest {
             version = 12
         }
         old.close()
-        val migrated = Room.databaseBuilder(context, FocusDatabase::class.java, name).addMigrations(FocusDatabase.MIGRATION_12_13, FocusDatabase.MIGRATION_13_14).allowMainThreadQueries().build()
+        val migrated = Room.databaseBuilder(context, FocusDatabase::class.java, name).addMigrations(FocusDatabase.MIGRATION_12_13, FocusDatabase.MIGRATION_13_14, FocusDatabase.MIGRATION_14_15).allowMainThreadQueries().build()
         try {
             assertEquals("Keep through migration", migrated.taskDao().getTaskById(id)!!.title)
             assertTrue(migrated.assistantPlanReceiptDao().pending().isEmpty())

@@ -50,6 +50,15 @@ class HabitViewModel(
         }
     }
 
+    fun setPaused(habit: Habit, paused: Boolean) {
+        viewModelScope.launch {
+            val updated = repository.setPaused(habit.id, paused) ?: return@launch
+            val today = repository.getTodayDateString()
+            HabitAlarmScheduler.scheduleHabitReminder(getApplication(), updated,
+                isGoalCompletedToday = repository.isCompleteToday(updated, today))
+        }
+    }
+
     fun deleteHabit(habit: Habit) {
         viewModelScope.launch {
             HabitAlarmScheduler.cancelHabitReminder(getApplication(), habit.id)
@@ -58,6 +67,7 @@ class HabitViewModel(
     }
 
     fun incrementProgress(habit: Habit) {
+        if (habit.isPaused) return
         viewModelScope.launch {
             val updatedLog = repository.incrementHabitProgress(habit.id)
             val isMilestoneReached = updatedLog.completedCount == habit.targetPerDay
@@ -87,6 +97,7 @@ class HabitViewModel(
     }
 
     fun decrementProgress(habit: Habit) {
+        if (habit.isPaused) return
         viewModelScope.launch {
             repository.decrementHabitProgress(habit.id)
         }

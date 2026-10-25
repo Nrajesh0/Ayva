@@ -99,6 +99,12 @@ object UnifiedOverlayCoordinator {
         }
     }
 
+    fun removeQueuedHabit(habitId: Long) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            queue.removeAll { it is OverlayQueueItem.HabitItem && it.habit.id == habitId }
+        }
+    }
+
     private const val MAX_QUEUE_SIZE = 10
 
     private fun handleEnqueue(context: Context, item: OverlayQueueItem) {

@@ -52,7 +52,7 @@ class HabitActionReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ACTION_INCREMENT_HABIT -> {
                         val habit = app.habitRepository.getHabitById(habitId) ?: return@launch
-                        if (habit.isArchived || !habit.isReminderEnabled) {
+                        if (habit.isArchived || habit.isPaused || !habit.isReminderEnabled) {
                             HabitAlarmScheduler.cancelHabitReminder(appContext, habitId)
                             if (notificationId != -1) {
                                 notificationManager.cancel(notificationId)
@@ -130,7 +130,7 @@ class HabitActionReceiver : BroadcastReceiver() {
                             cleanUpHabitSummary(notificationManager, notificationId)
                         }
                         val habit = app.habitRepository.getHabitById(habitId)
-                        if (habit == null || habit.isArchived || !habit.isReminderEnabled) {
+                        if (habit == null || habit.isArchived || habit.isPaused || !habit.isReminderEnabled) {
                             HabitAlarmScheduler.cancelHabitReminder(appContext, habitId)
                             return@launch
                         }

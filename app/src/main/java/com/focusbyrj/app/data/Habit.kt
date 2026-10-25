@@ -37,8 +37,21 @@ data class Habit(
     val isReminderEnabled: Boolean = true,
     val reminderSound: String = "ZEN",
     val createdAt: Long = System.currentTimeMillis(),
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    val pausedAt: Long? = null,
+    @androidx.room.ColumnInfo(defaultValue = "'[]'") val pauseHistoryJson: String = "[]"
 ) {
+    @get:androidx.room.Ignore
+    val isPaused: Boolean get() = pausedAt != null
+
+    fun withPaused(paused: Boolean, now: Long = System.currentTimeMillis()): Habit {
+        if (paused == isPaused) return this
+        if (paused) return copy(pausedAt = now)
+        val history = org.json.JSONArray(pauseHistoryJson)
+        history.put(org.json.JSONArray(listOf(pausedAt!!, maxOf(now, pausedAt))))
+        return copy(pausedAt = null, pauseHistoryJson = history.toString())
+    }
+
     val totalIntervalMinutes: Int
         get() {
             val total = intervalHours * 60 + intervalMinutes

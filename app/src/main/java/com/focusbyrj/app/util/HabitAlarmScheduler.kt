@@ -51,7 +51,7 @@ object HabitAlarmScheduler {
         lastCompletedTimestamp: Long? = null,
         isGoalCompletedToday: Boolean = false
     ) {
-        if (!habit.isReminderEnabled || habit.isArchived) {
+        if (!habit.isReminderEnabled || habit.isArchived || habit.isPaused) {
             cancelHabitReminder(context, habit.id)
             return
         }
@@ -120,6 +120,9 @@ object HabitAlarmScheduler {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val pendingIntent = getPendingIntent(context, habitId, getRequestCode(habitId))
         alarmManager.cancel(pendingIntent)
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager)
+            ?.cancel(com.focusbyrj.app.service.HabitReceiver.getNotificationId(habitId))
+        com.focusbyrj.app.service.HabitFloatingOverlayManager.dismissHabit(habitId)
     }
 
     fun rescheduleAllHabits(context: Context) {
@@ -145,6 +148,7 @@ object HabitAlarmScheduler {
         lastCompletedTimestamp: Long? = null,
         isGoalCompletedToday: Boolean = false
     ): Long? {
+        if (habit.isPaused || habit.isArchived || !habit.isReminderEnabled) return null
         val now = System.currentTimeMillis()
 
         return when (habit.type) {

@@ -305,7 +305,7 @@ object OfflineAssistant {
             val datedText = AssistantTaskLanguage.normalize(raw)
             val correction = Regex("(?i)^(?:actually|instead|not |make (?:it|that)|change (?:it|that)|move |reschedule )").containsMatchIn(datedText)
             val explicitOwner = AssistantFeatureLanguage.isRequest(datedText) || AssistantPlanning.isDirectRequest(datedText) ||
-                Regex("(?i)^(?:remind me|set|change|edit|update|start|stop|focus|enable|disable|block|unblock|restrict|log|complete|delete|rename|archive|restore|show|list)\\b").containsMatchIn(datedText) ||
+                Regex("(?i)^(?:remind me|set|change|edit|update|start|stop|focus|enable|disable|block|unblock|restrict|log|complete|delete|rename|archive|restore|pause|resume|unpause|show|list)\\b").containsMatchIn(datedText) ||
                 Regex("(?i)^(?:create|add|new) (?:a )?(?:habit|routine)\\b").containsMatchIn(datedText)
             // "for 20 minutes" is a duration, not a 20:00 appointment.
             val calendarProbe = datedText.replace(Regex("(?i)\\bfor \\d+(?:\\.\\d+)?\\s*(?:minutes?|mins?|hours?|hrs?|seconds?|secs?)\\b"), "")
@@ -443,6 +443,10 @@ object OfflineAssistant {
             }
         }
         AssistantAppControl.answer(context, app, state, text)?.let { return featureTurn(context, app, state, it) }
+        // Explicit habit lifecycle requests outrank generic Talk-mode app help.
+        AssistantHabitEditing.request(text, state)?.takeIf { it.field == HabitField.PAUSED }?.let {
+            return handleHabitEdit(context, app, state, it)
+        }
         // App/settings questions interrupt stale task slots before task-edit or creation heuristics.
         if (appMode || state.expected != "task_edit_field" || AssistantEditDialogue.field(text) == null)
             AssistantAppKnowledge.answer(context, state, text, appMode)?.let { return featureTurn(context, app, state, it) }
@@ -870,6 +874,7 @@ object OfflineAssistant {
             HabitField.TITLE -> "Rename habit **${habit.title}** to **${action.value}**?"
             HabitField.TARGET -> "Change **${habit.title}** from ${habit.targetPerDay} to **${action.value} per day**? Existing daily logs keep their recorded targets."
             HabitField.REMINDER -> "Turn reminders **${if (action.value == "true") "on" else "off"}** for habit **${habit.title}**?"
+            HabitField.PAUSED -> "${if (action.value == "true") "Pause" else "Resume"} habit **${habit.title}**?"
             HabitField.ARCHIVED -> "${if (action.value == "true") "Archive" else "Restore"} habit **${habit.title}**? Its history will be preserved."
         }
         return propose(context, app, state, listOf(action), preview)
@@ -901,8 +906,9 @@ object OfflineAssistant {
             val progress = app.habitRepository.activeHabitsWithProgress.first().firstOrNull { it.habit.id == habit.id }
                 ?: return reply("That habit is no longer active. Please choose it again.")
             state.switchTopic("habits"); state.habitId = habit.id
-            return reply("**${habit.title}** — ${progress.completedToday}/${progress.targetToday} today.\nCurrent streak: ${progress.currentStreak} day(s); best: ${progress.bestStreak}.\nSaved daily target: ${habit.targetPerDay}. Reminders ${if (habit.isReminderEnabled) "on" else "off"}.\nSaved schedule: ${AssistantHabitConversation.schedule(habit)} (device local time).\nYou can log it, rename it, change its goal, reminder time or interval, or archive it.",
-                listOf(suggestion(context, "log habit id:${habit.id}", "Log progress"), suggestion(context, "change habit id:${habit.id} goal", "Change goal")))
+            return reply("**${habit.title}**${if (habit.isPaused) " · Paused" else ""} — ${progress.completedToday}/${progress.targetToday} today.\nCurrent streak: ${progress.currentStreak} day(s); best: ${progress.bestStreak}.\nSaved daily target: ${habit.targetPerDay}. Reminders ${if (habit.isReminderEnabled) "on" else "off"}.\nSaved schedule: ${AssistantHabitConversation.schedule(habit)} (device local time).\nYou can log it, rename it, change its goal, reminder time or interval, or archive it.",
+                listOf(suggestion(context, if (habit.isPaused) "resume habit id:${habit.id}" else "pause habit id:${habit.id}", if (habit.isPaused) "Resume" else "Pause"),
+                    suggestion(context, "change habit id:${habit.id} goal", "Change goal")))
         }
         if (lower in setOf("what am i focusing on", "what am i focusing on?", "focus task", "show focus task")) return focusStatus(context, app, state)
         if (lower == "complete focus task") {
@@ -1319,7 +1325,7 @@ object OfflineAssistant {
         if (it.field == TaskField.DUE) "• Due: ${SmartDateParser.formatDueDate(it.value.toLong())}" else "• Title: ${it.value}"
     }
     private fun expectedHint(state: AssistantSession) = AssistantReplyStyle.expectedHint(state)
-    private fun isNewIntent(text: String) = AssistantFeatureLanguage.isRequest(text) || AssistantPlanning.isDirectRequest(text) || OfflineNluEngine.isConversationalStatement(text) || OfflineNluEngine.isExplicitCreation(text) || OfflineNluEngine.isQuestion(text) || Regex("^(?:add|create|new|start|stop|delete|complete|reschedule|show|list|set|change|rename|archive|restore|unarchive|enable|disable|focus|log|undo|help|practice|teach me|give me|learn|drill|vocab|vocabulary|blitz)\\b").containsMatchIn(text) || Regex("^(?:i )?(?:just )?(?:drank|had|finished)\\b.*\\bwater$").matches(text)
+    private fun isNewIntent(text: String) = AssistantFeatureLanguage.isRequest(text) || AssistantPlanning.isDirectRequest(text) || OfflineNluEngine.isConversationalStatement(text) || OfflineNluEngine.isExplicitCreation(text) || OfflineNluEngine.isQuestion(text) || Regex("^(?:add|create|new|start|stop|delete|complete|reschedule|show|list|set|change|rename|archive|restore|unarchive|pause|resume|unpause|enable|disable|focus|log|undo|help|practice|teach me|give me|learn|drill|vocab|vocabulary|blitz)\\b").containsMatchIn(text) || Regex("^(?:i )?(?:just )?(?:drank|had|finished)\\b.*\\bwater$").matches(text)
     private fun settingHint(spec: AssistantPreferenceSpec) = when (spec.type) { "boolean" -> "Use on or off."; "int" -> "Use ${spec.range?.first}–${spec.range?.last} ${spec.unit}."; else -> if (spec.unit == "clock") "Use a time such as 9:30am or 18:00." else "Choose ${spec.values.joinToString()}." }
     private fun reply(text: String, actions: List<TalkAction> = emptyList(), topic: String = "assistant") = AyvaTalkEngine.TalkResponse(text, actions, topic, AyvaTalkEngine.serializeActionsJson(topic, actions))
     private fun preserveTime(date: Long, previous: Long): Long {

@@ -71,8 +71,8 @@ fun HabitsScreen(
     var habitToDelete by remember { mutableStateOf<Habit?>(null) }
     var showFreezeDialog by remember { mutableStateOf(false) }
 
-    val completedCount = habitsWithProgress.count { it.isCompletedToday }
-    val totalCount = habitsWithProgress.size
+    val completedCount = habitsWithProgress.count { !it.habit.isPaused && it.isCompletedToday }
+    val totalCount = habitsWithProgress.count { !it.habit.isPaused }
     val overallRatio = if (totalCount > 0) completedCount.toFloat() / totalCount.toFloat() else 0f
 
     Scaffold(
@@ -212,6 +212,7 @@ fun HabitsScreen(
                             editingHabit = item.habit
                             showEditorSheet = true
                         },
+                        onPauseToggle = { habitViewModel.setPaused(item.habit, !item.habit.isPaused) },
                         onDelete = {
                             habitToDelete = item.habit
                         }
@@ -751,7 +752,8 @@ fun HabitCard(
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onPauseToggle: () -> Unit = {}
 ) {
     val habit = item.habit
     val context = LocalContext.current
@@ -879,7 +881,7 @@ fun HabitCard(
 
                         Spacer(modifier = Modifier.height(1.dp))
                         Text(
-                            text = scheduleInfo,
+                            text = if (habit.isPaused) "Paused · reminders off" else scheduleInfo,
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 11.sp,
                                 letterSpacing = (-0.1).sp
@@ -901,6 +903,7 @@ fun HabitCard(
                     // Tactile Radial Progress Button
                     Surface(
                         onClick = onIncrement,
+                        enabled = !habit.isPaused,
                         shape = RoundedCornerShape(16.dp),
                         color = if (isDone) habitColor.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                         border = BorderStroke(
@@ -980,6 +983,7 @@ fun HabitCard(
                             if (item.completedToday > 0) {
                                 DropdownMenuItem(
                                     text = { Text("Undo 1 Log (-1)") },
+                                    enabled = !habit.isPaused,
                                     onClick = {
                                         showMenu = false
                                         onDecrement()
@@ -989,6 +993,11 @@ fun HabitCard(
                                     }
                                 )
                             }
+                            DropdownMenuItem(
+                                text = { Text(if (habit.isPaused) "Resume habit" else "Pause habit") },
+                                onClick = { showMenu = false; onPauseToggle() },
+                                leadingIcon = { Text(if (habit.isPaused) "▶" else "Ⅱ", fontSize = 16.sp) }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Edit Habit") },
                                 onClick = {
@@ -1001,6 +1010,7 @@ fun HabitCard(
                             )
                             DropdownMenuItem(
                                 text = { Text("Preview Floating Nudge") },
+                                enabled = !habit.isPaused,
                                 onClick = {
                                     showMenu = false
                                     com.focusbyrj.app.service.HabitFloatingOverlayManager.showHabitOverlay(

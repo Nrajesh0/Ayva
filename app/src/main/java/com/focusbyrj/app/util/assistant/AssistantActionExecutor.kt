@@ -142,7 +142,7 @@ object AssistantActionExecutor {
             is AssistantAction.LogHabit -> {
                 require(action.count in 1..100) { "Log between 1 and 100 repetitions" }
                 val habit = app.habitRepository.getHabitById(action.id) ?: error("That habit no longer exists")
-                require(!habit.isArchived)
+                require(!habit.isArchived && !habit.isPaused) { "Resume this habit before logging progress" }
                 val date = app.habitRepository.getTodayDateString()
                 val todayLog = app.database.habitDao().getLogForHabitAndDate(habit.id, date)
                 val target = todayLog?.targetCount?.takeIf { it > 0 } ?: habit.targetPerDay
@@ -172,6 +172,7 @@ object AssistantActionExecutor {
                         HabitField.TITLE -> habit.copy(title = value)
                         HabitField.TARGET -> habit.copy(targetPerDay = value.toInt())
                         HabitField.REMINDER -> habit.copy(isReminderEnabled = value.toBooleanStrict())
+                        HabitField.PAUSED -> habit.withPaused(value.toBooleanStrict())
                         HabitField.ARCHIVED -> habit.copy(isArchived = value.toBooleanStrict())
                     }
                     if (!after.isArchived) require(app.database.habitDao().getAllHabitsSync().none {
@@ -186,6 +187,7 @@ object AssistantActionExecutor {
                     HabitField.TITLE -> "Renamed habit to **${updated.title}**."
                     HabitField.TARGET -> "Set **${updated.title}** to ${updated.targetPerDay} per day. Any existing daily log keeps its recorded target."
                     HabitField.REMINDER -> "Reminders ${if (updated.isReminderEnabled) "on" else "off"} for **${updated.title}**."
+                    HabitField.PAUSED -> "${if (updated.isPaused) "Paused" else "Resumed"} habit **${updated.title}**. Its history is preserved."
                     HabitField.ARCHIVED -> "${if (updated.isArchived) "Archived" else "Restored"} habit **${updated.title}**. Its history is preserved."
                 }
                 val inverse = JSONObject().put("kind", "habit_edit").put("before", HabitJson.encode(action.expected)).put("after", HabitJson.encode(updated))

@@ -74,7 +74,7 @@ class HabitRepository(private val habitDao: HabitDao) {
                         habit.id,
                         habit.targetPerDay,
                         todayLog,
-                        allLogs
+                        allLogs, habit
                     )
 
                     val weeklyHistory = past7.map { (dateStr, letter) ->
@@ -101,7 +101,7 @@ class HabitRepository(private val habitDao: HabitDao) {
                         bestStreak = bestStreak,
                         weeklyHistory = weeklyHistory,
                         totalCompletionsAllTime = totalCompletions,
-                        streakFrozenToday = false
+                        streakFrozenToday = habit.isPaused
                     )
                 }
             }
@@ -119,6 +119,15 @@ class HabitRepository(private val habitDao: HabitDao) {
         habitDao.updateHabit(habit)
     }
 
+    suspend fun setPaused(id: Long, paused: Boolean): Habit? = withContext(Dispatchers.IO) {
+        habitDao.setPaused(id, paused)
+    }
+
+    suspend fun isCompleteToday(habit: Habit, date: String): Boolean {
+        val log = habitDao.getLogForHabitAndDate(habit.id, date) ?: return false
+        return log.completedCount >= log.targetCount
+    }
+
     suspend fun deleteHabit(habit: Habit) = withContext(Dispatchers.IO) {
         habitDao.deleteHabitWithLogsTransactional(habit.id, habit)
     }
@@ -126,6 +135,7 @@ class HabitRepository(private val habitDao: HabitDao) {
     suspend fun incrementHabitProgress(habitId: Long): HabitLog = withContext(Dispatchers.IO) {
         val today = getTodayDateString()
         val habit = habitDao.getHabitById(habitId) ?: throw IllegalArgumentException("Habit not found")
+        require(!habit.isPaused) { "Resume this habit before logging progress" }
         val now = System.currentTimeMillis()
 
         // 1. Ensure log row exists atomically without overwriting concurrent progress
@@ -145,6 +155,7 @@ class HabitRepository(private val habitDao: HabitDao) {
 
     suspend fun decrementHabitProgress(habitId: Long): HabitLog? = withContext(Dispatchers.IO) {
         val today = getTodayDateString()
+        require(habitDao.getHabitById(habitId)?.isPaused != true) { "Resume this habit before logging progress" }
         val existingLog = habitDao.getLogForHabitAndDate(habitId, today) ?: return@withContext null
         if (existingLog.completedCount <= 0) return@withContext existingLog
 
@@ -156,6 +167,7 @@ class HabitRepository(private val habitDao: HabitDao) {
         val today = getTodayDateString()
         val habit = habitDao.getHabitById(habitId) ?: throw IllegalArgumentException("Habit not found")
         val existingLog = habitDao.getLogForHabitAndDate(habitId, today)
+        require(!habit.isPaused) { "Resume this habit before logging progress" }
         val now = System.currentTimeMillis()
 
         val updatedLog = if (existingLog != null) {
@@ -183,7 +195,8 @@ class HabitRepository(private val habitDao: HabitDao) {
         habitId: Long,
         targetPerDay: Int,
         todayLog: HabitLog?,
-        logs: List<HabitLog>
+        logs: List<HabitLog>,
+        habit: Habit? = null
     ): Pair<Int, Int> {
         if (logs.isEmpty()) {
             val isTodayDone = (todayLog?.completedCount ?: 0) >= (todayLog?.targetCount ?: targetPerDay)
@@ -206,24 +219,16 @@ class HabitRepository(private val habitDao: HabitDao) {
         val df = getDateFormat()
         val todayStr = df.format(calendar.time)
 
-        // Calculate current streak
+        // Paused dates bridge a streak without counting as completions.
+        fun paused(date: String) = habit?.let { HabitPause.isPausedOn(it, date) } == true
         var currentStreak = 0
-        val isTodayCompleted = completedDates.contains(todayStr)
-
-        if (isTodayCompleted) {
-            currentStreak++
+        val earliest = completedDates.minOrNull() ?: todayStr
+        if (!completedDates.contains(todayStr) && !paused(todayStr)) calendar.add(Calendar.DAY_OF_YEAR, -1)
+        while (df.format(calendar.time) >= earliest) {
+            val date = df.format(calendar.time)
+            if (completedDates.contains(date)) currentStreak++
+            else if (!paused(date)) break
             calendar.add(Calendar.DAY_OF_YEAR, -1)
-            while (completedDates.contains(df.format(calendar.time))) {
-                currentStreak++
-                calendar.add(Calendar.DAY_OF_YEAR, -1)
-            }
-        } else {
-            // Check if yesterday was completed (streak alive, but today pending)
-            calendar.add(Calendar.DAY_OF_YEAR, -1)
-            while (completedDates.contains(df.format(calendar.time))) {
-                currentStreak++
-                calendar.add(Calendar.DAY_OF_YEAR, -1)
-            }
         }
 
         // Calculate best streak historically
@@ -242,6 +247,7 @@ class HabitRepository(private val habitDao: HabitDao) {
             } else {
                 // DST-safe consecutive day check
                 val nextDayCal = (prevCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 1) }
+                while (nextDayCal.before(curCal) && paused(df.format(nextDayCal.time))) nextDayCal.add(Calendar.DAY_OF_YEAR, 1)
                 val isConsecutive = nextDayCal.get(Calendar.YEAR) == curCal.get(Calendar.YEAR) &&
                         nextDayCal.get(Calendar.DAY_OF_YEAR) == curCal.get(Calendar.DAY_OF_YEAR)
                 val isSameDay = prevCal.get(Calendar.YEAR) == curCal.get(Calendar.YEAR) &&
@@ -272,7 +278,7 @@ class HabitRepository(private val habitDao: HabitDao) {
         todayLog: HabitLog?
     ): Pair<Int, Int> = withContext(Dispatchers.IO) {
         val logs = habitDao.getAllLogsForHabitSync(habitId)
-        calculateStreaksFromLogs(habitId, targetPerDay, todayLog, logs)
+        calculateStreaksFromLogs(habitId, targetPerDay, todayLog, logs, habitDao.getHabitById(habitId))
     }
 
     /**
@@ -285,6 +291,7 @@ class HabitRepository(private val habitDao: HabitDao) {
     ) = withContext(Dispatchers.IO) {
         val habit = habitDao.getHabitById(habitId) ?: return@withContext
         val existingLog = habitDao.getLogForHabitAndDate(habitId, date)
+        require(!habit.isPaused) { "Resume this habit before logging progress" }
         val now = System.currentTimeMillis()
         val target = habit.targetPerDay
         val safeCount = count.coerceAtLeast(0)
