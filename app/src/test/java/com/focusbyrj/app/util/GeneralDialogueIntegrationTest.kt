@@ -146,4 +146,82 @@ class GeneralDialogueIntegrationTest {
         assertTrue(say("/talk why that?").contains("Which detail"))
         assertTrue(db.taskDao().getAllTasksList().isEmpty())
     }
+    @Test fun focusedActivitySurvivesExplicitTaskInterruptionWithoutCreatingTasksFromAnswers() = runBlocking {
+        assertTrue(say("explore Ayva").contains("Word chain"))
+        assertTrue(say("play anagrams").contains("Unscramble"))
+        assertTrue(say("planet").contains("Correct"))
+        assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
+        say("buy apples tomorrow")
+        assertEquals(1, db.taskDao().getAllActiveTasksList().size)
+        assertTrue(say("resume anagrams").contains("Correct"))
+        assertTrue(say("next").contains("Unscramble"))
+        assertTrue(say("let's talk about love").contains("don't have a reliable conversation pack"))
+        assertEquals(1, db.taskDao().getAllActiveTasksList().size)
+    }
+
+    @Test fun discussionPauseInterruptionResumeAndChoicesKeepTheirOwner() = runBlocking {
+        say("/talk I prefer quiet evenings")
+        say("/talk crowds wear me out")
+        val recommendation = say("/talk Could you possibly recommend something relaxing?")
+        assertTrue(recommendation, recommendation.contains("reading", true))
+        say("/talk why that?")
+        say("/talk actually outdoors")
+        say("/talk what could I try?")
+        assertTrue(say("pause discussion").contains("Paused"))
+        say("buy apples tomorrow")
+        say("resume discussion")
+        assertTrue(say("/talk what do we have so far?").contains("outdoors"))
+        say("/talk no advice")
+        say("/talk stop")
+        assertTrue(say("resume discussion").contains("isn't a recent"))
+        assertEquals(1, db.taskDao().getAllActiveTasksList().size)
+    }
+    @Test fun readingTasteCorrectionAndTentativePreferenceSurviveAFullSession() = runBlocking {
+        say("I like reading")
+        say("fantasy")
+        say("tell me more")
+        say("give me an example")
+        assertTrue(say("I don't like fantasy").contains("set world aside"))
+        say("maybe characters")
+        assertTrue(say("recap").contains("tentative"))
+        say("pause activity")
+        say("resume activity")
+        assertTrue(say("recap").contains("world: avoid"))
+        say("stop")
+        assertTrue(db.taskDao().getAllTasksList().isEmpty())
+    }
+    @Test fun stampedActivityButtonsUseTheirOwnRouteWithoutChangingChatModeOrTasks() = runBlocking {
+        val response = OfflineAssistant.respond("play anagrams", context)!!
+        val hint = (response.actions.first() as TalkAction.AskQuery).query
+        assertTrue(say(hint).contains("orbiting"))
+        assertTrue(say(hint).contains("expired"))
+        assertEquals(ChatMode.CHAT, ChatModeStore.get(context))
+        say("play anagrams")
+        say("forget this conversation")
+        assertTrue(say("resume anagrams").contains("isn't a recent"))
+        assertTrue(db.taskDao().getAllTasksList().isEmpty())
+    }
+    @Test fun offeredStudyAnswerUpdatesTheRelevantDimension() = runBlocking {
+        say("/talk I am stressed about studying")
+        val answer = say("/talk remembering it")
+        assertTrue(answer.contains("Forgetting"))
+        assertTrue(say("/talk what do we have so far").contains("recalling material"))
+        assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
+    }
+    @Test fun riddlePauseAndExplicitTaskInterruptionResumeWithoutAdvancingTheGuess() = runBlocking {
+        say("give me a riddle")
+        val before = AssistantSessionStore(context).load().featureState!!.getJSONObject("social").optInt("tries")
+        assertTrue(say("pause activity").contains("Paused"))
+        assertTrue(say("resume activity").contains("keys"))
+        assertEquals(before, AssistantSessionStore(context).load().featureState!!.getJSONObject("social").optInt("tries"))
+        say("buy apples tomorrow")
+        assertTrue(say("resume riddles").contains("keys"))
+        assertTrue(say("piano").contains("You got it"))
+        assertTrue(say("next").contains("wetter"))
+        assertTrue(say("skip").contains("face"))
+        assertTrue(say("reveal").contains("clock"))
+        assertTrue(say("stop").contains("Finished"))
+        assertTrue(say("resume riddles").contains("isn't a recent matching"))
+        assertEquals(1, db.taskDao().getAllActiveTasksList().size)
+    }
 }

@@ -10,7 +10,7 @@ import java.util.UUID
 
 /** Finite conversation packs. They return speech/navigation proposals, never domain mutations. */
 internal object AssistantSocial {
-    private data class Riddle(val question: String, val answers: Set<String>, val hint: String)
+    private data class Riddle(val question: String, val answers: Set<String>, val hint: String, val explanation: String = hint)
     private val jokes = listOf(
         "My calendar tried stand-up comedy. Its timing was excellent, but every joke was dated.",
         "I asked a pencil for advice. It said, ‘You can always draw a new line.’ Very pointed of it.",
@@ -20,7 +20,7 @@ internal object AssistantSocial {
         "Two tabs walked into a browser. Neither remembered why they were there.",
         "I tried to organize a hide-and-seek tournament. Good players are hard to find.",
         "The spreadsheet went on holiday. It needed a change of cells."
-    )
+    ) + EntertainmentPack.jokes.map { it.text }
     private val jokeExplanations = listOf(
         "‘Timing’ suits both comedy and a calendar. ‘Dated’ can mean marked with dates or no longer fresh.",
         "A pencil has a point; ‘pointed’ can also describe a sharp or direct remark.",
@@ -30,13 +30,13 @@ internal object AssistantSocial {
         "It plays on opening browser tabs and then forgetting why, a familiar small distraction.",
         "‘Hard to find’ means difficult to recruit and, in hide-and-seek, literally hidden.",
         "A spreadsheet contains cells. ‘A change of cells’ echoes ‘a change of scene’ for a holiday."
-    )
+    ) + EntertainmentPack.jokes.map { it.explanation }
     private val riddles = listOf(
-        Riddle("What has keys but can't open a door?", setOf("piano", "a piano", "keyboard", "a keyboard"), "Think music or typing."),
-        Riddle("What gets wetter while it dries?", setOf("towel", "a towel"), "You use it after a shower."),
-        Riddle("What has a face and hands but no arms?", setOf("clock", "a clock", "watch", "a watch"), "It helps you keep time."),
-        Riddle("What can you break without touching it?", setOf("promise", "a promise", "silence", "the silence"), "It might involve your word.")
-    )
+        Riddle("What has keys but can't open a door?", setOf("piano", "a piano", "keyboard", "a keyboard"), "Think music or typing.", "Pianos and keyboards have keys for notes or typing, rather than door locks."),
+        Riddle("What gets wetter while it dries?", setOf("towel", "a towel"), "You use it after a shower.", "The towel absorbs water as it dries something else, so the towel becomes wetter."),
+        Riddle("What has a face and hands but no arms?", setOf("clock", "a clock", "watch", "a watch"), "It helps you keep time.", "An analogue clock has a face and hands that indicate the time, but no body or arms."),
+        Riddle("What can you break without touching it?", setOf("promise", "a promise", "silence", "the silence"), "It might involve your word.", "Breaking a promise means failing to keep it; breaking silence means making a sound. Neither requires touching an object.")
+    ) + EntertainmentPack.riddles.map { Riddle(it.question, it.answers, it.hint, it.explanation) }
     private val chain = listOf("apple", "eagle", "earth", "hat", "tiger", "river", "rain", "night", "tree", "ear", "rabbit", "table", "egg", "garden", "nest", "tea", "ant", "train", "note", "echo", "owl", "leaf", "fish", "house", "elephant", "turtle", "engine", "event", "time", "energy", "yellow", "window", "water", "road", "door", "rose", "east", "tail", "lamp", "paper", "rock", "kite", "exit", "travel", "lake", "easy", "young", "green")
     private data class Interest(val aliases: Set<String>, val opening: String, val continuation: String, val reflection: String)
     private val interests = mapOf(
@@ -66,6 +66,8 @@ internal object AssistantSocial {
         }
         if (appMode && !AssistantDiscussion.hasContext(state) && !AssistantDiscussion.requestsResume(text) && !OfflineNluEngine.isConversationalStatement(text) &&
             !Regex("^(?:tell me (?:a |a short )?(?:joke|story)|give me a riddle|play (?:a game|word chain)|just listen|be serious|less jokes|no advice|i (?:like|enjoy|had)|let'?s (?:talk|think)|(?:can|could) we (?:talk|think)|talk (?:about|through)|help me (?:think|decide))\\b").containsMatchIn(text)) return null
+        if (text == "restart jokes") { features(state).remove("seenJokes"); text = "tell me a joke" }
+        if (text == "restart riddles") { features(state).remove("seenRiddles"); text = "give me a riddle" }
         val previous = frame(state)
         val active = state.topic == "conversation" && previous != null
         if (text.startsWith("/ayva social ")) {
@@ -78,8 +80,33 @@ internal object AssistantSocial {
                 else -> return simple("That conversation choice is unavailable.")
             }
         }
+        if (active && previous!!.optString("family") in setOf("joke", "riddle", "riddle_done")) {
+            val family = previous.optString("family")
+            if (text in setOf("next", "another", "another please", "one more", "skip", "same category"))
+                text = if (family == "joke") "another joke" else "give me a riddle"
+            if (text in setOf("restart", "start over", "new round")) {
+                features(state).remove(if (family == "joke") "seenJokes" else "seenRiddles")
+                text = if (family == "joke") "tell me a joke" else "give me a riddle"
+            }
+            if (text == "reveal") text = "answer"
+            if (text == "explain") text = "explain that"
+            if (text == "stop") features(state).remove("pausedSocial")
+        }
         if (Regex("(?i)^i (?:am going to|plan to|will) (?:kill myself|end my life|hurt myself now)\\b").containsMatchIn(original.trim()))
             return speak(state, "support", "I'm concerned about your immediate safety. Please contact local emergency services or a crisis support service now, and reach out to someone you trust who can stay with you. Move away from anything you could use to hurt yourself. Are you in immediate danger?", tone = "serious")
+        if (active && previous!!.optString("family") == "joke" && text in setOf("not my kind", "less silly", "wordplay", "everyday", "whimsy")) {
+            if (text == "not my kind") {
+                val last = previous.optJSONArray("jokes")?.let { it.optInt(it.length() - 1, -1) } ?: -1
+                if (last >= 0) {
+                    val dislikes = features(state).optJSONArray("dislikedJokes") ?: JSONArray()
+                    val ids = (0 until minOf(dislikes.length(), 60)).map { dislikes.optInt(it) }
+                    features(state).put("dislikedJokes", JSONArray((ids + last).distinct().takeLast(60)))
+                }
+                return simple("We can try wordplay, everyday humour or whimsy. Which style would you prefer?")
+            }
+            features(state).put("jokeCategory", if (text == "less silly") "everyday" else text)
+            text = "another joke"
+        }
         if (ConversationRouting.winner(text, state) in setOf(ConversationRouting.Owner.NATIVE, ConversationRouting.Owner.DICTIONARY, ConversationRouting.Owner.KNOWLEDGE, ConversationRouting.Owner.REASONING)) return null
         if (active && text in setOf("stop", "stop the game", "stop the story", "let's change the subject", "lets change the subject", "change the subject", "just chat"))
             return speak(state, "chat", "Okay, we can leave that there. What's on your mind?")
@@ -99,22 +126,27 @@ internal object AssistantSocial {
             return speak(state, "joke", jokeExplanations[index.coerceIn(jokeExplanations.indices)], choices = listOf("next" to "Another joke"))
         }
         if (text in setOf("joke", "tell me a joke", "make me laugh", "no advice, just a joke", "no advice just a joke") || (active && previous!!.optString("family") == "joke" || text == "back to the joke" && previous?.has("jokes") == true) && text in setOf("another one", "another joke", "back to the joke", "that wasn't funny", "not funny")) {
-            val seen = previous?.optJSONArray("jokes")?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty()
-            val next = ((seen.lastOrNull() ?: -1) + 1) % jokes.size
+            val seen = features(state).optJSONArray("seenJokes")?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty()
+            val category = features(state).optString("jokeCategory", "all")
+            val dislikes = features(state).optJSONArray("dislikedJokes")?.let { a -> (0 until minOf(a.length(), 60)).map { a.optInt(it) } }.orEmpty()
+            val next = jokes.indices.firstOrNull { it !in seen && it !in dislikes && (category == "all" || (if (it < 8) "wordplay" else EntertainmentPack.jokes[it - 8].category) == category) } ?: return simple("You've heard this collection. Say ‘restart jokes’ to replay, choose wordplay, everyday or whimsy, or explore Ayva.")
+            features(state).put("seenJokes", JSONArray((seen + next).takeLast(100)))
             val prefix = if (text in setOf("that wasn't funny", "not funny")) "Fair. A different direction: " else ""
             return speak(state, "joke", prefix + jokes[next], choices = listOf("next" to "Another joke", "riddle" to "Try a riddle"), extra = JSONObject().put("jokes", JSONArray((seen + next).takeLast(8))))
         }
         if (text in setOf("give me a riddle", "riddle", "let's play a game", "lets play a game", "play a game", "just distract me", "distract me") || active && previous!!.optString("family") == "riddle_done" && text == "another one") {
-            val n = ((previous?.optInt("riddle", -1) ?: -1) + 1) % riddles.size
+            val seen = features(state).optJSONArray("seenRiddles")?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty()
+            val n = riddles.indices.firstOrNull { it !in seen } ?: return simple("You've reached the end of these riddles. Say ‘restart riddles’ to replay or ‘explore Ayva’ for another activity.")
+            features(state).put("seenRiddles", JSONArray((seen + n).takeLast(100)))
             return speak(state, "riddle", riddles[n].question + " You can guess, ask for a hint, or stop.", choices = listOf("answer" to "Show answer", "stop" to "Stop game"), extra = JSONObject().put("riddle", n).put("tries", 0))
         }
         if (active && previous!!.optString("family") == "riddle" && !newRequest(text)) {
             val n = previous.optInt("riddle").coerceIn(riddles.indices); val riddle = riddles[n]
-            val tries = previous.optInt("tries") + 1
-            val correct = text in riddle.answers
-            val reveal = text in setOf("answer", "give up", "i give up", "tell me", "show answer") || tries >= 3
-            val body = when { correct -> "You got it: ${riddle.answers.first()}."; reveal -> "One answer is ${riddle.answers.first()}. ${riddle.hint}"; text in setOf("hint", "help") -> riddle.hint; else -> "That isn't one of this riddle's stored answers. ${riddle.hint} You can try again or ask for the answer." }
-            return speak(state, if (correct || reveal) "riddle_done" else "riddle", body, choices = if (correct || reveal) listOf("next" to "Another riddle") else listOf("answer" to "Show answer"), extra = JSONObject().put("riddle", n).put("tries", tries))
+            val tries = previous.optInt("tries") + if (text in setOf("hint", "help")) 0 else 1
+            val correct = text.removePrefix("it is ").removePrefix("it's ").removePrefix("is it ") in riddle.answers
+            val reveal = text in setOf("answer", "give up", "i give up", "tell me", "show answer")
+            val body = when { correct -> "You got it: ${riddle.answers.first()}."; reveal -> "One answer is ${riddle.answers.first()}. ${riddle.explanation}"; text in setOf("hint", "help") -> if (previous.optInt("hintCount") == 0) riddle.hint else "One stored answer starts with ${riddle.answers.first().removePrefix("a ").removePrefix("an ").first().uppercaseChar()}. Ask for the answer whenever you like."; else -> "That isn't one of this riddle's stored answers. ${riddle.hint} You can try again or ask for the answer." }
+            return speak(state, if (correct || reveal) "riddle_done" else "riddle", body, choices = if (correct || reveal) listOf("next" to "Another riddle") else listOf("answer" to "Show answer"), extra = JSONObject().put("riddle", n).put("tries", tries).put("hintCount", previous.optInt("hintCount") + if (text in setOf("hint", "help")) 1 else 0))
         }
         if (text in setOf("play word chain", "word chain")) return speak(state, "chain", "Word chain, up to five rounds. Start with the last letter of my word: **cat**. Your word should start with T. Say ‘stop’ to finish.", extra = JSONObject().put("last", "cat").put("round", 0).put("used", JSONArray().put("cat")))
         if (active && previous!!.optString("family") == "chain" && text.matches(Regex("[a-z]{2,24}")) && !newRequest(text)) {
@@ -143,9 +175,18 @@ internal object AssistantSocial {
         if (text in setOf("bye", "goodbye", "good night", "goodnight", "see you")) return speak(state, "chat", "Take care. We can pick up a fresh conversation whenever you return.")
         if (text in setOf("my to-do list is judging me", "my todo list is judging me")) return speak(state, "banter", "Awfully confident for a list that needs you to do all the work.", choices = listOf("joke" to "Just a joke", "listen" to "Just listen"))
         if (active && previous!!.optString("family") in setOf("interest", "interest_done")) {
+            val preferences = previous.optJSONObject("interestPreferences") ?: JSONObject()
+            if (text in setOf("recap", "what do we have so far", "what did we discuss")) {
+                val details = preferences.keys().asSequence().take(8).map { "$it: ${preferences.optString(it)}" }.toList()
+                return speak(state, "interest", if (details.isEmpty()) "We're exploring ${previous.optString("interest")}; no particular preference is settled yet." else details.joinToString("; ") + ".", extra = previous)
+            }
             EverydayTopics.answer(previous.optString("interest"), original, previous.optString("facet").takeIf { it.isNotBlank() }, previous.optInt("stage"))?.let { turn ->
-                return speak(state, "interest", turn.text, extra = JSONObject().put("interest", previous.optString("interest"))
-                    .put("facet", turn.facet).put("stage", previous.optInt("stage") + 1))
+                turn.preference?.let { preferences.put(turn.facet, it) }
+                val seen = previous.optJSONArray("interestReplies")?.let { a -> (0 until minOf(a.length(), 10)).map { a.optString(it) } }.orEmpty()
+                val body = if (turn.text in seen) "We've covered my explanation of that part of ${previous.optString("interest")}. We can explore another aspect, recap your preferences, or stop." else turn.text
+                return speak(state, "interest", body, extra = JSONObject().put("interest", previous.optString("interest"))
+                    .put("facet", if (turn.preference == "avoid") "" else turn.facet).put("stage", previous.optInt("stage") + 1)
+                    .put("interestPreferences", preferences).put("interestReplies", JSONArray((seen + turn.text).distinct().takeLast(10))))
             }
         }
         AssistantDiscussion.answer(state, original)?.let { turn ->
@@ -188,6 +229,7 @@ internal object AssistantSocial {
         // Preserve only bounded response-family history, never an inferred personal profile.
         if (!next.has("storyRun") && previous?.has("storyRun") == true) next.put("storyRun", previous.getInt("storyRun"))
         if (!next.has("jokes") && previous?.has("jokes") == true) next.put("jokes", previous.getJSONArray("jokes"))
+        next.put("prompt", text.take(4000))
         features(state).put("activeDialogue", if (family == "discussion") "discussion" else "social").put("social", next)
         val actions = choices.map { (code, label) -> TalkAction.AskQuery("/ayva social $id $revision $code", label) } + otherActions
         return AyvaTalkEngine.TalkResponse(text, actions, "conversation", AyvaTalkEngine.serializeActionsJson("conversation", actions))

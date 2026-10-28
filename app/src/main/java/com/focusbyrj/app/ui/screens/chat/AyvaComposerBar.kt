@@ -28,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Checklist
 import com.focusbyrj.app.util.assistant.ChatMode
+import com.focusbyrj.app.util.assistant.ChatExperiences
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,8 +86,35 @@ fun AyvaComposerBar(
     onLiveTranscriptionClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     selectedMode: ChatMode = ChatMode.CHAT,
-    onModeChange: (ChatMode) -> Unit = {}
+    onModeChange: (ChatMode) -> Unit = {},
+    onExploreRequest: (String) -> Unit = {}
 ) {
+    var showExplore by rememberSaveable { mutableStateOf(false) }
+    if (showExplore && selectedMode != ChatMode.PLAN) {
+        AlertDialog(
+            onDismissRequest = { showExplore = false },
+            title = { Text("Explore Ayva") },
+            text = {
+                LazyColumn(Modifier.heightIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { Text("Small offline activities, with hints and clear endings. Your draft stays here while you explore.") }
+                    ChatExperiences.capabilities.groupBy { it.group }.forEach { (group, entries) ->
+                        item { Text(group, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp)) }
+                        items(entries, key = { it.id }) { capability ->
+                            Surface(onClick = { showExplore = false; onExploreRequest(capability.request) }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                                    Text(capability.title, fontWeight = FontWeight.Medium)
+                                    Text(capability.promise, style = MaterialTheme.typography.bodySmall)
+                                    Text("Try: ${capability.request}", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                    item { Text("Use Run: your task, habit and Plan commands remain available in the function row.", style = MaterialTheme.typography.bodySmall) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showExplore = false }) { Text("Close") } }
+        )
+    }
     val inputText = inputTextFieldValue.text
     val candidateMode = ChatMode.suggested(inputText)?.takeIf { it != selectedMode }
     var dismissedMode by rememberSaveable { mutableStateOf<String?>(null) }
@@ -109,6 +137,11 @@ fun AyvaComposerBar(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (selectedMode != ChatMode.PLAN) item {
+                Surface(onClick = { showExplore = true }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+                    Text("Explore Ayva", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
+                }
+            }
             items(quickActionCommands) { action ->
                 Surface(
                     onClick = { val mode = ChatMode.suggested(action.commandText); if (mode != null && action.commandText.trim() == mode.command) onModeChange(mode) else onFillCommand(action.commandText) },

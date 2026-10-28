@@ -1,0 +1,65 @@
+{
+  "samples": [
+    {
+      "sample": "Could you possibly recommend something relaxing?",
+      "kotlinRule": "unknown",
+      "nativeMeaning": "what could I try",
+      "kotlinUs": 530668,
+      "nativeUs": 5980823
+    },
+    {
+      "sample": "I feel exhausted",
+      "kotlinRule": "reflect:unwinding",
+      "nativeMeaning": "I feel tired",
+      "kotlinUs": 231454,
+      "nativeUs": 3845976
+    },
+    {
+      "sample": "I prefer quiet evenings",
+      "kotlinRule": "reflect:unwinding",
+      "nativeMeaning": "none",
+      "kotlinUs": 168877,
+      "nativeUs": 3751216
+    },
+    {
+      "sample": "I am worried about studying",
+      "kotlinRule": "reflect:study stress",
+      "nativeMeaning": "none",
+      "kotlinUs": 151220,
+      "nativeUs": 3462877
+    },
+    {
+      "sample": "why that",
+      "kotlinRule": "followup:reflection:unwinding:why that",
+      "nativeMeaning": "why that",
+      "kotlinUs": 212970,
+      "nativeUs": 3339680
+    },
+    {
+      "sample": "what could I try",
+      "kotlinRule": "suggest:suggestion:quiet-reading",
+      "nativeMeaning": "none",
+      "kotlinUs": 178501,
+      "nativeUs": 3254264
+    },
+    {
+      "sample": "can zebras juggle purple cucumbers",
+      "kotlinRule": "unknown",
+      "nativeMeaning": "none",
+      "kotlinUs": 175235,
+      "nativeUs": 3401334
+    },
+    {
+      "sample": "I am not worried about studying",
+      "kotlinRule": "reflect:study stress",
+      "nativeMeaning": "none",
+      "kotlinUs": 137593,
+      "nativeUs": 2132
+    }
+  ],
+  "appPssBeforeKb": 228159,
+  "appPssAfterKb": 233159,
+  "sdk": 29,
+  "abi": "x86_64",
+  "memoryScope": "app PSS only; child peak not measured"
+}

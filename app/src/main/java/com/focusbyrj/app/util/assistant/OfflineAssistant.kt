@@ -211,6 +211,7 @@ object OfflineAssistant {
     }
 
     private suspend fun turn(raw: String, context: Context, app: FocusApplication, state: AssistantSession, priority: Boolean, persistent: Boolean): AyvaTalkEngine.TalkResponse? {
+        FocusedChat.rememberActivity(state)
         val command = raw.trim().substringBefore(' ').lowercase()
         val supportText = if (command in setOf("/plan", "/talk", "/ask")) raw.trim().substringAfter(' ', "") else raw.trim()
         // Preserve the existing immediate-support owner before planning and general-topic handlers.
@@ -382,6 +383,7 @@ object OfflineAssistant {
             state.switchTopic("conversation")
             return reply(AssistantInterpretation.explanation(interpretation))
         }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { FocusedChat.answer(context, state, text) }?.let { return it }
         ConversationRegistry.answer(state, text)?.let { return reply(it) }
         AssistantGuidedPlanning.answer(context, state, text)?.let { return it }
         if (ConversationRouting.winner(text, state) == ConversationRouting.Owner.KNOWLEDGE) GeneralConversation.answer(context, state, text)?.let { return it }
@@ -1251,6 +1253,9 @@ object OfflineAssistant {
     }
 
     private suspend fun internalCommand(command: String, context: Context, app: FocusApplication, state: AssistantSession): AyvaTalkEngine.TalkResponse {
+        if (command.startsWith("experience ")) return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            FocusedChat.answer(context, state, "/ayva $command")
+        } ?: reply("That activity choice is unavailable while another operation needs your attention.")
         if (command.startsWith("suggestion ")) return AssistantInitiative.dismiss(context, state, "/ayva $command") ?: reply("That suggestion is no longer active.")
         if (command.startsWith("social ")) return AssistantSocial.answer(context, state, "/ayva $command") ?: reply("That conversation choice expired.")
         if (command.startsWith("dictionary ")) return AssistantDictionary.answer(context, app, state, "/ayva $command")?.let { featureTurn(context, app, state, it) } ?: reply("That dictionary action is unavailable.")

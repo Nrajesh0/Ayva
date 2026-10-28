@@ -33,7 +33,8 @@ internal object GeneralDialogue {
     }
 
     fun answer(input: String, previous: JSONObject?, style: Style, sourceText: String = input): Turn? {
-        val text = input.trim().replace('’', '\'').take(4000)
+        val localInput = if (Regex("(?i)^(?:(?:could|can|would) you )?(?:possibly )?(?:recommend|suggest) (?:something relaxing|something to unwind|a way to relax)[.!?]*$").matches(input.trim())) "what could I try" else input
+        val text = contextualReply(localInput, previous).trim().replace('’', '\'').take(4000)
         val lower = text.lowercase(Locale.ROOT).trimEnd('.', '!', '?').trim()
         val asking = question.containsMatchIn(lower) || text.endsWith('?')
         val old = previous?.optJSONObject("dialogueV2")?.takeIf { it.optInt("version") == 1 }
@@ -112,7 +113,7 @@ internal object GeneralDialogue {
         }
         if (active && lower in followups && last != null) return result(followUp(last), "followup:${last.id}:$lower")
         if (old != null && lower in followups && last == null)
-            return result("Which detail would you like me to explain?", "clarify:reference")
+            return result(if (seen.lastOrNull() == "clarify:reference") "I haven't identified what you mean. You can name the detail, ask for a recap, or explore another activity." else "Which detail would you like me to explain?", "clarify:reference")
         if (active && lower in summaries) {
             val details = facts.map { "${it.key}: ${it.value}${if (it.tentative) " (tentative)" else ""}" }
             val notes = values(frame, "notes").filter { note -> facts.none { it.source == note } }.takeLast(3)
@@ -230,7 +231,7 @@ internal object GeneralDialogue {
             val body = if (response !in recentResponses) response else {
                 val alternatives = GeneralDialoguePacks.elaborations(topic)
                 alternatives.firstOrNull { it !in recentResponses } ?: if (style.questions && !listening)
-                    "Which part of this matters most to you now?" else "I'm following. Take your time."
+                    "We've reached the edge of this discussion pack. I can recap what you shared, offer a supported suggestion, or help you choose another activity through Explore Ayva." else "We can leave this here. You can ask for a recap or explore another activity whenever you like."
             }
             val explanation = GeneralDialoguePacks.explanation(topic, firmFacts)
             return result(body, if (listening) "listen" else "reflect:$topic", text,
@@ -239,9 +240,40 @@ internal object GeneralDialogue {
         if (old != null && (question.containsMatchIn(lower) || text.endsWith('?'))) {
             return result(if (has(lower, "\\b(?:today|latest|current|live|price|weather|score)\\b"))
                 "I can't check live information. If you share the details, we can discuss what they mean."
-            else "I don't have a reliable answer to that in my offline knowledge. ${if (style.questions) "Which part would you like to work through using what you already know?" else "We can work with details you supply."}", "unknown")
+            else "I don't have a reliable answer to that in my offline knowledge. I can recap this discussion or show the activities I do support—say ‘explore Ayva’.", "unknown")
         }
         return null
+    }
+
+    // Resolve only answers offered by this experience's own question. Keep original
+    // wording as sourceText so normalization never invents a user quotation.
+    private fun contextualReply(input: String, previous: JSONObject?): String {
+        if (input.trim().endsWith('?')) return input
+        val short = input.trim().lowercase(Locale.ROOT).trimEnd('.', '!', '?')
+        val topic = previous?.optString("topic") ?: return input
+        val prompted = previous.optJSONObject("dialogueV2")?.optJSONObject("answer")?.optString("short")?.contains('?') == true
+        if (topic != "unwinding" && !prompted) return input
+        return when (topic) {
+            "study stress" -> when (short) {
+                "remembering it", "remembering", "memory", "recall" -> "I keep forgetting the study material"
+                "the amount", "amount", "the amount to cover", "syllabus", "too much" -> "I have too much material to cover"
+                "focus", "distraction", "distractions", "staying focused" -> "I get distracted while studying"
+                "the exam", "exam itself", "exam" -> "I feel exam pressure"
+                else -> input
+            }
+            "work frustrations" -> when (short) {
+                "interruptions", "being interrupted" -> "I keep getting interrupted at work"
+                "workload", "the workload" -> "My workload is frustrating"
+                else -> input
+            }
+            "unwinding" -> when (short) {
+                "inside", "indoors" -> "I prefer indoors"
+                "outside", "outdoors" -> "I prefer outdoors"
+                "alone", "by myself" -> "I prefer alone time"
+                else -> input
+            }
+            else -> input
+        }
     }
 
     private fun topic(text: String): String? = when {
@@ -271,6 +303,9 @@ internal object GeneralDialogue {
             if (has(text, "\\bwith (?:a friend|friends|family)\\b") && !denied("with (?:a friend|friends|family)")) fact("company", "with ${if (text.contains("family")) "family" else "friends"}")
             if (has(text, "\\b(?:exhausted|tired|low energy)\\b") && !has(text, "\\bnot (?:exhausted|tired)\\b")) fact("energy", "low")
             if (has(text, "\\b(?:forget|forgetting|can't remember)\\b") && !has(text, "\\b(?:don't|do not|never) forget\\b|\\bnot forgetting\\b")) fact("study difficulty", "recalling material")
+            if (has(text, "\\b(?:too much to cover|amount to cover|too much material|syllabus feels huge)\\b")) fact("study difficulty", "amount to cover")
+            if (has(text, "\\b(?:distracted|distraction|staying focused|lose focus)\\b")) fact("study difficulty", "staying focused")
+            if (has(text, "\\b(?:exam itself|exam pressure|test anxiety)\\b")) fact("study difficulty", "exam pressure")
             if (has(text, "\\binterrupt(?:ions|ed|ing)?\\b")) fact("work difficulty", "interruptions")
             Regex("^(?:i (?:like|love|enjoy|prefer)|i'm interested in) (.{1,160})$").matchEntire(text)?.let {
                 if (none { f -> f.key in setOf("setting", "atmosphere", "company") }) fact("interest", it.groupValues[1])

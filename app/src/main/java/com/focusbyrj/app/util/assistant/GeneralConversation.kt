@@ -71,7 +71,10 @@ internal object GeneralConversation {
             val topic = previous?.optString("topic") ?: return response("Which subject would you like to return to?")
             return say(state, topic, recap(previous), previous)
         }
-        if (lower in setOf("forget this conversation", "forget this topic")) { root(state).remove(KEY); root(state).remove("generalTopics"); return response("Forgot this general-chat topic. Explicitly saved memories and plans remain available.") }
+        if (lower in setOf("forget this conversation", "forget this topic")) {
+            listOf("focusedChat", "focusedHistory", "pausedSocial", "pausedGeneral", "social", "experienceSeen", "seenJokes", "seenRiddles", "dislikedJokes", "jokeCategory", "experienceDiagnostic", "unsupportedCount").forEach { root(state).remove(it) }
+            root(state).put("activeDialogue", "")
+            root(state).remove(KEY); root(state).remove("generalTopics"); return response("Forgot this general-chat topic. Explicitly saved memories and plans remain available.") }
         if (lower in setOf("just listen", "no advice", "i don't want advice", "ask fewer questions", "don't ask questions")) {
             // Existing structured discussion retains its listening owner.
             if ((!active || AssistantDiscussion.hasContext(state)) && lower !in setOf("ask fewer questions", "don't ask questions")) return null

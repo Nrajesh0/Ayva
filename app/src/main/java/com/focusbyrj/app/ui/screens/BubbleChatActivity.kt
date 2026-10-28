@@ -2059,6 +2059,7 @@ fun ChatInterface() {
                     onInputChange = { inputTextFieldValue = it },
                     quickActionCommands = quickActionCommands,
                     onFillCommand = onFillCommand,
+                    onExploreRequest = { request -> sendMessage("/talk $request") },
                     suggestions = suggestions,
                     onSuggestionClick = { suggestion ->
                         val rep = suggestion.replacementText

@@ -20,7 +20,7 @@ violations = []
 preview_only = {JAVA / 'util/TalkAction.kt', JAVA / 'ui/components/TalkActionChips.kt',
                 JAVA / 'ui/screens/chat/AyvaResponseControls.kt'}
 direct_write = re.compile(r'\b(?:AssistantPreferences\.apply|AssistantActionExecutor\.execute(?:Async)?)\s*\(')
-dialogue_only = {JAVA / 'util/assistant/GeneralDialogue.kt', JAVA / 'util/assistant/GeneralDialoguePacks.kt'}
+dialogue_only = {JAVA / 'util/assistant/GeneralDialogue.kt', JAVA / 'util/assistant/GeneralDialoguePacks.kt', JAVA / 'util/assistant/ExperienceContent.kt', JAVA / 'util/assistant/EntertainmentPack.kt', JAVA / 'util/assistant/ChatExperiences.kt'}
 dialogue_capability = re.compile(r'^import (?:android\.|java\.(?:io|net)\.)|\b(?:AssistantSession|AssistantAction|AssistantActionExecutor|PlanningLibrary|ConversationPlanStore|ChatModeStore|FocusDatabase|FocusApplication)\b')
 native_authority = re.compile(r'\b(?:AssistantSession|AssistantAction|AssistantActionExecutor|PlanningLibrary|ConversationPlanStore|ChatModeStore|FocusDatabase|FocusApplication)\b')
 for path in paths:

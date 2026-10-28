@@ -3,7 +3,7 @@ package com.focusbyrj.app.util.assistant
 /** Authored subject relations for continuing a discussion, without inventing specific plots or reviews. */
 internal object EverydayTopics {
     data class Facet(val id: String, val words: Set<String>, val point: String, val why: String, val example: String)
-    data class Turn(val facet: String, val text: String)
+    data class Turn(val facet: String, val text: String, val preference: String? = null)
     private val topics = mapOf(
         "music" to listOf(
             Facet("words", setOf("lyrics", "words", "meaning", "story", "voice", "singer"),
@@ -83,6 +83,11 @@ internal object EverydayTopics {
         val followup = lower in setOf("why", "why is that", "how", "tell me more", "more", "give me an example", "for example", "simpler", "shorter")
         if (explicit == null && !followup) return null
         val facet = explicit ?: facets.firstOrNull { it.id == previousFacet } ?: return null
+        val rejected = Regex("\\b(?:don't|do not|dislike|hate|not into|no longer enjoy)\\b").containsMatchIn(lower)
+        val tentative = Regex("\\b(?:maybe|perhaps|might|not sure)\\b").containsMatchIn(lower)
+        if (explicit != null && rejected) return Turn(facet.id,
+            "We'll set ${facet.id} aside. We can explore ${facets.filter { it.id != facet.id }.joinToString(" or ") { it.id }} instead.", "avoid")
+        val preference = if (explicit == null) null else if (tentative) "tentative" else "interested"
         val body = when {
             lower in setOf("give me an example", "for example") -> facet.example
             lower in setOf("why", "why is that", "how", "tell me more", "more") -> facet.why
@@ -90,6 +95,6 @@ internal object EverydayTopics {
             explicit?.id == previousFacet && turn > 0 -> facet.why
             else -> facet.point
         }
-        return Turn(facet.id, body)
+        return Turn(facet.id, (if (tentative) "A possibility, then. " else "") + body, preference)
     }
 }

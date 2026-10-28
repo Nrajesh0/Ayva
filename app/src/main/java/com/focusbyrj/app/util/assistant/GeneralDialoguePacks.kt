@@ -39,7 +39,10 @@ internal object GeneralDialoguePacks {
                 "A familiar route reduces decisions; choosing a quieter time or place may help avoid crowds.",
                 "You could take the quieter route near home and turn back whenever you've had enough."))
         }
-        "study stress" -> listOf(Suggestion("suggestion:recall", "Try one small topic: recall what you can, then check just the gaps.",
+        "study stress" -> listOfNotNull(
+            if (facts["study difficulty"] == "amount to cover") Suggestion("suggestion:study-scope", "Choose one essential topic and identify its smallest useful practice question.", "Reducing the scope gives you a place to begin without pretending the whole syllabus has become small.", "Pick one concept from a chapter and check whether you can explain it before adding the rest.") else null,
+            if (facts["study difficulty"] == "staying focused") Suggestion("suggestion:study-focus", "Remove one avoidable interruption and choose a clear stopping point for this attempt.", "A bounded attempt makes it easier to notice whether the obstacle is the environment, the material or your energy.", "Put unrelated tabs aside, answer one question, then check whether you need a break or a clearer explanation.") else null
+        ) + listOf(Suggestion("suggestion:recall", "Try one small topic: recall what you can, then check just the gaps.",
             "A small recall attempt shows a specific next step instead of leaving you with the feeling that everything needs work.",
             "Close one page of notes, explain its main idea aloud, then reopen it to check what you missed."),
             Suggestion("suggestion:study-pressure", "Separate what you can practise from what you can't control about the result.",
@@ -70,6 +73,9 @@ internal object GeneralDialoguePacks {
                 else -> "A quiet evening can be a welcome reset.${if (playful) " No achievement badge required." else " It doesn't have to turn into another project."}"
             }
             "study stress" -> when {
+                facts["study difficulty"] == "amount to cover" -> "A large amount to cover can make every starting point feel wrong. Separating essential material from optional detail can make the next choice clearer."
+                facts["study difficulty"] == "staying focused" -> "Losing focus can come from interruptions, unclear next steps or low energy. We can work with the part you actually notice rather than treating it as a character flaw."
+                facts["study difficulty"] == "exam pressure" -> "The exam can feel threatening even when some preparation is going well. Practising a small part under familiar conditions can make the unknowns more specific."
                 facts["study difficulty"] == "recalling material" -> "Forgetting during practice can feel discouraging. It also identifies what needs another pass, rather than proving you know nothing."
                 continuing -> "Let's separate the amount left to cover from the pressure you're putting on the outcome. They need different responses."
                 questions -> "That sounds like a lot of pressure. Is it the amount to cover, remembering it, or the exam itself that's worrying you most?"
