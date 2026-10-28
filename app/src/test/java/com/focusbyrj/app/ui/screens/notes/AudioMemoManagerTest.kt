@@ -56,7 +56,7 @@ class AudioMemoManagerTest {
         speech.triggerOnPartialResults(words("buy milk"))
         assertEquals("", manager.finalizedTranscript())
         speech.triggerOnResults(words("buy milk"))
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
         speech.triggerOnPartialResults(words("delete all tasks"))
         assertEquals("buy milk", manager.finalizedTranscript())
         manager.stopRecording()
@@ -90,7 +90,7 @@ class AudioMemoManagerTest {
         speech.triggerOnPartialResults(words("remember"))
         speech.triggerOnPartialResults(words("remember the milk"))
         speech.triggerOnResults(words("remember the milk"))
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
         speech.triggerOnPartialResults(words("and bread"))
         speech.triggerOnResults(words("and bread"))
         assertEquals("Remember the milk. And bread.", manager.stopRecording().second)
@@ -101,7 +101,7 @@ class AudioMemoManagerTest {
         val speech = start()
         speech.triggerOnPartialResults(words("words already seen"))
         speech.triggerOnResults(Bundle())
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
         speech.triggerOnResults(words("next phrase"))
         assertEquals("Words already seen. Next phrase.", manager.stopRecording().second)
     }
@@ -118,7 +118,7 @@ class AudioMemoManagerTest {
         assertEquals("keep my words", manager.recordingState.value.liveTranscript)
         assertTrue(speech.isDestroyed)
         manager.retryRecording()
-        shadowOf(Looper.getMainLooper()).idle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
         val retry = shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer())
         retry.triggerOnResults(words("continue here"))
         assertEquals("Keep my words. Continue here.", manager.stopRecording().second)
@@ -132,7 +132,7 @@ class AudioMemoManagerTest {
         speech.triggerOnPartialResults(words("first phrase"))
         speech.triggerOnError(SpeechRecognizer.ERROR_AUDIO)
         manager.retryRecording()
-        shadowOf(Looper.getMainLooper()).idle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
         shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer()).triggerOnResults(words("second phrase"))
         assertEquals("typed prefix First phrase. Second phrase.", draft)
     }
@@ -172,7 +172,7 @@ class AudioMemoManagerTest {
         var speech = start()
         repeat(4) { attempt ->
             speech.triggerOnError(SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
-            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500L * (attempt + 1)))
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500L * (attempt + 1)))
             speech = shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer())
         }
         assertFalse(manager.recordingState.value.isRecording)
@@ -184,7 +184,7 @@ class AudioMemoManagerTest {
         old.triggerOnResults(words("old phrase")) // Queues another phrase.
         manager.cancelRecording()
         manager.startRecording()
-        shadowOf(Looper.getMainLooper()).idle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
         old.triggerOnPartialResults(words("stale secret"))
         old.triggerOnError(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS)
         assertEquals("", manager.recordingState.value.liveTranscript)
@@ -210,7 +210,7 @@ class AudioMemoManagerTest {
         speech.triggerOnError(SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)
         speech.triggerSupportResult(RecognitionSupport.Builder()
             .addInstalledOnDeviceLanguage("en-US").addInstalledOnDeviceLanguage("fr-FR").build())
-        shadowOf(Looper.getMainLooper()).idle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
         assertEquals("en-US", speech.lastRecognizerIntent.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE))
         speech.triggerOnResults(words("english works"))
         assertEquals("English works.", manager.stopRecording().second)
@@ -230,7 +230,7 @@ class AudioMemoManagerTest {
         val speech = start()
         speech.triggerOnError(SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)
         speech.triggerSupportResult(RecognitionSupport.Builder().addInstalledOnDeviceLanguage("en-US").build())
-        shadowOf(Looper.getMainLooper()).idle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
         speech.triggerOnError(SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE)
         assertFalse(manager.recordingState.value.isRecording)
         assertNotNull(manager.recordingState.value.errorMessage)
@@ -244,8 +244,75 @@ class AudioMemoManagerTest {
         assertTrue(speech.isDestroyed)
         assertEquals("keep this draft", manager.recordingState.value.liveTranscript)
         manager.retryRecording()
-        shadowOf(Looper.getMainLooper()).idle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
         shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer()).triggerOnResults(words("continue"))
         assertEquals("Keep this draft. Continue.", manager.stopRecording().second)
     }
+    @Test fun rateLimitWaitsWithoutRebindingAndKeepsOnlyFinalWordsForActions() {
+        val speech = start()
+        val recognizer = ShadowSpeechRecognizer.getLatestSpeechRecognizer()
+        speech.triggerOnPartialResults(words("keep these words"))
+        speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        assertTrue(manager.recordingState.value.statusMessage.contains("30 seconds"))
+        assertNull(manager.recordingState.value.errorMessage)
+        assertEquals("Keep these words.", manager.recordingState.value.liveTranscript)
+        assertEquals("", manager.finalizedTranscript())
+        // Duplicated terminal events must not queue overlapping recognition requests.
+        speech.triggerOnResults(words("late words"))
+        speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(29))
+        assertTrue(manager.recordingState.value.isRecording)
+        assertTrue(manager.recordingState.value.statusMessage.contains("30 seconds"))
+        assertSame(recognizer, ShadowSpeechRecognizer.getLatestSpeechRecognizer())
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        assertTrue(manager.recordingState.value.statusMessage.contains("Starting offline"))
+        assertFalse(speech.isDestroyed)
+        speech.triggerOnResults(words("continue here"))
+        assertEquals("Keep these words. Continue here.", manager.stopRecording().second)
+    }
+
+    @Test fun persistentRateLimitStopsAndExplicitRetryCannotBypassCooldown() {
+        val speech = start()
+        speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(30))
+        speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(60))
+        speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        assertFalse(manager.recordingState.value.isRecording)
+        assertTrue(manager.recordingState.value.errorMessage!!.contains("limiting requests"))
+        assertFalse(manager.recordingState.value.errorMessage!!.contains("language"))
+        assertTrue(speech.isDestroyed)
+        val previous = ShadowSpeechRecognizer.getLatestSpeechRecognizer()
+        manager.retryRecording()
+        manager.retryRecording()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(119))
+        assertSame(previous, ShadowSpeechRecognizer.getLatestSpeechRecognizer())
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        val next = ShadowSpeechRecognizer.getLatestSpeechRecognizer()
+        assertNotSame(previous, next)
+        assertTrue(shadowOf(next).lastRecognizerIntent.getBooleanExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false))
+    }
+
+    @Test fun cancelDuringRateLimitWaitCannotRestartTheMicrophone() {
+        val speech = start()
+        speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        manager.cancelRecording()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(3))
+        assertFalse(manager.recordingState.value.isSessionOpen)
+        assertTrue(speech.isDestroyed)
+        assertEquals("", manager.recordingState.value.liveTranscript)
+    }
+
+    @Test fun phraseRestartsArePacedInsteadOfImmediatelyRequestingTheServiceAgain() {
+        val speech = start()
+        val firstRequest = speech.lastRecognizerIntent
+        speech.triggerOnResults(words("first phrase"))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+        assertSame(firstRequest, speech.lastRecognizerIntent)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1300))
+        assertNotSame(firstRequest, speech.lastRecognizerIntent)
+        speech.triggerOnResults(words("next phrase"))
+        assertEquals("First phrase. Next phrase.", manager.stopRecording().second)
+    }
+
 }

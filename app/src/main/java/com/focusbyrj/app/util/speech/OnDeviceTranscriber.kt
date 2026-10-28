@@ -68,6 +68,11 @@ class OnDeviceTranscriber(private val context: Context) {
     private var selectedLanguage: String? = null
     private var checkedLanguageSupport = false
     private var recognitionTimeout: Runnable? = null
+    private var pendingRestart: Runnable? = null
+    private var recognitionActive = false
+    // Deliberately survive cancel/retry, so repeated taps cannot bypass a service cooldown.
+    private var nextAllowedStartAt = 0L
+    private var rateLimitErrors = 0
 
     @androidx.annotation.MainThread
     fun startRecording(onTranscriptUpdate: (String) -> Unit = {}) {
@@ -96,8 +101,14 @@ class OnDeviceTranscriber(private val context: Context) {
             statusMessage = "Starting offline transcription...",
             errorMessage = null
         )
-        if (!initSpeechRecognizer(generation)) return
-        startListeningInternal(generation)
+        val waitMs = nextAllowedStartAt - android.os.SystemClock.elapsedRealtime()
+        if (waitMs > 0) {
+            restartListening(generation, waitMs, rebind = true,
+                status = "Waiting for the speech service… Your transcript is kept.")
+        } else {
+            if (!initSpeechRecognizer(generation)) return
+            startListeningInternal(generation)
+        }
         if (!_recordingState.value.isRecording) return
 
         val previousElapsed = _recordingState.value.elapsedSeconds
@@ -138,7 +149,7 @@ class OnDeviceTranscriber(private val context: Context) {
             val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
             speechRecognizer = recognizer
             recognizer.setRecognitionListener(object : RecognitionListener {
-                private fun isCurrent() = isCurrentSession(generation) && speechRecognizer === recognizer
+                private fun isCurrent() = isCurrentSession(generation) && speechRecognizer === recognizer && recognitionActive
 
                 override fun onReadyForSpeech(params: Bundle?) {
                     if (!isCurrent()) return
@@ -169,8 +180,20 @@ class OnDeviceTranscriber(private val context: Context) {
                     if (!isCurrent()) return
                     clearRecognitionTimeout()
                     targetAmplitude = 0f
+                    recognitionActive = false
                     Log.w(tag, "On-device recognition error: $error")
                     when (error) {
+                        SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> {
+                            finishSegment(null)
+                            val seconds = 30L shl rateLimitErrors.coerceAtMost(2)
+                            nextAllowedStartAt = android.os.SystemClock.elapsedRealtime() + seconds * 1000
+                            if (++rateLimitErrors <= 2) {
+                                restartListening(generation, seconds * 1000,
+                                    status = "The speech service needs a pause. Retrying in $seconds seconds; your transcript is kept.")
+                            } else {
+                                failRecording("The speech service is limiting requests. Wait $seconds seconds before retrying. Your transcript is kept.")
+                            }
+                        }
                         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
                             finishSegment(null)
                             transientErrors = 0
@@ -194,7 +217,9 @@ class OnDeviceTranscriber(private val context: Context) {
                 override fun onResults(results: Bundle?) {
                     if (!isCurrent()) return
                     clearRecognitionTimeout()
+                    recognitionActive = false
                     transientErrors = 0
+                    if (!results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().isNullOrBlank()) rateLimitErrors = 0
                     finishSegment(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull())
                     // A terminal callback ends the phrase. Cancelling here can generate a
                     // new ERROR_CLIENT and race the next phrase; simply start the next one.
@@ -206,6 +231,7 @@ class OnDeviceTranscriber(private val context: Context) {
                     val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
                     if (partial.isNotBlank()) {
                         clearRecognitionTimeout()
+                        rateLimitErrors = 0
                         currentPartialText = partial
                         updateFullTranscript()
                     }
@@ -224,6 +250,15 @@ class OnDeviceTranscriber(private val context: Context) {
     private fun startListeningInternal(generation: Int) {
         if (!isCurrentSession(generation)) return
         val recognizer = speechRecognizer ?: return
+        if (recognitionActive) return
+        val waitMs = nextAllowedStartAt - android.os.SystemClock.elapsedRealtime()
+        if (waitMs > 0) {
+            restartListening(generation, waitMs,
+                status = "Waiting for the speech service… Your transcript is kept.")
+            return
+        }
+        pendingRestart?.let(mainHandler::removeCallbacks)
+        pendingRestart = null
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -234,6 +269,8 @@ class OnDeviceTranscriber(private val context: Context) {
             }
             _recordingState.value = _recordingState.value.copy(statusMessage = "Starting offline transcription...")
             setRecognitionTimeout(generation, "The speech service did not start. Enable an offline speech language in Voice settings, then retry.")
+            recognitionActive = true
+            nextAllowedStartAt = android.os.SystemClock.elapsedRealtime() + 1500
             recognizer.startListening(intent)
         } catch (e: Exception) {
             Log.w(tag, "Could not start on-device recognition", e)
@@ -282,14 +319,19 @@ class OnDeviceTranscriber(private val context: Context) {
         }
     }
 
-    private fun restartListening(generation: Int, delayMs: Long, rebind: Boolean = false) {
+    private fun restartListening(generation: Int, delayMs: Long, rebind: Boolean = false,
+                                 status: String = "Continuing offline transcription…") {
         if (!isCurrentSession(generation)) return
-        _recordingState.value = _recordingState.value.copy(statusMessage = "Listening...")
-        mainHandler.postDelayed({
+        pendingRestart?.let(mainHandler::removeCallbacks)
+        _recordingState.value = _recordingState.value.copy(statusMessage = status)
+        pendingRestart = Runnable {
+            pendingRestart = null
             if (isCurrentSession(generation) && (!rebind || initSpeechRecognizer(generation))) {
                 startListeningInternal(generation)
             }
-        }, delayMs)
+        }
+        mainHandler.postDelayed(pendingRestart!!, maxOf(delayMs,
+            nextAllowedStartAt - android.os.SystemClock.elapsedRealtime()))
     }
 
     private fun setRecognitionTimeout(generation: Int, message: String) {
@@ -328,6 +370,7 @@ class OnDeviceTranscriber(private val context: Context) {
         ++sessionGeneration // Invalidate callbacks before cancelling the Android service.
         mainHandler.removeCallbacksAndMessages(null)
         recognitionTimeout = null
+        pendingRestart = null
         recordingJob?.cancel()
         recordingJob = null
         cleanupSpeechRecognizer()
@@ -343,6 +386,7 @@ class OnDeviceTranscriber(private val context: Context) {
 
     private fun cleanupSpeechRecognizer() {
         val recognizer = speechRecognizer
+        recognitionActive = false
         speechRecognizer = null // Ignore callbacks from cancel/destroy, including synchronous ones.
         try { recognizer?.cancel() } catch (_: Exception) {}
         try { recognizer?.destroy() } catch (_: Exception) {}
