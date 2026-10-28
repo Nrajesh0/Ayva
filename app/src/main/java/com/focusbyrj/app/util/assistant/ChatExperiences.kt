@@ -41,12 +41,12 @@ internal object ChatExperiences {
         Capability("reading", "Talk a little", "Reading tastes", "Explore characters, worlds and writing; not arbitrary book plots.", "I like reading"),
         Capability("music", "Talk a little", "Music tastes", "Explore rhythm, lyrics and atmosphere; no song catalogue.", "I enjoy music"),
         Capability("cooking", "Talk a little", "Cooking preferences", "Talk about process and preferences; not a recipe database.", "I like cooking")
-    ).filter { it.available }
+    ).filter { it.available && it.group != "Talk a little" }
     fun unsupportedTopic(input: String): String? {
         val match = Regex("^(?:let'?s (?:talk|chat) about|can we (?:talk|chat) about|i want to talk about|i would like to talk about|talk about) (.{1,100})$", RegexOption.IGNORE_CASE).matchEntire(input.trim()) ?: return null
         val topic = match.groupValues[1].lowercase()
         if (Regex("\\b(?:read(?:ing)?|books?|novels?|music|songs?|cook(?:ing)?|baking|food|films?|movies?|coding|programming|software|walking|walks|nature|photography|unwind|relax|quiet|feelings?|study|studying|exam|work|job|stress|decisions?|options?)\\b").containsMatchIn(topic)) return null
-        return "I don't have a reliable conversation pack for that subject yet. I can explore reading tastes or study difficulties, or we can try a word game, riddle or short story. ‘Explore Ayva’ shows what's available."
+        return "I don't have a reliable conversation pack for that subject yet. We can try a word game, riddle or short story. ‘Explore Ayva’ shows what's available."
     }
     fun help(): String = "Here are a few things we can do well offline:\n\n" + capabilities.groupBy { it.group }.entries.joinToString("\n\n") { (group, items) ->
         "$group\n" + items.joinToString("\n") { "• ${it.title}: ${it.promise}" }

@@ -85,3 +85,13 @@ Follow-up verification: the full selected set passed 90 checks after the typed-c
 The keyboard probe initially encountered a frozen Android System UI and its system ANR dialog. After closing/recovering that emulator system process, both UI tests passed (49.409 seconds total). This was an emulator failure, not evidence of a composer defect. The test also explicitly prepares keyboard/focus state and records a screenshot if the IME fails to appear again.
 
 Final source dependency guard passed across 116 files; whitespace checks passed. Version 2.0.17 (117) includes this implementation; GitHub Actions determines release publication. The remaining release-validation items are source-site review, physical ARM64/Android 16 checks, and physical-device/child-process peak-memory measurements. All planned feature-code changes are implemented; native removal remains an explicit evidence-based follow-up, not an implicit dependency of these features.
+
+## Feedback refinement — 28 October 2026
+
+Removed Talk a little from discovery; retained underlying context handlers used by existing features. Games now use separated titles, puzzle lettering, score text and compact instructions. Riddles separate the question from controls. Stories display numbered choices and accept unambiguous wording containing the meaningful choice words instead of repeating the whole scene on a miss.
+
+Nonpersonal content IDs now persist in `ayva_content_rotation` independently of chat history. Clearing a chat still clears its conversation and activity state, but no longer resets anagrams, jokes, riddles, facts or encouragement to their first item. Story openings and word-chain starters rotate too. Explicit replay controls remain available when a finite collection ends.
+
+Added original interactive retellings of The Tortoise and the Hare, The Lion and the Mouse, and The Crow and the Pitcher, bringing the story collection to six. Alternate endings are labelled. No modern adaptation text or illustrations were imported.
+
+Version 2.0.18 (118) packages this update. Debug build and 19 focused checks passed, including fresh-session rotation, natural story choices, existing context handling and activity authority. Dependency and whitespace checks passed. Visual formatting still needs real-device taste review; these changes are local and have not been version-bumped or pushed.

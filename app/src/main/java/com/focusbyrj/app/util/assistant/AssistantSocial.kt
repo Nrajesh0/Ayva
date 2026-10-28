@@ -58,6 +58,9 @@ internal object AssistantSocial {
     }
 
     fun answer(context: Context, state: AssistantSession, input: String, original: String = input, appMode: Boolean = false): AyvaTalkEngine.TalkResponse? {
+        val rotation = context.getSharedPreferences("ayva_content_rotation", Context.MODE_PRIVATE)
+        for (key in listOf("seenJokes", "seenRiddles")) if (!features(state).has(key))
+            features(state).put(key, runCatching { JSONArray(rotation.getString(key, "[]")!!) }.getOrDefault(JSONArray()))
         var text = input.lowercase(java.util.Locale.ROOT).trim().trimEnd('.', '!', '?')
         if (state.expected == null && !AssistantDiscussion.hasContext(state) &&
             Regex("(?i)^(?:options (?:are|:)|i(?:'m| am) (?:choosing|deciding) between) ").containsMatchIn(text)) {
@@ -131,6 +134,7 @@ internal object AssistantSocial {
             val dislikes = features(state).optJSONArray("dislikedJokes")?.let { a -> (0 until minOf(a.length(), 60)).map { a.optInt(it) } }.orEmpty()
             val next = jokes.indices.firstOrNull { it !in seen && it !in dislikes && (category == "all" || (if (it < 8) "wordplay" else EntertainmentPack.jokes[it - 8].category) == category) } ?: return simple("You've heard this collection. Say ‘restart jokes’ to replay, choose wordplay, everyday or whimsy, or explore Ayva.")
             features(state).put("seenJokes", JSONArray((seen + next).takeLast(100)))
+            rotation.edit().putString("seenJokes", features(state).getJSONArray("seenJokes").toString()).apply()
             val prefix = if (text in setOf("that wasn't funny", "not funny")) "Fair. A different direction: " else ""
             return speak(state, "joke", prefix + jokes[next], choices = listOf("next" to "Another joke", "riddle" to "Try a riddle"), extra = JSONObject().put("jokes", JSONArray((seen + next).takeLast(8))))
         }
@@ -138,7 +142,8 @@ internal object AssistantSocial {
             val seen = features(state).optJSONArray("seenRiddles")?.let { a -> (0 until a.length()).map { a.getInt(it) } }.orEmpty()
             val n = riddles.indices.firstOrNull { it !in seen } ?: return simple("You've reached the end of these riddles. Say ‘restart riddles’ to replay or ‘explore Ayva’ for another activity.")
             features(state).put("seenRiddles", JSONArray((seen + n).takeLast(100)))
-            return speak(state, "riddle", riddles[n].question + " You can guess, ask for a hint, or stop.", choices = listOf("answer" to "Show answer", "stop" to "Stop game"), extra = JSONObject().put("riddle", n).put("tries", 0))
+            rotation.edit().putString("seenRiddles", features(state).getJSONArray("seenRiddles").toString()).apply()
+            return speak(state, "riddle", "**RIDDLE**\n\n" + riddles[n].question + "\n\nGuess below · Hint · Reveal", choices = listOf("answer" to "Show answer", "stop" to "Stop game"), extra = JSONObject().put("riddle", n).put("tries", 0))
         }
         if (active && previous!!.optString("family") == "riddle" && !newRequest(text)) {
             val n = previous.optInt("riddle").coerceIn(riddles.indices); val riddle = riddles[n]

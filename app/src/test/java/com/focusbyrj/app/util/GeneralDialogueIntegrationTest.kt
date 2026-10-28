@@ -32,7 +32,7 @@ class GeneralDialogueIntegrationTest {
         app.javaClass.getDeclaredField("database\$delegate").apply { isAccessible = true; set(app, lazyOf(db)) }
         context = object : ContextWrapper(base) { override fun getApplicationContext(): Context = app }
         AssistantSessionStore(context).clear(); ConversationPlanStore.clearAll(context)
-        for (name in listOf("focus_prefs", "bubble_prefs", "ayva_personalization")) context.getSharedPreferences(name, 0).edit().clear().commit()
+        for (name in listOf("focus_prefs", "bubble_prefs", "ayva_personalization", "ayva_content_rotation")) context.getSharedPreferences(name, 0).edit().clear().commit()
         ChatModeStore.set(context, ChatMode.CHAT)
     }
     @After fun cleanup() { AssistantSessionStore(context).clear(); ConversationPlanStore.clearAll(context); ChatModeStore.set(context, ChatMode.CHAT); db.close() }

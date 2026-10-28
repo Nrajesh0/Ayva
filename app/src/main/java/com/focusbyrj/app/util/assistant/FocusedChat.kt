@@ -39,6 +39,9 @@ internal object FocusedChat {
         if (ChatModeStore.get(context) == ChatMode.PLAN || state.topic == "planning" || state.expected != null || state.pending.isNotEmpty()) return null
         var text = input.trim().lowercase(Locale.ROOT).replace('’', '\'').trimEnd('.', '!', '?')
         val root = state.featureState ?: JSONObject().also { state.featureState = it }
+        // Only public content IDs survive clearing a chat; no conversation text or answers.
+        val rotation = context.getSharedPreferences("ayva_content_rotation", Context.MODE_PRIVATE)
+        if (!root.has("experienceSeen")) root.put("experienceSeen", runCatching { JSONObject(rotation.getString("focused", "{}")!!) }.getOrDefault(JSONObject()))
         text = text.replace(Regex("^/ayva experience "), "experience-choice ")
         if (text.startsWith("experience-choice ")) {
             val parts = text.split(' ', limit = 4)
@@ -162,10 +165,12 @@ internal object FocusedChat {
             val history = root.optJSONObject("experienceSeen") ?: JSONObject().also { root.put("experienceSeen", it) }
             history.put(f.optString("kind"), JSONArray(values(f, "seen").takeLast(100)))
             root.put("experienceDiagnostic", JSONObject().put("owner", f.optString("kind")).put("phase", f.optString("phase")))
+            rotation.edit().putString("focused", history.toString()).apply()
             return response(body, options.map { (label, query) -> label to "/ayva experience ${f.optString("id")} ${f.optInt("revision")} $query" })
         }
         if (text in setOf("restart", "start over", "new round")) {
             root.optJSONObject("experienceSeen")?.remove(f.optString("kind"))
+            rotation.edit().putString("focused", root.optJSONObject("experienceSeen").toString()).apply()
             return answer(context, state, start.entries.first { it.value == f.optString("kind") }.key)
         }
         if (text in setOf("easy", "harder", "hard", "longer", "shorter") && f.optString("kind") in setOf("chain", "anagram")) {
@@ -180,7 +185,7 @@ internal object FocusedChat {
         when (current) {
             "chain" -> {
                 val used = values(f, "used").toMutableList()
-                if (kind != null) { used += "cat"; f.put("used", JSONArray(used)).put("word", "cat"); return say("Word chain: start with **cat**'s last letter, T. Five rounds; dictionary words only, no repeats. Say ‘hint’, ‘longer’ or ‘stop’.", listOf("Hint" to "hint", "Stop" to "stop")) }
+                if (kind != null) { val opening = listOf("cat", "river", "moon", "garden")[rotation.getInt("chain", 0) % 4]; rotation.edit().putInt("chain", (rotation.getInt("chain", 0) + 1) % 4).apply(); used += opening; f.put("used", JSONArray(used)).put("word", opening); return say("**WORD CHAIN**\n\n**$opening** → **${opening.last().uppercaseChar()}**\n\n Five rounds; dictionary words only, no repeats. Say ‘hint’, ‘longer’ or ‘stop’.", listOf("Hint" to "hint", "Stop" to "stop")) }
                 val last = f.optString("word", "cat").takeIf { it.matches(Regex("[a-z]{2,24}")) } ?: return say("This saved round is incompatible. Restart for a fresh game.", listOf("Restart" to "restart"))
                 if (text == "rules") return say(ExperienceContent.WORD_RULES)
                 if (text in setOf("score", "progress")) return say("${f.optInt("score")} of ${f.optInt("limit", 5)} valid words. Your next letter is ${last.last().uppercaseChar()}.")
@@ -220,7 +225,7 @@ internal object FocusedChat {
                     word = puzzle.word; seen += word
                     f.put("word", word).put("seen", JSONArray(seen)).put("hints", 0).put("solved", false)
                     val scrambled = word.drop(2) + word.take(2)
-                    return say("Unscramble **${scrambled.uppercase()}**. Use every letter exactly once. Alternative dictionary words count.", listOf("Hint" to "hint", "Skip" to "skip", "Stop" to "stop"))
+                    return say("**ANAGRAM · Unscramble**\n\n${scrambled.uppercase().toList().joinToString("  ")}\n\nUse every letter once.\nScore: ${f.optInt("score")}", listOf("Hint" to "hint", "Skip" to "skip", "Stop" to "stop"))
                 }
                 if (f.optBoolean("solved")) return say("That round is finished. Say ‘next’ for another.")
                 val puzzle = ExperienceContent.puzzles.firstOrNull { it.word == word } ?: return say("This puzzle changed. Say ‘restart’ for a fresh one.")
@@ -265,18 +270,24 @@ internal object FocusedChat {
             }
             "story" -> {
                 var index = f.optInt("index")
-                if (kind == null && text in next) { index++; if (index >= ExperienceContent.stories.size) return say("You've played all three stories. Restart to explore different endings.", listOf("Restart" to "restart", "Stop" to "stop")); f.put("index", index).put("node", "start") }
+                if (kind != null) { index = rotation.getInt("story", 0) % ExperienceContent.stories.size; f.put("index", index); rotation.edit().putInt("story", index + 1).apply() }
+                if (kind == null && text in next) { index = (index + 1) % ExperienceContent.stories.size; rotation.edit().putInt("story", index + 1).apply(); f.put("index", index).put("node", "start") }
                 val story = ExperienceContent.stories[index.coerceIn(ExperienceContent.stories.indices)]
                 var node = f.optString("node", "start")
                 var scene = story.nodes.getValue(node)
                 if (kind == null && text !in next) {
                     val number = when(text) { "first", "first one", "the first one", "1" -> 0; "second", "second one", "the second one", "2" -> 1; else -> -1 }
                     val choiceText = text.removePrefix("i would like to ").removePrefix("i want to ").removePrefix("i'll ").removePrefix("let's ").removePrefix("choose ")
-                    val choice = scene.choices.entries.firstOrNull { it.key == choiceText } ?: scene.choices.entries.toList().getOrNull(number)
-                    if (choice == null) return say(if (scene.choices.isEmpty()) "That story has ended. Choose ‘next’ for another or ‘restart’ to explore a different ending." else "I can follow the choices in this short story. ${scene.text}", scene.choices.keys.map { it to it } + ("Stop" to "stop"))
+                    val choice = scene.choices.entries.firstOrNull { it.key == choiceText }
+                        ?: scene.choices.entries.toList().getOrNull(number)
+                        ?: scene.choices.entries.filter { entry ->
+                            val words = entry.key.split(' ').filterNot { it in setOf("it", "the", "a", "to") }
+                            words.isNotEmpty() && words.all { word -> Regex("\\b${Regex.escape(word)}\\b").containsMatchIn(choiceText) }
+                        }.singleOrNull()
+                    if (choice == null) return say(if (scene.choices.isEmpty()) "That story has ended. Choose ‘next’ for another or ‘restart’ to explore a different ending." else "Choose one of these options, or type its number.", scene.choices.keys.map { it to it } + ("Stop" to "stop"))
                     node = choice.value; f.put("node", node); scene = story.nodes.getValue(node)
                 }
-                return say("${story.title}\n\n${scene.text}", if (scene.choices.isEmpty()) listOf("Next story" to "next", "Stop" to "stop") else scene.choices.keys.map { it to it } + ("Pause" to "pause story"))
+                return say("**${story.title}**\n\n${scene.text}\n\n" + scene.choices.keys.mapIndexed { i, label -> "${i + 1}. ${label.replaceFirstChar { it.uppercase() }}" }.joinToString("\n"), if (scene.choices.isEmpty()) listOf("Next story" to "next", "Stop" to "stop") else scene.choices.keys.map { it to it } + ("Pause" to "pause story"))
             }
         }
         return null

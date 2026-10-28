@@ -13,6 +13,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28], application = Application::class)
 class FocusedChatIntegrationTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
+    @org.junit.Before fun clearRotation() { context.getSharedPreferences("ayva_content_rotation", 0).edit().clear().commit() }
     @Test fun anagramHintsAnswersResumeAndExhaustionRemainCoherent() {
         ChatModeStore.set(context, ChatMode.CHAT)
         val state = AssistantSession()
@@ -50,6 +51,23 @@ class FocusedChatIntegrationTest {
         assertTrue(ExperienceContent.chainByLetter.values.flatten().containsAll(ExperienceContent.chainWords))
         assertTrue(EntertainmentPack.jokes.map { it.id }.distinct().size == EntertainmentPack.jokes.size)
         assertTrue(ExperienceContent.facts.all { f -> f.relatedIds.all { id -> ExperienceContent.facts.any { it.id == id && it.category == f.category } } })
+    }
+    @Test fun clearedSessionsRotateAndStoryWordingAdvancesTheBranch() {
+        ChatModeStore.set(context, ChatMode.CHAT)
+        val first = AssistantSession()
+        FocusedChat.answer(context, first, "play anagrams")
+        val second = AssistantSession()
+        FocusedChat.answer(context, second, "play anagrams")
+        assertNotEquals(first.featureState!!.getJSONObject("focusedChat").getString("word"), second.featureState!!.getJSONObject("focusedChat").getString("word"))
+        val story = AssistantSession()
+        FocusedChat.answer(context, story, "play a tiny story")
+        assertTrue(FocusedChat.answer(context, story, "I want to carry the lantern home")!!.formattedText.contains("tiny map"))
+        assertTrue(FocusedChat.answer(context, story, "keep the lantern")!!.formattedText.contains("The end"))
+        val nextStory = FocusedChat.answer(context, AssistantSession(), "play a tiny story")!!.formattedText
+        assertTrue(nextStory.contains("travelling garden"))
+        assertFalse(ChatExperiences.capabilities.any { it.group == "Talk a little" })
+        val riddle = AssistantSocial.answer(context, AssistantSession(), "give me a riddle")!!.formattedText
+        assertNotEquals(riddle, AssistantSocial.answer(context, AssistantSession(), "give me a riddle")!!.formattedText)
     }
     @Test fun factsHaveSpecificFollowupsAndDeclineUnsupportedQuestions() {
         ChatModeStore.set(context, ChatMode.CHAT)
