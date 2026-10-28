@@ -1734,6 +1734,9 @@ fun NotesScreen(
                     statusMessage = recordingState.statusMessage,
                     isRecording = recordingState.isRecording,
                     errorMessage = recordingState.errorMessage,
+                    isListening = recordingState.isListening,
+                    isPaused = recordingState.isPaused,
+                    onPause = { viewModel.audioMemoManager.pauseByUser() },
                     onRetry = { checkAndStartRecording() },
                     onCancel = { viewModel.cancelVoiceRecording() },
                     onDone = { viewModel.stopVoiceRecordingAndAttach() }

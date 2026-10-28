@@ -37,6 +37,8 @@ class OnDeviceTranscriber(private val context: Context) {
     // SpeechRecognizer calls and state transitions run on the main thread.
     data class RecordingState(
         val isRecording: Boolean = false,
+        val isListening: Boolean = false,
+        val isPaused: Boolean = false,
         val elapsedSeconds: Int = 0,
         val currentAmplitude: Float = 0f,
         val liveTranscript: String = "",
@@ -44,7 +46,7 @@ class OnDeviceTranscriber(private val context: Context) {
         val statusMessage: String = "",
         val errorMessage: String? = null
     ) {
-        val isSessionOpen: Boolean get() = isRecording || errorMessage != null
+        val isSessionOpen: Boolean get() = isRecording || isPaused || errorMessage != null
     }
 
     private val _recordingState = MutableStateFlow(RecordingState())
@@ -97,6 +99,8 @@ class OnDeviceTranscriber(private val context: Context) {
         targetAmplitude = 0f
         _recordingState.value = _recordingState.value.copy(
             isRecording = true,
+            isPaused = false,
+            isListening = false,
             currentAmplitude = 0f,
             statusMessage = "Starting offline transcription...",
             errorMessage = null
@@ -154,17 +158,20 @@ class OnDeviceTranscriber(private val context: Context) {
                 override fun onReadyForSpeech(params: Bundle?) {
                     if (!isCurrent()) return
                     clearRecognitionTimeout()
-                    _recordingState.value = _recordingState.value.copy(statusMessage = "Listening...")
+                    _recordingState.value = _recordingState.value.copy(statusMessage = "Listening...", isListening = true)
                 }
 
                 override fun onBeginningOfSpeech() {
                     if (!isCurrent()) return
                     clearRecognitionTimeout()
-                    _recordingState.value = _recordingState.value.copy(statusMessage = "Listening...")
+                    _recordingState.value = _recordingState.value.copy(statusMessage = "Listening...", isListening = true)
                 }
 
                 override fun onRmsChanged(rmsdB: Float) {
-                    if (isCurrent()) targetAmplitude = ((rmsdB + 2f) / 10f).coerceIn(0f, 1f)
+                    if (isCurrent() && rmsdB.isFinite()) {
+                        targetAmplitude = ((rmsdB + 2f) / 10f).coerceIn(0f, 1f)
+                        if (!_recordingState.value.isListening) _recordingState.value = _recordingState.value.copy(isListening = true, statusMessage = "Listening...")
+                    }
                 }
 
                 override fun onBufferReceived(buffer: ByteArray?) {}
@@ -172,7 +179,7 @@ class OnDeviceTranscriber(private val context: Context) {
                 override fun onEndOfSpeech() {
                     if (!isCurrent()) return
                     targetAmplitude = 0f
-                    _recordingState.value = _recordingState.value.copy(statusMessage = "Finishing this phrase...")
+                    _recordingState.value = _recordingState.value.copy(statusMessage = "Finishing this phrase...", isListening = false)
                     setRecognitionTimeout(generation, "The speech service stopped responding. Your transcript is kept; retry to continue.")
                 }
 
@@ -233,6 +240,7 @@ class OnDeviceTranscriber(private val context: Context) {
                         clearRecognitionTimeout()
                         rateLimitErrors = 0
                         currentPartialText = partial
+                        _recordingState.value = _recordingState.value.copy(isListening = true, statusMessage = "Listening...")
                         updateFullTranscript()
                     }
                 }
@@ -267,7 +275,7 @@ class OnDeviceTranscriber(private val context: Context) {
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                 selectedLanguage?.let { putExtra(RecognizerIntent.EXTRA_LANGUAGE, it) }
             }
-            _recordingState.value = _recordingState.value.copy(statusMessage = "Starting offline transcription...")
+            _recordingState.value = _recordingState.value.copy(statusMessage = "Starting offline transcription...", isListening = false)
             setRecognitionTimeout(generation, "The speech service did not start. Enable an offline speech language in Voice settings, then retry.")
             recognitionActive = true
             nextAllowedStartAt = android.os.SystemClock.elapsedRealtime() + 1500
@@ -285,7 +293,7 @@ class OnDeviceTranscriber(private val context: Context) {
             return
         }
         checkedLanguageSupport = true
-        _recordingState.value = _recordingState.value.copy(statusMessage = "Checking installed offline speech languages...")
+        _recordingState.value = _recordingState.value.copy(statusMessage = "Checking installed offline speech languages...", isListening = false)
         setRecognitionTimeout(generation, message)
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -323,7 +331,7 @@ class OnDeviceTranscriber(private val context: Context) {
                                  status: String = "Continuing offline transcription…") {
         if (!isCurrentSession(generation)) return
         pendingRestart?.let(mainHandler::removeCallbacks)
-        _recordingState.value = _recordingState.value.copy(statusMessage = status)
+        _recordingState.value = _recordingState.value.copy(statusMessage = status, isListening = false, currentAmplitude = 0f)
         pendingRestart = Runnable {
             pendingRestart = null
             if (isCurrentSession(generation) && (!rebind || initSpeechRecognizer(generation))) {
@@ -380,7 +388,7 @@ class OnDeviceTranscriber(private val context: Context) {
     private fun failRecording(message: String) {
         endRecognition()
         _recordingState.value = _recordingState.value.copy(
-            isRecording = false, currentAmplitude = 0f, statusMessage = message, errorMessage = message
+            isRecording = false, isListening = false, isPaused = false, currentAmplitude = 0f, statusMessage = message, errorMessage = message
         )
     }
 
@@ -390,6 +398,14 @@ class OnDeviceTranscriber(private val context: Context) {
         speechRecognizer = null // Ignore callbacks from cancel/destroy, including synchronous ones.
         try { recognizer?.cancel() } catch (_: Exception) {}
         try { recognizer?.destroy() } catch (_: Exception) {}
+    }
+
+    @androidx.annotation.MainThread
+    fun pauseByUser() {
+        if (!_recordingState.value.isRecording) return
+        endRecognition()
+        _recordingState.value = _recordingState.value.copy(isRecording = false, isListening = false,
+            isPaused = true, currentAmplitude = 0f, statusMessage = "Paused", errorMessage = null)
     }
 
     @androidx.annotation.MainThread

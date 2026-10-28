@@ -2150,6 +2150,9 @@ fun ChatInterface() {
                 statusMessage = recordingState.statusMessage,
                 isRecording = recordingState.isRecording,
                 errorMessage = recordingState.errorMessage,
+                isListening = recordingState.isListening,
+                isPaused = recordingState.isPaused,
+                onPause = { audioMemoManager.pauseByUser() },
                 onRetry = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         startLiveTranscriptionAction()

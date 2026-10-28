@@ -172,6 +172,7 @@ fun SettingsScreen(navController: NavController) {
 
             // --- APPEARANCE SECTION (2026 Calm Minimal) ---
             SettingsSectionHeader(title = "APPEARANCE")
+            com.focusbyrj.app.ui.speech.VoiceStyleSettingsRow()
 
             Column(
                 modifier = Modifier

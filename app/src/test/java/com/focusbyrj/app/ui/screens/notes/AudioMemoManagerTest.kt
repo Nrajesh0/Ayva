@@ -315,4 +315,30 @@ class AudioMemoManagerTest {
         assertEquals("First phrase. Next phrase.", manager.stopRecording().second)
     }
 
+    @Test fun userPauseIsResumableAndNeverClaimsListeningDuringCooldown() {
+        val speech = start()
+        assertFalse(manager.recordingState.value.isListening)
+        speech.triggerOnReadyForSpeech(Bundle())
+        assertTrue(manager.recordingState.value.isListening)
+        speech.triggerOnPartialResults(words("keep this caption"))
+        manager.pauseByUser()
+        assertTrue(manager.recordingState.value.isSessionOpen)
+        assertTrue(manager.recordingState.value.isPaused)
+        assertFalse(manager.recordingState.value.isListening)
+        assertFalse(manager.recordingState.value.isRecording)
+        assertNull(manager.recordingState.value.errorMessage)
+        assertEquals("keep this caption", manager.recordingState.value.liveTranscript)
+        manager.retryRecording()
+        assertFalse(manager.recordingState.value.isPaused)
+        assertFalse(manager.recordingState.value.isListening)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
+        val resumed = shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer())
+        resumed.triggerOnReadyForSpeech(Bundle())
+        assertTrue(manager.recordingState.value.isListening)
+        resumed.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        assertFalse(manager.recordingState.value.isListening)
+        assertTrue(manager.recordingState.value.isRecording)
+        assertTrue(manager.recordingState.value.liveTranscript.contains("caption"))
+    }
+
 }

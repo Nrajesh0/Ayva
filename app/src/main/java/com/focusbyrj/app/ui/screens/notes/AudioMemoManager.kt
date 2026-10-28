@@ -44,6 +44,9 @@ class AudioMemoManager(private val context: Context) {
     fun pauseRecording() = transcriber.pauseRecording()
 
     @androidx.annotation.MainThread
+    fun pauseByUser() = transcriber.pauseByUser()
+
+    @androidx.annotation.MainThread
     fun stopRecording(): Pair<String?, String> = transcriber.stopRecording()
 
     @androidx.annotation.MainThread

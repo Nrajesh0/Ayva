@@ -1,361 +1,41 @@
-/*
- * Copyright (C) 2024-2026 Focus by Rj. All rights reserved.
- *
- * This software is proprietary and confidential. Unauthorized copying,
- * distribution, or modification is strictly prohibited.
- */
-
 package com.focusbyrj.app.ui.screens.notes
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import android.content.Intent
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Done
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.RecordVoiceOver
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import java.util.Locale
+import com.focusbyrj.app.ui.speech.VoiceCaptureContent
+import com.focusbyrj.app.ui.speech.VoiceStyle
 
-/**
- * Pixel & Keep-inspired Voice Recording Dialog.
- * Features:
- * - Live on-device speech-to-text transcription with auto-scrolling
- * - Responsive dynamic multi-bar audio waveform
- * - Large pulsing microphone target with tap-to-complete
- * - Clean Material 3 styling matching system themes
- */
+/** On-device capture popup shared by chat and Notes. It receives only the current microphone transcript. */
 @Composable
 fun VoiceRecordDialog(
-    elapsedSeconds: Int,
-    amplitude: Float,
-    liveTranscript: String,
-    statusMessage: String = "Listening...",
-    isRecording: Boolean = true,
-    errorMessage: String? = null,
-    onRetry: () -> Unit = {},
-    onCancel: () -> Unit,
-    onDone: () -> Unit
+    elapsedSeconds: Int, amplitude: Float, liveTranscript: String,
+    statusMessage: String = "Listening...", isRecording: Boolean = true,
+    errorMessage: String? = null, onRetry: () -> Unit = {},
+    onCancel: () -> Unit, onDone: () -> Unit,
+    isListening: Boolean = isRecording, isPaused: Boolean = false, onPause: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.15f + (amplitude * 0.35f),
-        animationSpec = infiniteRepeatable(
-            animation = tween(550, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
-
-    val blinkAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(450),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "cursorBlink"
-    )
-
-    val minutes = elapsedSeconds / 60
-    val seconds = elapsedSeconds % 60
-    val timeFormatted = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-    val transcriptScrollState = rememberScrollState()
-
-    // Auto-scroll transcript to bottom as new sentences arrive
-    LaunchedEffect(liveTranscript) {
-        if (liveTranscript.isNotBlank()) {
-            transcriptScrollState.animateScrollTo(transcriptScrollState.maxValue)
-        }
-    }
-
-    Dialog(
-        onDismissRequest = onCancel,
-        properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false)
-    ) {
-        Card(
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .testTag("voice_record_dialog")
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 24.dp, horizontal = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // Header badge: Pixel style Live Speech indicator
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                    modifier = Modifier.testTag("voice_record_mode_badge")
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFE53935))
-                        )
-                        Text(
-                            text = if (isRecording) "LIVE TRANSCRIPTION" else "TRANSCRIPTION PAUSED",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp,
-                                fontSize = 10.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-
-                // Google Keep Style Large Pulsing Mic Circle (Tap to finish)
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(126.dp)
-                ) {
-                    // Outer diffuse pulse ring
-                    Box(
-                        modifier = Modifier
-                            .size(110.dp)
-                            .scale(if (isRecording) pulseScale else 1f)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
-                    )
-                    // Inner glowing circle button - tap to stop recording like Keep
-                    Box(
-                        modifier = Modifier
-                            .size(76.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { if (!isRecording) onRetry() else if (liveTranscript.isNotBlank()) onDone() }
-                            .testTag("voice_record_pulsing_mic"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Mic,
-                            contentDescription = if (isRecording) "Tap to finish live transcription" else "Retry live transcription",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(38.dp)
-                        )
-                    }
-                }
-
-                // Elapsed Recording Timer
-                Text(
-                    text = timeFormatted,
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.2.sp
-                    ),
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                // Pixel-style 17-bar Dynamic Equalizer Waveform
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    val barWeights = listOf(
-                        0.3f, 0.5f, 0.8f, 1.0f, 0.7f, 0.9f, 1.2f, 0.8f, 
-                        1.0f, 0.8f, 1.2f, 0.9f, 0.7f, 1.0f, 0.8f, 0.5f, 0.3f
-                    )
-                    barWeights.forEach { weight ->
-                        val barHeightDp = (4f + (amplitude * 24f * weight)).coerceIn(4f, 28f).dp
-                        Box(
-                            modifier = Modifier
-                                .width(3.5.dp)
-                                .height(barHeightDp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f))
-                        )
-                    }
-                }
-
-                if (errorMessage != null) {
-                    Text(
-                        text = errorMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.fillMaxWidth().testTag("voice_record_error")
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = onRetry) { Text("Retry") }
-                        TextButton(onClick = {
-                            try {
-                                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS))
-                            } catch (_: Exception) {
-                                android.widget.Toast.makeText(context, "Open your device Settings and find offline speech recognition.", android.widget.Toast.LENGTH_LONG).show()
-                            }
-                        }) { Text("Voice settings") }
-                    }
-                }
-
-                // Live Streaming Transcript Box with Auto-scroll
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 68.dp, max = 130.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                            .verticalScroll(transcriptScrollState),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (liveTranscript.isNotBlank()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "“$liveTranscript",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        lineHeight = 21.sp,
-                                        fontWeight = FontWeight.Normal
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "|”",
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = blinkAlpha)
-                                )
-                            }
-                        } else {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.RecordVoiceOver,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = if (errorMessage != null) "Your transcript will stay here when you retry." else if (statusMessage.isNotBlank()) statusMessage else "Speak now — live transcript will appear",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Bottom Action Bar: Discard (X) and Save (Check)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Cancel / Discard button
-                    IconButton(
-                        onClick = onCancel,
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .testTag("voice_record_cancel_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Cancel live transcription",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    // Done / Save button
-                    IconButton(
-                        onClick = onDone,
-                        enabled = liveTranscript.isNotBlank(),
-                        modifier = Modifier
-                            .size(58.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                            .testTag("voice_record_done_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Done,
-                            contentDescription = "Use transcript",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                }
-            }
+    val style = remember { VoiceStyle.read(context) }
+    Dialog(onDismissRequest = onCancel, properties = DialogProperties(dismissOnClickOutside = false)) {
+        Surface(shape = RoundedCornerShape(26.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 3.dp, modifier = Modifier.testTag("voice_record_dialog")) {
+            VoiceCaptureContent(style, amplitude, elapsedSeconds, liveTranscript, isRecording, isListening, isPaused,
+                statusMessage, errorMessage, onCancel, onDone, onPause, onRetry,
+                onVoiceSettings = {
+                    try { context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }
+                    catch (_: Exception) { Toast.makeText(context, "Open Voice settings to check offline speech languages.", Toast.LENGTH_LONG).show() }
+                })
         }
     }
 }
