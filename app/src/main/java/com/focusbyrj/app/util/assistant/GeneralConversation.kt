@@ -91,7 +91,7 @@ internal object GeneralConversation {
         }
         // This engine cannot see action capabilities. Keep shared planner helpers and the
         // legacy archive/handoff representation intact; only general conversation opts in.
-        if (ChatModeStore.get(context) != ChatMode.PLAN && state.topic != "planning" && !AssistantDiscussion.hasContext(state)) {
+        if (ChatModeStore.get(context) != ChatMode.PLAN && state.topic != "planning" && !AssistantDiscussion.hasContext(state) && !AssistantSocial.hasInterestOpening(lower)) {
             val conversational = state.topic == "conversation" && state.featureState?.optString("activeDialogue") == "general"
             val recall = if (conversational) GeneralDialogue.recalled(root(state).optJSONObject(KEY)) else null
             generalTurn(context, state, text, recall)?.let { return it }

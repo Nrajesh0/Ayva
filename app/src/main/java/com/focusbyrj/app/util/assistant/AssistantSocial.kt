@@ -50,6 +50,13 @@ internal object AssistantSocial {
     private fun frame(state: AssistantSession) = state.featureState?.optJSONObject("social")?.takeIf { AssistantContext.live(it.optLong("at")) && state.featureState?.optString("activeDialogue").orEmpty() in setOf("", "social", "discussion") }
     private fun features(state: AssistantSession) = state.featureState ?: JSONObject().also { state.featureState = it }
 
+    fun hasInterestOpening(text: String): Boolean = interestOpening(text) != null
+
+    private fun interestOpening(text: String): Map.Entry<String, Interest>? {
+        val interestRequest = Regex("^(?:i (?:like|love|enjoy)|let's talk about|lets talk about|talk about|tell me about|can we talk about) (?:my )?([a-z -]{1,60})$").matchEntire(text)
+        return interestRequest?.groupValues?.get(1)?.let { topic -> interests.entries.firstOrNull { topic in it.value.aliases } }
+    }
+
     fun answer(context: Context, state: AssistantSession, input: String, original: String = input, appMode: Boolean = false): AyvaTalkEngine.TalkResponse? {
         var text = input.lowercase(java.util.Locale.ROOT).trim().trimEnd('.', '!', '?')
         if (state.expected == null && !AssistantDiscussion.hasContext(state) &&
@@ -149,8 +156,7 @@ internal object AssistantSocial {
             return speak(state, "empathy", if (active && previous!!.optString("family") == "listening") "That sounds hard. I'm listening; you don't have to turn it into a plan." else if (ConversationVoice.questions(context, state)) "That sounds like a lot to carry. Would you rather talk about it, have a small distraction, or just be heard?" else "That sounds like a lot to carry. You can tell me what happened; I can leave advice aside.", tone = "serious", choices = listOf("listen" to "Just listen", "riddle" to "A distraction"))
         if (text in setOf("i did it", "i passed my exam", "i got the job", "i got promoted", "i finally did it", "good news")) return speak(state, "celebration", "That's good news. What was the best part for you?")
         if (text in setOf("i'm bored", "i am bored", "bored", "something fun")) return speak(state, "boredom", "We could try a riddle, a tiny branching story, or a questionable joke. Pick your kind of fun.", choices = listOf("riddle" to "Riddle", "story" to "Story", "joke" to "Joke"))
-        val interestRequest = Regex("^(?:i (?:like|love|enjoy)|let's talk about|lets talk about|talk about|tell me about|can we talk about) (?:my )?([a-z -]{1,60})$").matchEntire(text)
-        val interest = interestRequest?.groupValues?.get(1)?.let { topic -> interests.entries.firstOrNull { topic in it.value.aliases } }
+        val interest = interestOpening(text)
         if (interest != null) return speak(state, "interest", interest.value.opening, extra = JSONObject().put("interest", interest.key).put("stage", 0))
         if (active && previous!!.optString("family") == "interest" && !newRequest(text)) {
             val pack = interests[previous.optString("interest")]
