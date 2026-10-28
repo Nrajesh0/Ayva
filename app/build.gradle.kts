@@ -15,8 +15,8 @@ android {
     multiDexEnabled = true
     minSdk = 24
     targetSdk = 35
-    versionCode = 115
-    versionName = "2.0.15"
+    versionCode = 116
+    versionName = "2.0.16"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -50,7 +50,7 @@ android {
       isShrinkResources = true
       isCrunchPngs = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      
+
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
       if (file(keystorePath).exists()) {
           signingConfig = signingConfigs.getByName("release")
@@ -98,6 +98,8 @@ android {
   }
 
   packaging {
+    // The isolated dialogue worker executes from the installed, read-only native directory.
+    jniLibs.useLegacyPackaging = true
     resources {
       excludes += listOf(
         "kotlin-tooling-metadata.json",
@@ -144,7 +146,7 @@ dependencies {
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
-  
+
   // Compose Navigation & Lifecycle
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.viewmodel.compose)

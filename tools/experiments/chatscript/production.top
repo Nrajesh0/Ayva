@@ -1,0 +1,33 @@
+# A read-only meaning protocol. Kotlin owns conversation state and all responses.
+outputmacro: run()
+$cs_control_main = ~run_meaning
+$cs_token = #DO_SUBSTITUTE_SYSTEM | #DO_PARSE
+
+table: defaultbot (^name)
+^createfact(^name defaultbot defaultbot)
+DATA:
+run
+
+topic: ~run_meaning system repeat ()
+u: ( < [ could can would ] you * [ suggest recommend ] * > ) RUNADVICE
+u: ( < [ any some ] * [ idea suggestion recommendation ] * > ) RUNADVICE
+u: ( < what * [ suggest recommend ] * > ) RUNADVICE
+u: ( < what * help me [ unwind relax recharge ] * > ) RUNADVICE
+u: ( < [ explain elaborate ] * [ that it ] * > ) RUNWHY
+u: ( < [ why how ] * [ that it ] * > ) RUNWHY
+u: ( < [ can could ] you * [ explain elaborate ] * > ) RUNMORE
+u: ( < [ can could ] you * [ example illustrate ] * > ) RUNEXAMPLE
+u: ( < [ can could ] you * [ simpler shorter concise ] * > ) RUNSHORT
+u: ( < [ sum summarize recap ] * > ) RUNSUMMARY
+u: ( < [ what where ] * [ discussed discussing conversation ] * > ) RUNSUMMARY
+u: ( < [ something anything ] [ different else ] * > ) RUNALTERNATIVE
+u: ( < [ another different ] [ option idea suggestion ] * > ) RUNALTERNATIVE
+u: ( < [ crowded crowds ] * [ drain exhaust tire overwhelm ] * [ me my ] * > ) RUNCROWDS
+u: ( < [ peaceful quiet calm ] [ evening evenings ] * [ me my ] * > ) RUNQUIET
+u: ( < I [ like love prefer enjoy ] * [ peaceful tranquil ] * > ) RUNQUIET
+u: ( < I * [ anxious nervous worried ] * [ studying study exam revision ] * > ) RUNSTUDYSTRESS
+u: ( < I * [ studying study exam revision ] * [ anxious nervous worried ] * > ) RUNSTUDYSTRESS
+u: ( < I * [ frustrated stressed overwhelmed ] * [ job work boss ] * > ) RUNWORKSTRESS
+u: ( < I * [ job work boss ] * [ frustrated stressed overwhelmed ] * > ) RUNWORKSTRESS
+u: ( < I [ am feel ] * [ exhausted drained weary ] * > ) RUNTIRED
+u: () RUNUNKNOWN

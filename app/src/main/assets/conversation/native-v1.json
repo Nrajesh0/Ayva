@@ -1,0 +1,13 @@
+{
+  "upstream": "https://github.com/ChatScript/ChatScript",
+  "revision": "9f5eec4736ba22bd992a6498c1e0052e2a795125",
+  "ndk": "27.2.12479018",
+  "protocol": "RUNNATIVE1",
+  "assetsSha256": "32aa9f08b4c3ef5d75e26c71dd81934882bd6fd9db1e19ff30827176c1e9f964",
+  "workers": {
+    "arm64-v8a": "dfcce5dbb4a850975ec3faec5c55d2aa42cd5c995473d6530962ad58413e4831",
+    "x86_64": "5f7140199413d689068cccf2d81cac16c8b07fb96f64719849968746b2d85c73",
+    "armeabi-v7a": "e9fc9170d51379b67bd6e61a461bdd1032a0addbb13d75a5ed6b8d303a45cc96",
+    "x86": "d81e5015f3c6338143b2f6a72c8437c01e99b34b821d6102aec164cb836d99eb"
+  }
+}

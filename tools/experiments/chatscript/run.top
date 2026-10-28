@@ -1,0 +1,24 @@
+outputmacro: run()
+$cs_control_main = ~run_control
+$cs_token = #DO_SUBSTITUTE_SYSTEM | #DO_PARSE
+$userprompt = ^"%user: >"
+$botprompt = ^"RUN: "
+
+table: defaultbot (^name)
+^createfact(^name defaultbot defaultbot)
+DATA:
+run
+
+topic: ~run_control system repeat ()
+u: ( << quiet evenings >> ) $quiet = 1 A quiet evening can be a welcome reset.
+u: ( << crowds wear out >> ) $crowds = avoid A quieter setting matters as much as the activity.
+u: ( << indoors >> ) $setting = indoors Got it, indoors.
+u: ( << outdoors >> ) $setting = outdoors Got it, outdoors.
+u: ( < what could I try > )
+    if ($setting == outdoors) { A short walk somewhere quiet could work. }
+    else { Try a quiet reading break at home. }
+u: ( < why that > )
+    if ($crowds == avoid) { You said crowds wear you out; this avoids a crowded setting. }
+    else { It is a low effort way to unwind. }
+u: ( < what do we have so far > ) Setting: $setting . Crowds: $crowds .
+u: () __NOT_HANDLED__

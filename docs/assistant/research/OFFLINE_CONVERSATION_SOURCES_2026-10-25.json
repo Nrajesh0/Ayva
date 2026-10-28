@@ -1,0 +1,862 @@
+{
+  "review_date": "2026-10-25",
+  "repository_count": 45,
+  "method": "GitHub metadata, default-branch commit, README and retrievable license review; selected source/build/config files inspected. No Android integrations or performance benchmarks executed.",
+  "repositories": [
+    {
+      "full_name": "ChatScript/ChatScript",
+      "html_url": "https://github.com/ChatScript/ChatScript",
+      "description": null,
+      "language": "C++",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2024-05-06T11:57:31Z",
+      "last_commit_message": "CS 14.1",
+      "sha": "9f5eec4736ba22bd992a6498c1e0052e2a795125",
+      "license_url": "https://github.com/ChatScript/ChatScript/blob/master/license.txt",
+      "readme_url": "https://github.com/ChatScript/ChatScript/blob/master/README.md",
+      "review": {
+        "category": "Dialogue engines",
+        "decision": "Prototype, not immediate replacement",
+        "license_note": "MIT engine; bundled dictionaries/components differ",
+        "assessment": "The richest symbolic conversation candidate: concepts, English rule parsing, topics, rejoinders and user facts. C++/JNI, serialized engine access, asset loading and script authoring are substantial work. English rule parsing is model-free; do not assume foreign TreeTagger assets or integrations meet the same constraints."
+      }
+    },
+    {
+      "full_name": "aichaos/rivescript-java",
+      "html_url": "https://github.com/aichaos/rivescript-java",
+      "description": "A RiveScript interpreter for Java. RiveScript is a scripting language for chatterbots.",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2019-08-06T13:40:20Z",
+      "last_commit_message": "Next development cycle",
+      "sha": "04abeca7fffeaf0783e6aa9c2fe84c34829e5a67",
+      "license_url": "https://github.com/aichaos/rivescript-java/blob/master/LICENSE",
+      "readme_url": "https://github.com/aichaos/rivescript-java/blob/master/README.md",
+      "review": {
+        "category": "Dialogue engines",
+        "decision": "Prototype first as the simpler engine baseline",
+        "license_note": "MIT",
+        "assessment": "Java trigger/response scripting with variables, conditions and input/reply history. Suitable for small talk and personality packs. Old default-branch code, so own the maintenance risk; validate Android and R8. Not a general semantic interpreter or ready conversation corpus."
+      }
+    },
+    {
+      "full_name": "aichaos/rivescript-js",
+      "html_url": "https://github.com/aichaos/rivescript-js",
+      "description": " A RiveScript interpreter for JavaScript. RiveScript is a scripting language for chatterbots.",
+      "language": "JavaScript",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2022-11-26T21:09:35Z",
+      "last_commit_message": "Merge pull request #386 from aichaos/dependabot/npm_and_yarn/eg/quickblox-bot/cached-path-relative-1.1.0",
+      "sha": "c4093756c7b29e9a153f9e6a4f6da59361576635",
+      "license_url": "https://github.com/aichaos/rivescript-js/blob/master/LICENSE",
+      "readme_url": "https://github.com/aichaos/rivescript-js/blob/master/README.md",
+      "review": {
+        "category": "Dialogue engines",
+        "decision": "Alternative implementation / reference",
+        "license_note": "MIT",
+        "assessment": "Same scripting family in JS. A useful reference for behavior or newer implementation choices; adds a JS runtime if embedded in native Run. Do not install both Java and JS engines."
+      }
+    },
+    {
+      "full_name": "pandorabots/rosie",
+      "html_url": "https://github.com/pandorabots/rosie",
+      "description": "Base content for AIML 2.0 chatbot",
+      "language": null,
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2020-04-21T17:45:02Z",
+      "last_commit_message": "Update README.md",
+      "sha": "d3a63bdcd30851453936774f45f64b244306a38c",
+      "license_url": "https://github.com/pandorabots/rosie/blob/master/LICENSE",
+      "readme_url": "https://github.com/pandorabots/rosie/blob/master/README.md",
+      "review": {
+        "category": "Dialogue engines",
+        "decision": "Do not bundle by default",
+        "license_note": "GPL-3.0",
+        "assessment": "Ready AIML small-talk content, optimized for Pandorabots. A compatible local interpreter is required; platform extensions and personality need review. GPL content requires distribution-specific review for proprietary Run. Not a no-effort offline drop-in."
+      }
+    },
+    {
+      "full_name": "keiffster/program-y",
+      "html_url": "https://github.com/keiffster/program-y",
+      "description": "Python 3.x based AIML 2.0 Chatbot interpreter, framework, related programs and knowledge files",
+      "language": "Python",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2024-01-07T08:12:33Z",
+      "last_commit_message": "Merge pull request #320 from keiffster/dependabot/pip/flask-2.2.5",
+      "sha": "6807bd60842de887348825578d3359152cb11618",
+      "license_url": "https://github.com/keiffster/program-y/blob/master/COPYRIGHT.txt",
+      "readme_url": "https://github.com/keiffster/program-y/blob/master/README.md",
+      "review": {
+        "category": "Dialogue engines",
+        "decision": "Reference or desktop comparison only",
+        "license_note": "MIT-style license text; API reports NOASSERTION",
+        "assessment": "AIML 2.1 interpreter and an extensive Python bot platform. Embedded Python use is documented, but the dependency list includes server/channel integrations and optional services. Interpreter license does not clear every bundled AIML file. Too much Android packaging work for its likely benefit."
+      }
+    },
+    {
+      "full_name": "emora-chat/emora_stdm",
+      "html_url": "https://github.com/emora-chat/emora_stdm",
+      "description": "State Transition Dialogue Manager",
+      "language": "Python",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2023-02-07T18:36:42Z",
+      "last_commit_message": "Doc update for DialogueFlow transitions keyword arg",
+      "sha": "d0a81489e381af5f49fd128a1fadb8ac835f5e6f",
+      "license_url": null,
+      "readme_url": "https://github.com/emora-chat/emora_stdm/blob/master/README.md",
+      "review": {
+        "category": "Dialogue engines",
+        "decision": "Study its dialogue design; resolve license before copying",
+        "license_note": "setup.py declares MIT; no root license retrieved",
+        "assessment": "State-transition dialogue manager with Natex matching/generation, variables and macros. Strong example of mixed-initiative authored conversation. Python and NLTK/macros complicate Android and the no-model boundary; assess the exact enabled macros, not the project label."
+      }
+    },
+    {
+      "full_name": "superscriptjs/superscript",
+      "html_url": "https://github.com/superscriptjs/superscript",
+      "description": "A dialogue engine for creating chat bots",
+      "language": "JavaScript",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2019-03-06T17:32:54Z",
+      "last_commit_message": "Merge pull request #370 from golfapipol/master",
+      "sha": "5e3e1b51654a54518dfada17c0cd9dc146c8e48a",
+      "license_url": "https://github.com/superscriptjs/superscript/blob/master/LICENSE.md",
+      "readme_url": "https://github.com/superscriptjs/superscript/blob/master/readme.md",
+      "review": {
+        "category": "Dialogue engines",
+        "decision": "Reference only",
+        "license_note": "MIT",
+        "assessment": "Scripted chatbot with topic/conversation facilities, but old JS stack and NLP dependencies need separate review. No demonstrated advantage over the simpler RiveScript baseline for Run."
+      }
+    },
+    {
+      "full_name": "howdyai/botkit",
+      "html_url": "https://github.com/howdyai/botkit",
+      "description": "Botkit is an open source developer tool for building chat bots, apps and custom integrations for major messaging platforms.",
+      "language": "TypeScript",
+      "archived": true,
+      "default_branch": "main",
+      "last_commit_date": "2022-04-12T18:52:13Z",
+      "last_commit_message": "Merge pull request #2208 from howdyai/dependabot/npm_and_yarn/moment-2.29.2",
+      "sha": "b8f0e3e7fd9238a585ffdcec4a691acb23d0adcf",
+      "license_url": "https://github.com/howdyai/botkit/blob/main/LICENSE.md",
+      "readme_url": "https://github.com/howdyai/botkit/blob/main/readme.md",
+      "review": {
+        "category": "Excluded default stacks",
+        "decision": "Do not adopt",
+        "license_note": "MIT",
+        "assessment": "Archived server/channel bot framework. Helps connect bots to messaging platforms, not Run's offline understanding or local content. Does not supply the missing conversational intelligence."
+      }
+    },
+    {
+      "full_name": "RasaHQ/rasa",
+      "html_url": "https://github.com/RasaHQ/rasa",
+      "description": "\ud83d\udcac   Open source machine learning framework to automate text- and voice-based conversations: NLU, dialogue management, connect to Slack, Facebook, and more - Create chatbots and voice assistants",
+      "language": "Python",
+      "archived": false,
+      "default_branch": "3.6.x",
+      "last_commit_date": "2025-12-18T08:04:47Z",
+      "last_commit_message": "Merge pull request #13155 from RasaHQ/m-vdb-patch-2",
+      "sha": "60a3cff9c08183760355b07bd60f5223d8916d6b",
+      "license_url": "https://github.com/RasaHQ/rasa/blob/3.6.x/LICENSE.txt",
+      "readme_url": "https://github.com/RasaHQ/rasa/blob/3.6.x/README.md",
+      "review": {
+        "category": "Excluded default stacks",
+        "decision": "Do not adopt under current constraints",
+        "license_note": "Apache-2.0 for inspected repository",
+        "assessment": "Powerful intent/entity/dialogue framework, normally deployed with trained NLU/dialogue components in Python. Rule-only configurations exist, but adopting that stack does not provide a lightweight no-model Android solution."
+      }
+    },
+    {
+      "full_name": "gunthercox/ChatterBot",
+      "html_url": "https://github.com/gunthercox/ChatterBot",
+      "description": "ChatterBot is a machine learning, conversational dialog engine for creating chat bots",
+      "language": "Python",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-08-25T11:30:38Z",
+      "last_commit_message": "Merge pull request #2450 from gunthercox/django",
+      "sha": "10b56f750f3bcbff745a24c93ccfc00e3258c9bc",
+      "license_url": "https://github.com/gunthercox/ChatterBot/blob/master/LICENSE",
+      "readme_url": "https://github.com/gunthercox/ChatterBot/blob/master/README.md",
+      "review": {
+        "category": "Excluded default stacks",
+        "decision": "Do not adopt the engine",
+        "license_note": "BSD-3-Clause",
+        "assessment": "Learning/response-selection framework with a typical statistical NLP/training stack. Some adapters can be simple, but that is not an advantage over a controlled native retrieval layer. Evaluate its separately licensed corpus independently."
+      }
+    },
+    {
+      "full_name": "botpress/botpress",
+      "html_url": "https://github.com/botpress/botpress",
+      "description": "The open-source hub to build & deploy GPT/LLM Agents \u26a1\ufe0f",
+      "language": "TypeScript",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-10-23T23:36:36Z",
+      "last_commit_message": "fix(zai): extract parses valid JSON as-is before trying jsonrepair (3.1.2) (#15526)",
+      "sha": "a1b5daee8d4c73023d1529835d674acf27a174e8",
+      "license_url": "https://github.com/botpress/botpress/blob/master/LICENSE",
+      "readme_url": "https://github.com/botpress/botpress/blob/master/readme.md",
+      "review": {
+        "category": "Excluded default stacks",
+        "decision": "Do not adopt current platform",
+        "license_note": "MIT for inspected repository; services separate",
+        "assessment": "Current AI-agent/platform ecosystem is centered on LLM/service integrations. Historical Botpress versions have different capabilities and licensing; they are not interchangeable evidence for a current offline solution."
+      }
+    },
+    {
+      "full_name": "spencermountain/compromise",
+      "html_url": "https://github.com/spencermountain/compromise",
+      "description": "modest natural-language processing",
+      "language": "JavaScript",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-10-18T20:40:00Z",
+      "last_commit_message": "Merge pull request #1252 from spencermountain/dev",
+      "sha": "eae644d5b0427554d8e57203af56b8b76df4bfd3",
+      "license_url": "https://github.com/spencermountain/compromise/blob/master/LICENSE",
+      "readme_url": "https://github.com/spencermountain/compromise/blob/master/README.md",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Evaluate selected rule/lexicon components",
+        "license_note": "MIT",
+        "assessment": "English tokenization, phrase matching and linguistic transformations without requiring a pretrained neural pipeline for its core rule/lexicon approach. Useful normalization reference. JS embedding/porting cost and linguistic mistakes remain; not a coreference or conversation engine."
+      }
+    },
+    {
+      "full_name": "axa-group/nlp.js",
+      "html_url": "https://github.com/axa-group/nlp.js",
+      "description": "An NLP library for building bots, with entity extraction, sentiment analysis, automatic language identify, and so more",
+      "language": "JavaScript",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2024-03-21T12:16:43Z",
+      "last_commit_message": "Update ner-manager.md (#1365)",
+      "sha": "62731109b5dc5d9ed727c6e599443fb29eaea798",
+      "license_url": "https://github.com/axa-group/nlp.js/blob/master/LICENSE.md",
+      "readme_url": "https://github.com/axa-group/nlp.js/blob/master/README.md",
+      "review": {
+        "category": "Excluded default stacks",
+        "decision": "Do not adopt default NLU stack",
+        "license_note": "MIT",
+        "assessment": "Default intent manager trains a classifier. Model-free utilities could be isolated, but a full Node/NLU stack conflicts with the current no-trained-model constraint and adds unnecessary runtime complexity."
+      }
+    },
+    {
+      "full_name": "winkjs/wink-nlp",
+      "html_url": "https://github.com/winkjs/wink-nlp",
+      "description": "Developer friendly Natural Language Processing \u2728",
+      "language": "JavaScript",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2025-06-30T13:27:14Z",
+      "last_commit_message": "build: update branch name",
+      "sha": "c2fa2f1554a64de12dd76421cb6199ded1b6b062",
+      "license_url": "https://github.com/winkjs/wink-nlp/blob/master/LICENSE",
+      "readme_url": "https://github.com/winkjs/wink-nlp/blob/master/README.md",
+      "review": {
+        "category": "Excluded default stacks",
+        "decision": "Do not adopt full pipeline",
+        "license_note": "MIT code; model licenses separate",
+        "assessment": "The documented pipeline loads a language model. Offline execution is not the same as model-free execution. Its tokenizer sibling can be evaluated independently."
+      }
+    },
+    {
+      "full_name": "winkjs/wink-tokenizer",
+      "html_url": "https://github.com/winkjs/wink-tokenizer",
+      "description": "Multilingual tokenizer that automatically tags each token with its type",
+      "language": "JavaScript",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2022-01-27T15:16:58Z",
+      "last_commit_message": "chore: bump npm version \u2014 minor",
+      "sha": "1479974749efed366401eac79e6abca48315786d",
+      "license_url": "https://github.com/winkjs/wink-tokenizer/blob/master/LICENSE",
+      "readme_url": "https://github.com/winkjs/wink-tokenizer/blob/master/README.md",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Small utility / reference",
+        "license_note": "MIT",
+        "assessment": "Standalone rule-driven tokenizer. Potentially useful for punctuation, token boundaries and mentions, but requires JS or a port and does not solve dialogue state. Prefer native implementation if the gain is small."
+      }
+    },
+    {
+      "full_name": "apache/opennlp",
+      "html_url": "https://github.com/apache/opennlp",
+      "description": "Apache OpenNLP",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "main",
+      "last_commit_date": "2026-10-24T17:50:20Z",
+      "last_commit_message": "Bump io.github.hakky54:logcaptor from 2.12.7 to 2.13.0 (#1510)",
+      "sha": "95695633b580a445617a791f05a02b61b65b3b74",
+      "license_url": "https://github.com/apache/opennlp/blob/main/LICENSE",
+      "readme_url": "https://github.com/apache/opennlp/blob/main/README.md",
+      "review": {
+        "category": "Excluded default stacks",
+        "decision": "Do not adopt model-based NLP pipeline",
+        "license_note": "Apache-2.0; model assets separate",
+        "assessment": "Many useful language tasks require trained models. Some utility pieces may be model-free, but Java alone is not enough to satisfy Run's constraints or prove Android compatibility."
+      }
+    },
+    {
+      "full_name": "stanfordnlp/CoreNLP",
+      "html_url": "https://github.com/stanfordnlp/CoreNLP",
+      "description": "CoreNLP: A Java suite of core NLP tools for tokenization, sentence segmentation, NER, parsing, coreference, sentiment analysis, etc.",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "main",
+      "last_commit_date": "2026-09-27T23:25:48Z",
+      "last_commit_message": "Update version numbers in the README",
+      "sha": "e31428cdf39ac13593bb99504d5cd2f8159d342b",
+      "license_url": "https://github.com/stanfordnlp/CoreNLP/blob/main/LICENSE.txt",
+      "readme_url": "https://github.com/stanfordnlp/CoreNLP/blob/main/README.md",
+      "review": {
+        "category": "Excluded default stacks",
+        "decision": "Do not adopt",
+        "license_note": "GPL-3.0; additional assets separate",
+        "assessment": "Large NLP pipeline with trained resources and licensing/integration implications. Rule subcomponents do not justify packaging the full system for this app."
+      }
+    },
+    {
+      "full_name": "wolfgarbe/SymSpell",
+      "html_url": "https://github.com/wolfgarbe/SymSpell",
+      "description": "SymSpell: 1 million times faster spelling correction & fuzzy search through Symmetric Delete spelling correction algorithm",
+      "language": "C#",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-07-04T07:27:00Z",
+      "last_commit_message": "Merge branch 'master' of https://github.com/wolfgarbe/SymSpell",
+      "sha": "c239062ae02961df18ab7da1671d01b4388204e0",
+      "license_url": "https://github.com/wolfgarbe/SymSpell/blob/master/LICENSE",
+      "readme_url": "https://github.com/wolfgarbe/SymSpell/blob/master/README.md",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Reuse algorithm or a reviewed JVM port",
+        "license_note": "MIT code; frequency sources still need provenance",
+        "assessment": "Fast typo correction and word segmentation based on dictionary deletes and frequency data. Helpful for misspelled commands. Original is C#, not a native Kotlin dependency. Never silently rewrite task titles, place names, dates or quantities."
+      }
+    },
+    {
+      "full_name": "wanasit/chrono",
+      "html_url": "https://github.com/wanasit/chrono",
+      "description": "A natural language date parser in Javascript",
+      "language": "TypeScript",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-10-12T01:03:13Z",
+      "last_commit_message": "2.10.3",
+      "sha": "d4fe7e39015c818b271d74789fb96f74777421d0",
+      "license_url": "https://github.com/wanasit/chrono/blob/master/LICENSE.txt",
+      "readme_url": "https://github.com/wanasit/chrono/blob/master/README.md",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Strong date-parser reference; optional JS prototype",
+        "license_note": "MIT",
+        "assessment": "Calendar/date ranges, reference dates and explicit versus inferred fields. More expressive than scattered date regexes, but JS integration and Run's date policies must be evaluated. Extracting a date does not say whether it belongs to travel, exam or a subtask."
+      }
+    },
+    {
+      "full_name": "scrapinghub/dateparser",
+      "html_url": "https://github.com/scrapinghub/dateparser",
+      "description": "python parser for human readable dates",
+      "language": "Python",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-10-23T13:46:16Z",
+      "last_commit_message": "Parse Korean absolute dates written with \ub144/\uc6d4/\uc77c/\uc2dc/\ubd84 (#1434)",
+      "sha": "2f54bb035c9e52d30d33af82300f127de4acec6f",
+      "license_url": "https://github.com/scrapinghub/dateparser/blob/master/LICENSE",
+      "readme_url": "https://github.com/scrapinghub/dateparser/blob/master/README.rst",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Development oracle / reference",
+        "license_note": "BSD-3-Clause",
+        "assessment": "Broad multilingual date parsing in Python. Useful for generating examples and comparison data without deploying Python into Run. Its defaults still need explicit locale, relative-base and future/past policies."
+      }
+    },
+    {
+      "full_name": "joestelmach/natty",
+      "html_url": "https://github.com/joestelmach/natty",
+      "description": "Java natural language date parser",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2017-01-26T04:49:55Z",
+      "last_commit_message": "enable auto release to maven central",
+      "sha": "74389feb4c9372e51cd51eb0800a0177fec3e5a0",
+      "license_url": "https://github.com/joestelmach/natty/blob/master/LICENSE",
+      "readme_url": "https://github.com/joestelmach/natty/blob/master/README",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Secondary JVM date candidate",
+        "license_note": "MIT",
+        "assessment": "Grammar-based natural-language dates on the JVM. A plausible model-free Java candidate, but very old default-branch code and date/time dependencies need review. Preserve timezone, ambiguous-date and calendar-validity checks around it."
+      }
+    },
+    {
+      "full_name": "facebook/duckling",
+      "html_url": "https://github.com/facebook/duckling",
+      "description": "Language, engine, and tooling for expressing, testing, and evaluating composable language rules on input strings.",
+      "language": "Haskell",
+      "archived": false,
+      "default_branch": "main",
+      "last_commit_date": "2026-03-15T21:56:54Z",
+      "last_commit_message": "Remove Support Ukraine banner from Duckling README",
+      "sha": "59a13ff87b1aa8be6b93d387244f8636b26185c5",
+      "license_url": "https://github.com/facebook/duckling/blob/main/LICENSE",
+      "readme_url": "https://github.com/facebook/duckling/blob/main/README.md",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Corpus/rule reference only under strict no-model policy",
+        "license_note": "BSD-style with PATENTS file; review exact terms",
+        "assessment": "Excellent typed time/number/unit rule corpus, but the tree also contains generated ranking classifiers. Haskell/native packaging is substantial. Do not describe the default system as entirely model-free. Removing ranking would be a separate fork to prove."
+      }
+    },
+    {
+      "full_name": "microsoft/Recognizers-Text",
+      "html_url": "https://github.com/microsoft/Recognizers-Text",
+      "description": "Microsoft.Recognizers.Text provides recognition and resolution of numbers, units, date/time, etc. in multiple languages (ZH, EN, FR, ES, PT, DE, IT, TR, HI, NL. Partial support for JA, KO, AR, SV). Packages available at: https://www.nuget.org/profiles/Recognizers.Text, https://www.npmjs.com/~recognizers.text",
+      "language": "C#",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-01-23T05:47:42Z",
+      "last_commit_message": "Remove unused NuGet.CommandLine dependency to fix CVE-2024-0057 (#3203)",
+      "sha": "da7edcff59f669b2a460ab9d400e36298f0d658e",
+      "license_url": "https://github.com/microsoft/Recognizers-Text/blob/master/LICENSE",
+      "readme_url": "https://github.com/microsoft/Recognizers-Text/blob/master/README.md",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Priority entity-parser evaluation",
+        "license_note": "MIT",
+        "assessment": "Typed date/time, number, unit and related extraction through rule/resource recognizers. Java implementation exists but the README calls it in progress; .NET has primary feature coverage. Java POMs target 8 but include JVM dependencies. An API named Model does not itself imply trained ML weights."
+      }
+    },
+    {
+      "full_name": "antlr/antlr4",
+      "html_url": "https://github.com/antlr/antlr4",
+      "description": "ANTLR (ANother Tool for Language Recognition) is a powerful parser generator for reading, processing, executing, or translating structured text or binary files.",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "dev",
+      "last_commit_date": "2026-02-16T21:29:09Z",
+      "last_commit_message": "- Typescript runtime: adding .js to to imports in d.ts files (#4826)",
+      "sha": "7d5770395bb7b02eb56e7c62662cb1d7c08f42a3",
+      "license_url": "https://github.com/antlr/antlr4/blob/dev/LICENSE.txt",
+      "readme_url": "https://github.com/antlr/antlr4/blob/dev/README.md",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Use only for a deliberately authored grammar",
+        "license_note": "BSD-3-Clause",
+        "assessment": "Mature parser generator/runtime useful for typed edit commands and compound syntax. It does not come with a complete conversational English grammar. Generated parser code is a runtime cost to evaluate against simpler Kotlin grammar tools."
+      }
+    },
+    {
+      "full_name": "sirthias/parboiled",
+      "html_url": "https://github.com/sirthias/parboiled",
+      "description": "Elegant parsing in Java and Scala - lightweight, easy-to-use, powerful.",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-10-19T09:39:01Z",
+      "last_commit_message": "Merge pull request #353 from Flowdalic/explicit-lookup",
+      "sha": "bbe276975c31e85322f2ceacf7ee16fe4e2d0a1b",
+      "license_url": "https://github.com/sirthias/parboiled/blob/master/LICENSE",
+      "readme_url": "https://github.com/sirthias/parboiled/blob/master/README.markdown",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Alternative grammar library; not first choice",
+        "license_note": "Apache-2.0",
+        "assessment": "PEG/parser-combinator approach for composing grammar rules. Useful alternative to regex sprawl, but Java/Scala tooling and dependencies need review. Not dialogue understanding out of the box."
+      }
+    },
+    {
+      "full_name": "Tinder/StateMachine",
+      "html_url": "https://github.com/Tinder/StateMachine",
+      "description": "A Kotlin and Swift DSL for finite state machine",
+      "language": "Swift",
+      "archived": false,
+      "default_branch": "main",
+      "last_commit_date": "2024-03-25T20:46:11Z",
+      "last_commit_message": "Update badge (#60)",
+      "sha": "2944b646373a587bf8086827d78eba70f6734b57",
+      "license_url": "https://github.com/Tinder/StateMachine/blob/main/LICENSE",
+      "readme_url": "https://github.com/Tinder/StateMachine/blob/main/README.md",
+      "review": {
+        "category": "State and memory",
+        "decision": "Lightweight alternative to evaluate",
+        "license_note": "BSD-3-Clause text; API NOASSERTION",
+        "assessment": "Contains Kotlin and Swift despite GitHub labeling the repository Swift. Explicit transitions and effects can help ownership. Smaller conceptual fit than a large conversation framework, but advanced history/persistence requirements remain app work."
+      }
+    },
+    {
+      "full_name": "KStateMachine/kstatemachine",
+      "html_url": "https://github.com/KStateMachine/kstatemachine",
+      "description": "A powerful Kotlin Multiplatform state machine library with clean DSL syntax and first-class Kotlin Coroutines support",
+      "language": "Kotlin",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-10-04T13:04:29Z",
+      "last_commit_message": "Merge pull request #155 from KStateMachine/dependabot/gradle/org.jetbrains.kotlinx.kover-0.9.11",
+      "sha": "518ad57a3f4b006023eb606562c23299caf0c589",
+      "license_url": "https://github.com/KStateMachine/kstatemachine/blob/master/LICENSE",
+      "readme_url": "https://github.com/KStateMachine/kstatemachine/blob/master/README.md",
+      "review": {
+        "category": "State and memory",
+        "decision": "Priority native-state evaluation",
+        "license_note": "Boost Software License 1.0 (BSL-1.0)",
+        "assessment": "Kotlin/Android support, guarded/nested states, history and optional event persistence. Core depends on Kotlin stdlib. Useful for pending questions, interruptions and resumption. Verify library/Kotlin version compatibility; Run uses Kotlin 2.0.21. State transitions alone do not interpret text."
+      }
+    },
+    {
+      "full_name": "statelyai/xstate",
+      "html_url": "https://github.com/statelyai/xstate",
+      "description": "State machines, statecharts, and actors for complex logic",
+      "language": "TypeScript",
+      "archived": false,
+      "default_branch": "main",
+      "last_commit_date": "2026-10-25T09:36:54Z",
+      "last_commit_message": "Pin Node.js to 24.22.1 (#5822)",
+      "sha": "060cd63378b46b32e7559d569ed3ad112ee60084",
+      "license_url": "https://github.com/statelyai/xstate/blob/main/LICENSE",
+      "readme_url": "https://github.com/statelyai/xstate/blob/main/README.md",
+      "review": {
+        "category": "State and memory",
+        "decision": "Architecture/reference; runtime only if JS is justified",
+        "license_note": "MIT",
+        "assessment": "Strong statecharts, actors and explicit event handling. Excellent reference for ownership and interruption design. Native Kotlin Run would otherwise acquire a JS runtime just for state management."
+      }
+    },
+    {
+      "full_name": "apache/commons-scxml",
+      "html_url": "https://github.com/apache/commons-scxml",
+      "description": "Apache Commons SCXML",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-10-21T19:24:13Z",
+      "last_commit_message": "Bump ossf/scorecard-action from 2.4.4 to 2.5.0",
+      "sha": "9a42255968a27a6a31469a659709055b405d28c0",
+      "license_url": "https://github.com/apache/commons-scxml/blob/master/LICENSE.txt",
+      "readme_url": "https://github.com/apache/commons-scxml/blob/master/README.md",
+      "review": {
+        "category": "State and memory",
+        "decision": "Alternative / reference",
+        "license_note": "Apache-2.0",
+        "assessment": "Standard XML statecharts and Java execution. Fits explicit dialogue states conceptually, but XML/runtime expression dependencies can be more cumbersome than native Kotlin state management."
+      }
+    },
+    {
+      "full_name": "apache/lucene",
+      "html_url": "https://github.com/apache/lucene",
+      "description": "Apache Lucene open-source search software",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "main",
+      "last_commit_date": "2026-10-24T06:10:11Z",
+      "last_commit_message": "Open files twice for sequential reads only when it helps (#16883)",
+      "sha": "ea57360912ed31ae2f2c0a7a5fef422ddf4e06b0",
+      "license_url": "https://github.com/apache/lucene/blob/main/LICENSE.txt",
+      "readme_url": "https://github.com/apache/lucene/blob/main/README.md",
+      "review": {
+        "category": "Knowledge and retrieval",
+        "decision": "Do not add current full runtime by default",
+        "license_note": "Apache-2.0",
+        "assessment": "Strong lexical retrieval and ranking, but inspected mainline build documentation asks for JDK 25. Neither Java branding nor an older release establishes Android support. Run already uses Room 2.6.1; evaluate a Room FTS4 curated-content index first. Android platform SQLite cannot universally be assumed to expose FTS5."
+      }
+    },
+    {
+      "full_name": "commonsense/conceptnet5",
+      "html_url": "https://github.com/commonsense/conceptnet5",
+      "description": "Code for building ConceptNet from raw data.",
+      "language": "Roff",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2021-09-07T16:14:25Z",
+      "last_commit_message": "Merge pull request #307 from amirouche/master",
+      "sha": "fda1b39607ea6f07e41ddce22d9d5f8360ded581",
+      "license_url": "https://github.com/commonsense/conceptnet5/blob/master/LICENSE.txt",
+      "readme_url": "https://github.com/commonsense/conceptnet5/blob/master/README.md",
+      "review": {
+        "category": "Knowledge and retrieval",
+        "decision": "Optional curated offline data subset",
+        "license_note": "CC BY-SA 4.0 data; Apache-2.0 code",
+        "assessment": "Concept relations can expand topic associations and suggest relevant follow-ups. Full graph/build stack is inappropriate for a phone. Data is noisy, does not establish a fact or task requirement, and requires source attribution. Exclude Numberbatch embeddings under no-model policy."
+      }
+    },
+    {
+      "full_name": "google-research-datasets/Taskmaster",
+      "html_url": "https://github.com/google-research-datasets/Taskmaster",
+      "description": "Please see the readme file as well as our 2019 EMNLP paper linked here -->",
+      "language": null,
+      "archived": true,
+      "default_branch": "master",
+      "last_commit_date": "2024-03-19T15:35:19Z",
+      "last_commit_message": "Update README.md",
+      "sha": "d92cb6af3005f1dc09c39e75e7daf4a04905e00b",
+      "license_url": null,
+      "readme_url": "https://github.com/google-research-datasets/Taskmaster/blob/master/README.md",
+      "review": {
+        "category": "Conversation content and examples",
+        "decision": "Priority scenario-development resource",
+        "license_note": "TM-1 through TM-4 READMEs state CC BY 4.0",
+        "assessment": "Task-oriented dialogues with corrections and realistic user phrasing. Strong source for conversation scenarios and annotated slots. Not an executable assistant or broad knowledge base. Repository archived; static examples remain useful. Attribute adapted source examples."
+      }
+    },
+    {
+      "full_name": "google-research-datasets/dstc8-schema-guided-dialogue",
+      "html_url": "https://github.com/google-research-datasets/dstc8-schema-guided-dialogue",
+      "description": "The Schema-Guided Dialogue Dataset",
+      "language": "Python",
+      "archived": true,
+      "default_branch": "master",
+      "last_commit_date": "2023-08-07T23:10:44Z",
+      "last_commit_message": "Merge pull request #60 from google-research-datasets/sgdx-intent-bug",
+      "sha": "e852981ae34990f4358979625854259302feaa78",
+      "license_url": "https://github.com/google-research-datasets/dstc8-schema-guided-dialogue/blob/master/LICENSE.txt",
+      "readme_url": "https://github.com/google-research-datasets/dstc8-schema-guided-dialogue/blob/master/README.md",
+      "review": {
+        "category": "Conversation content and examples",
+        "decision": "Priority reference for multi-domain state and repair",
+        "license_note": "CC BY-SA 4.0",
+        "assessment": "Annotated intents, slots, services and state transitions useful for interruption/clarification design. Do not import it as a response brain or assume training scripts fit no-model runtime. Adapted data retains relevant share-alike obligations."
+      }
+    },
+    {
+      "full_name": "PolyAI-LDN/conversational-datasets",
+      "html_url": "https://github.com/PolyAI-LDN/conversational-datasets",
+      "description": "Large datasets for conversational AI",
+      "language": "Python",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2019-11-16T03:50:47Z",
+      "last_commit_message": "Add new line in references section (#63)",
+      "sha": "50f626ad0d0e825835bd054f6a58006afa95a8e5",
+      "license_url": "https://github.com/PolyAI-LDN/conversational-datasets/blob/master/LICENSE",
+      "readme_url": "https://github.com/PolyAI-LDN/conversational-datasets/blob/master/README.md",
+      "review": {
+        "category": "Conversation content and examples",
+        "decision": "Reference only; no bulk response import",
+        "license_note": "Apache-2.0 tooling; each source dataset differs",
+        "assessment": "Provides processing recipes for response-selection datasets, not a single uniformly licensed conversation pack. Reddit/subtitle-style data is noisy and often mismatched to a personal assistant. Do not inherit the code license onto source conversations."
+      }
+    },
+    {
+      "full_name": "budzianowski/multiwoz",
+      "html_url": "https://github.com/budzianowski/multiwoz",
+      "description": "Source code for end-to-end dialogue model from the MultiWOZ paper (Budzianowski et al. 2018, EMNLP)",
+      "language": "Python",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2025-01-14T17:45:22Z",
+      "last_commit_message": "Merge pull request #135 from dlwlgus53/patch-1",
+      "sha": "fe0c8e65cfcd8462bd33c86e35f21addc84ca82b",
+      "license_url": "https://github.com/budzianowski/multiwoz/blob/master/LICENSE",
+      "readme_url": "https://github.com/budzianowski/multiwoz/blob/master/README.md",
+      "review": {
+        "category": "Conversation content and examples",
+        "decision": "Use selected multi-domain examples for design/evaluation",
+        "license_note": "MIT at repository root; verify exact dataset/version provenance",
+        "assessment": "Useful reference for travel-like slot filling and cross-domain turns. Domains and annotations have limitations; it does not give a general-purpose travel planner or license live factual claims. Data-driven scenario work need not mean training a model."
+      }
+    },
+    {
+      "full_name": "aimacode/aima-java",
+      "html_url": "https://github.com/aimacode/aima-java",
+      "description": "Java implementation of algorithms from Russell And Norvig's \"Artificial Intelligence - A Modern Approach\"",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "AIMA3e",
+      "last_commit_date": "2026-10-22T08:34:38Z",
+      "last_commit_message": "Documentation improved for new Java versions.",
+      "sha": "5e2c37d577c3673aae890fb1156d34ab041e2d6e",
+      "license_url": "https://github.com/aimacode/aima-java/blob/AIMA3e/LICENCE.md",
+      "readme_url": "https://github.com/aimacode/aima-java/blob/AIMA3e/README.md",
+      "review": {
+        "category": "Planning and reasoning",
+        "decision": "Algorithm reference only",
+        "license_note": "MIT",
+        "assessment": "Classic logic/search/planning implementations for learning and prototyping. No pretrained model is required for symbolic algorithms, but it is not a production Android conversation engine. Do not import an educational framework wholesale."
+      }
+    },
+    {
+      "full_name": "chocoteam/choco-solver",
+      "html_url": "https://github.com/chocoteam/choco-solver",
+      "description": "An open-source Java library for Constraint Programming",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-10-06T15:18:54Z",
+      "last_commit_message": "Merge branch 'release-6.0.2'",
+      "sha": "4456ac71ba28109b6af0fb1c41196ebddcae69ae",
+      "license_url": "https://github.com/chocoteam/choco-solver/blob/master/LICENSE",
+      "readme_url": "https://github.com/chocoteam/choco-solver/blob/master/README.md",
+      "review": {
+        "category": "Planning and reasoning",
+        "decision": "Later scheduling feasibility prototype",
+        "license_note": "BSD-3-Clause",
+        "assessment": "Constraint programming can improve prerequisite, availability and resource scheduling after text is parsed into data. Current POM targets Java 17; Android/API/dependency behavior must still be proved. Avoid optional native continuous-solver features and bound solve time."
+      }
+    },
+    {
+      "full_name": "kiegroup/optaplanner",
+      "html_url": "https://github.com/kiegroup/optaplanner",
+      "description": "Midstream of https://github.com/apache/incubator-kie-optaplanner",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "main",
+      "last_commit_date": "2026-06-04T12:44:09Z",
+      "last_commit_message": "Update Node.js version to v22 in Jenkinsfile",
+      "sha": "0f43859e40acb8923df7028d2a665d02bc673198",
+      "license_url": "https://github.com/kiegroup/optaplanner/blob/main/LICENSE.txt",
+      "readme_url": "https://github.com/kiegroup/optaplanner/blob/main/README.adoc",
+      "review": {
+        "category": "Planning and reasoning",
+        "decision": "Not an immediate app dependency",
+        "license_note": "Apache-2.0",
+        "assessment": "Large planning/optimization framework. Useful modeling references, but footprint, lifecycle and runtime assumptions need review. It cannot interpret conversation or remember dialogue for Run."
+      }
+    },
+    {
+      "full_name": "TimefoldAI/timefold-solver",
+      "html_url": "https://github.com/TimefoldAI/timefold-solver",
+      "description": "The open source Solver AI for Java and Kotlin to optimize scheduling and routing. Solve the vehicle routing problem, employee rostering, task assignment, maintenance scheduling and other planning problems.",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "main",
+      "last_commit_date": "2026-10-23T06:23:50Z",
+      "last_commit_message": "test: improve coverage for swaps (#2772)",
+      "sha": "a513f60aad912aa6599006ea1c47bd3ea95091fb",
+      "license_url": "https://github.com/TimefoldAI/timefold-solver/blob/main/LICENSE.txt",
+      "readme_url": "https://github.com/TimefoldAI/timefold-solver/blob/main/README.md",
+      "review": {
+        "category": "Planning and reasoning",
+        "decision": "Reference; defer Android runtime integration",
+        "license_note": "Apache-2.0 Community Edition; Enterprise separate",
+        "assessment": "Modern scheduling/optimization tooling. README requires Java 21+, and community versus enterprise features differ. Desktop Java/Kotlin support is not Android support. No conversational benefit until structured constraints already exist."
+      }
+    },
+    {
+      "full_name": "plison/opendial",
+      "html_url": "https://github.com/plison/opendial",
+      "description": "A generic Java toolkit for building dialogue systems",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2023-09-19T05:18:19Z",
+      "last_commit_message": "Update README.md",
+      "sha": "0c415dabd6bc62c1f62becfae316815143218dd3",
+      "license_url": null,
+      "readme_url": "https://github.com/plison/opendial/blob/master/README.md",
+      "review": {
+        "category": "Dialogue engines",
+        "decision": "Research/reference; not a direct dependency",
+        "license_note": "No root LICENSE/README grant verified",
+        "assessment": "Java dialogue manager with probabilistic rules, Bayesian state and optional learning. Useful blackboard/state concepts, but its probabilistic models, speech plugins and desktop tooling need separate constraint review. No blanket no-model or distribution approval."
+      }
+    },
+    {
+      "full_name": "google/bottery",
+      "html_url": "https://github.com/google/bottery",
+      "description": null,
+      "language": "JavaScript",
+      "archived": true,
+      "default_branch": "master",
+      "last_commit_date": "2018-10-14T18:16:04Z",
+      "last_commit_message": "Merge pull request #23 from n-leigh/replace-rawgit",
+      "sha": "c66291b56f842a8f9625dd01bbb124b4016e7d54",
+      "license_url": "https://github.com/google/bottery/blob/master/LICENSE",
+      "readme_url": "https://github.com/google/bottery/blob/master/README.md",
+      "review": {
+        "category": "State and memory",
+        "decision": "Design reference only",
+        "license_note": "Apache-2.0",
+        "assessment": "Archived browser dialogue/state/blackboard system with Tracery generation. Good examples of separating state from reply text. Not a maintained Android conversation framework."
+      }
+    },
+    {
+      "full_name": "gunthercox/chatterbot-corpus",
+      "html_url": "https://github.com/gunthercox/chatterbot-corpus",
+      "description": "A multilingual dialog corpus",
+      "language": "Python",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-03-24T12:28:42Z",
+      "last_commit_message": "Fix formatting",
+      "sha": "eec45b284424c9784a5baab78368b1a9ff3b656f",
+      "license_url": "https://github.com/gunthercox/chatterbot-corpus/blob/master/license.md",
+      "readme_url": "https://github.com/gunthercox/chatterbot-corpus/blob/master/README.md",
+      "review": {
+        "category": "Conversation content and examples",
+        "decision": "Best initial small-talk content-source candidate",
+        "license_note": "BSD-3-Clause at repository root",
+        "assessment": "Separate, user-contributed YAML dialogue corpus. A curated subset can become authored rules without training ChatterBot. Inspect individual files/provenance and rewrite persona, factual claims and generic chains. Broad factual correctness and natural multi-turn context are not guaranteed."
+      }
+    },
+    {
+      "full_name": "h0tk3y/better-parse",
+      "html_url": "https://github.com/h0tk3y/better-parse",
+      "description": "A nice parser combinator library for Kotlin",
+      "language": "Kotlin",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-10-14T13:13:43Z",
+      "last_commit_message": "Add the wasmJs target",
+      "sha": "51557fd3a89bddf86adeafe85a9eddc7d870b0ca",
+      "license_url": "https://github.com/h0tk3y/better-parse/blob/master/LICENSE",
+      "readme_url": "https://github.com/h0tk3y/better-parse/blob/master/README.md",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Priority native grammar evaluation",
+        "license_note": "Apache-2.0",
+        "assessment": "Kotlin parser combinators for composing command/edit grammar into typed results. Can improve add/remove/rename/summary/quantity syntax. We still author grammar and resolve references against the actual dialogue frame; verify current Kotlin artifact compatibility."
+      }
+    },
+    {
+      "full_name": "MighTguY/customized-symspell",
+      "html_url": "https://github.com/MighTguY/customized-symspell",
+      "description": "Java port of  SymSpell: 1 million times faster through Symmetric Delete spelling correction algorithm ",
+      "language": "Java",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2026-03-25T14:42:10Z",
+      "last_commit_message": "fix getEditDeletes to make prefixLength working (#69)",
+      "sha": "28744cedcb46db0501db6256671e637dea753831",
+      "license_url": "https://github.com/MighTguY/customized-symspell/blob/master/LICENSE",
+      "readme_url": "https://github.com/MighTguY/customized-symspell/blob/master/README.md",
+      "review": {
+        "category": "Language and parsing",
+        "decision": "Practical JVM typo-correction candidate",
+        "license_note": "MIT",
+        "assessment": "Java port of SymSpell; POM targets Java 8. Better packaging candidate than original C# for Run, but dependencies, dictionaries, maintenance and R8 still need checking. Restrict corrections to command vocabulary/high-confidence suggestions."
+      }
+    },
+    {
+      "full_name": "galaxykate/tracery",
+      "html_url": "https://github.com/galaxykate/tracery",
+      "description": "Tracery: a story-grammar generation library for javascript",
+      "language": "JavaScript",
+      "archived": false,
+      "default_branch": "master",
+      "last_commit_date": "2024-11-03T16:46:02Z",
+      "last_commit_message": "Update readme.md",
+      "sha": "11db07cb8e3564477de7b9d1eef0b5bb5bd6f391",
+      "license_url": "https://github.com/galaxykate/tracery/blob/master/LICENSE.MD",
+      "readme_url": "https://github.com/galaxykate/tracery/blob/master/readme.md",
+      "review": {
+        "category": "Conversation content and examples",
+        "decision": "Reuse constrained generation ideas; JS or native subset",
+        "license_note": "Apache-2.0",
+        "assessment": "Grammar-based text expansion with reusable bindings and variation, without an LLM. Helpful for varied acknowledgements/personality after a response intent is chosen. Does not understand input, maintain true memory or validate facts; do not make all variation random."
+      }
+    }
+  ]
+}

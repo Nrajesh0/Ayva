@@ -63,6 +63,11 @@ internal object GeneralConversation {
             if (matches.size == 1) return say(state, matches.single().optString("topic"), recap(matches.single()), matches.single())
         }
         if (lower in setOf("back to our chat", "back to that topic", "resume our chat")) {
+            if (previous == null && ChatModeStore.get(context) != ChatMode.PLAN) {
+                GeneralDialogue.recalled(root(state).optJSONObject(KEY))?.takeIf { it.has("dialogueV2") }?.let {
+                    generalTurn(context, state, "what do we have so far", it)?.let { response -> return response }
+                }
+            }
             val topic = previous?.optString("topic") ?: return response("Which subject would you like to return to?")
             return say(state, topic, recap(previous), previous)
         }
@@ -72,12 +77,24 @@ internal object GeneralConversation {
             if ((!active || AssistantDiscussion.hasContext(state)) && lower !in setOf("ask fewer questions", "don't ask questions")) return null
             val frame = previous ?: frame("what's on your mind")
             frame.put("stance", "listen").put("questions", false)
+            frame.optJSONObject("dialogueV2")?.remove("answer")
             return say(state, frame.optString("topic"), "I'll follow your lead and leave advice aside.", frame)
         }
         if (lower in setOf("give me advice", "help me think", "ask me questions", "be more curious")) {
+            if (lower == "give me advice" && previous?.optJSONObject("dialogueV2") != null) {
+                generalTurn(context, state, text, previous)?.let { return it }
+            }
             val frame = previous ?: frame("what's on your mind")
             frame.put("stance", "explore").put("questions", true)
+            frame.optJSONObject("dialogueV2")?.remove("answer")
             return say(state, frame.optString("topic"), "We can work through it. What part would be most useful to untangle?", frame)
+        }
+        // This engine cannot see action capabilities. Keep shared planner helpers and the
+        // legacy archive/handoff representation intact; only general conversation opts in.
+        if (ChatModeStore.get(context) != ChatMode.PLAN && state.topic != "planning" && !AssistantDiscussion.hasContext(state)) {
+            val conversational = state.topic == "conversation" && state.featureState?.optString("activeDialogue") == "general"
+            val recall = if (conversational) GeneralDialogue.recalled(root(state).optJSONObject(KEY)) else null
+            generalTurn(context, state, text, recall)?.let { return it }
         }
         if (lower in setOf("what did we decide", "what were we discussing") && active) return say(state, previous!!.optString("topic"), recap(previous), previous)
         val concept = ConversationKnowledge.match(text)
@@ -146,6 +163,22 @@ internal object GeneralConversation {
         if (fallback && active && !Regex("(?i)\\b(?:tasks?|habits?|routine|settings?|permission|vocabulary|word|focus|drill)\\b").containsMatchIn(text))
             return say(state, previous!!.optString("topic"), "How does ‘${text.take(180)}’ connect to ${previous.optString("topic")}? I don't want to guess the connection.", previous)
         return null
+    }
+    private fun generalTurn(context: Context, state: AssistantSession, text: String, prior: JSONObject?): AyvaTalkEngine.TalkResponse? {
+        if (state.expected != null || ChatModeStore.get(context) == ChatMode.PLAN || state.topic == "planning") return null
+        val style = GeneralDialogue.Style(
+            ConversationVoice.questions(context, state) && prior?.optBoolean("questions", true) != false,
+            prior?.optString("stance") == "listen", AyvaPersonality.tone(context, state) == "playful")
+        val direct = GeneralDialogue.answer(text, prior, style)
+        val interpreted = if (direct == null || direct.rule == "unknown") {
+            NativeGeneralDialogue.interpret(context, text)?.let { meaning ->
+                GeneralDialogue.answer(meaning, prior, style, sourceText = text)
+            }
+        } else null
+        val turn = interpreted ?: direct ?: return null
+        val response = say(state, turn.topic, turn.text, turn.frame)
+        root(state).put("generalDialogueRule", turn.rule)
+        return response
     }
     private fun frame(topic: String) = JSONObject().put("version", 1).put("topic", topic.take(300)).put("notes", JSONArray())
         .put("stance", "explore").put("questions", true)

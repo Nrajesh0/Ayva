@@ -1,0 +1,93 @@
+diff --git a/SRC/common.h b/SRC/common.h
+index 47d43c7..4de8534 100644
+--- a/SRC/common.h
++++ b/SRC/common.h
+@@ -187,7 +187,9 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ #include <string>  
+ #include <string.h>
+ #include <sys/stat.h>
+-#include <sys/timeb.h> 
++#ifndef __ANDROID__
++#include <sys/timeb.h>
++#endif
+ #include <sys/types.h>
+ #include <time.h>
+ #include <utility>
+diff --git a/SRC/functionExecute.cpp b/SRC/functionExecute.cpp
+index d395158..14ecd95 100644
+--- a/SRC/functionExecute.cpp
++++ b/SRC/functionExecute.cpp
+@@ -9279,27 +9279,7 @@ static FunctionResult TCPOpenCode(char* buffer)
+ #endif
+ }
+ 
+-static FunctionResult SystemCode(char* buffer)
+-{
+-	char word[MAX_WORD_SIZE];
+-	*word = 0;
+-	char* stream = ARGUMENT(1);
+-	while (stream && *stream)
+-	{
+-		FunctionResult result;
+-		char name[MAX_WORD_SIZE];
+-		stream = ReadShortCommandArg(stream, name, result, OUTPUT_NOQUOTES); // name of file
+-		if (*name)
+-		{
+-			strcat(word, name);
+-			strcat(word, (char*)" ");
+-		}
+-	}
+-	if (trace & TRACE_OUTPUT && CheckTopicTrace()) Log(USERLOG, "system: %s ", word);
+-	sprintf(buffer, (char*)"%d", system(word));
+-	if (trace & TRACE_OUTPUT && CheckTopicTrace()) Log(USERLOG, " result: %s r\n", buffer);
+-	return  NOPROBLEM_BIT;
+-}
++static FunctionResult SystemCode(char* buffer) { return FAILRULE_BIT; }
+ 
+ #ifndef DISCARDWEBSOCKET
+ 
+diff --git a/SRC/javascript.cpp b/SRC/javascript.cpp
+index 71dad15..273db9f 100644
+--- a/SRC/javascript.cpp
++++ b/SRC/javascript.cpp
+@@ -17,10 +17,12 @@ void ChangeSpecial(char* buffer);
+ 
+ // Duktape has no I/O by default
+ // define function that can be called from JS that will log a string
++#ifndef DISCARDJAVASCRIPT
+ static duk_ret_t native_log(duk_context *ctx) {
+   Log(USERLOG, "%s", duk_to_string(ctx, 0));
+   return 0;  /* no return value (= undefined) */
+ }
++#endif
+ 
+ // there are 2 contexts:  a permanently resident one for the system and a transient one per volley.
+ 
+diff --git a/SRC/json.cpp b/SRC/json.cpp
+index c30a785..4d87f3f 100644
+--- a/SRC/json.cpp
++++ b/SRC/json.cpp
+@@ -770,6 +770,7 @@ static int EncodingValue(char* name, char* field, int value)
+ }
+ 
+ 
++#ifndef DISCARDJSONOPEN
+ CURL* curl;
+ 
+ static int my_trace(CURL * handle, curl_infotype type, char* data, size_t size, void* userp)
+@@ -1420,6 +1421,15 @@ FunctionResult JSONOpenCode(char* buffer)
+ 	return result;
+ }
+ 
++
++#else
++void CurlShutdown() {}
++const char* CurlVersion() { return "disabled"; }
++FunctionResult InitCurl() { return FAILRULE_BIT; }
++char* UrlEncodePiece(char*) { return NULL; }
++FunctionResult JSONOpenCode(char*) { return FAILRULE_BIT; }
++#endif
++
+ /**
+  * Creates a new parser based over a given  buffer with an array of tokens
+  * available.
