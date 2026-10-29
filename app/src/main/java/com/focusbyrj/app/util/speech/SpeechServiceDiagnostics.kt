@@ -32,7 +32,7 @@ internal object SpeechServiceDiagnostics {
         return """
             Ayva speech diagnostics
             Device: ${Build.MANUFACTURER} ${Build.MODEL}; Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})
-            Mode: dedicated on-device; no network fallback
+            Mode: default phone speech service; provider may use online recognition
             Error: ${error ?: "no numeric code"}; provider responded: $connected
             On-device advertised: $advertised
             Firmware offline component: $configured

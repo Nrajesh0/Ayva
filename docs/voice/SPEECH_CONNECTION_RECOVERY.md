@@ -1,3 +1,9 @@
+# Current capture policy
+
+At the user's explicit request, capture now uses Android's default phone recognition service, matching the earlier implementation. It does not force `EXTRA_PREFER_OFFLINE`. The provider may process audio online using its own permissions; Ayva adds no model download or network permission. Existing visual styles, partial/final provenance, cleanup and Notes isolation remain in place. Android 12 is no longer a prerequisite for capture.
+
+The investigation below describes the previous offline-only implementation and why it was replaced.
+
 # Speech connection investigation (Android 16)
 
 ## What changed from the earlier working implementation

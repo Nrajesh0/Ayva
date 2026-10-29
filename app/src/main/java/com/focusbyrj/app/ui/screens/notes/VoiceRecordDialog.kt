@@ -16,7 +16,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.focusbyrj.app.ui.speech.VoiceCaptureContent
 import com.focusbyrj.app.ui.speech.VoiceStyle
 
-/** On-device capture popup shared by chat and Notes. It receives only the current microphone transcript. */
+/** Phone speech capture popup shared by chat and Notes. It receives only the current microphone transcript. */
 @Composable
 fun VoiceRecordDialog(
     elapsedSeconds: Int, amplitude: Float, liveTranscript: String,

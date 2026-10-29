@@ -32,6 +32,8 @@ class AudioMemoManagerTest {
         originalLocale = Locale.getDefault()
         Locale.setDefault(Locale.US)
         ShadowSpeechRecognizer.setIsOnDeviceRecognitionAvailable(true)
+        shadowOf(context.packageManager).addResolveInfoForIntent(
+            android.content.Intent("android.speech.RecognitionService"), android.content.pm.ResolveInfo())
         manager = AudioMemoManager(context)
     }
 
@@ -71,11 +73,12 @@ class AudioMemoManagerTest {
         assertTrue(manager.recordingState.value.liveTranscript.contains("milk"))
     }
 
-    @Test fun onDeviceRecognitionDoesNotDependOnDefaultService() {
-        assertFalse(SpeechRecognizer.isRecognitionAvailable(context))
+    @Test fun defaultServiceWorksWithoutDedicatedOnDeviceService() {
+        ShadowSpeechRecognizer.setIsOnDeviceRecognitionAvailable(false)
+        assertTrue(SpeechRecognizer.isRecognitionAvailable(context))
         val speech = start()
         assertTrue(manager.recordingState.value.isRecording)
-        assertTrue(speech.lastRecognizerIntent.getBooleanExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false))
+        assertFalse(speech.lastRecognizerIntent.hasExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE))
         assertTrue(speech.lastRecognizerIntent.getBooleanExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false))
         speech.triggerOnReadyForSpeech(Bundle())
         speech.triggerOnPartialResults(words("remember the milk"))
@@ -148,17 +151,17 @@ class AudioMemoManagerTest {
     }
 
     @Test fun unavailableServiceDoesNotPretendToListen() {
-        ShadowSpeechRecognizer.setIsOnDeviceRecognitionAvailable(false)
+        shadowOf(context.packageManager).setResolveInfosForIntent(android.content.Intent("android.speech.RecognitionService"), emptyList())
         manager.startRecording()
         assertFalse(manager.recordingState.value.isRecording)
-        assertTrue(manager.recordingState.value.errorMessage!!.contains("on-device speech service"))
+        assertTrue(manager.recordingState.value.errorMessage!!.contains("phone speech service"))
         assertEquals(0f, manager.recordingState.value.currentAmplitude)
     }
 
-    @Test @Config(sdk = [28]) fun olderAndroidExplainsOfflineRequirement() {
-        manager.startRecording()
-        assertFalse(manager.recordingState.value.isRecording)
-        assertTrue(manager.recordingState.value.errorMessage!!.contains("Android 12"))
+    @Test @Config(sdk = [28]) fun olderAndroidUsesPhoneService() {
+        val speech = start()
+        speech.triggerOnPartialResults(words("works on older phones"))
+        assertEquals("works on older phones", manager.recordingState.value.liveTranscript)
     }
 
     @Test fun unresponsiveServiceTimesOutInsteadOfRecordingForever() {
@@ -265,7 +268,7 @@ class AudioMemoManagerTest {
         assertEquals(1, manager.recordingState.value.retryAfterSeconds)
         assertSame(recognizer, ShadowSpeechRecognizer.getLatestSpeechRecognizer())
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(900))
-        assertTrue(manager.recordingState.value.statusMessage.contains("Starting offline"))
+        assertTrue(manager.recordingState.value.statusMessage.contains("Starting phone"))
         assertFalse(speech.isDestroyed)
         speech.triggerOnResults(words("continue here"))
         assertEquals("Keep these words. Continue here.", manager.stopRecording().second)
@@ -291,7 +294,7 @@ class AudioMemoManagerTest {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
         val next = ShadowSpeechRecognizer.getLatestSpeechRecognizer()
         assertNotSame(previous, next)
-        assertTrue(shadowOf(next).lastRecognizerIntent.getBooleanExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false))
+        assertFalse(shadowOf(next).lastRecognizerIntent.hasExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE))
     }
 
     @Test fun cancelDuringRateLimitWaitCannotRestartTheMicrophone() {
@@ -431,7 +434,7 @@ class AudioMemoManagerTest {
         val state = manager.recordingState.value
         assertEquals("private caption for diagnostics test", state.liveTranscript)
         assertTrue(state.diagnosticInfo.contains("Error: 3"))
-        assertTrue(state.diagnosticInfo.contains("dedicated on-device; no network fallback"))
+        assertTrue(state.diagnosticInfo.contains("default phone speech service; provider may use online recognition"))
         assertTrue(state.diagnosticInfo.contains("Enabled recognition services:"))
         assertFalse(state.diagnosticInfo.contains("private caption"))
         manager.cancelRecording()

@@ -105,7 +105,7 @@ object AssistantCapabilities {
         capability("conversation.breathe", "conversation", "Open the existing breathing exercise", CapabilityAccess.NAVIGATE, "AyvaTalkEngine", "breathe"),
         capability("conversation.calculate", "conversation", "Bounded arithmetic and time conversion", CapabilityAccess.READ, "AssistantCalculator", "convert 90 minutes to hours"),
         capability("transcript.preview", "tasks", "Preview tasks from finalized live transcription", CapabilityAccess.READ, "AssistantTranscriptFeatures", "make tasks from my transcript", limitation = "Partial captions never execute actions. Saving tasks needs a reviewed request."),
-        capability("transcript.open", "conversation", "Open on-device live transcription", CapabilityAccess.NAVIGATE, "OnDeviceTranscriber", "/transcribe", limitation = "Needs an installed on-device speech service/language; no online fallback or model download."),
+        capability("transcript.open", "conversation", "Open phone live transcription", CapabilityAccess.NAVIGATE, "OnDeviceTranscriber", "/transcribe", limitation = "Uses the phone speech service, which may process audio online; no model download in Ayva."),
         capability("transcript.capture", "conversation", "Capture new speech on this device", CapabilityAccess.READ, "OnDeviceTranscriber", "/transcribe", limitation = "Uses current microphone input only, never saved attachments. Language support is checked when recording starts."),
         capability("rewards.read", "device", "Inspect saved rewards and streak facts", CapabilityAccess.READ, "AssistantDeviceFeatures", "what can i claim"),
         capability("private_data.excluded", "conversation", "Private Notes and vault data", CapabilityAccess.UNAVAILABLE, "Native private screens only", "", limitation = "Chat cannot read, search, create or change private Notes/vault data. Generic help and opening the native screen do not grant data access.")
@@ -171,11 +171,10 @@ object AssistantCapabilities {
             "usage.read" -> if (com.focusbyrj.app.util.UsageStatsHelper.hasUsageStatsPermission(context)) CapabilityAvailability(true)
                 else CapabilityAvailability(false, "Usage Access is missing. Enable it in Android settings to read usage.")
             "transcript.capture" -> when {
-                android.os.Build.VERSION.SDK_INT < 31 -> CapabilityAvailability(false, "On-device transcription requires Android 12 or later.")
                 androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED -> CapabilityAvailability(false, "Microphone permission is missing.")
                 else -> runCatching {
-                    if (android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) CapabilityAvailability(true)
-                    else CapabilityAvailability(false, "No on-device speech service is available.")
+                    if (android.speech.SpeechRecognizer.isRecognitionAvailable(context)) CapabilityAvailability(true)
+                    else CapabilityAvailability(false, "No phone speech service is available.")
                 }.getOrElse { CapabilityAvailability(null, "Speech-service availability could not be checked.") }
             }
             else -> CapabilityAvailability(true)

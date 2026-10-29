@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 
-/** On-device speech only; no saved-media playback, Notes or vault capability. */
+/** Phone speech service capture; no saved-media playback, Notes or vault capability. */
 class OnDeviceTranscriber(private val context: Context) {
 
     private val tag = "OnDeviceTranscriber"
@@ -116,7 +116,7 @@ class OnDeviceTranscriber(private val context: Context) {
             currentAmplitude = 0f,
             retryAfterSeconds = 0,
             diagnosticInfo = "",
-            statusMessage = "Starting offline transcription...",
+            statusMessage = "Starting phone transcription...",
             errorMessage = null
         )
         val waitMs = nextAllowedStartAt - android.os.SystemClock.elapsedRealtime()
@@ -157,17 +157,11 @@ class OnDeviceTranscriber(private val context: Context) {
     private fun initSpeechRecognizer(generation: Int): Boolean {
         cleanupSpeechRecognizer()
         try {
-            // The default recognition service and the on-device service are independent.
-            // isRecognitionAvailable() can be false while on-device recognition works.
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                failRecording("Offline live transcription requires Android 12 or later.")
+            if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+                failRecording("No phone speech service is available. Enable your phone's speech service in Voice settings, then retry.")
                 return false
             }
-            if (!SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
-                failRecording("No on-device speech service is available. Enable or update your device's speech service in Voice settings, then retry.")
-                return false
-            }
-            val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
             speechRecognizer = recognizer
             recognizerConnected = false
             recognizer.setRecognitionListener(object : RecognitionListener {
@@ -224,9 +218,9 @@ class OnDeviceTranscriber(private val context: Context) {
                                 if (++rateLimitErrors <= 1) {
                                     cleanupSpeechRecognizer()
                                     restartListening(generation, seconds * 1000, rebind = true,
-                                        status = "The phone's offline speech service could not connect. One retry is scheduled; your transcript is kept.")
+                                        status = "The phone's speech service could not connect. One retry is scheduled; your transcript is kept.")
                                 } else {
-                                    failRecording("The phone's on-device speech service rejected the connection (error 10). " +
+                                    failRecording("The phone's speech service rejected the connection (error 10). " +
                                         "Enable or update the phone's speech service in Voice settings, then retry. Your transcript is kept.")
                                 }
                             } else if (++rateLimitErrors <= 2) {
@@ -252,7 +246,7 @@ class OnDeviceTranscriber(private val context: Context) {
                             // A busy provider is still connected; churning clients makes it worse.
                             val rebind = error != SpeechRecognizer.ERROR_RECOGNIZER_BUSY
                             if (++transientErrors <= 3) restartListening(generation, 1500L * transientErrors, rebind = rebind)
-                            else failRecording("The on-device speech service could not start. Check Voice settings, then retry.")
+                            else failRecording("The phone speech service could not start. Check Voice settings, then retry.")
                         }
                         else -> failRecording("Offline transcription could not continue (error $error). Check your offline speech language in Voice settings, then retry.")
                     }
@@ -288,8 +282,8 @@ class OnDeviceTranscriber(private val context: Context) {
             })
             return true
         } catch (e: Exception) {
-            Log.w(tag, "Could not initialize on-device recognition", e)
-            failRecording("The on-device speech service could not start. Check Voice settings, then retry.")
+            Log.w(tag, "Could not initialize phone recognition", e)
+            failRecording("The phone speech service could not start. Check Voice settings, then retry.")
             return false
         }
     }
@@ -311,18 +305,17 @@ class OnDeviceTranscriber(private val context: Context) {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
                 selectedLanguage?.let { putExtra(RecognizerIntent.EXTRA_LANGUAGE, it) }
             }
-            _recordingState.value = _recordingState.value.copy(statusMessage = "Starting offline transcription...", isListening = false, retryAfterSeconds = 0)
+            _recordingState.value = _recordingState.value.copy(statusMessage = "Starting phone transcription...", isListening = false, retryAfterSeconds = 0)
             setRecognitionTimeout(generation, "The speech service did not start. Enable an offline speech language in Voice settings, then retry.")
             recognitionActive = true
             nextAllowedStartAt = android.os.SystemClock.elapsedRealtime() + 1500
             recognizer.startListening(intent)
         } catch (e: Exception) {
-            Log.w(tag, "Could not start on-device recognition", e)
-            failRecording("Cannot start offline transcription. Check microphone access and Voice settings, then retry.")
+            Log.w(tag, "Could not start phone recognition", e)
+            failRecording("Cannot start phone transcription. Check microphone access and Voice settings, then retry.")
         }
     }
 
@@ -338,7 +331,6 @@ class OnDeviceTranscriber(private val context: Context) {
         try {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             }
             recognizer.checkRecognitionSupport(intent, { task -> mainHandler.post(task) }, object : android.speech.RecognitionSupportCallback {
                 override fun onSupportResult(support: android.speech.RecognitionSupport) {
@@ -368,7 +360,7 @@ class OnDeviceTranscriber(private val context: Context) {
     }
 
     private fun restartListening(generation: Int, delayMs: Long, rebind: Boolean = false,
-                                 status: String = "Continuing offline transcription…") {
+                                 status: String = "Continuing phone transcription…") {
         if (!isCurrentSession(generation)) return
         pendingRestart?.let(mainHandler::removeCallbacks)
         val waitMs = maxOf(delayMs, nextAllowedStartAt - android.os.SystemClock.elapsedRealtime())

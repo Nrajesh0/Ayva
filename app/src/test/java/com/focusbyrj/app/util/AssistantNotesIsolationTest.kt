@@ -186,14 +186,16 @@ class AssistantNotesIsolationTest {
 
     @Test @Config(sdk = [34])
     fun chatSpeechHasNoNotesOrSavedMediaCapability() {
-        org.robolectric.shadows.ShadowSpeechRecognizer.setIsOnDeviceRecognitionAvailable(true)
+        org.robolectric.Shadows.shadowOf(context.packageManager).addResolveInfoForIntent(
+            android.content.Intent("android.speech.RecognitionService"), android.content.pm.ResolveInfo())
+
         val transcriber = com.focusbyrj.app.util.speech.OnDeviceTranscriber(context)
         try {
             transcriber.startRecording()
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             val recognizer = org.robolectric.shadows.ShadowSpeechRecognizer.getLatestSpeechRecognizer()
             val shadow = org.robolectric.Shadows.shadowOf(recognizer)
-            assertTrue(shadow.lastRecognizerIntent.getBooleanExtra(android.speech.RecognizerIntent.EXTRA_PREFER_OFFLINE, false))
+            assertFalse(shadow.lastRecognizerIntent.hasExtra(android.speech.RecognizerIntent.EXTRA_PREFER_OFFLINE))
             shadow.triggerOnPartialResults(android.os.Bundle().apply {
                 putStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("buy milk"))
             })
