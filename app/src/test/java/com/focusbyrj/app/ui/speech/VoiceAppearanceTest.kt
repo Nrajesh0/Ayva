@@ -101,18 +101,29 @@ class VoiceAppearanceTest {
     }
 
     @Test fun waitingAndErrorsDoNotClaimToListenAndCapturedTextRemainsUsable() {
+        var copied = 0
+        var openedSettings = 0
         val error = mutableStateOf<String?>(null)
         compose.setContent { MaterialTheme { Surface {
             VoiceCaptureContent(VoiceStyle.PARTICLES, .9f, 6, "Keep these words", error.value == null, false, false,
-                "Waiting for the speech service…", error.value, {}, {}, {}, {})
+                "Waiting for the speech service…", error.value, {}, {}, {}, {}, retryAfterSeconds = 23,
+                onVoiceSettings = { openedSettings++ }, onCopyDiagnostics = { copied++ })
         } } }
-        compose.onNodeWithText("Connecting…").assertIsDisplayed()
+        compose.onNodeWithTag("voice_record_copy_details").assertDoesNotExist()
+        compose.onNodeWithText("Retrying in 23s").assertIsDisplayed()
         compose.onNodeWithText("Listening", useUnmergedTree = true).assertDoesNotExist()
         compose.runOnIdle { error.value = "The speech service is limiting requests. Wait before retrying." }
         compose.onNodeWithText("Keep these words").assertIsDisplayed()
         compose.onNodeWithTag("voice_record_done_btn").assertIsEnabled()
         compose.onNodeWithTag("voice_record_retry").assertIsDisplayed()
         compose.onNodeWithText("Voice settings").assertDoesNotExist()
+        compose.onNodeWithTag("voice_record_copy_details").performClick()
+        compose.runOnIdle {
+            assertEquals(1, copied)
+            error.value = "The on-device speech service rejected the connection. Check Voice settings."
+        }
+        compose.onNodeWithText("Voice settings").performClick()
+        compose.runOnIdle { assertEquals(1, openedSettings) }
     }
 
     @Test fun pickerPreviewsWithoutOpeningMicrophoneAndAppliesOnlyAnExplicitChoice() {

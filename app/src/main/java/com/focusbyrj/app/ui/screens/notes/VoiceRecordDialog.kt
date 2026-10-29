@@ -23,7 +23,8 @@ fun VoiceRecordDialog(
     statusMessage: String = "Listening...", isRecording: Boolean = true,
     errorMessage: String? = null, onRetry: () -> Unit = {},
     onCancel: () -> Unit, onDone: () -> Unit,
-    isListening: Boolean = isRecording, isPaused: Boolean = false, onPause: () -> Unit = {}
+    isListening: Boolean = isRecording, isPaused: Boolean = false, onPause: () -> Unit = {},
+    retryAfterSeconds: Int = 0, diagnosticInfo: String = ""
 ) {
     val context = LocalContext.current
     val style = remember { VoiceStyle.read(context) }
@@ -32,6 +33,12 @@ fun VoiceRecordDialog(
             tonalElevation = 3.dp, modifier = Modifier.testTag("voice_record_dialog")) {
             VoiceCaptureContent(style, amplitude, elapsedSeconds, liveTranscript, isRecording, isListening, isPaused,
                 statusMessage, errorMessage, onCancel, onDone, onPause, onRetry,
+                retryAfterSeconds = retryAfterSeconds,
+                onCopyDiagnostics = if (diagnosticInfo.isBlank()) null else ({
+                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Ayva speech details", diagnosticInfo))
+                    Toast.makeText(context, "Speech details copied. No transcript or audio included.", Toast.LENGTH_SHORT).show()
+                }),
                 onVoiceSettings = {
                     try { context.startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)) }
                     catch (_: Exception) { Toast.makeText(context, "Open Voice settings to check offline speech languages.", Toast.LENGTH_LONG).show() }

@@ -554,6 +554,9 @@ fun ChatInterface() {
     com.focusbyrj.app.ui.components.PersistEditorDraft(composerDraft, org.json.JSONObject().put("text", inputTextFieldValue.text).put("cursor", inputTextFieldValue.selection.end).put("priority", isHighPriority).put("persistent", isPersistent))
 
     val audioMemoManager = remember { OnDeviceTranscriber(context.applicationContext) }
+    DisposableEffect(audioMemoManager) {
+        onDispose { audioMemoManager.release() }
+    }
     val recordingState by audioMemoManager.recordingState.collectAsState()
     val transcriptForActions = remember { java.util.concurrent.atomic.AtomicReference<Pair<String, Long>?>(null) }
     var initialInputBeforeTranscription by remember { mutableStateOf("") }
@@ -2152,6 +2155,8 @@ fun ChatInterface() {
                 errorMessage = recordingState.errorMessage,
                 isListening = recordingState.isListening,
                 isPaused = recordingState.isPaused,
+                retryAfterSeconds = recordingState.retryAfterSeconds,
+                diagnosticInfo = recordingState.diagnosticInfo,
                 onPause = { audioMemoManager.pauseByUser() },
                 onRetry = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {

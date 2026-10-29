@@ -32,7 +32,8 @@ fun VoiceCaptureContent(
     isRecording: Boolean, isListening: Boolean, isPaused: Boolean,
     statusMessage: String, errorMessage: String?, onCancel: () -> Unit, onDone: () -> Unit,
     onPause: () -> Unit, onRetry: () -> Unit, modifier: Modifier = Modifier,
-    onVoiceSettings: (() -> Unit)? = null, doneLabel: String = "Use text"
+    onVoiceSettings: (() -> Unit)? = null, doneLabel: String = "Use text", retryAfterSeconds: Int = 0,
+    onCopyDiagnostics: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
     val config = LocalConfiguration.current
@@ -49,7 +50,7 @@ fun VoiceCaptureContent(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(6.dp).background(if (errorMessage != null) colors.error else if (isListening) colors.primary else colors.onSurfaceVariant, CircleShape))
                 Spacer(Modifier.width(7.dp))
-                Text(when { errorMessage != null -> "Transcription paused"; isPaused -> "Paused"; isListening -> "Listening"; else -> "Connecting…" },
+                Text(when { errorMessage != null -> "Transcription paused"; isPaused -> "Paused"; isListening -> "Listening"; retryAfterSeconds > 0 -> "Retrying in ${retryAfterSeconds}s"; else -> "Connecting…" },
                     style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant, modifier = Modifier.testTag("voice_record_mode_badge"))
             }
             Spacer(Modifier.height(16.dp))
@@ -58,9 +59,11 @@ fun VoiceCaptureContent(
                 Spacer(Modifier.height(12.dp))
                 Text(errorMessage, style = MaterialTheme.typography.bodySmall, color = colors.error, modifier = Modifier.testTag("voice_record_error"))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    if (onVoiceSettings != null && errorMessage.contains("language", true)) TextButton(onClick = onVoiceSettings) { Text("Voice settings") }
+                    if (onVoiceSettings != null && (errorMessage.contains("language", true) || errorMessage.contains("Voice settings", true))) TextButton(onClick = onVoiceSettings) { Text("Voice settings") }
                     TextButton(onClick = onRetry, modifier = Modifier.testTag("voice_record_retry")) { Text("Retry") }
                 }
+                if (onCopyDiagnostics != null) TextButton(onClick = onCopyDiagnostics,
+                    modifier = Modifier.align(Alignment.End).testTag("voice_record_copy_details")) { Text("Copy speech details") }
             } else if (isRecording && !isListening && statusMessage.isNotBlank() && liveTranscript.isNotBlank()) {
                 Spacer(Modifier.height(10.dp))
                 Text(statusMessage, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)

@@ -253,18 +253,18 @@ class AudioMemoManagerTest {
         val recognizer = ShadowSpeechRecognizer.getLatestSpeechRecognizer()
         speech.triggerOnPartialResults(words("keep these words"))
         speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
-        assertTrue(manager.recordingState.value.statusMessage.contains("30 seconds"))
+        assertEquals(30, manager.recordingState.value.retryAfterSeconds)
         assertNull(manager.recordingState.value.errorMessage)
         assertEquals("Keep these words.", manager.recordingState.value.liveTranscript)
         assertEquals("", manager.finalizedTranscript())
         // Duplicated terminal events must not queue overlapping recognition requests.
         speech.triggerOnResults(words("late words"))
         speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(29))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(29100))
         assertTrue(manager.recordingState.value.isRecording)
-        assertTrue(manager.recordingState.value.statusMessage.contains("30 seconds"))
+        assertEquals(1, manager.recordingState.value.retryAfterSeconds)
         assertSame(recognizer, ShadowSpeechRecognizer.getLatestSpeechRecognizer())
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(900))
         assertTrue(manager.recordingState.value.statusMessage.contains("Starting offline"))
         assertFalse(speech.isDestroyed)
         speech.triggerOnResults(words("continue here"))
@@ -273,6 +273,7 @@ class AudioMemoManagerTest {
 
     @Test fun persistentRateLimitStopsAndExplicitRetryCannotBypassCooldown() {
         val speech = start()
+        speech.triggerOnReadyForSpeech(Bundle())
         speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(30))
         speech.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
@@ -339,6 +340,102 @@ class AudioMemoManagerTest {
         assertFalse(manager.recordingState.value.isListening)
         assertTrue(manager.recordingState.value.isRecording)
         assertTrue(manager.recordingState.value.liveTranscript.contains("caption"))
+    }
+
+    @Test fun startupRejectionDiscardsFailedConnectionAndOnlyRetriesOnce() {
+        val failed = start()
+        failed.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        assertTrue(failed.isDestroyed)
+        assertFalse(manager.recordingState.value.isListening)
+        assertEquals(30, manager.recordingState.value.retryAfterSeconds)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(29100))
+        assertSame(failed, shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer()))
+        assertEquals(1, manager.recordingState.value.retryAfterSeconds)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(900))
+        val retry = shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer())
+        assertNotSame(failed, retry)
+        failed.triggerOnPartialResults(words("stale words"))
+        assertEquals("", manager.recordingState.value.liveTranscript)
+        retry.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        assertFalse(manager.recordingState.value.isRecording)
+        assertTrue(manager.recordingState.value.errorMessage!!.contains("rejected the connection"))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(3))
+        assertSame(retry, shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer()))
+    }
+
+    @Test fun newConnectionCanRecoverFromStartupRejection() {
+        val failed = start()
+        failed.triggerOnError(SpeechRecognizer.ERROR_TOO_MANY_REQUESTS)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(30))
+        val retry = shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer())
+        retry.triggerOnReadyForSpeech(Bundle())
+        retry.triggerOnPartialResults(words("working again"))
+        assertTrue(manager.recordingState.value.isListening)
+        assertEquals(0, manager.recordingState.value.retryAfterSeconds)
+        assertEquals("working again", manager.recordingState.value.liveTranscript)
+        retry.triggerOnResults(words("working again"))
+        assertEquals("working again", manager.finalizedTranscript())
+    }
+
+    @Test fun repeatedStartDoesNotReplaceActiveCaptureOrCallback() {
+        var first = ""
+        var second = ""
+        manager.startRecording { first = it }
+        shadowOf(Looper.getMainLooper()).idle()
+        val speech = ShadowSpeechRecognizer.getLatestSpeechRecognizer()
+        manager.startRecording { second = it }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
+        assertSame(speech, ShadowSpeechRecognizer.getLatestSpeechRecognizer())
+        shadowOf(speech).triggerOnPartialResults(words("one microphone"))
+        assertEquals("one microphone", first)
+        assertEquals("", second)
+    }
+
+    @Test fun transferringMicrophoneOwnershipKeepsCallerTranscriptsPrivate() {
+        val first = start()
+        first.triggerOnPartialResults(words("private draft"))
+        val other = com.focusbyrj.app.util.speech.OnDeviceTranscriber(context)
+        try {
+            other.startRecording()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(first.isDestroyed)
+            assertFalse(manager.recordingState.value.isRecording)
+            assertEquals("private draft", manager.recordingState.value.liveTranscript)
+            assertEquals("", other.recordingState.value.liveTranscript)
+            first.triggerOnResults(words("late private words"))
+            assertEquals("", other.recordingState.value.liveTranscript)
+            shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer()).triggerOnResults(words("fresh words"))
+            assertEquals("fresh words", other.finalizedTranscript())
+            assertEquals("", manager.finalizedTranscript())
+        } finally { other.release() }
+    }
+
+    @Test fun busyServiceReusesConnectionAndReleaseCancelsQueuedRetry() {
+        val speech = start()
+        val first = ShadowSpeechRecognizer.getLatestSpeechRecognizer()
+        speech.triggerOnError(SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
+        assertSame(first, ShadowSpeechRecognizer.getLatestSpeechRecognizer())
+        assertFalse(speech.isDestroyed)
+        speech.triggerOnError(SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
+        manager.release()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(30))
+        assertTrue(speech.isDestroyed)
+        assertFalse(manager.recordingState.value.isSessionOpen)
+    }
+
+    @Test fun failureDetailsContainServiceMetadataWithoutCapturedWords() {
+        val speech = start()
+        speech.triggerOnPartialResults(words("private caption for diagnostics test"))
+        speech.triggerOnError(SpeechRecognizer.ERROR_AUDIO)
+        val state = manager.recordingState.value
+        assertEquals("private caption for diagnostics test", state.liveTranscript)
+        assertTrue(state.diagnosticInfo.contains("Error: 3"))
+        assertTrue(state.diagnosticInfo.contains("dedicated on-device; no network fallback"))
+        assertTrue(state.diagnosticInfo.contains("Enabled recognition services:"))
+        assertFalse(state.diagnosticInfo.contains("private caption"))
+        manager.cancelRecording()
+        assertEquals("", manager.recordingState.value.diagnosticInfo)
     }
 
 }
