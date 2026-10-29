@@ -193,7 +193,7 @@ object NoteDatabaseMigrationHelper {
 
         try {
             if (legacyNotes.isNotEmpty()) {
-                runBlocking(Dispatchers.IO) {
+                runBlocking(Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
                     encryptedDb.withTransaction {
                         for (note in legacyNotes) {
                             val existing = encryptedDb.noteDao().getNoteByIdSync(note.id)

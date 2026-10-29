@@ -130,6 +130,11 @@ class WorkPackage5SecurityTest {
 
     @Test
     fun f05_legacyPlaintextSnapshotsTransparentlyMigratedToEncrypted() = runBlocking {
+        // The real Application schedules catch-up migration in the background. Keep this
+        // fixture isolated so the test measures its own migration, not a competing worker.
+        val context = object : android.content.ContextWrapper(this@WorkPackage5SecurityTest.context) {
+            override fun getFilesDir(): File = File(super.getFilesDir(), "isolated_migration").apply { mkdirs() }
+        }
         val backupDir = File(context.filesDir, "auto_backups").apply { mkdirs() }
         val legacyFile = File(backupDir, "daily_20260101.json")
 

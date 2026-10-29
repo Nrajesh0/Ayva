@@ -24,6 +24,9 @@ import kotlinx.coroutines.launch
 
 class FocusApplication : Application(), ImageLoaderFactory {
     
+    override fun getSharedPreferences(name: String, mode: Int): android.content.SharedPreferences =
+        com.focusbyrj.app.util.backup.MaintenancePreferences(super.getSharedPreferences(name, mode))
+
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this)
             .components {
@@ -41,6 +44,11 @@ class FocusApplication : Application(), ImageLoaderFactory {
             net.sqlcipher.database.SQLiteDatabase.loadLibs(this)
         } catch (t: Throwable) {
             android.util.Log.e("FocusApplication", "Failed to load SQLCipher libs early", t)
+        }
+        // Complete or roll back an interrupted restore before managers or workers can write.
+        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+            com.focusbyrj.app.util.backup.RestoreJournal.recover(this@FocusApplication)
+            com.focusbyrj.app.util.backup.RestoreStaging.protectLegacyStages(this@FocusApplication)
         }
         com.focusbyrj.app.util.AppThemeManager.init(this)
         com.focusbyrj.app.util.LicenseManager.init(this)
@@ -77,6 +85,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
                 android.util.Log.e("FocusApplication", "Failed to clean placeholder habit data", t)
             }
         }
+        runCatching { com.focusbyrj.app.util.backup.ExportCleanupWorker.schedule(this) }
         AutoBackupScheduler.schedule(this, ioScope)
         runCatching { com.focusbyrj.app.util.WorkSessionReminders.retry(this) }
     }
@@ -90,7 +99,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
                 FocusDatabase::class.java,
                 FocusDatabaseMigrationHelper.getEncryptedDatabaseName()
             )
-            .openHelperFactory(factory)
+            .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory(factory))
             .addMigrations(
                 FocusDatabase.MIGRATION_1_2,
                 FocusDatabase.MIGRATION_2_3,
@@ -134,6 +143,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
             if (isRobolectric) {
                 android.util.Log.w("FocusApplication", "Robolectric test environment detected; utilizing in-memory test database", t)
                 Room.inMemoryDatabaseBuilder(this, FocusDatabase::class.java)
+                    .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory())
                     .fallbackToDestructiveMigration()
                     .build()
             } else {
@@ -164,6 +174,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
             "vocab.db"
         )
         .createFromAsset("vocab.db")
+        .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory())
         .addMigrations(com.focusbyrj.app.data.VocabDatabase.MIGRATION_1_2, com.focusbyrj.app.data.VocabDatabase.MIGRATION_2_3)
         .build()
     }

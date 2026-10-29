@@ -93,6 +93,8 @@ object BackupRestoreManager {
         "todo_widget_theme_prefs"
     )
 
+    internal fun recoveryPreferenceNames(): List<String> = PREF_FILES + ArchiveVaultSecurity.PREFS_NAME + "ayva_composer"
+
     private val MEDIA_FOLDERS = listOf(
         "keep_images",
         "keep_drawings",
@@ -171,7 +173,11 @@ object BackupRestoreManager {
         destinationUri: Uri,
         password: String
     ): Result<BackupMetadata> = AssistantStateLock.mutex.withLock {
-        createEncryptedBackupLocked(context, destinationUri, password)
+        try { RestoreJournal.consistent(context) { createEncryptedBackupLocked(context, destinationUri, password) } }
+        catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            Result.failure(error)
+        }
     }
 
     private suspend fun createEncryptedBackupLocked(
@@ -365,6 +371,8 @@ object BackupRestoreManager {
                         put("reminderSound", h.reminderSound)
                         put("createdAt", h.createdAt)
                         put("isArchived", h.isArchived)
+                        put("pausedAt", h.pausedAt ?: JSONObject.NULL)
+                        put("pauseHistoryJson", h.pauseHistoryJson)
                     })
                 }
                 put("habits", habitArray)
@@ -423,6 +431,7 @@ object BackupRestoreManager {
                     })
                 }
                 put("learnedOws", owsArray)
+                put("vocabulary", VocabularyArchive.export(vocabDb))
 
                 // Ayva Chat Messages
                 val chatArray = JSONArray()
@@ -571,7 +580,9 @@ object BackupRestoreManager {
             // 4. Verify & Authenticate created backup before reporting success (WP5 requirement 7)
             app.contentResolver.openInputStream(destinationUri)?.use { verifyInStream ->
                 CryptoBackupEngine.openDecryptingStream(verifyInStream, password.toCharArray()).use { decryptedStream ->
-                    ZipInputStream(BufferedInputStream(decryptedStream)).use { zipIn ->
+                    ZipInputStream(BufferedInputStream(object : java.io.FilterInputStream(decryptedStream) {
+                        override fun close() = Unit // Drain/authenticate the cipher after ZIP EOF.
+                    })).use { zipIn ->
                         var foundManifest = false
                         val verifiedMedia = mutableMapOf<String, Pair<Long, String>>()
                         val verifyBuffer = ByteArray(32 * 1024)
@@ -603,6 +614,7 @@ object BackupRestoreManager {
                             }
                         }
                     }
+                    drainAuthenticatedPayload(decryptedStream)
                 }
             } ?: throw IOException("Could not open destination backup stream for post-creation verification.")
 
@@ -629,7 +641,7 @@ object BackupRestoreManager {
         cleanRestore: Boolean = false,
         vaultPin: String? = null
     ): Result<BackupMetadata> = AssistantStateLock.mutex.withLock {
-        restoreEncryptedBackupLocked(context, sourceUri, password, cleanRestore, vaultPin)
+        RestoreJournal.mutate(context) { restoreEncryptedBackupLocked(context, sourceUri, password, cleanRestore, vaultPin) }
     }
 
     private suspend fun restoreEncryptedBackupLocked(
@@ -662,10 +674,18 @@ object BackupRestoreManager {
 
             inStream.use { rawInStream ->
                 CryptoBackupEngine.openDecryptingStream(rawInStream, password.toCharArray()).use { decryptedStream ->
-                    ZipInputStream(BufferedInputStream(decryptedStream)).use { zipIn ->
+                    ZipInputStream(BufferedInputStream(object : java.io.FilterInputStream(decryptedStream) {
+                        override fun close() = Unit // Drain/authenticate the cipher after ZIP EOF.
+                    })).use { zipIn ->
                         val buffer = ByteArray(32 * 1024)
+                        val entryNames = mutableSetOf<String>()
                         var entry = zipIn.nextEntry
                         while (entry != null) {
+                            require(entryNames.add(entry.name)) { "Duplicate backup entry: ${entry.name}" }
+                            require(entryNames.size <= 20_000) { "Backup contains too many entries" }
+                            require(entry.name == "data.json" || entry.name.startsWith("media/")) {
+                                "Unsupported backup entry: ${entry.name}"
+                            }
                             if (!entry.isDirectory) {
                                 if (entry.name == "data.json") {
                                     val maxManifestSize = 50L * 1024L * 1024L
@@ -693,14 +713,12 @@ object BackupRestoreManager {
                                         throw SecurityException("Zip Slip directory traversal detected in backup media entry: $normalized")
                                     }
                                     targetFile.parentFile?.mkdirs()
-                                    val importedName = if (cleanRestore) {
-                                        targetFile.name
-                                    } else {
-                                        "import_${UUID.randomUUID()}_${targetFile.name}"
-                                    }
+                                    // Never overwrite live attachments: DB rollback must still reference
+                                    // the original bytes if a later store fails or the process dies.
+                                    val importedName = "import_${UUID.randomUUID()}_${targetFile.name}"
                                     mediaDestinations[normalized] = File(File(app.filesDir, topFolder), importedName)
                                     var fileBytesWritten = 0L
-                                    FileOutputStream(targetFile).use { fos ->
+                                    EncryptedMediaStorage.openEncryptedOutputStream(targetFile).use { fos ->
                                         var read = zipIn.read(buffer)
                                         while (read != -1) {
                                             fileBytesWritten += read
@@ -721,6 +739,7 @@ object BackupRestoreManager {
                             entry = zipIn.nextEntry
                         }
                     }
+                    drainAuthenticatedPayload(decryptedStream)
                 }
             }
 
@@ -825,20 +844,19 @@ object BackupRestoreManager {
             mutationStarted = true
             if (cleanRestore) {
                 noteDb.withTransaction {
-                    noteEntities.forEach { note -> noteDb.noteDao().insertNote(note) }
-                    val restoredIds = noteEntities.map { it.id }.filter { it > 0L }
+                    // Include IDs assigned to legacy records that did not carry an ID.
+                    val restoredIds = noteEntities.sortedBy { it.id == 0L }.map { noteDb.noteDao().insertNote(it) }
                     if (restoredIds.isNotEmpty()) {
                         noteDb.noteDao().deleteNotesNotIn(restoredIds)
                     } else {
-                        // Backup had no notes with stable IDs (merge mode) — clear all and re-insert
                         noteDb.noteDao().deleteAllNotes()
-                        noteEntities.forEach { note -> noteDb.noteDao().insertNote(note) }
                     }
                 }
             } else {
                 noteEntities.forEach { note -> noteDb.noteDao().insertNote(note) }
             }
 
+            RestoreJournal.checkpoint("notes")
             try {
                 NoteWidgetProvider.updateAllWidgets(app)
             } catch (_: Exception) {}
@@ -949,7 +967,9 @@ object BackupRestoreManager {
                         isReminderEnabled = obj.optBoolean("isReminderEnabled", true),
                         reminderSound = obj.optString("reminderSound", "ZEN"),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                        isArchived = obj.optBoolean("isArchived", false)
+                        isArchived = obj.optBoolean("isArchived", false),
+                        pausedAt = if (obj.isNull("pausedAt")) null else obj.getLong("pausedAt"),
+                        pauseHistoryJson = obj.optString("pauseHistoryJson", "[]")
                     )
                     val newId = focusDb.habitDao().insertHabit(habit)
                     idMapping[origId] = newId
@@ -972,6 +992,7 @@ object BackupRestoreManager {
                 }
             }
 
+            RestoreJournal.checkpoint("focus")
             // 9. Restore Drill Sessions
             val drillArray = rootJson.optJSONArray("drillSessions") ?: JSONArray()
             drillDb.withTransaction {
@@ -999,7 +1020,9 @@ object BackupRestoreManager {
             // 10. Restore Vocab
             val idiomsArray = rootJson.optJSONArray("learnedIdioms") ?: JSONArray()
             val owsArray = rootJson.optJSONArray("learnedOws") ?: JSONArray()
-            if (idiomsArray.length() > 0 || owsArray.length() > 0) {
+            if (rootJson.has("vocabulary")) {
+                VocabularyArchive.restore(vocabDb, rootJson.getJSONObject("vocabulary"), cleanRestore)
+            } else if (idiomsArray.length() > 0 || owsArray.length() > 0) {
                 vocabDb.withTransaction {
                     for (i in 0 until idiomsArray.length()) {
                         val obj = idiomsArray.getJSONObject(i)
@@ -1143,8 +1166,10 @@ object BackupRestoreManager {
                 }
             }
 
+            RestoreJournal.checkpoint("preferences")
             // 13. Commit Staged Media Files to Internal Storage (re-encrypting with this device's hardware KeyStore key)
             installPreparedMedia(preparedMedia)
+            RestoreJournal.checkpoint("media")
             AssistantPlanningArchive.restore(app, assistantPlanning, taskIdMapping, cleanRestore)
             com.focusbyrj.app.util.AyvaTalkEngine.resetConversation()
 
@@ -1172,6 +1197,7 @@ object BackupRestoreManager {
                 Log.w(TAG, "Failed to reschedule task reminders post-restore", e)
             }
 
+            RestoreJournal.checkpoint("notes")
             try {
                 NoteWidgetProvider.updateAllWidgets(app)
             } catch (_: Exception) {}
@@ -1204,7 +1230,9 @@ object BackupRestoreManager {
             Log.e(TAG, "Failed to restore encrypted backup", e)
             if (mutationStarted && rollbackState != null) {
                 try {
-                    restoreRollbackState(app, rollbackState!!)
+                    withContext(kotlinx.coroutines.NonCancellable) {
+                        restoreRollbackState(app, rollbackState!!)
+                    }
                     Log.w(TAG, "Restore failed after mutation; all captured stores were rolled back")
                 } catch (rollbackError: Exception) {
                     Log.e(TAG, "CRITICAL: automatic restore rollback failed", rollbackError)
@@ -1250,7 +1278,27 @@ object BackupRestoreManager {
         return false
     }
 
+    private fun drainAuthenticatedPayload(input: java.io.InputStream) {
+        val buffer = ByteArray(32 * 1024)
+        while (input.read(buffer) != -1) { /* EOF forces GCM tag verification. */ }
+    }
+
     private fun validateRestoreManifest(root: JSONObject) {
+        if (root.has("vocabulary")) VocabularyArchive.validate(root.getJSONObject("vocabulary"))
+        require(root.optInt("version", 1) in 1..BACKUP_VERSION) { "Unsupported backup manifest version" }
+        val arrays = listOf("notes", "restrictions", "schedules", "tasks", "habits", "habitLogs",
+            "drillSessions", "learnedIdioms", "learnedOws", "chatMessages")
+        arrays.forEach { name ->
+            require(!root.has(name) || root.optJSONArray(name) != null) { "$name must be an array" }
+        }
+        listOf("notes", "habits", "schedules").forEach { name ->
+            val array = root.optJSONArray(name) ?: return@forEach
+            val ids = mutableSetOf<Long>()
+            for (i in 0 until array.length()) {
+                val id = array.getJSONObject(i).optLong("id", 0L)
+                require(id <= 0L || ids.add(id)) { "Duplicate $name ID: $id" }
+            }
+        }
         fun requireObjects(arrayName: String, requiredFields: List<String> = emptyList()) {
             val array = root.optJSONArray(arrayName) ?: return
             for (i in 0 until array.length()) {
@@ -1425,7 +1473,8 @@ object BackupRestoreManager {
             }
             val digest = MessageDigest.getInstance("SHA-256")
             var size = 0L
-            FileInputStream(file).use { input ->
+            (EncryptedMediaStorage.openDecryptedInputStream(file)
+                ?: throw IOException("Staged attachment cannot be decrypted")).use { input ->
                 val buffer = ByteArray(32 * 1024)
                 var read = input.read(buffer)
                 while (read != -1) {
@@ -1574,14 +1623,16 @@ object BackupRestoreManager {
         val buffer = ByteArray(32 * 1024)
         try {
             MEDIA_FOLDERS.forEach { folder ->
-                File(stagingDir, folder).listFiles()?.filter { it.isFile && it.length() > 0L }?.forEach { staged ->
+                File(stagingDir, folder).listFiles()?.filter { it.isFile }?.forEach { staged ->
                     val relative = "$folder/${staged.name}"
                     val destination = checkNotNull(destinations[relative]) {
                         "No destination allocated for restored media $relative"
                     }
                     destination.parentFile?.mkdirs()
                     val temp = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.restore")
-                    FileInputStream(staged).use { input ->
+                    prepared += destination to temp
+                    (EncryptedMediaStorage.openDecryptedInputStream(staged)
+                        ?: throw IOException("Staged attachment cannot be decrypted")).use { input ->
                         EncryptedMediaStorage.openEncryptedOutputStream(temp).use { output ->
                             var read = input.read(buffer)
                             while (read != -1) {
@@ -1590,7 +1641,7 @@ object BackupRestoreManager {
                             }
                         }
                     }
-                    prepared += destination to temp
+                    java.io.RandomAccessFile(temp, "rw").use { it.fd.sync() }
                 }
             }
             return prepared

@@ -62,7 +62,8 @@ abstract class DrillDatabase : RoomDatabase() {
                     DrillDatabase::class.java,
                     "drill_sessions.db"
                 )
-                .build()
+                .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory())
+                    .build()
                 .also { INSTANCE = it }
             }
         }

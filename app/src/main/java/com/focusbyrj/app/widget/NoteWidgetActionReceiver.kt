@@ -29,6 +29,10 @@ import kotlinx.coroutines.launch
 class NoteWidgetActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (com.focusbyrj.app.util.backup.MaintenanceGate.isBusy) {
+            android.widget.Toast.makeText(context, "Data maintenance is in progress. Please try again shortly.", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         val appWidgetManager = AppWidgetManager.getInstance(context)
         val appWidgetId = intent.getIntExtra(
             AppWidgetManager.EXTRA_APPWIDGET_ID,
@@ -83,8 +87,8 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                         checklistJson = ChecklistItem.listToJson(uncompleted + completed),
                                         updatedAt = System.currentTimeMillis()
                                     )
-                                    noteDao.updateNote(updatedNote)
-                                    NotesViewModel.latestNotesCache[updatedNote.id] = updatedNote
+                                    noteDao.editChecklistItem(note.id, itemId, remove = true)
+                                    NotesViewModel.latestNotesCache.remove(note.id)
                                     if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                                         NoteWidgetConfigHelper.setCurrentNoteId(context, appWidgetId, updatedNote.id)
                                     }
@@ -92,6 +96,10 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                     if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                                         NoteWidgetProvider.updateWidget(context, appWidgetManager, appWidgetId)
                                     }
+                                }
+                            } catch (error: android.database.sqlite.SQLiteException) {
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    android.widget.Toast.makeText(context, "Could not update the note. Please retry after data maintenance finishes.", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             } finally {
                                 pendingResult.finish()
@@ -123,8 +131,8 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                             checklistJson = ChecklistItem.listToJson(uncompleted + completed),
                                             updatedAt = System.currentTimeMillis()
                                         )
-                                        noteDao.updateNote(updatedNote)
-                                        NotesViewModel.latestNotesCache[updatedNote.id] = updatedNote
+                                        noteDao.editChecklistItem(note.id, itemId, remove = false)
+                                        NotesViewModel.latestNotesCache.remove(note.id)
                                         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                                             NoteWidgetConfigHelper.setCurrentNoteId(context, appWidgetId, updatedNote.id)
                                         }
@@ -133,6 +141,10 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                             NoteWidgetProvider.updateWidget(context, appWidgetManager, appWidgetId)
                                         }
                                     }
+                                }
+                            } catch (error: android.database.sqlite.SQLiteException) {
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    android.widget.Toast.makeText(context, "Could not update the note. Please retry after data maintenance finishes.", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             } finally {
                                 pendingResult.finish()
@@ -180,7 +192,11 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                             }
                             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_note_list_view)
                             NoteWidgetProvider.updateWidget(context, appWidgetManager, appWidgetId)
-                        } finally {
+                        } catch (error: android.database.sqlite.SQLiteException) {
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    android.widget.Toast.makeText(context, "Could not update the note. Please retry after data maintenance finishes.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            } finally {
                             pendingResult.finish()
                         }
                     }
@@ -225,7 +241,11 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                             }
                             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_note_list_view)
                             NoteWidgetProvider.updateWidget(context, appWidgetManager, appWidgetId)
-                        } finally {
+                        } catch (error: android.database.sqlite.SQLiteException) {
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    android.widget.Toast.makeText(context, "Could not update the note. Please retry after data maintenance finishes.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            } finally {
                             pendingResult.finish()
                         }
                     }
@@ -244,7 +264,11 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                             NoteWidgetConfigHelper.setCurrentNoteId(context, appWidgetId, null)
                             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_note_list_view)
                             NoteWidgetProvider.updateWidget(context, appWidgetManager, appWidgetId)
-                        } finally {
+                        } catch (error: android.database.sqlite.SQLiteException) {
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    android.widget.Toast.makeText(context, "Could not update the note. Please retry after data maintenance finishes.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            } finally {
                             pendingResult.finish()
                         }
                     }

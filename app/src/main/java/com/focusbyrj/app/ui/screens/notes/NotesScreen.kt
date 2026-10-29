@@ -1739,6 +1739,7 @@ fun NotesScreen(
                     retryAfterSeconds = recordingState.retryAfterSeconds,
                     diagnosticInfo = recordingState.diagnosticInfo,
                     onPause = { viewModel.audioMemoManager.pauseByUser() },
+                    onTranscriptEdit = { viewModel.audioMemoManager.editTranscript(it) },
                     onRetry = { checkAndStartRecording() },
                     onCancel = { viewModel.cancelVoiceRecording() },
                     onDone = { viewModel.stopVoiceRecordingAndAttach() }

@@ -88,7 +88,7 @@ class NoteRepository(
     }
 
     sealed class SaveResult {
-        data class Saved(val id: Long) : SaveResult()
+        data class Saved(val id: Long, val updatedAt: Long = 0L) : SaveResult()
         data class Locked(val message: String) : SaveResult()
         data class StorageUnavailable(val cause: Throwable) : SaveResult()
         data class Conflict(val message: String) : SaveResult()
@@ -96,7 +96,7 @@ class NoteRepository(
         data class Failure(val message: String, val cause: Throwable? = null) : SaveResult()
     }
 
-    suspend fun saveNoteResult(note: NoteEntity): SaveResult = try {
+    suspend fun saveNoteResult(note: NoteEntity, expectedUpdatedAt: Long? = note.updatedAt.takeIf { note.id > 0L }): SaveResult = try {
         if (note.isArchived && !VaultPayloadEncryptor.isVaultEncrypted(note)) {
             val isLocked = if (context != null) {
                 ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED &&
@@ -113,10 +113,10 @@ class NoteRepository(
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     return SaveResult.Corrupt("Failed to encrypt vault note payload", e)
                 }
-                doSaveEntity(entityToSave)
+                doSaveEntity(entityToSave, expectedUpdatedAt)
             }
         } else {
-            doSaveEntity(note)
+            doSaveEntity(note, expectedUpdatedAt)
         }
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
@@ -128,20 +128,25 @@ class NoteRepository(
         SaveResult.Failure(e.message ?: "Failed to save note", e)
     }
 
-    private suspend fun doSaveEntity(entity: NoteEntity): SaveResult {
+    private suspend fun doSaveEntity(entity: NoteEntity, expectedUpdatedAt: Long?): SaveResult {
         return if (entity.id == 0L) {
             val newId = noteDao.insertNote(entity)
             if (newId <= 0L) {
                 SaveResult.Failure("Failed to insert note into database")
             } else {
-                SaveResult.Saved(newId)
+                SaveResult.Saved(newId, entity.updatedAt)
             }
+        } else if (expectedUpdatedAt != null) {
+            val saved = noteDao.compareAndSave(entity, expectedUpdatedAt)
+            if (saved == null && noteDao.getNoteByIdSync(entity.id) == null) SaveResult.Failure("Note ${entity.id} was not found to update")
+            else if (saved == null) SaveResult.Conflict("This note changed elsewhere. Your draft is retained; reopen the latest note before merging changes.")
+            else SaveResult.Saved(saved.id, saved.updatedAt)
         } else {
             val rows = noteDao.updateNote(entity)
             if (rows <= 0) {
                 SaveResult.Failure("Note ${entity.id} was not found to update")
             } else {
-                SaveResult.Saved(entity.id)
+                SaveResult.Saved(entity.id, noteDao.getNoteByIdSync(entity.id)!!.updatedAt)
             }
         }
     }
@@ -202,12 +207,12 @@ class NoteRepository(
             if (existing != null) {
                 if (isArchived && !VaultPayloadEncryptor.isVaultEncrypted(existing)) {
                     val encrypted = VaultPayloadEncryptor.encryptNotePayload(existing.copy(isArchived = true), context = context)
-                    noteDao.updateNote(encrypted)
+                    check(noteDao.compareAndSave(encrypted, existing.updatedAt) != null) { "Note changed while archiving" }
                 } else if (!isArchived && VaultPayloadEncryptor.isVaultEncrypted(existing)) {
                     // Only unarchive if decryption succeeds. Never leak ciphertext to active notes.
                     val res = VaultPayloadEncryptor.tryDecryptNotePayload(existing)
                     if (res is VaultPayloadEncryptor.DecryptionResult.Success) {
-                        noteDao.updateNote(res.note.copy(isArchived = false))
+                        check(noteDao.compareAndSave(res.note.copy(isArchived = false), existing.updatedAt) != null) { "Note changed while unarchiving" }
                     } else {
                         Log.w(TAG, "Cannot unarchive note $id: vault is locked or decryption failed ($res)")
                     }
@@ -303,7 +308,7 @@ class NoteRepository(
                     } else {
                         updatedPlain
                     }
-                    noteDao.updateNote(finalNote)
+                    check(noteDao.compareAndSave(finalNote, rawNote.updatedAt) != null) { "Note changed during label editing" }
                 }
             }
         } catch (e: Exception) {
@@ -333,7 +338,7 @@ class NoteRepository(
                     } else {
                         updatedPlain
                     }
-                    noteDao.updateNote(finalNote)
+                    check(noteDao.compareAndSave(finalNote, rawNote.updatedAt) != null) { "Note changed during label editing" }
                 }
             }
         } catch (e: Exception) {

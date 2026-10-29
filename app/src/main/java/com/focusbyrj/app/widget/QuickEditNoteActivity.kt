@@ -290,9 +290,16 @@ fun QuickEditNoteOverlay(
         }
     }
 
+    val storageGeneration = remember { com.focusbyrj.app.data.note.NotesStorageVersion.current() }
+    val saveMutex = remember { kotlinx.coroutines.sync.Mutex() }
     fun saveNote(andFinish: Boolean = true) {
         scope.launch(Dispatchers.IO) {
+            saveMutex.lock()
+            try {
             android.util.Log.d("QuickNoteEditor", "Saving note; close after save: $andFinish")
+            check(storageGeneration == com.focusbyrj.app.data.note.NotesStorageVersion.current()) {
+                "Notes were restored. Your draft is retained; reopen the latest note before merging."
+            }
             val trimmedTitle = title.trim()
             val trimmedContent = content.trim()
             val hasChecklistItems = checklistItems.any { it.text.isNotBlank() }
@@ -323,15 +330,18 @@ fun QuickEditNoteOverlay(
                     val toDelete = loadedNote!!
                     val now = System.currentTimeMillis()
                     com.focusbyrj.app.util.backup.DataSafetyManager.writePreOpSnapshot(appContext, noteDao, "empty_note_soft_delete")
-                    noteDao.softDeleteNote(toDelete.id, now)
+                    check(noteDao.compareAndSave(toDelete.copy(isTrashed = true, trashedAt = now, updatedAt = now), toDelete.updatedAt) != null) {
+                        "This note changed elsewhere. Your draft is retained."
+                    }
                     NotesViewModel.latestNotesCache.remove(toDelete.id)
                     loadedNote = null
                 }
             } else {
                 if (loadedNote != null && loadedNote!!.id > 0) {
-                    noteDao.updateNote(candidate)
-                    loadedNote = candidate
-                    NotesViewModel.latestNotesCache[candidate.id] = candidate
+                    val saved = noteDao.compareAndSave(candidate, loadedNote!!.updatedAt)
+                        ?: throw IllegalStateException("This note changed elsewhere. Your draft is retained; reopen the latest note before merging.")
+                    loadedNote = saved
+                    NotesViewModel.latestNotesCache[saved.id] = saved
                 } else {
                     val newId = noteDao.insertNote(candidate)
                     val inserted = candidate.copy(id = newId)
@@ -354,6 +364,12 @@ fun QuickEditNoteOverlay(
                     onSaved()
                 }
             }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(appContext, error.message ?: "Could not save note. Your draft is retained.", Toast.LENGTH_LONG).show()
+                }
+            } finally { saveMutex.unlock() }
         }
     }
 

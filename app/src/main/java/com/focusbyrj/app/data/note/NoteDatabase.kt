@@ -316,7 +316,7 @@ abstract class NoteDatabase : RoomDatabase() {
                         NoteDatabase::class.java,
                         NoteDatabaseMigrationHelper.getEncryptedDatabaseName()
                     )
-                        .openHelperFactory(factory)
+                        .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory(factory))
                         .addMigrations(
                             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
                             MIGRATION_1_3, MIGRATION_1_4, MIGRATION_2_4,
@@ -336,6 +336,7 @@ abstract class NoteDatabase : RoomDatabase() {
                     if (isRobolectric) {
                         android.util.Log.w("NoteDatabase", "Robolectric test environment detected; utilizing in-memory test database", t)
                         Room.inMemoryDatabaseBuilder(appContext, NoteDatabase::class.java)
+                            .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory())
                             .fallbackToDestructiveMigration()
                             .build()
                     } else {

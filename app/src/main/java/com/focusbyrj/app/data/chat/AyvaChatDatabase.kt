@@ -44,7 +44,8 @@ abstract class AyvaChatDatabase : RoomDatabase() {
                     // Reserve slot for future migrations. Example:
                     // object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) { ... } }
                 )
-                .build()
+                .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory())
+                    .build()
                 .also { INSTANCE = it }
             }
         }

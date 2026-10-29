@@ -193,7 +193,7 @@ fun QuickAddNoteItemDialog(
                     val newId = noteDao.insertNote(newNote)
                     NotesViewModel.latestNotesCache[newId] = newNote.copy(id = newId)
                 } else {
-                    val note = targetNote ?: NotesViewModel.latestNotesCache[targetNoteId] ?: noteDao.getNoteByIdSync(targetNoteId)
+                    val note = noteDao.getNoteByIdSync(targetNoteId)
                     if (note != null) {
                         if (note.isArchived || note.isTrashed) {
                             withContext(Dispatchers.Main) {
@@ -215,8 +215,9 @@ fun QuickAddNoteItemDialog(
                             val newContent = if (note.content.isBlank()) trimmed else "${note.content}\n$trimmed"
                             note.copy(content = newContent, updatedAt = System.currentTimeMillis())
                         }
-                        noteDao.updateNote(updatedNote)
-                        NotesViewModel.latestNotesCache[updatedNote.id] = updatedNote
+                        val saved = noteDao.compareAndSave(updatedNote, note.updatedAt)
+                            ?: throw IllegalStateException("This note changed elsewhere. Your entry is retained; please try again.")
+                        NotesViewModel.latestNotesCache[saved.id] = saved
                     }
                 }
                 withContext(Dispatchers.Main) {
@@ -226,6 +227,7 @@ fun QuickAddNoteItemDialog(
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
                     isSubmitting = false
+                    Toast.makeText(context, e.message ?: "Could not add item. Please try again.", Toast.LENGTH_LONG).show()
                 }
             }
         }

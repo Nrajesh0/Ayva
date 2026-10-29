@@ -10,6 +10,9 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.random.Random
+import com.focusbyrj.app.ui.components.ChestRarity
+import com.focusbyrj.app.util.backup.MaintenanceGate
 
 data class DailyQuest(
     val id: String,
@@ -220,9 +223,87 @@ object DailyQuestManager {
         return null
     }
 
+    /** One award per available source chest; animation replay/skip never enters this operation. */
+    @Synchronized
+    fun openMysteryChest(initialRarity: ChestRarity): MysteryReward? = MaintenanceGate.write {
+        refreshState()
+        val available = if (initialRarity == ChestRarity.COMMON) _stateFlow.value.isEarlyBirdAvailable
+            else _stateFlow.value.isNightOwlAvailable
+        if (!available || prefs == null) return@write null
+        val finalRarity = ChestRarity.rollRarity(initialRarity)
+        val currentFreezes = AptitudeManager.getStreakFreezesCount()
+        val (baseXp, baseGold, freezeChance, maxFreezes) = when (finalRarity) {
+            ChestRarity.COMMON -> {
+                val xp = Random.nextInt(120, 260)
+                val gold = Random.nextInt(150, 320)
+                MysteryRewardSpec(xp, gold, 25, 1)
+            }
+            ChestRarity.RARE -> {
+                val xp = Random.nextInt(320, 650)
+                val gold = Random.nextInt(400, 800)
+                MysteryRewardSpec(xp, gold, 60, 1)
+            }
+            ChestRarity.EPIC -> {
+                val xp = Random.nextInt(800, 1600)
+                val gold = Random.nextInt(1000, 2200)
+                MysteryRewardSpec(xp, gold, 100, 1)
+            }
+            ChestRarity.LEGENDARY -> {
+                val xp = Random.nextInt(2500, 5000)
+                val gold = Random.nextInt(3000, 6000)
+                MysteryRewardSpec(xp, gold, 100, 2)
+            }
+        }
+
+        var freezesAwarded = 0
+        var bonusGold = 0
+        val wonFreeze = Random.nextInt(1, 101) <= freezeChance
+
+        if (wonFreeze) {
+            val availableSlots = (3 - currentFreezes).coerceAtLeast(0)
+            if (availableSlots >= maxFreezes) {
+                freezesAwarded = maxFreezes
+                AptitudeManager.addStreakFreezes(freezesAwarded)
+            } else if (availableSlots > 0) {
+                freezesAwarded = availableSlots
+                AptitudeManager.addStreakFreezes(freezesAwarded)
+                val overflow = maxFreezes - availableSlots
+                bonusGold = overflow * when (finalRarity) {
+                    ChestRarity.LEGENDARY -> 300
+                    ChestRarity.EPIC -> 250
+                    ChestRarity.RARE -> 175
+                    ChestRarity.COMMON -> 100
+                }
+            } else {
+                bonusGold = maxFreezes * when (finalRarity) {
+                    ChestRarity.LEGENDARY -> 300
+                    ChestRarity.EPIC -> 250
+                    ChestRarity.RARE -> 175
+                    ChestRarity.COMMON -> 100
+                }
+            }
+        }
+
+        val totalGold = baseGold + bonusGold
+        FocusEconomyManager.addExactRewards(exactXp = baseXp, exactGold = totalGold)
+        DailyQuestManager.claimMysteryChest(initialRarity)
+
+        val reward = MysteryReward(
+            xp = baseXp,
+            gold = totalGold,
+            streakFreezeAwarded = freezesAwarded > 0,
+            bonusGoldInsteadOfFreeze = bonusGold,
+            rarityTitle = finalRarity.title,
+            freezesCount = if (freezesAwarded > 0) freezesAwarded else 1
+        )
+        reward
+    }
+
     fun isAnyChestAvailable(): Boolean {
         refreshState()
         val s = _stateFlow.value
         return s.isEarlyBirdAvailable || s.isNightOwlAvailable
     }
 }
+
+private data class MysteryRewardSpec(val xp: Int, val gold: Int, val freezeChance: Int, val maxFreezes: Int)

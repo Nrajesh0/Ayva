@@ -80,6 +80,37 @@ class VoiceAppearanceTest {
         }
     }
 
+    @Test fun editingPausesCaptureAndUsesCorrectedText() {
+        val text = mutableStateOf("Wrong words")
+        var pauses = 0
+        var used = ""
+        compose.setContent { MaterialTheme { Surface {
+            VoiceCaptureContent(VoiceStyle.HALO, .2f, 4, text.value, true, true, false, "Listening", null,
+                {}, { used = text.value }, { pauses++ }, {}, onTranscriptEdit = { text.value = it })
+        } } }
+        compose.onNodeWithTag("voice_record_edit").performClick()
+        compose.onNodeWithTag("voice_record_editor").performTextReplacement("Corrected words")
+        compose.onNodeWithTag("voice_record_done_btn").performClick()
+        compose.runOnIdle { assertEquals(1, pauses); assertEquals("Corrected words", used) }
+    }
+
+    @Test fun captionRevisionsDoNotShrinkTheTranscriptPane() {
+        val text = mutableStateOf("Short")
+        compose.setContent { MaterialTheme { Surface {
+            VoiceCaptureContent(VoiceStyle.HALO, .2f, 4, text.value, true, true, false, "Listening", null,
+                {}, {}, {}, {})
+        } } }
+        compose.runOnIdle { text.value = "A long sentence that wraps across several lines. ".repeat(30) }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.waitForIdle()
+        val expanded = compose.onNodeWithTag("voice_record_transcript_pane").fetchSemanticsNode().boundsInRoot.height
+        compose.runOnIdle { text.value = "A corrected short phrase" }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.waitForIdle()
+        val revised = compose.onNodeWithTag("voice_record_transcript_pane").fetchSemanticsNode().boundsInRoot.height
+        assertEquals(expanded, revised, 1f)
+    }
+
     @Test fun controlsStayReachableAtLargeFontAndUseTextIsDisabledForEmptySpeech() {
         val text = mutableStateOf("")
         var done = 0; var paused = 0; var cancelled = 0

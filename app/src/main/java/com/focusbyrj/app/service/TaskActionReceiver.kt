@@ -19,6 +19,10 @@ class TaskActionReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (com.focusbyrj.app.util.backup.MaintenanceGate.isBusy) {
+            android.widget.Toast.makeText(context, "Data maintenance is in progress. Please try again shortly.", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         val taskId = intent.getLongExtra(EXTRA_TASK_ID, -1L)
         if (taskId == -1L) return
 

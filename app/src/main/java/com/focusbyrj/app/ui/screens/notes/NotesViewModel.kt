@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app.ui.screens.notes
 
+import kotlinx.coroutines.flow.update
+
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
@@ -209,6 +211,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun lockVault() {
         val current = _editingState.value
         if (current != null && current.isArchived) {
+            if (isNoteModified(current, initialSnapshot) || current.originalId == 0L) pendingPlainVaultDraft = current
             autoSaveJob?.cancel()
             undoPushJob?.cancel()
             audioMemoManager.stopPlayback()
@@ -227,23 +230,35 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                             try {
                                 kotlinx.coroutines.runBlocking(Dispatchers.IO) {
                                 persistMutex.withLock {
-                                        val savedId = repository.saveNote(encrypted)
-                                        latestNotesCache[savedId] = encrypted
+                                        val saved = saveEditorEntity(encrypted, resolvedCurrent)
+                                        latestNotesCache[saved.id] = saved
                                     }
                                 }
                                 pendingVaultDraftFile().delete()
+                                pendingPlainVaultDraft = null
                             } catch (saveError: Exception) {
                                 // Persist the already-vault-encrypted entity under device encryption.
                                 // This survives process death and is retried after the next unlock.
                                 pendingVaultDraftInMemory = encrypted
                                 persistPendingVaultDraft(encrypted)
                                 pendingVaultDraftInMemory = null
+                                pendingPlainVaultDraft = null
                                 Log.e("NotesViewModel", "Database save failed; vault draft queued for recovery", saveError)
                             }
                         } catch (e: Exception) {
-                            Log.e("NotesViewModel", "Failed to encrypt note payload before locking vault", e)
+                            // Keep the failed draft hidden in memory; never discard it on lock.
+                            pendingPlainVaultDraft = current
+                            _saveStatus.value = NoteSaveStatus.Error("Your vault draft is retained in memory. Unlock and free storage before closing Run.", current)
+                            Log.e("NotesViewModel", "Vault draft persistence deferred; hidden draft retained", e)
                         }
                     }
+                }
+            }
+            if (pendingPlainVaultDraft != null) {
+                val message = "Vault locked. An unsaved draft is retained in memory; keep Run open, free storage and unlock to recover it."
+                _saveStatus.value = NoteSaveStatus.Error(message, pendingPlainVaultDraft)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    Toast.makeText(getApplication(), message, Toast.LENGTH_LONG).show()
                 }
             }
             _editingState.value = null
@@ -261,9 +276,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         refreshVaultStatus()
     }
 
+    private var pendingPlainVaultDraft: EditingNoteState? = null
+    private fun pendingVaultFallbackFile(): File = File(getApplication<Application>().filesDir, "pending_vault_draft.vault")
     private fun pendingVaultDraftFile(): File = File(getApplication<Application>().filesDir, "pending_vault_draft.enc")
 
+    internal var pendingDraftWriteHook: (() -> Unit)? = null
     private fun persistPendingVaultDraft(note: NoteEntity) {
+        pendingDraftWriteHook?.invoke()
         val json = JSONObject().apply {
             put("id", note.id); put("title", note.title); put("content", note.content)
             put("isChecklist", note.isChecklist); put("checklistJson", note.checklistJson)
@@ -273,19 +292,31 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             put("createdAt", note.createdAt); put("updatedAt", note.updatedAt)
             put("trashedAt", note.trashedAt ?: JSONObject.NULL); put("deletedAt", note.deletedAt ?: JSONObject.NULL)
         }
-        com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(
-            pendingVaultDraftFile(), json.toString().toByteArray(Charsets.UTF_8)
-        )
+        val bytes = json.toString().toByteArray(Charsets.UTF_8)
+        try {
+            com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(pendingVaultDraftFile(), bytes)
+        } catch (error: Exception) {
+            // The payload is already authenticated VDK ciphertext. A device-key outage
+            // must not prevent preserving it; no private plaintext is written here.
+            check(VaultPayloadEncryptor.isVaultEncrypted(note))
+            val atomic = androidx.core.util.AtomicFile(pendingVaultFallbackFile())
+            val output = atomic.startWrite()
+            try { output.write(bytes); atomic.finishWrite(output) }
+            catch (failure: Throwable) { atomic.failWrite(output); throw failure }
+        }
     }
 
     private fun recoverPendingVaultDraft() {
         viewModelScope.launch(Dispatchers.IO) {
             val file = pendingVaultDraftFile()
-            if (!file.exists() && pendingVaultDraftInMemory == null) return@launch
+            if (!file.exists() && !pendingVaultFallbackFile().exists() && pendingVaultDraftInMemory == null && pendingPlainVaultDraft == null) return@launch
             try {
-                val memoryDraft = pendingVaultDraftInMemory
+                val memoryDraft = pendingVaultDraftInMemory ?: pendingPlainVaultDraft?.let {
+                    VaultPayloadEncryptor.encryptNotePayload(buildEntityFromState(it), context = getApplication())
+                }
                 val note = memoryDraft ?: run {
                     val bytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
+                        ?: pendingVaultFallbackFile().takeIf { it.isFile }?.readBytes()
                         ?: throw java.io.IOException("Pending vault draft could not be decrypted")
                     val obj = JSONObject(bytes.toString(Charsets.UTF_8))
                     NoteEntity(
@@ -300,9 +331,15 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     deletedAt = if (obj.isNull("deletedAt")) null else obj.optLong("deletedAt")
                     )
                 }
-                repository.saveNote(note)
+                check(VaultPayloadEncryptor.isVaultEncrypted(note)) { "Unprotected recovery payload was rejected" }
+                // Recovery never overwrites edits made since the failed save. Identical
+                // ciphertext makes retry after an interrupted insert idempotent.
+                val present = repository.getAllNotesListOrThrow().any { it.copy(id = 0) == note.copy(id = 0) }
+                if (!present) repository.saveNote(note.copy(id = 0))
                 pendingVaultDraftInMemory = null
+                pendingPlainVaultDraft = null
                 file.delete()
+                pendingVaultFallbackFile().delete()
             } catch (e: Exception) {
                 Log.e("NotesViewModel", "Failed to recover pending vault draft; retaining it for retry", e)
             }
@@ -582,8 +619,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     labelsJson = org.json.JSONArray(currentLabels.toList()).toString(),
                     updatedAt = System.currentTimeMillis()
                 )
-                repository.saveNote(updated)
-                latestNotesCache[updated.id] = updated
+                when (val saved = repository.saveNoteResult(updated, note.updatedAt)) {
+                    is NoteRepository.SaveResult.Saved -> latestNotesCache[updated.id] = updated.copy(updatedAt = saved.updatedAt)
+                    else -> _saveStatus.value = NoteSaveStatus.Error("A selected note changed elsewhere. Please retry the label change.")
+                }
             }
             try {
                 com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(getApplication())
@@ -793,6 +832,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     data class EditingNoteState(
         val sessionId: String = java.util.UUID.randomUUID().toString(),
         val originalId: Long = 0L,
+        val storageRevision: Long? = null,
+        val storageGeneration: Long = com.focusbyrj.app.data.note.NotesStorageVersion.current(),
         val title: String = "",
         val content: String = "",
         val isChecklist: Boolean = false,
@@ -977,7 +1018,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 is VaultPayloadEncryptor.DecryptionResult.Corrupted -> {
                     Log.e("NotesViewModel", "Corrupted vault envelope for note ${resolvedNote.id}: ${dec.reason}")
-                    resolvedNote
+                    Toast.makeText(getApplication(), "This note could not be decrypted. Its saved data has been preserved.", Toast.LENGTH_LONG).show()
+                    return
                 }
                 is VaultPayloadEncryptor.DecryptionResult.NotEncrypted -> resolvedNote
             }
@@ -987,6 +1029,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
         val state = EditingNoteState(
             originalId = decryptedNote.id,
+            storageRevision = decryptedNote.updatedAt,
             title = decryptedNote.title,
             content = decryptedNote.content,
             isChecklist = decryptedNote.isChecklist,
@@ -1018,7 +1061,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                                 }
                                 return@launch
                             }
-                            else -> fresh
+                            else -> return@launch // Never replace the editor with an unreadable envelope.
                         }
                     } else {
                         fresh
@@ -1045,7 +1088,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                                 labels = freshDecrypted.getLabels(),
                                 imageUris = freshDecrypted.getImageUris(),
                                 audioUris = freshDecrypted.getAudioUris(),
-                                updatedAt = freshDecrypted.updatedAt
+                                updatedAt = freshDecrypted.updatedAt,
+                                storageRevision = freshDecrypted.updatedAt
                             )
                             _editingState.value = freshState
                             initialSnapshot = freshState
@@ -1090,11 +1134,16 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addImageUriToEditor(contentUri: android.net.Uri) {
+        val ownerSession = _editingState.value?.sessionId ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
             val localPath = processAndSaveImage(context, contentUri) ?: return@launch
             kotlinx.coroutines.withContext(Dispatchers.Main) {
-                val current = _editingState.value ?: return@withContext
+                val current = _editingState.value
+                    if (current == null || current.sessionId != ownerSession) {
+                        java.io.File(localPath).delete()
+                        return@withContext
+                    }
                 val updated = current.imageUris + localPath
                 _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
                 persistCurrentEditorState()
@@ -1103,6 +1152,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addAttachmentToEditor(contentUri: android.net.Uri) {
+        val ownerSession = _editingState.value?.sessionId ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val context = getApplication<Application>()
@@ -1183,7 +1233,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    val current = _editingState.value ?: return@withContext
+                    val current = _editingState.value
+                    if (current == null || current.sessionId != ownerSession) {
+                        destFile.delete()
+                        return@withContext
+                    }
                     val blocks = NotesnookBlockManager.parse(current.content).toMutableList()
                     blocks.add(
                         NotesnookBlock.Attachment(
@@ -1210,12 +1264,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addDrawingToEditor(bitmap: android.graphics.Bitmap) {
+        val ownerSession = _editingState.value?.sessionId ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val context = getApplication<Application>()
                 val localPath = com.focusbyrj.app.data.note.NoteImageHelper.processAndSaveBitmap(context, bitmap, "sketch") ?: return@launch
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    val current = _editingState.value ?: return@withContext
+                    val current = _editingState.value
+                    if (current == null || current.sessionId != ownerSession) {
+                        java.io.File(localPath).delete()
+                        return@withContext
+                    }
                     val updated = current.imageUris + localPath
                     _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
                     persistCurrentEditorState()
@@ -1231,12 +1290,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addPhotoToEditor(bitmap: android.graphics.Bitmap) {
+        val ownerSession = _editingState.value?.sessionId ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val context = getApplication<Application>()
                 val localPath = com.focusbyrj.app.data.note.NoteImageHelper.processAndSaveBitmap(context, bitmap, "photo") ?: return@launch
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    val current = _editingState.value ?: return@withContext
+                    val current = _editingState.value
+                    if (current == null || current.sessionId != ownerSession) {
+                        java.io.File(localPath).delete()
+                        return@withContext
+                    }
                     val updated = current.imageUris + localPath
                     _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
                     persistCurrentEditorState()
@@ -1729,12 +1793,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addCapturedPhoto(bitmap: android.graphics.Bitmap) {
+        val ownerSession = _editingState.value?.sessionId
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val context = getApplication<Application>()
                 val localPath = com.focusbyrj.app.data.note.NoteImageHelper.processAndSaveBitmap(context, bitmap, "photo") ?: return@launch
                 withContext(Dispatchers.Main) {
                     val current = _editingState.value
+                    if (current?.sessionId != ownerSession) {
+                        java.io.File(localPath).delete()
+                        return@withContext
+                    }
                     if (current != null) {
                         val updated = current.imageUris + localPath
                         _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
@@ -1943,6 +2012,30 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val sessionIds = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val sessionRevisions = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val closingSessions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private suspend fun saveEditorEntity(entity: NoteEntity, state: EditingNoteState): NoteEntity {
+        check(state.storageGeneration == com.focusbyrj.app.data.note.NotesStorageVersion.current()) {
+            "Notes were restored while this editor was open. Your draft is retained; reopen the latest note before merging."
+        }
+        val expected = sessionRevisions[state.sessionId] ?: state.storageRevision
+        val resolved = if (entity.id == 0L) entity.copy(id = sessionIds[state.sessionId] ?: 0L) else entity
+        return when (val result = repository.saveNoteResult(resolved, expected)) {
+            is NoteRepository.SaveResult.Saved -> {
+                sessionIds[state.sessionId] = result.id
+                sessionRevisions[state.sessionId] = result.updatedAt
+                resolved.copy(id = result.id, updatedAt = result.updatedAt)
+            }
+            else -> throw IllegalStateException(when (result) {
+                is NoteRepository.SaveResult.Conflict -> result.message
+                is NoteRepository.SaveResult.Locked -> result.message
+                else -> "Could not save note. Your draft has been retained."
+            })
+        }
+    }
+
     fun closeEditor() {
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
@@ -1968,10 +2061,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        if (!closingSessions.add(current.sessionId)) return
         _saveStatus.value = NoteSaveStatus.Saving
         viewModelScope.launch(Dispatchers.IO) {
-            persistMutex.withLock {
-                val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
+            withContext(kotlinx.coroutines.NonCancellable) { persistMutex.withLock {
+                val effectiveId = sessionIds[current.sessionId] ?: current.originalId
                 val resolvedCurrent = if (effectiveId != current.originalId) current.copy(originalId = effectiveId) else current
                 val entity = buildEntityFromState(resolvedCurrent, isModified = modified)
 
@@ -1981,29 +2075,35 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                             val noteDao = NoteDatabase.getInstance(getApplication()).noteDao()
                             DataSafetyManager.writePreOpSnapshot(getApplication(), noteDao, "empty_note_soft_delete")
                             latestNotesCache.remove(entity.id)
-                            repository.moveToTrash(entity.id)
+                            val expected = sessionRevisions[current.sessionId] ?: resolvedCurrent.storageRevision
+                            val stored = noteDao.getNoteByIdSync(entity.id) ?: throw IllegalStateException("This note was removed elsewhere")
+                            check(expected == null || stored.updatedAt == expected) { "This note changed elsewhere. Your draft is retained." }
+                            check(noteDao.compareAndSave(stored.copy(isTrashed = true, trashedAt = System.currentTimeMillis()), stored.updatedAt) != null) {
+                                "This note changed elsewhere. Your draft is retained."
+                            }
                             Log.i("NotesViewModel", "Existing note ${entity.id} was cleared to empty — moved to Trash safely (soft-delete).")
                         }
                     } else {
-                        val savedId = repository.saveNote(entity)
-                        val finalEntity = if (entity.id == 0L) entity.copy(id = savedId) else entity
-                        latestNotesCache[savedId] = finalEntity
+                        val finalEntity = saveEditorEntity(entity, resolvedCurrent)
+                        latestNotesCache[finalEntity.id] = finalEntity
                     }
-                    pendingNewNoteId = 0L
-                    initialSnapshot = null
-                    withContext(Dispatchers.Main) {
-                        _editingState.value = null
+                    val active = _editingState.value
+                    if (active?.sessionId == current.sessionId && !isNoteModified(active, current) &&
+                        _editingState.compareAndSet(active, null)) {
+                        pendingNewNoteId = 0L
+                        initialSnapshot = null
                         _saveStatus.value = NoteSaveStatus.Saved(entity.id)
-                    }
+                    } else closingSessions.remove(current.sessionId)
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     Log.e("NotesViewModel", "Failed to persist note on close", e)
-                    withContext(Dispatchers.Main) {
-                        _saveStatus.value = NoteSaveStatus.Error(e.message ?: "Failed to save note", failedDraft = resolvedCurrent)
-                        android.widget.Toast.makeText(getApplication(), "Failed to save note: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                    closingSessions.remove(current.sessionId)
+                    _saveStatus.value = NoteSaveStatus.Error(e.message ?: "Failed to save note", failedDraft = resolvedCurrent)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        Toast.makeText(getApplication(), e.message ?: "Could not save note", Toast.LENGTH_LONG).show()
                     }
                 }
-            }
+            } }
             triggerAutoSync()
         }
     }
@@ -2022,7 +2122,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 delay(300L)
             }
             _saveStatus.value = NoteSaveStatus.Saving
-            persistMutex.withLock {
+            withContext(kotlinx.coroutines.NonCancellable) { persistMutex.withLock {
                 val latest = _editingState.value ?: return@withLock
                 // Session epoch guard: reject stale writes if editor session switched
                 if (latest.sessionId != current.sessionId) {
@@ -2030,7 +2130,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     return@withLock
                 }
 
-                val effectiveId = if (latest.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else latest.originalId
+                val effectiveId = sessionIds[latest.sessionId] ?: latest.originalId
                 val resolvedLatest = if (effectiveId != latest.originalId) latest.copy(originalId = effectiveId) else latest
 
                 val latestModified = isNoteModified(resolvedLatest, initialSnapshot)
@@ -2040,15 +2140,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 if (entity.isEmptyNote() && resolvedLatest.originalId == 0L) return@withLock
 
                 try {
-                    val savedId = repository.saveNote(entity)
-                    val finalEntity = if (entity.id == 0L) entity.copy(id = savedId) else entity
+                    val finalEntity = saveEditorEntity(entity, resolvedLatest)
+                    val savedId = finalEntity.id
                     latestNotesCache[savedId] = finalEntity
-
-                    if (resolvedLatest.originalId == 0L && savedId != 0L) {
-                        pendingNewNoteId = savedId
-                        withContext(Dispatchers.Main) {
-                            _editingState.value = _editingState.value?.copy(originalId = savedId)
-                        }
+                    _editingState.update { active ->
+                        if (active?.sessionId == latest.sessionId) active.copy(originalId = savedId, storageRevision = finalEntity.updatedAt)
+                        else active
                     }
                     _saveStatus.value = NoteSaveStatus.Saved(savedId)
                 } catch (e: Exception) {
@@ -2056,7 +2153,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     Log.e("NotesViewModel", "Failed to autosave note", e)
                     _saveStatus.value = NoteSaveStatus.Error(e.message ?: "Failed to autosave note", failedDraft = resolvedLatest)
                 }
-            }
+            } }
             triggerAutoSync()
         }
     }
@@ -2142,6 +2239,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        if (_editingState.value?.isArchived == true) lockVault()
         super.onCleared()
         try {
             val vaultPrefs = getApplication<android.app.Application>().getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE)

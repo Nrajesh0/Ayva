@@ -1,0 +1,12 @@
+Connecting to test emulator
+Connected
+INSTRUMENTATION_STATUS: class=com.focusbyrj.app.util.backup.RestoreRecoveryDeviceTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+com.focusbyrj.app.util.backup.RestoreRecoveryDeviceTest:
+INSTRUMENTATION_STATUS: test=terminateDuringRestore
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_RESULT: shortMsg=Process crashed.
+INSTRUMENTATION_CODE: 0

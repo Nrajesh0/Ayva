@@ -60,7 +60,7 @@ class OnDeviceTranscriber(private val context: Context) {
     private val accumulatedSentences = mutableListOf<String>()
     private val finalizedSentences = mutableListOf<String>()
 
-    /** Recognizer final results only; partial captions remain available separately for editing. */
+    /** Recognizer final results and explicit user corrections; untouched partial captions remain separate. */
     @androidx.annotation.MainThread
     fun finalizedTranscript(): String = finalizedSentences.joinToString("; ")
     private var currentPartialText = ""
@@ -449,6 +449,21 @@ class OnDeviceTranscriber(private val context: Context) {
         if (_recordingState.value.isRecording) {
             failRecording("Transcription paused when Ayva left the screen. Retry to continue, or use the text already captured.")
         }
+    }
+
+    /** Explicit user corrections become the current text before capture resumes. */
+    @androidx.annotation.MainThread
+    fun editTranscript(text: String) {
+        if (!_recordingState.value.isSessionOpen || _recordingState.value.isRecording) return
+        accumulatedSentences.clear()
+        finalizedSentences.clear()
+        currentPartialText = ""
+        if (text.isNotBlank()) {
+            accumulatedSentences.add(text)
+            finalizedSentences.add(text)
+        }
+        _recordingState.value = _recordingState.value.copy(liveTranscript = text)
+        onTranscriptCallback?.invoke(text)
     }
 
     @androidx.annotation.MainThread

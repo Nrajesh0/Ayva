@@ -83,6 +83,14 @@ object DatabaseKeyProvider {
             }
         }
 
+        val encryptedDatabases = listOf(
+            NoteDatabaseMigrationHelper.getEncryptedDatabaseName(),
+            com.focusbyrj.app.data.FocusDatabaseMigrationHelper.getEncryptedDatabaseName()
+        )
+        check(encryptedDatabases.none { name ->
+            appContext.getDatabasePath(name).let { it.exists() && it.length() > 0L }
+        }) { "Database encryption key is missing for an existing database. Restore credentials or a portable backup; refusing to generate a replacement key." }
+
         // Generate new cryptographically secure 256-bit passphrase (first-time initialization)
         val newPassphrase = ByteArray(PASSPHRASE_BYTE_LENGTH)
         SecureRandom().nextBytes(newPassphrase)

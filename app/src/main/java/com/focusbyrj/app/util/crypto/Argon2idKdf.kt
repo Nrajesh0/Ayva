@@ -95,8 +95,8 @@ object Argon2idKdf {
 
         val runner = argon2Kt
         if (runner == null) {
-            if (!isUnitTestEnvironment && params == Parameters.BACKUP) {
-                throw IllegalStateException("Native Argon2id cryptography library failed to load on this Android device. Cannot securely generate encrypted backup.")
+            if (!isUnitTestEnvironment) {
+                throw IllegalStateException("Native Argon2id cryptography library failed to load on this Android device. Argon2id operations are unavailable; existing keys and data have been preserved.")
             }
             return deriveKeyJvmFallback(password, salt, params.outputLengthBytes)
         }
@@ -145,8 +145,8 @@ object Argon2idKdf {
 
         val runner = argon2Kt
         if (runner == null) {
-            if (!isUnitTestEnvironment && params == Parameters.BACKUP) {
-                throw IllegalStateException("Native Argon2id cryptography library failed to load on this Android device. Cannot securely generate encrypted backup.")
+            if (!isUnitTestEnvironment) {
+                throw IllegalStateException("Native Argon2id cryptography library failed to load on this Android device. Argon2id operations are unavailable; existing keys and data have been preserved.")
             }
             val decoded = StandardCharsets.UTF_8.decode(java.nio.ByteBuffer.wrap(passwordBytes))
             val chars = CharArray(decoded.remaining())

@@ -24,6 +24,10 @@ import com.focusbyrj.app.util.TaskReminderHelper
 class TodoWidgetActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (com.focusbyrj.app.util.backup.MaintenanceGate.isBusy) {
+            android.widget.Toast.makeText(context, "Data maintenance is in progress. Please try again shortly.", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         val appWidgetManager = AppWidgetManager.getInstance(context)
 
         when (intent.action) {

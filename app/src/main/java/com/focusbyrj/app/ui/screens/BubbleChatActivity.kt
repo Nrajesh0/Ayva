@@ -2158,6 +2158,7 @@ fun ChatInterface() {
                 retryAfterSeconds = recordingState.retryAfterSeconds,
                 diagnosticInfo = recordingState.diagnosticInfo,
                 onPause = { audioMemoManager.pauseByUser() },
+                onTranscriptEdit = { audioMemoManager.editTranscript(it) },
                 onRetry = {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                         startLiveTranscriptionAction()

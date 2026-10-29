@@ -24,7 +24,7 @@ fun VoiceRecordDialog(
     errorMessage: String? = null, onRetry: () -> Unit = {},
     onCancel: () -> Unit, onDone: () -> Unit,
     isListening: Boolean = isRecording, isPaused: Boolean = false, onPause: () -> Unit = {},
-    retryAfterSeconds: Int = 0, diagnosticInfo: String = ""
+    retryAfterSeconds: Int = 0, diagnosticInfo: String = "", onTranscriptEdit: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val style = remember { VoiceStyle.read(context) }
@@ -33,7 +33,7 @@ fun VoiceRecordDialog(
             tonalElevation = 3.dp, modifier = Modifier.testTag("voice_record_dialog")) {
             VoiceCaptureContent(style, amplitude, elapsedSeconds, liveTranscript, isRecording, isListening, isPaused,
                 statusMessage, errorMessage, onCancel, onDone, onPause, onRetry,
-                retryAfterSeconds = retryAfterSeconds,
+                retryAfterSeconds = retryAfterSeconds, onTranscriptEdit = onTranscriptEdit,
                 onCopyDiagnostics = if (diagnosticInfo.isBlank()) null else ({
                     val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
                     clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Ayva speech details", diagnosticInfo))

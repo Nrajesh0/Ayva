@@ -1,0 +1,173 @@
+{
+  "date": "2026-10-29",
+  "baseline": "d3bfbd4f3f20fc814227de8f7b80b84610aaae2c",
+  "status": "local uncommitted repairs; no publication",
+  "findings": {
+    "O1": "repaired",
+    "O2": "repaired",
+    "O3": "repaired",
+    "O4": "repaired",
+    "Q1 implementation": "repaired",
+    "Q2 implementation": "repaired"
+  },
+  "focused_suites": [
+    {
+      "name": "com.focusbyrj.app.BackupRestoreHardeningTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.focusbyrj.app.DataPreservationAuditTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.focusbyrj.app.RestoreRecoveryRepairTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.focusbyrj.app.WorkPackage2SecurityTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.focusbyrj.app.WorkPackage3SecurityTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.focusbyrj.app.WorkPackage4SecurityTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.focusbyrj.app.WorkPackage5SecurityTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.focusbyrj.app.WorkPackage6SecurityTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.focusbyrj.app.WorkPackage7SecurityTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "focused_total": 65,
+  "final_recovery_rerun": [
+    {
+      "name": "com.focusbyrj.app.RestoreRecoveryRepairTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "final_recovery_total": 9,
+  "debug_build": "passed",
+  "android_test_build": "passed",
+  "native_device": {
+    "api": 29,
+    "abi": "x86_64",
+    "kind": "software emulator, Android Keystore; hardware-backed status not claimed",
+    "crypto": "passed: installed native Argon2id, Keystore media round trip, tamper rejection, legacy staging encryption",
+    "termination": "intentional Process.killProcess at before_commit; phase proof synced before kill",
+    "startup_recovery": "passed on fresh instrumentation process: exact Notes/tasks fingerprints, original preference, journal removed",
+    "fixture_cleanup": "verified by successful recovery test; test-owned rows and marker removed"
+  },
+  "guards": {
+    "chat_boundary": "passed, 117 files",
+    "diff_check": "passed"
+  },
+  "logs": [
+    "/tmp/audit-remediation-passed.log",
+    "/tmp/audit-remediation-final-apk.log",
+    "/tmp/audit-remediation-final-package.log",
+    "/tmp/audit-native-crypto.log",
+    "/tmp/audit-native-termination.log",
+    "/tmp/audit-native-recovery.log"
+  ],
+  "apk_sha256": "4f0162a9b1527c6ce6bf6e248e28182f7328d288b7fe2106e2c0c3506386eca1",
+  "source_sha256": {
+    "app/src/main/java/com/focusbyrj/app/FocusApplication.kt": "6dbc9bcedcdaec21d91babaf0248c9030d87867dc1648e0be484666211b52633",
+    "app/src/main/java/com/focusbyrj/app/MainActivity.kt": "3d3e10fbe09e0bf31106623a5b1bb121bb028c650b0b86a7bacd40c4e8a971ef",
+    "app/src/main/java/com/focusbyrj/app/data/FocusDatabaseMigrationHelper.kt": "327aad8a951ba89a33ab0780582af471252f9d7fcac4e6ec30954fd3ba3e696e",
+    "app/src/main/java/com/focusbyrj/app/data/chat/AyvaChatDatabase.kt": "bc4135e7e93565ee4e29869c9c319e6b4fff3be57e2f5432fed474614f918d6c",
+    "app/src/main/java/com/focusbyrj/app/data/drill/DrillDatabase.kt": "5343d09a23eded82f2fcaa2468f5cdf96d3c9dc3f48d35fae5cfe2bdc5f66982",
+    "app/src/main/java/com/focusbyrj/app/data/note/ArchiveVaultSecurity.kt": "86537e85b6f848a83fee0d7706a83bcdae57196b2dd59a592675b506f416b188",
+    "app/src/main/java/com/focusbyrj/app/data/note/DatabaseKeyProvider.kt": "c4b8260780ba2188de34d1e2a702e9b353d44bbfb3b50f6c91f49a9cd96c703e",
+    "app/src/main/java/com/focusbyrj/app/data/note/NoteDao.kt": "4b6eecaaa3fab156cb18a351ed6eced8e1ea26e4eee26199ee7e6da728455255",
+    "app/src/main/java/com/focusbyrj/app/data/note/NoteDatabase.kt": "4645e49c57e02cc74888238d06a489008791c75c4b36a00cecf8edf91113273b",
+    "app/src/main/java/com/focusbyrj/app/data/note/NoteDatabaseMigrationHelper.kt": "f439e3a35bde018b9bd8464943b3d548fe7195e50aa35c36e6d84b1102d6dec5",
+    "app/src/main/java/com/focusbyrj/app/data/note/NoteMediaManager.kt": "b3862239b7159967a65f44e5221c6410dd92db5b8fcaf4fdc407ed1f5fc983d7",
+    "app/src/main/java/com/focusbyrj/app/data/note/NoteRepository.kt": "2bb44f270ed92770baa978a1dcc3a514d6080fddab641bd89e6d6f164fef33f1",
+    "app/src/main/java/com/focusbyrj/app/service/HabitActionReceiver.kt": "0ae0850fb1bac7b1b2e0e6d4014e7974d716fb556f917e6c16fd00c42ec823fd",
+    "app/src/main/java/com/focusbyrj/app/service/TaskActionReceiver.kt": "177b5a1523169b4659ffb6c7eaa654952ed906dc739379918ffd68c1060bf4c8",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleChatActivity.kt": "6dbb4cbc430fc8bc318feedc95398224072f2a521f14f60290e27ac765607285",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt": "d289e5b18a20002d97e1fc718d657fb29321a87d518de8074927d3faa5e5abd6",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/AudioMemoManager.kt": "bbcf59e72684fd36e511e87d229b32f64adca3a6e67a2481864a1307df8afb47",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesScreen.kt": "8e1d250a30d0eeaffd18316e3fe328bb4eb63086cfac4b88b6f69336979b898f",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesViewModel.kt": "cc86f4d267935570f8c434876bcbe2ca735b8e56c8e9718db622a14e6657d8b0",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookBlockWidgets.kt": "465487503375e4260acf22ee97a6a3b6fcad0b9e94779e1c4d06431374afeb10",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/VoiceRecordDialog.kt": "b53d6991d6cb8281f5e84d62d8e6d259a32dd1eef29ba5b7f9f5827f3ea1079d",
+    "app/src/main/java/com/focusbyrj/app/ui/speech/VoiceCaptureContent.kt": "aecd9fa6c2bd9dafe7ea668d6cc53e377440f9de8f49318635170c41cf5daa8c",
+    "app/src/main/java/com/focusbyrj/app/util/backup/BackupRestoreManager.kt": "2c06947b463dc18917a08c76d3d682915893f62379236a41edcdebe286d9e59a",
+    "app/src/main/java/com/focusbyrj/app/util/backup/DataSafetyManager.kt": "b7dc7b1201e08870d5dfa6ef41427f006ab85c0568932a05372f902cf9fb68f6",
+    "app/src/main/java/com/focusbyrj/app/util/backup/EncryptedSnapshotFile.kt": "4693eefd99a7bc4308d26ba921f535175701fab8779070cceb14cc7b01d3afc6",
+    "app/src/main/java/com/focusbyrj/app/util/crypto/Argon2idKdf.kt": "aaa5a56d7f3240e53248536df86a2b1c1e9cd61216d72703de31427f79ea2555",
+    "app/src/main/java/com/focusbyrj/app/util/crypto/EncryptedMediaStorage.kt": "11deaf29ed5c7d198a078433b36402e36fccd775caebae32da85a399920e8aa5",
+    "app/src/main/java/com/focusbyrj/app/util/speech/OnDeviceTranscriber.kt": "dd97cfb829db7627030ea3717e949368ccb73a7c57304e737b851c236780dd1c",
+    "app/src/main/java/com/focusbyrj/app/widget/NoteWidgetActionReceiver.kt": "ffb11fa701e1cc568efe60c670c724a5a9a02ca3ae0e92b3a1ebe4856322b131",
+    "app/src/main/java/com/focusbyrj/app/widget/QuickAddNoteItemActivity.kt": "7db14ca0c7c9b1427e4f0bbd5c5cf6e3bde0b2d2983208117d1337150f849df0",
+    "app/src/main/java/com/focusbyrj/app/widget/QuickEditNoteActivity.kt": "11da2bcc4653f47ac9549b853f6d83e33d4fa8060a4293cdfd44917606e2bb06",
+    "app/src/main/java/com/focusbyrj/app/widget/TodoWidgetActionReceiver.kt": "1ce45b555bfee317c3a445996f0af444085f54845617d0086147776b2eeb4afa",
+    "app/src/test/java/com/focusbyrj/app/WorkPackage5SecurityTest.kt": "350cb46b6f54307381447bfac9e8f3a6e37cc9ff1494e65d9db6fdd806cbd106",
+    "app/src/test/java/com/focusbyrj/app/ui/screens/notes/AudioMemoManagerTest.kt": "40c90119c9c72c8bdde6272cd444d82e0f5fa1c37a5db28a000374752af76b66",
+    "app/src/test/java/com/focusbyrj/app/ui/speech/VoiceAppearanceTest.kt": "4f8d29784e706db69941bdaf79bd921c59c4d174dfecc7efe97f3944663d20a0",
+    "app/src/androidTest/java/com/focusbyrj/app/util/backup/RestoreRecoveryDeviceTest.kt": "4f2cdc8c003c0c0339f6f3fd3522d2739bf16a905c65bd84c5a0e113468c37cb",
+    "app/src/main/java/com/focusbyrj/app/data/note/NotesStorageVersion.kt": "2eccddef97bed0eac5b48fd7b811aa709c9302f6f0cc72ac2e5f934b24929dac",
+    "app/src/main/java/com/focusbyrj/app/util/backup/ExportCleanupWorker.kt": "a0b56884eaf2760e44146691d9b9a5fbfbfd117b05f7afe9f9de0174810fbf5c",
+    "app/src/main/java/com/focusbyrj/app/util/backup/MaintenanceGate.kt": "74db67391fa32a41ab94d2fb356de2bb75e82844ab6ef3b67e35a2a86dc92cd8",
+    "app/src/main/java/com/focusbyrj/app/util/backup/MaintenanceOpenHelperFactory.kt": "adc54dd37700687fdc5f6cfc79025fc92c9a28ef914c960404f88a97a7b36c67",
+    "app/src/main/java/com/focusbyrj/app/util/backup/MaintenancePreferences.kt": "d4be27cdda49a7645c1b85aaf03c3364de99dcd0d05bc19bde74c4beccc20110",
+    "app/src/main/java/com/focusbyrj/app/util/backup/RestoreJournal.kt": "d29dabf877d485a88cf628f0ddd9a93f442a5c00f84fefc597e5171788614119",
+    "app/src/main/java/com/focusbyrj/app/util/backup/RestoreStaging.kt": "bd39ec9a8996d1057227b1714cfcffd9c90773b7f2b8b96cffb2e5b99be871d8",
+    "app/src/main/java/com/focusbyrj/app/util/backup/VocabularyArchive.kt": "f9dcfbc5e86972b1fe00ba1233b00bc916a6f9a0fa8056753be78490d1f33d9f",
+    "app/src/test/java/com/focusbyrj/app/DataPreservationAuditTest.kt": "d0d6393f648cb93d25a69c8005c4cc9574b74ff3dbce6be0b65fa9a4e52fe485",
+    "app/src/test/java/com/focusbyrj/app/RestoreRecoveryRepairTest.kt": "8a6fa8fc1178accf8fe3e37eda30ddc9e0390282a15d5adf83f83dd58ecd5f90"
+  },
+  "limits": [
+    "Physical Android 16 / Poco hardware not available",
+    "No physical power-cut or vendor Keystore invalidation test",
+    "OS-scheduled export cleanup remains best effort",
+    "No durable-save promise when neither storage nor usable keys are available; hidden draft plus explicit error",
+    "Historical backups cannot recreate omitted bookmarks or media"
+  ],
+  "native_evidence": [
+    "evidence/2026-10-29/native-crypto.log",
+    "evidence/2026-10-29/intentional-termination.log",
+    "evidence/2026-10-29/startup-recovery.log"
+  ]
+}

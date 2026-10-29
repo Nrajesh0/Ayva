@@ -25,7 +25,7 @@ The default is Liquid Core. Stable preference IDs are stored in `focus_prefs/voi
 
 The selected visual reacts to smoothed microphone RMS. Real recognizer readiness/audio/partial callbacks establish the listening state. Connecting, language checks, phrase completion, cooldowns, user pause and errors do not claim to be listening. Pausing releases the recognizer, retains text and the callback, and offers explicit Resume. Existing service-error recovery and rate-limit cooldowns remain in force; Resume cannot bypass them.
 
-The transcript is selectable, 16sp with 24sp line height, respects font scaling, and scrolls within a bounded area. New captions follow the end until the reader scrolls upward. Captured text remains usable after interruption; **Use text** is disabled when blank. Captions are never visually truncated to the most recent phrase. Speech-result provenance is unchanged: interim captions are not promoted into confirmed task-action input.
+The transcript is selectable, 16sp with 24sp line height, respects font scaling, and scrolls within a bounded area. New captions follow the end until the reader scrolls upward. Captured text remains usable after interruption; **Use text** is disabled when blank. Captions are never visually truncated to the most recent phrase. Untouched interim captions are not promoted into confirmed task-action input. Explicit user corrections are treated as user-approved text.
 
 ## Themes, motion and scope
 
@@ -51,3 +51,9 @@ python tools/check_chat_boundary.py
 ```
 
 The cloud Robolectric setup may require the existing `tools/gradle/cloud-test-jvm.gradle` init script. No full-suite run is required locally for this change. Physical Android microphone/OEM visual validation remains a device check; no device was connected in the implementation workspace.
+
+## Stable sizing and corrections
+
+The transcript reserves 144dp and grows smoothly up to 192dp as needed. Shorter partial-result revisions do not shrink it during capture; longer text scrolls within the pane. The popup also animates layout changes, and the listening badge supplies connection status without an extra paragraph appearing between speech segments.
+
+In chat and Notes, **Edit** pauses capture and opens an editable transcript inside the popup. **Finish editing** returns to the transcript view; the resume button continues capture after the corrected text. **Use text** uses the current corrections, and Cancel discards the capture session. Late callbacks from the old speech connection cannot overwrite edits. Text already in the chat composer or note is preserved through the existing prefix/attachment flow.

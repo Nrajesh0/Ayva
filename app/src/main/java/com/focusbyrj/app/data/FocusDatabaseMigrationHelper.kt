@@ -148,7 +148,7 @@ object FocusDatabaseMigrationHelper {
 
         try {
             val db = rawDb ?: return
-            runBlocking(Dispatchers.IO) {
+            runBlocking(Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
                 encryptedDb.withTransaction {
                     // 1. Migrate AppRestrictions
                     if (tableExists(db, "app_restrictions")) {

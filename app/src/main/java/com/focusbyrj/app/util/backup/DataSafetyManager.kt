@@ -41,8 +41,8 @@ import java.util.Locale
  * ## 1. Rolling Daily Auto-Backup (7-day retention)
  * Writes a lightweight JSON snapshot of all notes, tasks, habits, schedules, and restrictions
  * to internal storage (`files/auto_backups/`).
- * These are NOT encrypted with a user password — they use the device's internal storage
- * isolation as protection. They are never user-visible. Keeps the last 7 daily snapshots,
+ * These use device-key AES-GCM encryption, not a portable user password.
+ * They contain records and media references, not media bytes. Keeps the last 7 daily snapshots,
  * rotating the oldest automatically.
  *
  * ## 2. Pre-Destructive-Operation Snapshots
@@ -56,9 +56,8 @@ import java.util.Locale
  * "last known good" state.
  *
  * ## Recovery
- * All snapshots are plain JSON (NOT encrypted) for simplicity and resilience —
- * if the encryption key is the problem, you still need the backup. The internal storage
- * directory is app-private and inaccessible to other apps on non-rooted devices.
+ * Snapshots are encrypted, device-bound containers. They cannot recover a lost device key
+ * or deleted attachments. Use a verified portable encrypted backup for complete recovery.
  *
  * For full encrypted backups (with user password), see [BackupRestoreManager].
  */
@@ -272,7 +271,9 @@ object DataSafetyManager {
             val expiredTasks = taskDao?.getExpiredTrashedTasks(cutoffMs) ?: emptyList()
 
             if (expiredNotes.isNotEmpty() || expiredTasks.isNotEmpty()) {
-                writePreOpSnapshot(context, noteDao, "auto_purge_30d_trash", focusDb)
+                checkNotNull(writePreOpSnapshot(context, noteDao, "auto_purge_30d_trash", focusDb)) {
+                    "Safety snapshot failed; expired trash was retained."
+                }
                 
                 var purgedCount = 0
                 if (expiredNotes.isNotEmpty()) {
@@ -318,7 +319,11 @@ object DataSafetyManager {
         snapshotPath: String,
         noteDao: NoteDao,
         focusDb: FocusDatabase? = null
-    ): Result<Int> = AssistantStateLock.mutex.withLock { restoreSnapshotUnlocked(context, snapshotPath, noteDao, focusDb) }
+    ): Result<Int> = AssistantStateLock.mutex.withLock {
+        if (File(snapshotPath).canonicalFile.parentFile == File(context.filesDir, TaskRecoveryStore.DIRECTORY).canonicalFile) {
+            restoreSnapshotUnlocked(context, snapshotPath, noteDao, focusDb)
+        } else RestoreJournal.mutate(context) { restoreSnapshotUnlocked(context, snapshotPath, noteDao, focusDb) }
+    }
 
     private suspend fun restoreSnapshotUnlocked(
         context: Context, snapshotPath: String, noteDao: NoteDao, focusDb: FocusDatabase?
@@ -611,11 +616,13 @@ object DataSafetyManager {
             Result.success(totalRestored)
         } catch (e: Exception) {
             try {
-                priorNotes?.let { noteDao.deleteAllNotes(); noteDao.insertNotes(it) }
+                withContext(kotlinx.coroutines.NonCancellable) {
+                priorNotes?.let { noteDao.replaceAllNotes(it) }
                 assistantRecovery?.let { AssistantPlanningArchive.recover(context, it) }
                 val editor = context.getSharedPreferences("ayva_composer", 0).edit()
                 if (priorMode == null) editor.remove("mode") else editor.putString("mode", priorMode)
-                editor.commit()
+                check(editor.commit()) { "Could not roll back snapshot preferences" }
+                }
             } catch (rollback: Exception) { e.addSuppressed(rollback) }
             if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "Failed to restore snapshot: $snapshotPath", e)
@@ -660,10 +667,7 @@ object DataSafetyManager {
             if (dir.exists()) {
                 dir.listFiles { f -> f.isFile && f.name.endsWith(".json") }?.forEach { file ->
                     try {
-                        if (!SnapshotCryptoEngine.isEncrypted(file)) {
-                            val content = readAtomically(file)
-                            // Re-write using encrypted writer
-                            writeAtomically(file, content)
+                        if (EncryptedSnapshotFile.migratePlaintext(file)) {
                             count++
                             Log.i(TAG, "Migrated legacy plaintext snapshot to encrypted container: ${file.name}")
                         }

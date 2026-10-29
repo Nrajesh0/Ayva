@@ -1,5 +1,8 @@
 package com.focusbyrj.app.ui.speech
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -17,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -33,12 +37,16 @@ fun VoiceCaptureContent(
     statusMessage: String, errorMessage: String?, onCancel: () -> Unit, onDone: () -> Unit,
     onPause: () -> Unit, onRetry: () -> Unit, modifier: Modifier = Modifier,
     onVoiceSettings: (() -> Unit)? = null, doneLabel: String = "Use text", retryAfterSeconds: Int = 0,
-    onCopyDiagnostics: (() -> Unit)? = null
+    onCopyDiagnostics: (() -> Unit)? = null, onTranscriptEdit: ((String) -> Unit)? = null
 ) {
+    var editing by remember { mutableStateOf(false) }
+    var editValue by remember { mutableStateOf("") }
+    val focus = LocalFocusManager.current
+    val resumeCapture = { editing = false; focus.clearFocus(); onRetry() }
     val colors = MaterialTheme.colorScheme
     val config = LocalConfiguration.current
     val maxHeight = (config.screenHeightDp * .86f).dp
-    Column(modifier.fillMaxWidth().heightIn(max = maxHeight).padding(20.dp)) {
+    Column(modifier.fillMaxWidth().heightIn(max = maxHeight).animateContentSize(tween(260)).padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Live transcription", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Text(String.format(Locale.getDefault(), "%02d:%02d", elapsedSeconds.coerceAtLeast(0) / 60, elapsedSeconds.coerceAtLeast(0) % 60),
@@ -54,19 +62,32 @@ fun VoiceCaptureContent(
                     style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant, modifier = Modifier.testTag("voice_record_mode_badge"))
             }
             Spacer(Modifier.height(16.dp))
-            TranscriptText(liveTranscript, if (isListening) "Speak naturally. Your words appear here." else if (isPaused) "Resume whenever you're ready." else statusMessage)
+            if (onTranscriptEdit != null) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (editing) "Editing · microphone paused" else "Transcript", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+                    TextButton(onClick = {
+                        if (editing) { editing = false; focus.clearFocus() }
+                        else { onPause(); editValue = liveTranscript; editing = true }
+                    }, enabled = editing || liveTranscript.isNotBlank(), modifier = Modifier.testTag("voice_record_edit")) {
+                        Icon(if (editing) Icons.Default.Check else Icons.Default.Edit, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp)); Text(if (editing) "Finish editing" else "Edit")
+                    }
+                }
+            }
+            if (editing) {
+                OutlinedTextField(value = editValue, onValueChange = { editValue = it; onTranscriptEdit?.invoke(it) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 144.dp, max = 192.dp).testTag("voice_record_editor"),
+                    label = { Text("Transcript") }, shape = RoundedCornerShape(16.dp))
+            } else TranscriptText(liveTranscript, if (isListening) "Speak naturally. Your words appear here." else if (isPaused) "Resume whenever you're ready." else statusMessage)
             if (errorMessage != null) {
                 Spacer(Modifier.height(12.dp))
                 Text(errorMessage, style = MaterialTheme.typography.bodySmall, color = colors.error, modifier = Modifier.testTag("voice_record_error"))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     if (onVoiceSettings != null && (errorMessage.contains("language", true) || errorMessage.contains("Voice settings", true))) TextButton(onClick = onVoiceSettings) { Text("Voice settings") }
-                    TextButton(onClick = onRetry, modifier = Modifier.testTag("voice_record_retry")) { Text("Retry") }
+                    TextButton(onClick = resumeCapture, modifier = Modifier.testTag("voice_record_retry")) { Text("Retry") }
                 }
                 if (onCopyDiagnostics != null) TextButton(onClick = onCopyDiagnostics,
                     modifier = Modifier.align(Alignment.End).testTag("voice_record_copy_details")) { Text("Copy speech details") }
-            } else if (isRecording && !isListening && statusMessage.isNotBlank() && liveTranscript.isNotBlank()) {
-                Spacer(Modifier.height(10.dp))
-                Text(statusMessage, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -76,7 +97,7 @@ fun VoiceCaptureContent(
                 Icon(Icons.Default.Close, "Cancel live transcription")
             }
             if (isRecording || isPaused) {
-                FilledTonalIconButton(onClick = if (isPaused) onRetry else onPause,
+                FilledTonalIconButton(onClick = { if (isPaused) { editing = false; focus.clearFocus(); onRetry() } else onPause() },
                     colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = colors.onSurface.copy(alpha = .07f), contentColor = colors.onSurface),
                     modifier = Modifier.size(48.dp).testTag("voice_record_pause_btn")) {
                     Icon(if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
@@ -96,6 +117,9 @@ fun VoiceCaptureContent(
 @Composable
 private fun TranscriptText(text: String, emptyMessage: String) {
     val scroll = rememberScrollState()
+    val density = LocalDensity.current
+    var reservedHeight by remember { mutableStateOf(144.dp) }
+    val paneHeight by animateDpAsState(reservedHeight, tween(260), label = "transcriptHeight")
     var followTail by remember { mutableStateOf(true) }
     val nearEndPx = with(LocalDensity.current) { 32.dp.roundToPx() }
     // New captions follow the end only while the reader has not scrolled up.
@@ -107,9 +131,13 @@ private fun TranscriptText(text: String, emptyMessage: String) {
         if (followTail) snapshotFlow { scroll.maxValue }.distinctUntilChanged().collect { scroll.scrollTo(it) }
     }
     Surface(shape = RoundedCornerShape(16.dp), color = lerp(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.onSurface, .035f),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 86.dp, max = 192.dp)) {
+        modifier = Modifier.fillMaxWidth().height(paneHeight).testTag("voice_record_transcript_pane")) {
         SelectionContainer {
             Text(text.ifBlank { emptyMessage }, modifier = Modifier.fillMaxWidth().verticalScroll(scroll).padding(14.dp).testTag("voice_record_transcript"),
+                onTextLayout = { layout ->
+                    val desired = with(density) { layout.size.height.toDp() } + 28.dp
+                    if (desired > reservedHeight) reservedHeight = desired.coerceAtMost(192.dp)
+                },
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
                 color = if (text.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
         }

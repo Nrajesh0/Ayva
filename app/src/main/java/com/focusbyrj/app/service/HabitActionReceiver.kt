@@ -34,6 +34,10 @@ class HabitActionReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (com.focusbyrj.app.util.backup.MaintenanceGate.isBusy) {
+            android.widget.Toast.makeText(context, "Data maintenance is in progress. Please try again shortly.", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         val habitId = intent.getLongExtra(EXTRA_HABIT_ID, -1L)
         val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
         if (habitId == -1L) return

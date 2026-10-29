@@ -1008,11 +1008,16 @@ fun NotesnookAttachmentWidget(
                                 val baseName = safeName.substringBeforeLast('.', safeName)
                                 val ext = safeName.substringAfterLast('.', "")
                                 val exportFile = File(exportDir, ArticleExporterHelper.generateShareFileName(baseName, ext))
-                                val decryptedBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(srcFile)
-                                if (decryptedBytes != null) {
-                                    exportFile.writeBytes(decryptedBytes)
-                                } else {
-                                    srcFile.copyTo(exportFile, overwrite = true)
+                                require(com.focusbyrj.app.data.note.NoteMediaManager.isAllowedMediaFile(srcFile, context)) {
+                                    "Attachment is outside note media storage"
+                                }
+                                try {
+                                    val input = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.openDecryptedInputStream(srcFile)
+                                        ?: throw java.io.IOException("Attachment could not be decrypted")
+                                    input.use { source -> exportFile.outputStream().use { source.copyTo(it) } }
+                                } catch (error: Exception) {
+                                    exportFile.delete()
+                                    throw error
                                 }
                                 val contentUri = androidx.core.content.FileProvider.getUriForFile(
                                     context,

@@ -65,6 +65,24 @@ class AudioMemoManagerTest {
         assertEquals("", manager.finalizedTranscript())
     }
 
+    @Test fun userCorrectionsSurviveLateResultsAndResumedCapture() {
+        val old = start()
+        old.triggerOnPartialResults(words("wrong words"))
+        manager.pauseByUser()
+        manager.editTranscript("Corrected words")
+        old.triggerOnResults(words("late wrong words"))
+        assertEquals("Corrected words", manager.recordingState.value.liveTranscript)
+        assertEquals("Corrected words", manager.finalizedTranscript())
+        manager.retryRecording()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1600))
+        val resumed = shadowOf(ShadowSpeechRecognizer.getLatestSpeechRecognizer())
+        resumed.triggerOnResults(words("and more"))
+        val result = manager.stopRecording().second
+        assertTrue(result, result.startsWith("Corrected words"))
+        assertTrue(result, result.contains("And more"))
+        assertFalse(result.contains("wrong words"))
+    }
+
     @Test fun emptyTerminalResultDoesNotPromotePartialCaptionForActions() {
         val speech = start()
         speech.triggerOnPartialResults(words("buy milk"))

@@ -1077,7 +1077,7 @@ fun SafetySnapshotsBottomSheet(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Auto-backups & pre-deletion recovery points",
+                        text = "Device-only records; deleted attachments are not included",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1261,7 +1261,8 @@ fun SafetySnapshotsBottomSheet(
                 val contentDesc = if (parts.isNotEmpty()) parts.joinToString(", ") else "data"
                 Text(
                     "This will restore $contentDesc from '${snap.fileName}'. " +
-                    "A safety snapshot of your current database will be saved first before restoring."
+                    "A safety snapshot of your current database will be saved first. " +
+                    "Snapshots restore records only; missing attachments need a full encrypted backup."
                 )
             },
             confirmButton = {

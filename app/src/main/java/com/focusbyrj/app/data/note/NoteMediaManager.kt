@@ -66,11 +66,11 @@ object NoteMediaManager {
     /**
      * Forensically overwrites file with zeros before deleting to ensure privacy and security.
      */
-    fun secureDeleteMediaFile(file: File, context: Context? = null) {
-        if (!file.exists() || !file.isFile) return
+    fun secureDeleteMediaFile(file: File, context: Context? = null): Unit = com.focusbyrj.app.util.backup.MaintenanceGate.write {
+        if (!file.exists() || !file.isFile) return@write
         if (!isAllowedMediaFile(file, context)) {
             Log.w(TAG, "Refusing to delete unverified or restricted media path: ${file.path}")
-            return
+            return@write
         }
         try {
             val length = file.length()

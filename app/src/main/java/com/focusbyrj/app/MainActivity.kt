@@ -218,6 +218,7 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             FocusByRjTheme {
+                val maintaining by com.focusbyrj.app.util.backup.MaintenanceGate.busy.collectAsStateWithLifecycle()
                 MainAppScreen(
                     viewModel = viewModel, 
                     taskViewModel = taskViewModel,
@@ -225,6 +226,11 @@ class MainActivity : FragmentActivity() {
                     initialNavigateTo = navigateTo,
                     initialOpenAdd = openAddDialog
                 )
+                if (maintaining) androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
+                    androidx.compose.material3.Surface(shape = RoundedCornerShape(24.dp)) {
+                        Text("Protecting your data…", modifier = Modifier.padding(28.dp))
+                    }
+                }
             }
         }
     }

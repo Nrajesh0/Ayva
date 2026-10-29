@@ -101,7 +101,7 @@ object ArchiveVaultSecurity {
      * [newVdk] after an interrupted attempt, so both keys are tried before failing closed.
      */
     private fun migrateLegacyNotesCrashSafely(context: Context, oldKey: ByteArray, newVdk: ByteArray) {
-        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
             val noteDb = NoteDatabase.getInstance(context.applicationContext)
             noteDb.withTransaction {
                 val targets = noteDb.noteDao().getAllNotesList().filter {
@@ -355,7 +355,7 @@ object ArchiveVaultSecurity {
                             Log.w(TAG, "Passcode changed; legacy note migration will resume on next unlock", e)
                         }
                     } else {
-                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
                             val noteDb = NoteDatabase.getInstance(appContext)
                             noteDb.withTransaction {
                                 // First time setting passcode (brand-new vault): encrypt any existing plaintext archived notes
@@ -476,7 +476,7 @@ object ArchiveVaultSecurity {
                     val realArgon2idHash = deriveArgon2idHash(pinChars, salt)
                     var autoUpgradeSuccess = false
                     try {
-                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
                             val noteDb = NoteDatabase.getInstance(appContext)
                             noteDb.withTransaction {
                                 val targetNotes = noteDb.noteDao().getAllNotesList().filter {
@@ -565,7 +565,7 @@ object ArchiveVaultSecurity {
                 val realArgon2idHash = deriveArgon2idHash(pinChars, salt)
                 var autoUpgradeSuccess = false
                 try {
-                    kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                    kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
                         val noteDb = NoteDatabase.getInstance(appContext)
                         noteDb.withTransaction {
                             val targetNotes = noteDb.noteDao().getAllNotesList().filter {
@@ -748,7 +748,7 @@ object ArchiveVaultSecurity {
                 try {
                     val subKey = ephemeralVaultSubKey
                     if (subKey != null) {
-                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                        kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
                             val noteDb = NoteDatabase.getInstance(appContext)
                             noteDb.withTransaction {
                                 val archivedNotes = noteDb.noteDao().getArchivedNotesSync()
@@ -838,7 +838,7 @@ object ArchiveVaultSecurity {
 
         if (activeSubKey != null) {
             try {
-                kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
                     val noteDb = NoteDatabase.getInstance(appContext)
                     noteDb.withTransaction {
                         val targetNotes = noteDb.noteDao().getAllNotesList().filter {

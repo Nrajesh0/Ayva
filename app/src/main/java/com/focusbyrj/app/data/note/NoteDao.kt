@@ -70,8 +70,43 @@ interface NoteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotes(notes: List<NoteEntity>)
 
+    /** Rollback must never expose a committed empty table if reinsertion fails. */
+    @androidx.room.Transaction
+    suspend fun replaceAllNotes(notes: List<NoteEntity>) {
+        deleteAllNotes()
+        insertNotes(notes)
+    }
+
     @Update
-    suspend fun updateNote(note: NoteEntity): Int
+    suspend fun updateNoteUnchecked(note: NoteEntity): Int
+
+    @androidx.room.Transaction
+    suspend fun updateNote(note: NoteEntity): Int {
+        val current = getNoteByIdSync(note.id) ?: return 0
+        return updateNoteUnchecked(note.copy(updatedAt = maxOf(note.updatedAt, current.updatedAt + 1)))
+    }
+
+    @androidx.room.Transaction
+    suspend fun compareAndSave(note: NoteEntity, expected: Long): NoteEntity? {
+        val current = getNoteByIdSync(note.id) ?: return null
+        if (current.updatedAt != expected) return null
+        val saved = note.copy(updatedAt = maxOf(note.updatedAt, expected + 1))
+        return if (updateNoteUnchecked(saved) == 1) saved else null
+    }
+
+    @androidx.room.Transaction
+    suspend fun editChecklistItem(id: Long, itemId: String, remove: Boolean): NoteEntity? {
+        val current = getNoteByIdSync(id) ?: return null
+        if (current.isArchived || current.isTrashed || !current.isChecklist) return null
+        val items = current.getChecklistItems().mapNotNull { item ->
+            if (item.id != itemId) item else if (remove) null else item.copy(isChecked = !item.isChecked)
+        }
+        val (pending, done) = items.partition { !it.isChecked }
+        val saved = current.copy(checklistJson = ChecklistItem.listToJson(pending + done),
+            updatedAt = maxOf(System.currentTimeMillis(), current.updatedAt + 1))
+        updateNoteUnchecked(saved)
+        return saved
+    }
 
     /**
      * Hard-deletes a note row. Only call this from emptyTrash, backup restore
@@ -86,7 +121,7 @@ interface NoteDao {
      * This is the safe primary delete path for all UI-triggered deletions.
      * Permanently deleted only after 30 days via [getExpiredTrashedNotes] + [hardDeleteNotesByIds].
      */
-    @Query("UPDATE keep_notes SET isTrashed = 1, isPinned = 0, trashedAt = :now, updatedAt = :now WHERE id = :id")
+    @Query("UPDATE keep_notes SET isTrashed = 1, isPinned = 0, trashedAt = :now, updatedAt = MAX(updatedAt + 1, :now) WHERE id = :id")
     suspend fun softDeleteNote(id: Long, now: Long = System.currentTimeMillis())
 
     /**
@@ -115,23 +150,23 @@ interface NoteDao {
     @Query("UPDATE keep_notes SET updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateNoteOrder(id: Long, updatedAt: Long)
 
-    @Query("UPDATE keep_notes SET isPinned = :isPinned, updatedAt = :updatedAt WHERE id = :id")
+    @Query("UPDATE keep_notes SET isPinned = :isPinned, updatedAt = MAX(updatedAt + 1, :updatedAt) WHERE id = :id")
     suspend fun updatePinStatus(id: Long, isPinned: Boolean, updatedAt: Long = System.currentTimeMillis())
 
-    @Query("UPDATE keep_notes SET isArchived = :isArchived, isPinned = 0, updatedAt = :updatedAt WHERE id = :id")
+    @Query("UPDATE keep_notes SET isArchived = :isArchived, isPinned = 0, updatedAt = MAX(updatedAt + 1, :updatedAt) WHERE id = :id")
     suspend fun updateArchiveStatus(id: Long, isArchived: Boolean, updatedAt: Long = System.currentTimeMillis())
 
     /**
      * Updates trash status and records [trashedAt] when moving to trash,
      * or clears [trashedAt] when restoring from trash.
      */
-    @Query("UPDATE keep_notes SET isTrashed = :isTrashed, isPinned = 0, updatedAt = :updatedAt, trashedAt = CASE WHEN :isTrashed = 1 THEN :updatedAt ELSE NULL END WHERE id = :id")
+    @Query("UPDATE keep_notes SET isTrashed = :isTrashed, isPinned = 0, updatedAt = MAX(updatedAt + 1, :updatedAt), trashedAt = CASE WHEN :isTrashed = 1 THEN :updatedAt ELSE NULL END WHERE id = :id")
     suspend fun updateTrashStatus(id: Long, isTrashed: Boolean, updatedAt: Long = System.currentTimeMillis())
 
-    @Query("UPDATE keep_notes SET colorKey = :colorKey, updatedAt = :updatedAt WHERE id = :id")
+    @Query("UPDATE keep_notes SET colorKey = :colorKey, updatedAt = MAX(updatedAt + 1, :updatedAt) WHERE id = :id")
     suspend fun updateColor(id: Long, colorKey: String, updatedAt: Long = System.currentTimeMillis())
 
-    @Query("UPDATE keep_notes SET fontKey = :fontKey, updatedAt = :updatedAt WHERE id = :id")
+    @Query("UPDATE keep_notes SET fontKey = :fontKey, updatedAt = MAX(updatedAt + 1, :updatedAt) WHERE id = :id")
     suspend fun updateFont(id: Long, fontKey: String, updatedAt: Long = System.currentTimeMillis())
 
     @Query("SELECT * FROM keep_notes WHERE isTrashed = 1")

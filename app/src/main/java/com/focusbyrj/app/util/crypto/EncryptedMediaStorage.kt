@@ -109,41 +109,39 @@ object EncryptedMediaStorage {
      * Encrypts plaintext bytes and writes them atomically to destination file.
      * Nonce/IV is generated in hardware (TEE/StrongBox) via Android KeyStore.
      */
+    @Synchronized
     fun writeEncryptedBytes(file: File, plaintextBytes: ByteArray) {
         // Ensure parent directory exists before attempting to write temp file
         file.parentFile?.mkdirs()
-        val tempFile = File(file.parentFile, "${file.name}.tmp")
         val secretKey = getMasterKeyForEncryption()
-
         val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey)
         val iv = checkNotNull(cipher.iv) { "Cipher failed to generate IV for media encryption" }
-        require(iv.size == GCM_IV_LENGTH) { "Cipher generated IV of invalid length: ${iv.size}, expected $GCM_IV_LENGTH" }
-
-        // Wrap all writes in try/catch so tempFile is always cleaned up on failure.
-        // Previously, a disk-full or OOM during write would leave an orphaned .tmp file on disk.
+        require(iv.size == GCM_IV_LENGTH)
+        val encryptedBytes = cipher.doFinal(plaintextBytes)
+        val atomic = androidx.core.util.AtomicFile(file)
+        val output = atomic.startWrite()
         try {
-            val encryptedBytes = cipher.doFinal(plaintextBytes)
-
-            FileOutputStream(tempFile).use { fos ->
-                fos.write(MAGIC_HEADER.toByteArray(Charsets.UTF_8))
-                fos.write(iv)
-                fos.write(encryptedBytes)
-                fos.flush()
+            output.write(MAGIC_HEADER.toByteArray(Charsets.UTF_8))
+            output.write(iv)
+            output.write(encryptedBytes)
+            output.fd.sync()
+            atomic.finishWrite(output)
+            check(file.isFile && file.length() == MAGIC_HEADER.toByteArray().size + iv.size + encryptedBytes.size.toLong()) {
+                "Encrypted media installation failed"
             }
-
-            if (file.exists()) {
-                file.delete()
+            val expected = java.security.MessageDigest.getInstance("SHA-256").apply {
+                update(MAGIC_HEADER.toByteArray(Charsets.UTF_8)); update(iv); update(encryptedBytes)
+            }.digest()
+            val actual = java.security.MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(32 * 1024)
+                while (true) { val count = input.read(buffer); if (count < 0) break; actual.update(buffer, 0, count) }
             }
-            val renamed = tempFile.renameTo(file)
-            if (!renamed) {
-                tempFile.copyTo(file, overwrite = true)
-                tempFile.delete()
-            }
-        } catch (e: Throwable) {
-            // Clean up the partially written temp file before rethrowing to avoid storage leaks.
-            tempFile.delete()
-            throw e
+            check(expected.contentEquals(actual.digest())) { "Encrypted media verification failed" }
+        } catch (error: Throwable) {
+            atomic.failWrite(output)
+            throw error
         }
     }
 
@@ -252,7 +250,7 @@ object EncryptedMediaStorage {
         val minEncryptedLen = magicBytes.size + GCM_IV_LENGTH + 16
         val fileLen = file.length()
 
-        if (fileLen >= minEncryptedLen) {
+        if (fileLen >= magicBytes.size) {
             val isEnc = try {
                 FileInputStream(file).use { fis ->
                     val headerBuf = ByteArray(magicBytes.size)
@@ -267,6 +265,7 @@ object EncryptedMediaStorage {
             } catch (_: Exception) { false }
 
             if (isEnc) {
+                if (fileLen < minEncryptedLen) return null
                 // Keep legacy dual-key compatibility for normal-sized files. Large current-format
                 // media is decrypted as a stream so backups do not silently omit it or allocate a
                 // file-sized heap buffer.
@@ -328,8 +327,7 @@ object EncryptedMediaStorage {
      */
     fun isEncrypted(file: File): Boolean {
         val magicBytes = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
-        val minEncryptedLen = magicBytes.size + GCM_IV_LENGTH + 16
-        if (!file.exists() || file.length() < minEncryptedLen) return false
+        if (!file.exists() || file.length() < magicBytes.size) return false
         return try {
             FileInputStream(file).use { fis ->
                 val header = ByteArray(magicBytes.size)

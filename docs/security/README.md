@@ -1,3 +1,11 @@
+Follow-up repairs: [remaining audit remediation](APP_SECURITY_REMEDIATION_2026_10_29.md). This supersedes the original report’s outstanding implementation status; see its verification record for remaining device limits.
+
+Current audit results: [29 October 2026 audit and remediation](APP_SECURITY_DATA_AUDIT_2026_10_29.md). Source review is complete; outstanding recovery/concurrency risks and device checks are explicit.
+
+# Current audit plan
+
+For the new whole-app audit, start with [APP_SECURITY_DATA_AUDIT_PLAN.md](APP_SECURITY_DATA_AUDIT_PLAN.md). It prioritizes Notes, encryption, media and recoverability, accepts healthy code without changes, and requires current evidence before treating historical findings as actionable. Audit execution has not started.
+
 # Security remediation handoff
 
 Start with [the remediation plan](AYVA_REMEDIATION_PLAN.md). It covers direct upgrades from v1.6.0 onward, maximum notes protection, standard protection for other features, and preservation of existing data. [The security review](AYVA_SECURITY_DATA_REVIEW.md) records findings against commit `eaeeb8367d4bcff6cc935e08a74b9f88d7b5c049`; code links deliberately point to that reviewed commit. Revalidate findings against the current checkout before implementation.

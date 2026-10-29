@@ -1,0 +1,101 @@
+{
+  "audit_date": "2026-10-29",
+  "baseline_commit": "d3bfbd4f3f20fc814227de8f7b80b84610aaae2c",
+  "worktree": "uncommitted audit repairs plus previously existing transcription edits",
+  "initial_focused_run": {
+    "tests": 53,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "log": "/tmp/security-audit-tests.log"
+  },
+  "final_run": {
+    "suites": [
+      {
+        "suite": "com.focusbyrj.app.Batch5SecurityAuditTest",
+        "tests": 0,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.focusbyrj.app.DataPreservationAuditTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.focusbyrj.app.HabitFeatureTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.focusbyrj.app.WorkPackage5SecurityTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.focusbyrj.app.WorkPackage6SecurityTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.focusbyrj.app.ZeroNetworkSecurityAuditTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "com.focusbyrj.app.ui.screens.notes.AudioMemoManagerTest",
+        "tests": 30,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "totals": {
+      "tests": 60,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "log": "/tmp/security-audit-final.log",
+    "debug_assembly": "passed",
+    "apk_sha256": "832e6e28abe206e4bc872ba27b0bba0810788275f96c8d1441f1ecfaee64fe08"
+  },
+  "guards": {
+    "chat_boundary": "passed (117 source files)",
+    "dictionary": "passed",
+    "diff_check": "passed"
+  },
+  "device_verification": "Not performed in this audit; see report for required native/hardware/failure checks.",
+  "source_sha256": {
+    "app/src/main/java/com/focusbyrj/app/data/note/DatabaseKeyProvider.kt": "c4b8260780ba2188de34d1e2a702e9b353d44bbfb3b50f6c91f49a9cd96c703e",
+    "app/src/main/java/com/focusbyrj/app/data/note/NoteDao.kt": "c93c7ec77737213a613ed1979a67a3fa3acbf3cbf85e26b7f1e19c6c1302f024",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleChatActivity.kt": "6dbb4cbc430fc8bc318feedc95398224072f2a521f14f60290e27ac765607285",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt": "d289e5b18a20002d97e1fc718d657fb29321a87d518de8074927d3faa5e5abd6",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/AudioMemoManager.kt": "bbcf59e72684fd36e511e87d229b32f64adca3a6e67a2481864a1307df8afb47",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesScreen.kt": "8e1d250a30d0eeaffd18316e3fe328bb4eb63086cfac4b88b6f69336979b898f",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesViewModel.kt": "2e8392a1638d837dad22cce013b707492d91bbb12be5ecdd8a68f750e4840af2",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookBlockWidgets.kt": "465487503375e4260acf22ee97a6a3b6fcad0b9e94779e1c4d06431374afeb10",
+    "app/src/main/java/com/focusbyrj/app/ui/screens/notes/VoiceRecordDialog.kt": "b53d6991d6cb8281f5e84d62d8e6d259a32dd1eef29ba5b7f9f5827f3ea1079d",
+    "app/src/main/java/com/focusbyrj/app/ui/speech/VoiceCaptureContent.kt": "aecd9fa6c2bd9dafe7ea668d6cc53e377440f9de8f49318635170c41cf5daa8c",
+    "app/src/main/java/com/focusbyrj/app/util/backup/BackupRestoreManager.kt": "6067fc516775da23835ac1306ca61ae6a86d00771eb481935a67334ff3ef12a3",
+    "app/src/main/java/com/focusbyrj/app/util/backup/DataSafetyManager.kt": "360b10dce131af97dbc53d707d05800e5b29d3141f984fa0cfd6aa4f809604bd",
+    "app/src/main/java/com/focusbyrj/app/util/backup/EncryptedSnapshotFile.kt": "ff3717a77b34612cd66a9eecf56456eaec1052d4495e56bb311cfbb7b5e178c2",
+    "app/src/main/java/com/focusbyrj/app/util/crypto/EncryptedMediaStorage.kt": "213366517ef9ba95bca92d573c0ad3d2f692a8fe794958bed38290de40e2da1f",
+    "app/src/main/java/com/focusbyrj/app/util/speech/OnDeviceTranscriber.kt": "dd97cfb829db7627030ea3717e949368ccb73a7c57304e737b851c236780dd1c",
+    "app/src/test/java/com/focusbyrj/app/WorkPackage5SecurityTest.kt": "350cb46b6f54307381447bfac9e8f3a6e37cc9ff1494e65d9db6fdd806cbd106",
+    "app/src/test/java/com/focusbyrj/app/ui/screens/notes/AudioMemoManagerTest.kt": "40c90119c9c72c8bdde6272cd444d82e0f5fa1c37a5db28a000374752af76b66",
+    "app/src/test/java/com/focusbyrj/app/ui/speech/VoiceAppearanceTest.kt": "4f8d29784e706db69941bdaf79bd921c59c4d174dfecc7efe97f3944663d20a0",
+    "app/src/test/java/com/focusbyrj/app/DataPreservationAuditTest.kt": "d0d6393f648cb93d25a69c8005c4cc9574b74ff3dbce6be0b65fa9a4e52fe485"
+  }
+}
