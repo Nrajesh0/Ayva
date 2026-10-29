@@ -194,9 +194,27 @@ class AssistantCapabilitiesTest {
     @Test fun unavailableFeaturesHaveNoExecutionAuthorityAndSpeechLimitsAreHonest() {
         assertEquals(true, AssistantCapabilities.availability(context, "planning.projects").available)
         assertEquals(false, AssistantCapabilities.availability(context, "unknown.write").available)
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(app).denyPermissions(android.Manifest.permission.RECORD_AUDIO)
         val speech = AssistantCapabilities.availability(context, "transcript.capture")
         assertEquals(false, speech.available)
-        assertTrue(speech.reason.contains("Android 12"))
+        assertTrue(speech.reason, speech.reason.contains("Microphone permission"))
+        shadowOf(app).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        val unavailable = AssistantCapabilities.availability(context, "transcript.capture")
+        assertEquals(false, unavailable.available)
+        assertTrue(unavailable.reason, unavailable.reason.contains("No phone speech service"))
+        val service = android.content.pm.ResolveInfo().apply {
+            serviceInfo = android.content.pm.ServiceInfo().apply {
+                packageName = "test.speech"
+                name = "test.speech.RecognitionService"
+            }
+        }
+        shadowOf(context.packageManager).addResolveInfoForIntent(
+            android.content.Intent(android.speech.RecognitionService.SERVICE_INTERFACE), service)
+        assertEquals(true, AssistantCapabilities.availability(context, "transcript.capture").available)
+        val disclosure = AssistantCapabilities.all.single { it.id == "transcript.open" }.limitation
+        assertTrue(disclosure, disclosure.contains("may process audio online"))
+        assertTrue(disclosure, disclosure.contains("no model download"))
         assertEquals(true, AssistantCapabilities.availability(context, "transcript.open").available)
     }
 
