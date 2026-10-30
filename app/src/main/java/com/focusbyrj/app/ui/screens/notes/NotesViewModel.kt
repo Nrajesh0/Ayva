@@ -1935,21 +1935,24 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         autoSaveJob?.cancel()
         val current = _editingState.value ?: return
         _editingState.value = null
-        val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
+        val pendingId = pendingNewNoteId
         pendingNewNoteId = 0L
-        if (effectiveId != 0L) {
-            latestNotesCache.remove(effectiveId)
-            viewModelScope.launch(Dispatchers.IO) {
-                persistMutex.withLock {
+        viewModelScope.launch(Dispatchers.IO) {
+            val trashed = persistMutex.withLock {
+                // An autosave can have inserted the draft before its ID reaches the editor.
+                // Resolve it only after that save releases the mutex.
+                val effectiveId = sessionIds[current.sessionId] ?: pendingId.takeIf { it != 0L } ?: current.originalId
+                if (effectiveId != 0L) {
+                    latestNotesCache.remove(effectiveId)
                     repository.moveToTrash(effectiveId)
+                    true
+                } else {
+                    current.imageUris.forEach { NoteMediaManager.secureDeleteMediaFile(it) }
+                    current.audioUris.forEach { NoteMediaManager.secureDeleteMediaFile(it) }
+                    false
                 }
-                triggerAutoSync()
             }
-        } else {
-            viewModelScope.launch(Dispatchers.IO) {
-                current.imageUris.forEach { NoteMediaManager.secureDeleteMediaFile(it) }
-                current.audioUris.forEach { NoteMediaManager.secureDeleteMediaFile(it) }
-            }
+            if (trashed) triggerAutoSync()
         }
     }
 
