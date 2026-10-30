@@ -770,7 +770,7 @@ class Batch1SecurityAuditTest {
         prefs.edit().clear().commit()
     }
 
-    // B1-F-036: isEncrypted returns false for truncated files lacking full IV + GCM tag
+    // A truncated encrypted envelope must never be treated as legacy plaintext.
     @Test
     fun b1_036_isEncryptedRejectsTruncatedFilesShorterThanHeaderPlusIvPlusTag() {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
@@ -778,10 +778,9 @@ class Batch1SecurityAuditTest {
         try {
             // Write magic header ("FOC_ENC_V1:") + 5 extra bytes (total 16 bytes < 39 bytes minimum)
             tempFile.writeBytes("FOC_ENC_V1:12345".toByteArray(Charsets.UTF_8))
-            assertFalse(
-                "isEncrypted must return false for truncated files shorter than header + IV + tag",
-                EncryptedMediaStorage.isEncrypted(tempFile)
-            )
+            assertTrue("The encrypted marker must remain recognizable", EncryptedMediaStorage.isEncrypted(tempFile))
+            assertNull("Truncated ciphertext must not be returned as plaintext", EncryptedMediaStorage.readDecryptedBytes(tempFile))
+            assertNull("Streaming reads must also reject truncated ciphertext", EncryptedMediaStorage.openDecryptedInputStream(tempFile))
         } finally {
             tempFile.delete()
         }
@@ -895,14 +894,18 @@ class Batch1SecurityAuditTest {
         }
         assertTrue("Backup restore must succeed", restoreResult.isSuccess)
 
-        assertTrue("Restored image must exist in live storage", testImage.exists())
-        assertTrue("Restored image must be encrypted under EncryptedMediaStorage", EncryptedMediaStorage.isEncrypted(testImage))
-        val decryptedBytes = EncryptedMediaStorage.readDecryptedBytes(testImage)
+        val restoredNote = requireNotNull(runBlocking { mediaNoteDb.noteDao().getNoteByIdSync(mediaNote.id) })
+        val restoredImage = File(org.json.JSONArray(restoredNote.imageUrisJson).getString(0))
+        assertEquals("Restored image must be in live storage", mediaDir.canonicalFile, restoredImage.canonicalFile.parentFile)
+        assertNotEquals("Restore must use a fresh filename", testImage.canonicalPath, restoredImage.canonicalPath)
+        assertTrue("Restored image must exist in live storage", restoredImage.exists())
+        assertTrue("Restored image must be encrypted under EncryptedMediaStorage", EncryptedMediaStorage.isEncrypted(restoredImage))
+        val decryptedBytes = EncryptedMediaStorage.readDecryptedBytes(restoredImage)
         assertNotNull("Decrypted bytes must not be null", decryptedBytes)
         assertArrayEquals("Restored decrypted bytes must match original", imagePayload, decryptedBytes)
 
         // Clean up
-        testImage.delete()
+        restoredImage.delete()
         runBlocking { mediaNoteDb.noteDao().deleteNote(mediaNote) }
         backupFile.delete()
     }
