@@ -19,6 +19,21 @@ import java.time.Instant
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = Application::class)
 class ProductivityFeaturesTest {
+    @Test fun monthlyRecurrenceClamps31stAndResetsSubtasks() {
+        val base = java.util.Calendar.getInstance().apply {
+            set(get(java.util.Calendar.YEAR) + 1, java.util.Calendar.JANUARY, 31, 10, 0, 0)
+        }
+        val task = Task(title = "Pay bills", dueDate = base.timeInMillis,
+            recurrence = RecurrencePattern.MONTHLY,
+            subtasksJson = Subtask.listToJson(listOf(Subtask(id = "bill", title = "Pay", isDone = true))))
+        val next = com.focusbyrj.app.util.TaskReminderHelper.generateNextRecurringTask(task)
+        val date = java.util.Calendar.getInstance().apply { timeInMillis = next.dueDate!! }
+        assertEquals(base.get(java.util.Calendar.YEAR), date.get(java.util.Calendar.YEAR))
+        assertEquals(java.util.Calendar.FEBRUARY, date.get(java.util.Calendar.MONTH))
+        assertEquals(date.getActualMaximum(java.util.Calendar.DAY_OF_MONTH), date.get(java.util.Calendar.DAY_OF_MONTH))
+        assertEquals("bill", next.subtasks.single().id)
+        assertFalse(next.subtasks.single().isDone)
+    }
     @Test fun templateCopiesHaveFreshStepsAndNoOldState() {
         val source = Task(id = 4, title = "Trip", dueDate = 2000, isCompleted = true,
             subtasksJson = Subtask.listToJson(listOf(Subtask(title = "Pack", isDone = true))),

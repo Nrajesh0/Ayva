@@ -214,23 +214,4 @@ class SmartDateParserTest {
         assertTrue(result.note!!.contains("28"))
     }
 
-    @Test
-    fun testMonthlyRecurrenceClampingOn31st() {
-        val baseCal = Calendar.getInstance().apply {
-            val currentYear = get(Calendar.YEAR)
-            set(currentYear + 1, Calendar.JANUARY, 31, 10, 0, 0)
-        }
-        val targetYear = baseCal.get(Calendar.YEAR)
-        val task = com.focusbyrj.app.data.Task(
-            title = "Pay bills",
-            dueDate = baseCal.timeInMillis,
-            recurrence = com.focusbyrj.app.data.RecurrencePattern.MONTHLY
-        )
-        val nextTask = com.focusbyrj.app.util.TaskReminderHelper.generateNextRecurringTask(task)
-        val nextCal = Calendar.getInstance().apply { timeInMillis = nextTask.dueDate!! }
-        assertEquals(targetYear, nextCal.get(Calendar.YEAR))
-        assertEquals(Calendar.FEBRUARY, nextCal.get(Calendar.MONTH))
-        val expectedFebDays = if (com.focusbyrj.app.util.SmartDateParser.isLeapYear(targetYear)) 29 else 28
-        assertEquals(expectedFebDays, nextCal.get(Calendar.DAY_OF_MONTH))
-    }
 }
