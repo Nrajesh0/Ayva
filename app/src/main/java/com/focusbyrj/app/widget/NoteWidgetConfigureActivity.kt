@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app.widget
 
+import com.focusbyrj.app.ui.security.installScreenCaptureProtection
+
 import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
@@ -98,6 +100,7 @@ class NoteWidgetConfigureActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installScreenCaptureProtection()
         setResult(RESULT_CANCELED)
 
         val extras = intent.extras

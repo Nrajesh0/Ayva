@@ -224,7 +224,7 @@ class CanonicalTaskPlanningTest {
             version = 13
         }
         old.close()
-        val migrated = Room.databaseBuilder(context, FocusDatabase::class.java, name).addMigrations(FocusDatabase.MIGRATION_13_14, FocusDatabase.MIGRATION_14_15).allowMainThreadQueries().build()
+        val migrated = Room.databaseBuilder(context, FocusDatabase::class.java, name).addMigrations(FocusDatabase.MIGRATION_13_14, FocusDatabase.MIGRATION_14_15, FocusDatabase.MIGRATION_15_16).allowMainThreadQueries().build()
         try {
             val task = migrated.taskDao().getTaskById(id)!!
             assertEquals("Details", task.details); assertEquals(12345L, task.dueDate); assertEquals("", task.planningJson)

@@ -43,7 +43,7 @@ object AssistantActionExecutor {
             is AssistantAction.CreateTask -> {
                 require(action.draft.title.isNotBlank() && action.draft.title.length <= 500) { "Use a task title of 1–500 characters" }
                 val draft = action.draft.copy(id = 0, isCompleted = false, isTrashed = false, completedAt = null, trashedAt = null, deletedAt = null, updatedAt = now())
-                val created = draft.copy(id = dao.insertTask(draft))
+                val created = draft.copy(id = dao.insertTaskChecked(draft))
                 refresh(created)
                 AssistantActionResult("Added **${created.title}**${created.dueDate?.let { " — ${SmartDateParser.formatDueDate(it)}" }.orEmpty()}${if (created.isPriority) " · priority" else ""}${if (created.isPersistent) " · persistent" else ""}${if (created.recurrence != RecurrencePattern.NONE) " · ${created.recurrence.name.lowercase()}" else ""}.", created.id, undo = listOf(undoTask(null, created)))
             }
@@ -83,6 +83,8 @@ object AssistantActionExecutor {
                             }
                             else -> error("Unsupported task operation")
                         }
+                        if (action is AssistantAction.CompleteTasks) com.focusbyrj.app.data.TaskCompletionRules.validate(after, if (action.overrideDependencies) null else dao.getAllTasksList().map { if (it.id in ids) it.copy(isCompleted = true) else it })
+                        require(after.planning?.availableFrom == null || after.dueDate == null || after.planning!!.availableFrom!! <= after.dueDate!!) { "Start showing must be on or before the due date" }
                         var recurring: Task? = null
                         if (action is AssistantAction.CompleteTasks && before.recurrence != RecurrencePattern.NONE) {
                             val next = TaskReminderHelper.generateNextRecurringTask(after)
@@ -91,6 +93,7 @@ object AssistantActionExecutor {
                         changes.add(Triple(before, after, recurring))
                     }
                     if (action is AssistantAction.TrashTasks) {
+                        require(dao.getAllTasksList().none { it.id !in ids && !it.isTrashed && it.planning?.prerequisiteTaskIds.orEmpty().any { id -> id in ids } }) { "Other tasks depend on this selection. Remove their Waiting for links before deleting." }
                         try {
                             com.focusbyrj.app.util.backup.TaskRecoveryStore.write(context, changes.map { it.first to it.second })
                         } catch (error: Exception) {

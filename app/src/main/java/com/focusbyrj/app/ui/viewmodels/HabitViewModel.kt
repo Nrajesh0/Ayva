@@ -66,9 +66,10 @@ class HabitViewModel(
         }
     }
 
-    fun incrementProgress(habit: Habit) {
-        if (habit.isPaused) return
+    fun incrementProgress(habit: Habit, onDone: () -> Unit = {}) {
+        if (habit.isPaused) { onDone(); return }
         viewModelScope.launch {
+            try {
             val updatedLog = repository.incrementHabitProgress(habit.id)
             val isMilestoneReached = updatedLog.completedCount == habit.targetPerDay
             val isGoalMet = updatedLog.completedCount >= habit.targetPerDay
@@ -93,6 +94,10 @@ class HabitViewModel(
                 updatedLog.lastCompletedTimestamp,
                 isGoalCompletedToday = isGoalMet
             )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.widget.Toast.makeText(getApplication(), e.message, android.widget.Toast.LENGTH_LONG).show()
+            } finally { onDone() }
         }
     }
 

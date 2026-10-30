@@ -67,6 +67,7 @@ class OnDeviceTranscriber(private val context: Context) {
     private var onTranscriptCallback: ((String) -> Unit)? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var targetAmplitude = 0f
+    private var lastLevelAt = 0L
     private var sessionGeneration = 0
     private var transientErrors = 0
     private var selectedLanguage: String? = null
@@ -134,11 +135,14 @@ class OnDeviceTranscriber(private val context: Context) {
         recordingJob = scope.launch {
             while (isActive && isCurrentSession(generation)) {
                 delay(60)
+                // Some phone providers stop RMS callbacks during silence. Let the
+                // level settle instead of leaving the last loud sample latched.
+                if (android.os.SystemClock.elapsedRealtime() - lastLevelAt > 180) targetAmplitude *= .72f
                 val current = _recordingState.value.currentAmplitude
                 val next = if (targetAmplitude > current) {
                     current + (targetAmplitude - current) * 0.45f
                 } else {
-                    current * 0.86f
+                    current + (targetAmplitude - current) * 0.18f
                 }
                 _recordingState.value = _recordingState.value.copy(
                     elapsedSeconds = previousElapsed + ((android.os.SystemClock.elapsedRealtime() - startedAt) / 1000).toInt(),
@@ -185,7 +189,8 @@ class OnDeviceTranscriber(private val context: Context) {
                     if (isCurrent() && rmsdB.isFinite()) {
                         recognizerConnected = true
                         clearRecognitionTimeout()
-                        targetAmplitude = ((rmsdB + 2f) / 10f).coerceIn(0f, 1f)
+                        lastLevelAt = android.os.SystemClock.elapsedRealtime()
+                        targetAmplitude = ((rmsdB + 2f) / 14f).coerceIn(0f, 1f)
                         if (!_recordingState.value.isListening) _recordingState.value = _recordingState.value.copy(isListening = true, statusMessage = "Listening...")
                     }
                 }

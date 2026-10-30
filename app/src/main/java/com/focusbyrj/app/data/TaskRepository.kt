@@ -18,10 +18,7 @@ class TaskRepository(private val taskDao: TaskDao) {
      * Directly deletes a task row from SQLite (standard production To-Do model).
      */
     suspend fun deleteTask(task: Task) {
-        taskDao.deleteTask(task)
-        if (task.id > 0L) {
-            taskDao.deleteTaskById(task.id)
-        }
+        taskDao.deleteWithDependencies(task)
     }
 
     suspend fun moveToTrash(id: Long) {
@@ -36,11 +33,8 @@ class TaskRepository(private val taskDao: TaskDao) {
      * Irrevocably deletes a task row from SQLite.
      * Only call this when explicitly requested by user in Trash ("Delete Forever").
      */
-    suspend fun deletePermanently(task: Task) {
-        taskDao.deleteTask(task)
-        if (task.id > 0L) {
-            taskDao.deleteTaskById(task.id)
-        }
+    suspend fun deletePermanently(task: Task, detach: Boolean = false) {
+        taskDao.deleteWithDependencies(task, detach)
     }
 
     suspend fun getTrashedTasksSync(): List<Task> {

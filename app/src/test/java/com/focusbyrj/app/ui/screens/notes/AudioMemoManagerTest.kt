@@ -459,4 +459,23 @@ class AudioMemoManagerTest {
         assertEquals("", manager.recordingState.value.diagnosticInfo)
     }
 
+    @Test fun microphoneLevelTracksLoudnessAndSettlesWhenProviderStopsSendingLevels() {
+        val speech = start()
+        speech.triggerOnRmsChanged(-2f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(120))
+        val quiet = manager.recordingState.value.currentAmplitude
+        speech.triggerOnRmsChanged(3f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(120))
+        val soft = manager.recordingState.value.currentAmplitude
+        speech.triggerOnRmsChanged(10f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(120))
+        val loud = manager.recordingState.value.currentAmplitude
+        assertTrue(soft > quiet)
+        assertTrue(loud > soft)
+        speech.triggerOnRmsChanged(Float.NaN)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertTrue(manager.recordingState.value.currentAmplitude.isFinite())
+        assertTrue(manager.recordingState.value.currentAmplitude < .03f)
+    }
+
 }

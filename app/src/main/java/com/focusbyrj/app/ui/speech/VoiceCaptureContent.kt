@@ -1,8 +1,5 @@
 package com.focusbyrj.app.ui.speech
 
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.Locale
 
@@ -46,19 +44,31 @@ fun VoiceCaptureContent(
     val colors = MaterialTheme.colorScheme
     val config = LocalConfiguration.current
     val maxHeight = (config.screenHeightDp * .86f).dp
-    Column(modifier.fillMaxWidth().heightIn(max = maxHeight).animateContentSize(tween(260)).padding(20.dp)) {
+    // Phrase-based recognizers briefly stop between utterances. Keep the session's
+    // presence steady across that handoff, without masking a pause or real backoff.
+    var recentlyListening by remember { mutableStateOf(false) }
+    LaunchedEffect(isListening, isRecording, isPaused, errorMessage, retryAfterSeconds > 2) {
+        when {
+            !isRecording || isPaused || errorMessage != null || retryAfterSeconds > 2 -> recentlyListening = false
+            isListening -> recentlyListening = true
+            else -> { delay(2_000); recentlyListening = false }
+        }
+    }
+    val presentingListening = isRecording && !isPaused && errorMessage == null &&
+        retryAfterSeconds <= 2 && (isListening || recentlyListening)
+    Column(modifier.fillMaxWidth().height(540.dp.coerceAtMost(maxHeight)).testTag("voice_record_content").padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Live transcription", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Text(String.format(Locale.getDefault(), "%02d:%02d", elapsedSeconds.coerceAtLeast(0) / 60, elapsedSeconds.coerceAtLeast(0) % 60),
                 style = MaterialTheme.typography.labelMedium, fontFamily = FontFamily.Monospace, color = colors.onSurfaceVariant)
         }
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-            VoiceVisualization(style, amplitude, isRecording && isListening,
+            VoiceVisualization(style, amplitude, presentingListening,
                 Modifier.fillMaxWidth().height(if (config.screenHeightDp < 520) 76.dp else 156.dp).testTag("voice_visual_${style.id}"))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(6.dp).background(if (errorMessage != null) colors.error else if (isListening) colors.primary else colors.onSurfaceVariant, CircleShape))
+                Box(Modifier.size(6.dp).background(if (errorMessage != null) colors.error else if (presentingListening) colors.primary else colors.onSurfaceVariant, CircleShape))
                 Spacer(Modifier.width(7.dp))
-                Text(when { errorMessage != null -> "Transcription paused"; isPaused -> "Paused"; isListening -> "Listening"; retryAfterSeconds > 0 -> "Retrying in ${retryAfterSeconds}s"; else -> "Connecting…" },
+                Text(when { errorMessage != null -> "Transcription paused"; isPaused -> "Paused"; presentingListening -> "Listening"; retryAfterSeconds > 0 -> "Retrying in ${retryAfterSeconds}s"; else -> "Connecting…" },
                     style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant, modifier = Modifier.testTag("voice_record_mode_badge"))
             }
             Spacer(Modifier.height(16.dp))
@@ -76,9 +86,9 @@ fun VoiceCaptureContent(
             }
             if (editing) {
                 OutlinedTextField(value = editValue, onValueChange = { editValue = it; onTranscriptEdit?.invoke(it) },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 144.dp, max = 192.dp).testTag("voice_record_editor"),
+                    modifier = Modifier.fillMaxWidth().height(144.dp).testTag("voice_record_editor"),
                     label = { Text("Transcript") }, shape = RoundedCornerShape(16.dp))
-            } else TranscriptText(liveTranscript, if (isListening) "Speak naturally. Your words appear here." else if (isPaused) "Resume whenever you're ready." else statusMessage)
+            } else TranscriptText(liveTranscript, if (presentingListening) "Speak naturally. Your words appear here." else if (isPaused) "Resume whenever you're ready." else statusMessage)
             if (errorMessage != null) {
                 Spacer(Modifier.height(12.dp))
                 Text(errorMessage, style = MaterialTheme.typography.bodySmall, color = colors.error, modifier = Modifier.testTag("voice_record_error"))
@@ -117,9 +127,6 @@ fun VoiceCaptureContent(
 @Composable
 private fun TranscriptText(text: String, emptyMessage: String) {
     val scroll = rememberScrollState()
-    val density = LocalDensity.current
-    var reservedHeight by remember { mutableStateOf(144.dp) }
-    val paneHeight by animateDpAsState(reservedHeight, tween(260), label = "transcriptHeight")
     var followTail by remember { mutableStateOf(true) }
     val nearEndPx = with(LocalDensity.current) { 32.dp.roundToPx() }
     // New captions follow the end only while the reader has not scrolled up.
@@ -131,13 +138,9 @@ private fun TranscriptText(text: String, emptyMessage: String) {
         if (followTail) snapshotFlow { scroll.maxValue }.distinctUntilChanged().collect { scroll.scrollTo(it) }
     }
     Surface(shape = RoundedCornerShape(16.dp), color = lerp(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.onSurface, .035f),
-        modifier = Modifier.fillMaxWidth().height(paneHeight).testTag("voice_record_transcript_pane")) {
+        modifier = Modifier.fillMaxWidth().height(144.dp).testTag("voice_record_transcript_pane")) {
         SelectionContainer {
             Text(text.ifBlank { emptyMessage }, modifier = Modifier.fillMaxWidth().verticalScroll(scroll).padding(14.dp).testTag("voice_record_transcript"),
-                onTextLayout = { layout ->
-                    val desired = with(density) { layout.size.height.toDp() } + 28.dp
-                    if (desired > reservedHeight) reservedHeight = desired.coerceAtMost(192.dp)
-                },
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
                 color = if (text.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
         }

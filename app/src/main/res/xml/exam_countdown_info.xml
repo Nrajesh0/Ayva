@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp" android:minHeight="140dp" android:minResizeWidth="140dp" android:minResizeHeight="110dp"
+    android:targetCellWidth="3" android:targetCellHeight="2" android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" android:configure="com.focusbyrj.app.widget.ExamCountdownConfigureActivity"
+    android:widgetFeatures="reconfigurable" android:initialLayout="@layout/widget_exam_countdown"
+    android:previewLayout="@layout/widget_exam_countdown" android:updatePeriodMillis="1800000" />

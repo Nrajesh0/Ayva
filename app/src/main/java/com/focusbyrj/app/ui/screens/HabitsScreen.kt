@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.focusbyrj.app.data.Habit
+import com.focusbyrj.app.data.frequency
 import com.focusbyrj.app.data.HabitDaySummary
 import com.focusbyrj.app.data.HabitRepository
 import com.focusbyrj.app.data.HabitType
@@ -71,8 +72,8 @@ fun HabitsScreen(
     var habitToDelete by remember { mutableStateOf<Habit?>(null) }
     var showFreezeDialog by remember { mutableStateOf(false) }
 
-    val completedCount = habitsWithProgress.count { !it.habit.isPaused && it.isCompletedToday }
-    val totalCount = habitsWithProgress.count { !it.habit.isPaused }
+    val completedCount = habitsWithProgress.count { !it.habit.isPaused && it.habit.frequency.scheduled(java.time.LocalDate.now()) && it.isCompletedToday }
+    val totalCount = habitsWithProgress.count { !it.habit.isPaused && it.habit.frequency.scheduled(java.time.LocalDate.now()) }
     val overallRatio = if (totalCount > 0) completedCount.toFloat() / totalCount.toFloat() else 0f
 
     Scaffold(
@@ -163,13 +164,14 @@ fun HabitsScreen(
             contentPadding = PaddingValues(top = 6.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            item { com.focusbyrj.app.ui.components.HabitChains(habitsWithProgress) { habit, done -> habitViewModel.incrementProgress(habit, done) } }
             // 1. Overall Daily Summary Card
             item {
                 HabitProgressHeroCard(
                     completedCount = completedCount,
                     totalCount = totalCount,
                     progressRatio = overallRatio,
-                    longestActiveStreak = habitsWithProgress.maxOfOrNull { it.currentStreak } ?: 0,
+                    longestActiveStreak = habitsWithProgress.filter { it.habit.frequency.mode != "WEEKLY" }.maxOfOrNull { it.currentStreak } ?: 0,
                     totalCompletionsAllTime = habitsWithProgress.sumOf { it.totalCompletionsAllTime }
                 )
             }
@@ -198,6 +200,11 @@ fun HabitsScreen(
                 }
             } else {
                 items(habitsWithProgress, key = { it.habit.id }) { item ->
+                    if (item.habit.frequency.mode != "DAILY") Text(
+                        if (item.habit.frequency.mode == "WEEKLY") "${item.weeklyCompletedDays}/${item.habit.frequency.weeklyTarget} days this week · ${item.currentStreak} consistent weeks"
+                        else item.habit.frequency.label + if (!item.habit.frequency.scheduled(java.time.LocalDate.now())) " · Rest day" else "",
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
                     HabitCard(
                         item = item,
                         onIncrement = {
@@ -841,7 +848,7 @@ fun HabitCard(
                                 overflow = TextOverflow.Ellipsis
                             )
 
-                            if (item.currentStreak > 0) {
+                            if (item.currentStreak > 0 && item.habit.frequency.mode != "WEEKLY") {
                                 Surface(
                                     shape = CircleShape,
                                     color = if (item.streakFrozenToday) Color(0xFF0284C7).copy(alpha = 0.14f) else Color(0xFFF97316).copy(alpha = 0.14f),
@@ -1184,6 +1191,7 @@ fun HabitEditorBottomSheet(
     var iconEmoji by remember(habit) { mutableStateOf(restored.optString("iconEmoji", habit?.iconEmoji ?: "🥤")) }
     var colorHex by remember(habit) { mutableStateOf(restored.optString("colorHex", habit?.colorHex ?: "#0284C7")) }
     var type by remember(habit) { mutableStateOf(runCatching { HabitType.valueOf(restored.getString("type")) }.getOrDefault(habit?.type ?: HabitType.INTERVAL_WINDOW)) }
+    var frequency by remember(habit) { mutableStateOf(com.focusbyrj.app.data.HabitFrequency.read(restored.optString("frequencyJson", habit?.frequencyJson.orEmpty()))) }
     var targetPerDay by remember(habit) { mutableIntStateOf(restored.optInt("targetPerDay", habit?.targetPerDay ?: 6)) }
 
     var windowStartHour by remember(habit) { mutableIntStateOf(restored.optInt("windowStartHour", habit?.windowStartHour ?: 8)) }
@@ -1270,7 +1278,7 @@ fun HabitEditorBottomSheet(
         "#EC4899", "#F43F5E", "#F97316", "#EAB308", "#10B981", "#14B8A6", "#06B6D4"
     )
 
-    com.focusbyrj.app.ui.components.PersistEditorDraft(draftStore, org.json.JSONObject().put("title", title).put("description", description).put("iconEmoji", iconEmoji).put("colorHex", colorHex).put("type", type.name).put("targetPerDay", targetPerDay).put("windowStartHour", windowStartHour).put("windowStartMinute", windowStartMinute).put("windowEndHour", windowEndHour).put("windowEndMinute", windowEndMinute).put("intervalHours", intervalHours).put("intervalMinutes", intervalMinutes).put("fixedHour", fixedHour).put("fixedMinute", fixedMinute))
+    com.focusbyrj.app.ui.components.PersistEditorDraft(draftStore, org.json.JSONObject().put("title", title).put("description", description).put("iconEmoji", iconEmoji).put("colorHex", colorHex).put("type", type.name).put("frequencyJson", frequency.json()).put("targetPerDay", targetPerDay).put("windowStartHour", windowStartHour).put("windowStartMinute", windowStartMinute).put("windowEndHour", windowEndHour).put("windowEndMinute", windowEndMinute).put("intervalHours", intervalHours).put("intervalMinutes", intervalMinutes).put("fixedHour", fixedHour).put("fixedMinute", fixedMinute))
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1314,6 +1322,7 @@ fun HabitEditorBottomSheet(
                                 colorHex = colorHex,
                                 type = type,
                                 targetPerDay = targetPerDay,
+                                frequencyJson = frequency.json(),
                                 intervalHours = intervalHours,
                                 intervalMinutes = intervalMinutes,
                                 fixedReminderHour = fixedHour,
@@ -1797,6 +1806,7 @@ fun HabitEditorBottomSheet(
                 }
             }
 
+            com.focusbyrj.app.ui.components.HabitFrequencyEditor(frequency) { frequency = it }
             Spacer(modifier = Modifier.height(28.dp))
 
             Button(
@@ -1809,6 +1819,7 @@ fun HabitEditorBottomSheet(
                             colorHex = colorHex,
                             type = type,
                             targetPerDay = targetPerDay,
+                                frequencyJson = frequency.json(),
                             intervalHours = intervalHours,
                             intervalMinutes = intervalMinutes,
                             fixedReminderHour = fixedHour,

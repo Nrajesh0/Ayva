@@ -73,15 +73,33 @@ fun TodosScreen(
             onOpenAddHandled?.invoke()
         }
     }
+    var templateDraft by remember { mutableStateOf<Task?>(null) }
+    var showTemplates by remember { mutableStateOf(false) }
     var editingTaskId by rememberSaveable { mutableStateOf<Long?>(null) }
     val editingTask = remember(editingTaskId, tasks) {
         editingTaskId?.let { id -> tasks.find { it.id == id } }
     }
     val coroutineScope = rememberCoroutineScope()
     
+    var blockedCompletion by remember { mutableStateOf<Task?>(null) }
+    val complete: (Task) -> Unit = { task ->
+        if (!task.isCompleted && runCatching { com.focusbyrj.app.data.TaskCompletionRules.validate(task, tasks) }.isFailure) blockedCompletion = task
+        else viewModel.toggleTaskCompletion(task)
+    }
+    var dependencyDelete by remember { mutableStateOf<Task?>(null) }
     var pendingDeleteTask by remember { mutableStateOf<Task?>(null) }
     var deleteCountdown by remember { mutableStateOf(4) }
     var locallyDeletedTaskIds by remember { mutableStateOf(emptySet<Long>()) }
+
+    LaunchedEffect(viewModel) {
+        viewModel.deletionFailures.collect { id ->
+            locallyDeletedTaskIds = locallyDeletedTaskIds - id
+            if (pendingDeleteTask?.id == id) pendingDeleteTask = null
+        }
+    }
+    val agendaDay by produceState(initialValue = java.time.LocalDate.now()) {
+        while (true) { delay(60_000); value = java.time.LocalDate.now() }
+    }
 
     // Prune locallyDeletedTaskIds once Room database update has propagated
     LaunchedEffect(tasks) {
@@ -89,7 +107,8 @@ fun TodosScreen(
         locallyDeletedTaskIds = locallyDeletedTaskIds.filter { it in currentIds }.toSet()
     }
 
-    val onRequestDelete: (Task) -> Unit = { task ->
+    val onRequestDelete: (Task) -> Unit = request@ { task ->
+        if (tasks.any { task.id in it.planning?.prerequisiteTaskIds.orEmpty() }) { dependencyDelete = task; return@request }
         pendingDeleteTask?.let { previous ->
             if (previous.id != task.id) {
                 viewModel.deleteTask(previous)
@@ -121,7 +140,7 @@ fun TodosScreen(
     }
 
     // Filter tasks
-    val filteredTasks = remember(tasks, selectedTab, pendingDeleteTask, locallyDeletedTaskIds) {
+    val filteredTasks = remember(tasks, selectedTab, pendingDeleteTask, locallyDeletedTaskIds, agendaDay) {
         val now = Calendar.getInstance()
         val todayStart = now.apply {
             set(Calendar.HOUR_OF_DAY, 0)
@@ -152,7 +171,7 @@ fun TodosScreen(
     }
 
     // Completed tasks (only shown for "Today" and "All")
-    val completedTasks = remember(tasks, selectedTab, pendingDeleteTask, locallyDeletedTaskIds) {
+    val completedTasks = remember(tasks, selectedTab, pendingDeleteTask, locallyDeletedTaskIds, agendaDay) {
         val now = Calendar.getInstance()
         val todayStart = now.apply {
             set(Calendar.HOUR_OF_DAY, 0)
@@ -204,6 +223,7 @@ fun TodosScreen(
                     .fillMaxSize()
                     .padding(horizontal = 12.dp)
             ) {
+                TextButton(onClick = { showTemplates = true }) { Text("Templates") }
                 TodoSegmentedPill(
                     tabs = tabs,
                     selectedIndex = selectedTab,
@@ -333,7 +353,7 @@ fun TodosScreen(
                                     onToggle = {
                                         coroutineScope.launch {
                                             delay(350)
-                                            viewModel.toggleTaskCompletion(it)
+                                            complete(it)
                                         }
                                     },
                                     onDelete = { onRequestDelete(it) },
@@ -352,7 +372,7 @@ fun TodosScreen(
                                         onToggle = { task ->
                                             coroutineScope.launch {
                                                 delay(200)
-                                                viewModel.toggleTaskCompletion(task)
+                                                complete(task)
                                             }
                                         },
                                         onDelete = { onRequestDelete(it) },
@@ -445,18 +465,36 @@ fun TodosScreen(
         }
     }
 
+    blockedCompletion?.let { target ->
+        val incomplete = target.planning?.requireSubtasks == true && target.subtasks.any { !it.isDone }
+        AlertDialog(onDismissRequest = { blockedCompletion = null }, title = { Text(if (incomplete) "Finish subtasks first" else "Waiting for prerequisites") },
+            text = { Text(if (incomplete) "${target.subtasks.count { !it.isDone }} subtasks remain. Open the task to finish them or change its completion requirement."
+                else "Complete prerequisite tasks first, or explicitly complete this task anyway. Your dependency links are kept.") },
+            confirmButton = { TextButton(onClick = { if (incomplete) editingTaskId = target.id else viewModel.toggleTaskCompletion(target, overrideDependencies = true); blockedCompletion = null }) { Text(if (incomplete) "Open task" else "Complete anyway") } },
+            dismissButton = { TextButton(onClick = { blockedCompletion = null }) { Text("Cancel") } })
+    }
+    dependencyDelete?.let { target ->
+        AlertDialog(onDismissRequest = { dependencyDelete = null }, title = { Text("Remove dependency and delete?") },
+            text = { Text("Tasks waiting for ${target.title} will become independent. Their contents will be kept.") },
+            confirmButton = { TextButton(onClick = { viewModel.deleteTask(target, detach = true); dependencyDelete = null }) { Text("Remove links and delete") } },
+            dismissButton = { TextButton(onClick = { dependencyDelete = null }) { Text("Cancel") } })
+    }
+    if (showTemplates) com.focusbyrj.app.ui.components.TemplatePicker(onDismiss = { showTemplates = false }, onPick = {
+        templateDraft = it; showTemplates = false; showAddDialog = true
+    })
     if (showAddDialog || editingTaskId != null) {
         AddTaskDialog(
-            initialTask = editingTask,
+            initialTask = editingTask ?: templateDraft,
             relatedTasks = tasks,
             onOpenTask = { editingTaskId = it.id },
             defaultType = if (selectedTab == 3) TaskType.BIRTHDAY else TaskType.TASK,
             onDismiss = { 
                 showAddDialog = false
+                templateDraft = null
                 editingTaskId = null
             },
             onSave = { task, stored ->
-                val saved = { stored(); showAddDialog = false; editingTaskId = null }
+                val saved = { stored(); showAddDialog = false; editingTaskId = null; templateDraft = null }
                 if (editingTask != null) {
                     viewModel.updateTask(task.copy(id = editingTask.id), saved)
                 } else {
@@ -1070,6 +1108,7 @@ fun AddTaskDialog(
     var manualDueDate by remember(initialTask) { mutableStateOf<Long?>(if (restored.has("manualDueDate")) restored.optLong("manualDueDate").takeUnless { restored.isNull("manualDueDate") } else initialTask?.dueDate) }
     var userManuallySetDate by remember(initialTask) { mutableStateOf(restored.optBoolean("userManuallySetDate", initialTask?.dueDate != null)) }
     var subtasks by remember(initialTask) { mutableStateOf(if (restored.has("subtasks")) Subtask.listFromJson(restored.getString("subtasks")) else initialTask?.subtasks ?: emptyList()) }
+    var advancedPlanning by remember(initialTask) { mutableStateOf(initialTask?.planning?.let { it.minutes != null || it.parentTaskId != null } == true) }
     var clearWorkTime by remember(initialTask) { mutableStateOf(restored.optBoolean("clearWorkTime", false)) }
     var planningFieldsValid by remember(initialTask) { mutableStateOf(true) }
     var nativePlanning by remember(initialTask) { mutableStateOf(runCatching {
@@ -1146,7 +1185,7 @@ fun AddTaskDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (initialTask == null) "New Task" else "Edit Task",
+                    text = if (initialTask == null || initialTask.id == 0L) "New Task" else "Edit Task",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -1247,7 +1286,7 @@ fun AddTaskDialog(
             )
             Spacer(modifier = Modifier.height(10.dp))
             
-            planning?.let { metadata ->
+            if (advancedPlanning) planning?.let { metadata ->
                 com.focusbyrj.app.ui.components.TaskPlanningEditor(initialTask?.id ?: 0, metadata, relatedTasks,
                     onChange = { nativePlanning = it; clearWorkTime = false }, onOpenTask = onOpenTask, onValidity = { planningFieldsValid = it })
                 if (workPastDeadline) Text("The work session finishes after this deadline. Change the deadline or clear the work time before saving.",
@@ -1258,9 +1297,42 @@ fun AddTaskDialog(
                 Spacer(Modifier.height(10.dp))
             }
 
-            if (planning == null && type == TaskType.TASK) TextButton(onClick = {
-                nativePlanning = com.focusbyrj.app.data.TaskPlanning(minutes = 30)
-            }) { Text("Plan work or link a parent") }
+            if (type == TaskType.TASK) TextButton(onClick = {
+                advancedPlanning = !advancedPlanning
+                if (advancedPlanning && nativePlanning == null) nativePlanning = com.focusbyrj.app.data.TaskPlanning(minutes = 30)
+            }) { Text(if (advancedPlanning) "Hide advanced planning" else "Plan work or link a parent") }
+            if (type == TaskType.TASK) {
+                val options = nativePlanning ?: com.focusbyrj.app.data.TaskPlanning()
+                val pickerContext = LocalContext.current
+                if (!advancedPlanning) com.focusbyrj.app.ui.components.TaskDependencyEditor(initialTask?.id ?: 0, options, relatedTasks) { nativePlanning = it }
+                Row {
+                    TextButton(onClick = {
+                        val cal = Calendar.getInstance().apply { timeInMillis = options.availableFrom ?: System.currentTimeMillis() }
+                        DatePickerDialog(pickerContext, { _, y, m, d ->
+                            val chosen = Calendar.getInstance().apply { clear(); set(y, m, d) }.timeInMillis
+                            nativePlanning = options.copy(availableFrom = chosen)
+                        }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+                    }) { Text(options.availableFrom?.let { "Start showing: ${SmartDateParser.formatDueDate(it)}" } ?: "Start showing on…") }
+                    if (options.availableFrom != null) TextButton(onClick = { nativePlanning = options.copy(availableFrom = null) }) { Text("Clear") }
+                }
+                if (subtasks.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { nativePlanning = options.copy(requireSubtasks = !options.requireSubtasks) }) {
+                    Checkbox(checked = options.requireSubtasks, onCheckedChange = { nativePlanning = options.copy(requireSubtasks = it) })
+                    Text("Finish all subtasks before completing", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            if (title.isNotBlank()) {
+                val templateContext = LocalContext.current
+                TextButton(onClick = {
+                    runCatching {
+                        com.focusbyrj.app.data.ProductivityLibrary(templateContext).put("template", com.focusbyrj.app.data.ProductivityLibrary.template(
+                            Task(title = title.trim(), details = details, isPriority = isPriority,
+                                subtasksJson = Subtask.listToJson(subtasks + if (newStepText.isNotBlank()) listOf(Subtask(title = newStepText.trim())) else emptyList()),
+                                planningJson = planning?.json().orEmpty())))
+                    }.onSuccess { android.widget.Toast.makeText(templateContext, "Template saved", android.widget.Toast.LENGTH_SHORT).show() }
+                        .onFailure { android.widget.Toast.makeText(templateContext, it.message, android.widget.Toast.LENGTH_LONG).show() }
+                }) { Text("Save as template") }
+            }
             // Subtasks / Steps Section
             Text(
                 text = "Steps / Subtasks",
@@ -1609,6 +1681,8 @@ fun AddTaskDialog(
 
 
 private fun planningDescription(p: com.focusbyrj.app.data.TaskPlanning, tasks: List<Task>, compact: Boolean): String = buildList {
+    p.availableFrom?.let { add("Start showing: ${SmartDateParser.formatDueDate(it)}") }
+    if (p.requireSubtasks) add("Requires all subtasks finished")
     if (!compact && p.goal.isNotBlank()) add("Plan: ${p.goal}")
     p.parentTaskId?.let { id ->
         val parent = tasks.firstOrNull { it.id == id && !it.isTrashed && it.deletedAt == null }

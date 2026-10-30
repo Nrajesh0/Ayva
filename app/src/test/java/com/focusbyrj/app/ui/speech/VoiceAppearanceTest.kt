@@ -214,4 +214,51 @@ class VoiceAppearanceTest {
         assertTrue("System reduced motion freezes an active visualization", reducedMotion.contentEquals(pixels()))
     }
 
+    @Test fun popupStaysFixedAndTranscriptScrollsAsCaptionsGrow() {
+        val text = mutableStateOf("Short caption")
+        compose.setContent { MaterialTheme { Surface {
+            VoiceCaptureContent(VoiceStyle.LIQUID, .4f, 5, text.value, true, true, false,
+                "Listening", null, {}, {}, {}, {}, onTranscriptEdit = {})
+        } } }
+        val popup = compose.onNodeWithTag("voice_record_content").fetchSemanticsNode().boundsInRoot
+        val pane = compose.onNodeWithTag("voice_record_transcript_pane").fetchSemanticsNode().boundsInRoot
+        for (caption in listOf("Long caption. ".repeat(200) + "LATEST WORDS", "Revised caption")) {
+            compose.runOnIdle { text.value = caption }
+            compose.onNodeWithTag("voice_record_content").assertHeightIsEqualTo(with(compose.density) { popup.height.toDp() })
+            val current = compose.onNodeWithTag("voice_record_transcript_pane").fetchSemanticsNode().boundsInRoot
+            assertEquals(pane, current)
+            val range = compose.onNodeWithTag("voice_record_transcript").fetchSemanticsNode()
+                .config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange]
+            if (caption.endsWith("LATEST WORDS")) {
+                assertTrue(range.maxValue() > 0)
+                assertEquals(range.maxValue(), range.value(), 1f)
+            }
+        }
+    }
+
+    @Test fun ordinaryPhraseHandoffsKeepListeningButRealWaitsAndPauseShowImmediately() {
+        compose.mainClock.autoAdvance = false
+        val listening = mutableStateOf(true)
+        val retry = mutableStateOf(0)
+        val paused = mutableStateOf(false)
+        compose.setContent { MaterialTheme { Surface {
+            VoiceCaptureContent(VoiceStyle.HALO, .3f, 6, "Captured words", !paused.value,
+                listening.value, paused.value, "Continuing", null, {}, {}, {}, {}, retryAfterSeconds = retry.value)
+        } } }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("Listening").assertIsDisplayed()
+        compose.runOnIdle { listening.value = false; retry.value = 1 }
+        compose.mainClock.advanceTimeBy(300)
+        compose.onNodeWithText("Listening").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Breathing Halo, listening visual").assertExists()
+        compose.runOnIdle { listening.value = true; retry.value = 0 }
+        compose.mainClock.advanceTimeByFrame()
+        compose.runOnIdle { listening.value = false; retry.value = 30 }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("Retrying in 30s").assertIsDisplayed()
+        compose.runOnIdle { paused.value = true }
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText("Paused").assertIsDisplayed()
+    }
+
 }

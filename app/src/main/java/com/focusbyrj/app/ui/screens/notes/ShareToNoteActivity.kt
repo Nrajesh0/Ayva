@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app.ui.screens.notes
 
+import com.focusbyrj.app.ui.security.installScreenCaptureProtection
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -102,6 +104,7 @@ class ShareToNoteActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installScreenCaptureProtection()
 
         val action = intent?.action
         if (action != Intent.ACTION_SEND && action != Intent.ACTION_SEND_MULTIPLE) {

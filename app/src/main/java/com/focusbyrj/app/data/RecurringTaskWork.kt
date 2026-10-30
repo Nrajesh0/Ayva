@@ -13,7 +13,8 @@ fun TaskPlanning.forNextOccurrence(oldDue: Long, nextDue: Long): TaskPlanning {
         }.timeInMillis
     }
     val days = (localDay(nextDue) - localDay(oldDue)) / 86_400_000L
-    val detached = copy(parentTaskId = null, prerequisiteTaskIds = emptySet(), parentMissing = false, missingPrerequisites = 0, afterMinutes = 0)
+    val nextAvailability = availableFrom?.let { at -> Calendar.getInstance(zone).apply { timeInMillis = at; add(Calendar.DAY_OF_YEAR, days.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()) }.timeInMillis }
+    val detached = copy(availableFrom = nextAvailability, parentTaskId = null, prerequisiteTaskIds = emptySet(), parentMissing = false, missingPrerequisites = 0, afterMinutes = 0)
     if (days !in 1..Int.MAX_VALUE.toLong()) return detached.withSessions(emptyList())
     val shifted = runCatching { workSessions.map { session ->
         val source = Calendar.getInstance(zone).apply { timeInMillis = session.start }

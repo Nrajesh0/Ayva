@@ -192,7 +192,7 @@ class AssistantOfflineExpansionTest {
             version = 12
         }
         old.close()
-        val migrated = Room.databaseBuilder(context, FocusDatabase::class.java, name).addMigrations(FocusDatabase.MIGRATION_12_13, FocusDatabase.MIGRATION_13_14, FocusDatabase.MIGRATION_14_15).allowMainThreadQueries().build()
+        val migrated = Room.databaseBuilder(context, FocusDatabase::class.java, name).addMigrations(FocusDatabase.MIGRATION_12_13, FocusDatabase.MIGRATION_13_14, FocusDatabase.MIGRATION_14_15, FocusDatabase.MIGRATION_15_16).allowMainThreadQueries().build()
         try {
             assertEquals("Keep through migration", migrated.taskDao().getTaskById(id)!!.title)
             assertTrue(migrated.assistantPlanReceiptDao().pending().isEmpty())

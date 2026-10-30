@@ -130,7 +130,7 @@ class OfflineAssistantBatchTest {
         old.version = 14
         old.close()
         val upgraded = Room.databaseBuilder(context, FocusDatabase::class.java, name)
-            .addMigrations(FocusDatabase.MIGRATION_14_15).allowMainThreadQueries().build()
+            .addMigrations(FocusDatabase.MIGRATION_14_15, FocusDatabase.MIGRATION_15_16).allowMainThreadQueries().build()
         try {
             val existing = upgraded.habitDao().getHabitById(7)!!
             assertEquals("Existing reading", existing.title)

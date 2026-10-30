@@ -90,7 +90,7 @@ internal object HabitJson {
         put("type", h.type.name); put("target", h.targetPerDay); put("hours", h.intervalHours); put("minutes", h.intervalMinutes)
         put("startHour", h.windowStartHour); put("startMinute", h.windowStartMinute); put("endHour", h.windowEndHour); put("endMinute", h.windowEndMinute)
         put("reminderHour", h.fixedReminderHour); put("reminderMinute", h.fixedReminderMinute); put("reminder", h.isReminderEnabled)
-        put("pausedAt", h.pausedAt ?: JSONObject.NULL); put("pauseHistory", h.pauseHistoryJson)
+        put("pausedAt", h.pausedAt ?: JSONObject.NULL); put("pauseHistory", h.pauseHistoryJson); put("frequencyJson", h.frequencyJson)
         put("sound", h.reminderSound); put("created", h.createdAt); put("archived", h.isArchived)
     }
     fun decode(j: JSONObject) = Habit(id = j.getLong("id"), title = j.getString("title"), description = j.getString("description"),
@@ -98,5 +98,5 @@ internal object HabitJson {
         targetPerDay = j.getInt("target"), intervalHours = j.getInt("hours"), intervalMinutes = j.getInt("minutes"),
         windowStartHour = j.getInt("startHour"), windowStartMinute = j.getInt("startMinute"), windowEndHour = j.getInt("endHour"), windowEndMinute = j.getInt("endMinute"),
         fixedReminderHour = j.getInt("reminderHour"), fixedReminderMinute = j.getInt("reminderMinute"), isReminderEnabled = j.getBoolean("reminder"),
-        reminderSound = j.getString("sound"), createdAt = j.getLong("created"), isArchived = j.getBoolean("archived"), pausedAt = if (j.isNull("pausedAt")) null else j.optLong("pausedAt"), pauseHistoryJson = j.optString("pauseHistory", "[]"))
+        reminderSound = j.getString("sound"), createdAt = j.getLong("created"), isArchived = j.getBoolean("archived"), pausedAt = if (j.isNull("pausedAt")) null else j.optLong("pausedAt"), pauseHistoryJson = j.optString("pauseHistory", "[]"), frequencyJson = j.optString("frequencyJson", "").also { com.focusbyrj.app.data.HabitFrequency.read(it) })
 }

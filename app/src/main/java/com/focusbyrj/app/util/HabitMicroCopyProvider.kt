@@ -9,6 +9,7 @@ package com.focusbyrj.app.util
 
 import android.content.Context
 import com.focusbyrj.app.data.Habit
+import com.focusbyrj.app.data.frequency
 import java.util.Calendar
 import kotlin.random.Random
 
@@ -66,6 +67,9 @@ object HabitMicroCopyProvider {
     )
 
     fun getStreakBadge(streakDays: Int, habit: Habit? = null): StreakBadgeInfo {
+        if (habit?.frequency?.mode == "WEEKLY") return StreakBadgeInfo(
+            label = "${habit.frequency.weeklyTarget} days / week", isBurning = false, days = 0)
+
         val category = habit?.let { getCategory(it) } ?: Category.GENERAL_HABIT
 
         val flameEmoji = when (category) {

@@ -39,7 +39,8 @@ data class Habit(
     val createdAt: Long = System.currentTimeMillis(),
     val isArchived: Boolean = false,
     val pausedAt: Long? = null,
-    @androidx.room.ColumnInfo(defaultValue = "'[]'") val pauseHistoryJson: String = "[]"
+    @androidx.room.ColumnInfo(defaultValue = "'[]'") val pauseHistoryJson: String = "[]",
+    @androidx.room.ColumnInfo(defaultValue = "''") val frequencyJson: String = ""
 ) {
     @get:androidx.room.Ignore
     val isPaused: Boolean get() = pausedAt != null
@@ -118,7 +119,8 @@ data class HabitWithProgress(
     val bestStreak: Int = 0,
     val weeklyHistory: List<HabitDaySummary> = emptyList(),
     val totalCompletionsAllTime: Int = 0,
-    val streakFrozenToday: Boolean = false
+    val streakFrozenToday: Boolean = false,
+    val weeklyCompletedDays: Int = 0
 ) {
     val completedToday: Int
         get() = todayLog?.completedCount ?: 0

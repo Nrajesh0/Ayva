@@ -510,7 +510,8 @@ object DataSafetyManager {
                                     createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                                     isArchived = obj.optBoolean("isArchived", false),
                                     pausedAt = if (obj.isNull("pausedAt")) null else obj.optLong("pausedAt"),
-                                    pauseHistoryJson = obj.optString("pauseHistoryJson", "[]")
+                                    pauseHistoryJson = obj.optString("pauseHistoryJson", "[]"),
+                        frequencyJson = obj.optString("frequencyJson", "").also { com.focusbyrj.app.data.HabitFrequency.read(it) }
                                 )
                             )
                         }
@@ -792,6 +793,7 @@ object DataSafetyManager {
                         put("isArchived", h.isArchived)
                         put("pausedAt", h.pausedAt ?: org.json.JSONObject.NULL)
                         put("pauseHistoryJson", h.pauseHistoryJson)
+                        put("frequencyJson", h.frequencyJson)
                     })
                 }
                 put("habits", habitsArr)

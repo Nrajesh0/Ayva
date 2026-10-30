@@ -12,7 +12,7 @@ enum class HabitField { TITLE, TARGET, REMINDER, ARCHIVED, PAUSED, INTERVAL, WIN
 sealed class AssistantAction {
     data class CreateTask(val draft: Task) : AssistantAction()
     data class EditTasks(val ids: List<Long>, val field: TaskField, val value: String) : AssistantAction()
-    data class CompleteTasks(val ids: List<Long>) : AssistantAction()
+    data class CompleteTasks(val ids: List<Long>, val overrideDependencies: Boolean = false) : AssistantAction()
     data class TrashTasks(val ids: List<Long>) : AssistantAction()
     data class CreateHabit(val title: String, val target: Int = 1) : AssistantAction()
     data class LogHabit(val id: Long, val count: Int = 1) : AssistantAction()
@@ -31,7 +31,7 @@ sealed class AssistantAction {
         when (val action = this@AssistantAction) {
             is CreateTask -> { put("kind", "create"); put("task", TaskJson.encode(action.draft)) }
             is EditTasks -> { put("kind", "edit"); put("ids", JSONArray(action.ids)); put("field", action.field.name); put("value", action.value) }
-            is CompleteTasks -> { put("kind", "complete"); put("ids", JSONArray(action.ids)) }
+            is CompleteTasks -> { put("kind", "complete"); put("ids", JSONArray(action.ids)); put("overrideDependencies", action.overrideDependencies) }
             is TrashTasks -> { put("kind", "trash"); put("ids", JSONArray(action.ids)) }
             is CreateHabit -> { put("kind", "create_habit"); put("title", action.title); put("target", action.target) }
             is LogHabit -> { put("kind", "log_habit"); put("id", action.id); put("count", action.count) }
@@ -52,7 +52,7 @@ sealed class AssistantAction {
         fun fromJson(json: JSONObject): AssistantAction = when (json.getString("kind")) {
             "create" -> CreateTask(TaskJson.decode(json.getJSONObject("task")))
             "edit" -> EditTasks(json.getJSONArray("ids").longs(), TaskField.valueOf(json.getString("field")), json.getString("value"))
-            "complete" -> CompleteTasks(json.getJSONArray("ids").longs())
+            "complete" -> CompleteTasks(json.getJSONArray("ids").longs(), json.optBoolean("overrideDependencies"))
             "trash" -> TrashTasks(json.getJSONArray("ids").longs())
             "create_habit" -> CreateHabit(json.getString("title"), json.getInt("target"))
             "log_habit" -> LogHabit(json.getLong("id"), json.getInt("count"))

@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.security.installScreenCaptureProtection
+
 import com.focusbyrj.app.util.assistant.ChatMode
 import com.focusbyrj.app.util.assistant.ChatModeStore
 import com.focusbyrj.app.util.assistant.OfflineAssistant
@@ -310,6 +312,7 @@ class BubbleChatActivity : ComponentActivity() {
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installScreenCaptureProtection()
         // Compose owns the IME/navigation insets for this translucent chat window.
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         

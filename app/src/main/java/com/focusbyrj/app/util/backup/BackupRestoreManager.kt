@@ -90,7 +90,9 @@ object BackupRestoreManager {
         "focus_license_prefs",
         "note_widget_prefs",
         "todo_widget_prefs",
-        "todo_widget_theme_prefs"
+        "todo_widget_theme_prefs",
+        "productivity_library",
+        "exam_countdowns"
     )
 
     internal fun recoveryPreferenceNames(): List<String> = PREF_FILES + ArchiveVaultSecurity.PREFS_NAME + "ayva_composer"
@@ -373,6 +375,7 @@ object BackupRestoreManager {
                         put("isArchived", h.isArchived)
                         put("pausedAt", h.pausedAt ?: JSONObject.NULL)
                         put("pauseHistoryJson", h.pauseHistoryJson)
+                        put("frequencyJson", h.frequencyJson)
                     })
                 }
                 put("habits", habitArray)
@@ -634,6 +637,117 @@ object BackupRestoreManager {
     /**
      * Inspects or restores an encrypted backup file from [sourceUri] using [password].
      */
+    /** Read-only verification, with bounded encrypted staging and no database/preferences mutation. */
+    suspend fun verifyEncryptedBackup(context: Context, sourceUri: Uri, password: String): Result<String> = withContext(Dispatchers.IO) {
+        val app = context.applicationContext
+        val stagingDir = File(app.cacheDir, "verify_backup_${UUID.randomUUID()}").apply { check(mkdirs()) }
+        val mediaDestinations = linkedMapOf<String, File>()
+        try {
+            require(password.isNotBlank()) { "Enter the backup password" }
+            var jsonDataStr: String? = null
+
+            // 1 & 2. Decrypt & Unpack ZIP into staging directory on-the-fly
+            var totalDecompressedMediaBytes = 0L
+            val maxSingleEntrySize = 250L * 1024L * 1024L // streamed; bounded against decompression abuse
+            val maxTotalMediaSize = 500L * 1024L * 1024L // 500MB total media archive decompression limit
+
+            val inStream = app.contentResolver.openInputStream(sourceUri) ?: throw IOException("Could not read backup")
+            inStream.use { rawInStream ->
+                CryptoBackupEngine.openDecryptingStream(rawInStream, password.toCharArray()).use { decryptedStream ->
+                    ZipInputStream(BufferedInputStream(object : java.io.FilterInputStream(decryptedStream) {
+                        override fun close() = Unit // Drain/authenticate the cipher after ZIP EOF.
+                    })).use { zipIn ->
+                        val buffer = ByteArray(32 * 1024)
+                        val entryNames = mutableSetOf<String>()
+                        var entry = zipIn.nextEntry
+                        while (entry != null) {
+                            require(entryNames.add(entry.name)) { "Duplicate backup entry: ${entry.name}" }
+                            require(entryNames.size <= 20_000) { "Backup contains too many entries" }
+                            require(entry.name == "data.json" || entry.name.startsWith("media/")) {
+                                "Unsupported backup entry: ${entry.name}"
+                            }
+                            if (!entry.isDirectory) {
+                                if (entry.name == "data.json") {
+                                    val maxManifestSize = 50L * 1024L * 1024L
+                                    var totalManifestBytes = 0L
+                                    val baos = ByteArrayOutputStream()
+                                    var read = zipIn.read(buffer)
+                                    while (read != -1) {
+                                        totalManifestBytes += read
+                                        if (totalManifestBytes > maxManifestSize) {
+                                            throw SecurityException("Backup manifest exceeds maximum allowed size (50MB).")
+                                        }
+                                        baos.write(buffer, 0, read)
+                                        read = zipIn.read(buffer)
+                                    }
+                                    jsonDataStr = baos.toString(Charsets.UTF_8.name())
+                                } else if (entry.name.startsWith("media/")) {
+                                    val normalized = entry.name.removePrefix("media/").replace('\\', '/').trimStart('/')
+                                    val topFolder = normalized.substringBefore('/')
+                                    if (topFolder !in MEDIA_FOLDERS || normalized.contains("..") || normalized.isEmpty()) {
+                                        throw SecurityException("Invalid or disallowed media path in backup archive: $normalized. Must reside in: $MEDIA_FOLDERS")
+                                    }
+                                    val targetDir = File(stagingDir, topFolder).canonicalFile
+                                    val targetFile = File(stagingDir, normalized).canonicalFile
+                                    if (!targetFile.toPath().startsWith(targetDir.toPath())) {
+                                        throw SecurityException("Zip Slip directory traversal detected in backup media entry: $normalized")
+                                    }
+                                    targetFile.parentFile?.mkdirs()
+                                    // Never overwrite live attachments: DB rollback must still reference
+                                    // the original bytes if a later store fails or the process dies.
+                                    val importedName = "import_${UUID.randomUUID()}_${targetFile.name}"
+                                    mediaDestinations[normalized] = File(File(app.filesDir, topFolder), importedName)
+                                    var fileBytesWritten = 0L
+                                    EncryptedMediaStorage.openEncryptedOutputStream(targetFile).use { fos ->
+                                        var read = zipIn.read(buffer)
+                                        while (read != -1) {
+                                            fileBytesWritten += read
+                                            totalDecompressedMediaBytes += read
+                                            if (fileBytesWritten > maxSingleEntrySize) {
+                                                throw SecurityException("Backup media entry exceeds maximum allowed size (250MB): $normalized")
+                                            }
+                                            if (totalDecompressedMediaBytes > maxTotalMediaSize) {
+                                                throw SecurityException("Backup archive exceeds maximum allowable total media size (500MB).")
+                                            }
+                                            fos.write(buffer, 0, read)
+                                            read = zipIn.read(buffer)
+                                        }
+                                    }
+                                }
+                            }
+                            zipIn.closeEntry()
+                            entry = zipIn.nextEntry
+                        }
+                    }
+                    drainAuthenticatedPayload(decryptedStream)
+                }
+            }
+
+            if (jsonDataStr == null) {
+                throw IllegalArgumentException("Backup archive does not contain data.json manifest.")
+            }
+
+            val rootJson = JSONObject(jsonDataStr!!)
+            val version = rootJson.optInt("version", BACKUP_VERSION)
+            val createdAt = rootJson.optLong("createdAt", System.currentTimeMillis())
+            val appVersion = rootJson.optString("appVersion", "1.0.0")
+
+            // Parse and validate the entire manifest before changing vault settings, databases,
+            // preferences, or live media. This prevents a late malformed entity from producing
+            // a successful partial restore.
+            validateRestoreManifest(rootJson)
+            validateStagedMedia(rootJson, stagingDir)
+            val counts = listOf("notes", "tasks", "habits", "drillSessions", "chatMessages").joinToString(" · ") { "$it: ${rootJson.optJSONArray(it)?.length() ?: 0}" }
+            val media = rootJson.optJSONArray("mediaManifest")?.length()
+            Result.success("Verified authenticated backup.\n$counts\n" +
+                (media?.let { "$it attachments checked against their hashes." } ?: "Legacy archive: no attachment hash inventory is available.") +
+                "\nNo saved data changed. This verifies this archive, not compatibility with every future app version.")
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
+        } finally { stagingDir.deleteRecursively() }
+    }
+
     suspend fun restoreEncryptedBackup(
         context: Context,
         sourceUri: Uri,
@@ -649,6 +763,7 @@ object BackupRestoreManager {
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
         val app = context.applicationContext as FocusApplication
         val stagingDir = File(app.cacheDir, "restore_media_stage_${System.currentTimeMillis()}").apply { mkdirs() }
+        val restoredHabitIds = mutableMapOf<Long, Long>()
         val mediaDestinations = linkedMapOf<String, File>()
         var preparedMedia: List<Pair<File, File>> = emptyList()
         var rollbackState: RestoreRollbackState? = null
@@ -944,7 +1059,7 @@ object BackupRestoreManager {
                 }
 
                 // 8. Restore Habits
-                val idMapping = mutableMapOf<Long, Long>()
+                val idMapping = restoredHabitIds
                 for (i in 0 until habitArray.length()) {
                     val obj = habitArray.getJSONObject(i)
                     val origId = obj.optLong("id", 0L)
@@ -969,7 +1084,8 @@ object BackupRestoreManager {
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                         isArchived = obj.optBoolean("isArchived", false),
                         pausedAt = if (obj.isNull("pausedAt")) null else obj.getLong("pausedAt"),
-                        pauseHistoryJson = obj.optString("pauseHistoryJson", "[]")
+                        pauseHistoryJson = obj.optString("pauseHistoryJson", "[]"),
+                        frequencyJson = obj.optString("frequencyJson", "").also { com.focusbyrj.app.data.HabitFrequency.read(it) }
                     )
                     val newId = focusDb.habitDao().insertHabit(habit)
                     idMapping[origId] = newId
@@ -1107,6 +1223,29 @@ object BackupRestoreManager {
                         continue
                     }
                     val pObj = prefsObj.getJSONObject(prefName)
+                    if (prefName == "exam_countdowns") {
+                        val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
+                        val edit = sp.edit(); if (cleanRestore) edit.clear()
+                        pObj.keys().forEach { key ->
+                            val raw = pObj.getString(key); com.focusbyrj.app.widget.ExamCountdown.read(raw)
+                            edit.putString(if (!cleanRestore && sp.contains(key)) UUID.randomUUID().toString() else key, raw)
+                        }
+                        check(edit.commit()); continue
+                    }
+                    if (prefName == "productivity_library") {
+                        val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
+                        val edit = sp.edit(); if (cleanRestore) edit.clear()
+                        pObj.keys().forEach { key ->
+                            val raw = com.focusbyrj.app.data.ProductivityLibrary.remapChain(pObj.getString(key), restoredHabitIds)
+                            if (raw != null) {
+                                val kind = JSONObject(raw).getString("kind")
+                                val target = if (!cleanRestore && sp.contains(key)) "${kind}_${UUID.randomUUID()}" else key
+                                edit.putString(target, raw)
+                            }
+                        }
+                        check(edit.commit()); continue
+                    }
+
                     val tObj = prefTypesObj?.optJSONObject(prefName)
                     val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                     val editor = sp.edit()
@@ -1203,6 +1342,7 @@ object BackupRestoreManager {
             } catch (_: Exception) {}
             try {
                 TodoWidgetProvider.updateAllWidgets(app)
+                com.focusbyrj.app.widget.ExamCountdownProvider.updateAll(app)
             } catch (_: Exception) {}
 
             // Lock Secret Archive Vault post-restore so newly restored private notes are immediately protected
@@ -1331,9 +1471,10 @@ object BackupRestoreManager {
         each("tasks") { it.getString("title") }
         val planningTasks = root.optJSONArray("tasks")?.let { a -> (0 until a.length()).map { i ->
             val obj = a.getJSONObject(i)
-            Task(id = obj.optLong("id", 0L), title = obj.getString("title"), planningJson = obj.optString("planningJson", ""))
+            Task(id = obj.optLong("id", 0L), title = obj.getString("title"), dueDate = if (obj.isNull("dueDate")) null else obj.getLong("dueDate"), planningJson = obj.optString("planningJson", ""))
         } }.orEmpty()
         com.focusbyrj.app.data.TaskPlanning.validateGraph(planningTasks)
+        planningTasks.forEach { require(it.planning?.availableFrom == null || it.dueDate == null || it.planning!!.availableFrom!! <= it.dueDate) { "Start showing is after the deadline" } }
         val taskIds = root.optJSONArray("tasks")?.let { array ->
             (0 until array.length()).mapNotNull { array.getJSONObject(it).optLong("id", 0L).takeIf { id -> id > 0 } }
         }.orEmpty()
@@ -1341,7 +1482,7 @@ object BackupRestoreManager {
         if (root.has("assistantPlanning")) {
             com.focusbyrj.app.util.assistant.validateDocument(root.getJSONObject("assistantPlanning"))
         }
-        each("habits") { it.getString("title") }
+        each("habits") { it.getString("title"); com.focusbyrj.app.data.HabitFrequency.read(it.optString("frequencyJson", "")) }
         each("habitLogs") { it.getLong("habitId"); it.getString("date") }
         each("drillSessions") { it.getString("sessionId") }
         each("learnedIdioms") { it.getInt("id") }
@@ -1367,6 +1508,11 @@ object BackupRestoreManager {
         }
 
         val prefs = root.optJSONObject("preferences")
+        prefs?.optJSONObject("exam_countdowns")?.let { events -> events.keys().forEach { com.focusbyrj.app.widget.ExamCountdown.read(events.getString(it)) } }
+        prefs?.optJSONObject("productivity_library")?.let { library -> library.keys().forEach { key ->
+            val j = JSONObject(library.getString(key)); com.focusbyrj.app.data.ProductivityLibrary.validate(j)
+            require(key.startsWith(j.getString("kind") + "_"))
+        } }
         prefs?.keys()?.forEach { name ->
             require(prefs.optJSONObject(name) != null) { "Preference file '$name' must be an object" }
         }

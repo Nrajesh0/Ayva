@@ -21,6 +21,7 @@ import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.MainActivity
 import com.focusbyrj.app.R
 import com.focusbyrj.app.data.Habit
+import com.focusbyrj.app.data.frequency
 import com.focusbyrj.app.data.HabitType
 import com.focusbyrj.app.util.HabitAlarmScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -95,6 +96,10 @@ class HabitReceiver : BroadcastReceiver() {
                 val app = appContext as? FocusApplication ?: return@launch
                 val habit = app.habitRepository.getHabitById(habitId) ?: return@launch
 
+                if (!habit.frequency.scheduled(java.time.LocalDate.now())) {
+                    HabitAlarmScheduler.scheduleHabitReminder(appContext, habit)
+                    return@launch
+                }
                 if (!habit.isReminderEnabled || habit.isArchived || habit.isPaused) {
                     HabitAlarmScheduler.cancelHabitReminder(appContext, habitId)
                     return@launch
@@ -106,9 +111,17 @@ class HabitReceiver : BroadcastReceiver() {
                 val completedCount = todayLog?.completedCount ?: 0
                 val targetCount = habit.targetPerDay
 
+                if (habit.frequency.mode == "WEEKLY" && habit.frequency.weekCount(app.database.habitDao().getAllLogsForHabitSync(habitId)) >= habit.frequency.weeklyTarget) {
+                    // Keep the persisted flexible schedule; this one alarm waits for next week's window.
+                    HabitAlarmScheduler.scheduleHabitReminder(appContext,
+                        habit.copy(frequencyJson = habit.frequency.copy(mode = "DAYS", days = setOf(1)).json()),
+                        isGoalCompletedToday = true)
+                    return@launch
+                }
+
                 // Calculate current habit streak
                 val currentStreak = try {
-                    app.habitRepository.calculateStreaks(habitId, targetCount, todayLog).first
+                    if (habit.frequency.mode == "WEEKLY") 0 else app.habitRepository.calculateStreaks(habitId, targetCount, todayLog).first
                 } catch (_: Exception) {
                     0
                 }

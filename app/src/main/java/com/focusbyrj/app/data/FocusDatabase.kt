@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [AppRestriction::class, FocusSchedule::class, Task::class, Habit::class, HabitLog::class, AssistantPlanReceipt::class], version = 15, exportSchema = true)
+@Database(entities = [AppRestriction::class, FocusSchedule::class, Task::class, Habit::class, HabitLog::class, AssistantPlanReceipt::class], version = 16, exportSchema = true)
 abstract class FocusDatabase : RoomDatabase() {
     abstract fun appRestrictionDao(): AppRestrictionDao
     abstract fun scheduleDao(): ScheduleDao
@@ -21,6 +21,11 @@ abstract class FocusDatabase : RoomDatabase() {
     abstract fun assistantPlanReceiptDao(): AssistantPlanReceiptDao
 
     companion object {
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE habits ADD COLUMN frequencyJson TEXT NOT NULL DEFAULT ''")
+            }
+        }
         val MIGRATION_14_15 = object : Migration(14, 15) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE habits ADD COLUMN pausedAt INTEGER")

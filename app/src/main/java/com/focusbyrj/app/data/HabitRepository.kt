@@ -101,7 +101,8 @@ class HabitRepository(private val habitDao: HabitDao) {
                         bestStreak = bestStreak,
                         weeklyHistory = weeklyHistory,
                         totalCompletionsAllTime = totalCompletions,
-                        streakFrozenToday = habit.isPaused
+                        streakFrozenToday = habit.isPaused || !habit.frequency.scheduled(java.time.LocalDate.parse(todayStr)),
+                        weeklyCompletedDays = habit.frequency.weekCount(allLogs)
                     )
                 }
             }
@@ -112,10 +113,12 @@ class HabitRepository(private val habitDao: HabitDao) {
     }
 
     suspend fun insertHabit(habit: Habit): Long = withContext(Dispatchers.IO) {
+        habit.frequency.validate()
         habitDao.insertHabit(habit)
     }
 
     suspend fun updateHabit(habit: Habit) = withContext(Dispatchers.IO) {
+        habit.frequency.validate()
         habitDao.updateHabit(habit)
     }
 
@@ -198,6 +201,7 @@ class HabitRepository(private val habitDao: HabitDao) {
         logs: List<HabitLog>,
         habit: Habit? = null
     ): Pair<Int, Int> {
+        if (habit?.frequency?.mode == "WEEKLY") return habit.frequency.weeklyStreaks(logs)
         if (logs.isEmpty()) {
             val isTodayDone = (todayLog?.completedCount ?: 0) >= (todayLog?.targetCount ?: targetPerDay)
             val streak = if (isTodayDone) 1 else 0
@@ -220,7 +224,7 @@ class HabitRepository(private val habitDao: HabitDao) {
         val todayStr = df.format(calendar.time)
 
         // Paused dates bridge a streak without counting as completions.
-        fun paused(date: String) = habit?.let { HabitPause.isPausedOn(it, date) } == true
+        fun paused(date: String) = habit?.let { HabitPause.isPausedOn(it, date) || !it.frequency.scheduled(java.time.LocalDate.parse(date)) } == true
         var currentStreak = 0
         val earliest = completedDates.minOrNull() ?: todayStr
         if (!completedDates.contains(todayStr) && !paused(todayStr)) calendar.add(Calendar.DAY_OF_YEAR, -1)

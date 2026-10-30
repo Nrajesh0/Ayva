@@ -1,5 +1,7 @@
 package com.focusbyrj.app.util
 
+import com.focusbyrj.app.data.subtasks
+
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -174,18 +176,16 @@ object TaskReminderHelper {
             onDone?.invoke()
             return
         }
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        notificationManager?.cancel(taskId.toInt())
-        cancelReminderById(context, taskId)
-        com.focusbyrj.app.service.TaskReminderOverlayManager.hideOverlay()
-
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 com.focusbyrj.app.util.assistant.AssistantActionExecutor.execute(context,
                     com.focusbyrj.app.util.assistant.AssistantAction.CompleteTasks(listOf(taskId)))
+                cancelReminderById(context, taskId)
+                com.focusbyrj.app.service.TaskReminderOverlayManager.hideOverlay()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.e("TaskReminderHelper", "Couldn't complete task", e)
+                withContext(Dispatchers.Main) { android.widget.Toast.makeText(context, e.message, android.widget.Toast.LENGTH_LONG).show() }
             } finally {
                 if (onDone != null) {
                     withContext(Dispatchers.Main) {
@@ -228,7 +228,7 @@ object TaskReminderHelper {
         }
     }
 
-    fun toggleTaskById(context: Context, taskId: Long, onDone: (() -> Unit)? = null) {
+    fun toggleTaskById(context: Context, taskId: Long, overrideDependencies: Boolean = false, onDone: (() -> Unit)? = null) {
         val app = context.applicationContext as? FocusApplication ?: run {
             onDone?.invoke()
             return
@@ -238,13 +238,14 @@ object TaskReminderHelper {
                 val existing = app.database.taskDao().getTaskById(taskId)
                 if (existing != null && !existing.isTrashed) {
                     val action = if (existing.isCompleted) com.focusbyrj.app.util.assistant.AssistantAction.EditTasks(listOf(taskId), com.focusbyrj.app.util.assistant.TaskField.REOPEN, "true")
-                        else com.focusbyrj.app.util.assistant.AssistantAction.CompleteTasks(listOf(taskId))
+                        else com.focusbyrj.app.util.assistant.AssistantAction.CompleteTasks(listOf(taskId), overrideDependencies)
                     com.focusbyrj.app.util.assistant.AssistantActionExecutor.execute(context, action)
                     (context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(taskId.toInt())
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.e("TaskReminderHelper", "Couldn't toggle task", e)
+                withContext(Dispatchers.Main) { android.widget.Toast.makeText(context, e.message, android.widget.Toast.LENGTH_LONG).show() }
             } finally {
                 if (onDone != null) {
                     withContext(Dispatchers.Main) {
@@ -434,6 +435,7 @@ object TaskReminderHelper {
 
         return completedTask.copy(
             id = 0, // new task
+            subtasksJson = com.focusbyrj.app.data.Subtask.listToJson(completedTask.subtasks.map { it.copy(isDone = false) }),
             planningJson = completedTask.planning?.forNextOccurrence(baseDueDate, calendar.timeInMillis)?.json().orEmpty(),
             isCompleted = false,
             completedAt = null,

@@ -72,7 +72,7 @@ fun VoiceVisualization(style: VoiceStyle, amplitude: Float, active: Boolean, mod
                     val dt = ((frame - previous) / 1_000_000_000f).coerceIn(0f, .08f)
                     val smoothing = 1f - exp(-dt * if (latestTarget > level.floatValue) 13f else 5f)
                     level.floatValue += (latestTarget - level.floatValue) * smoothing
-                    phase.floatValue = (phase.floatValue + dt * (.65f + level.floatValue * .8f)) % (2f * PI.toFloat() * 100f)
+                    phase.floatValue = (phase.floatValue + dt * (.12f + level.floatValue * 1.7f)) % (2f * PI.toFloat() * 100f)
                 }
                 previous = frame
             }
@@ -86,7 +86,9 @@ fun VoiceVisualization(style: VoiceStyle, amplitude: Float, active: Boolean, mod
         val t = phase.floatValue
         val a = level.floatValue
         val c = center
-        val r = min(size.width, size.height) * .34f
+        // Give every style a clear common voice-driven expansion. Idle movement
+        // stays restrained; RMS supplies the energy rather than a simulated beat.
+        val r = min(size.width, size.height) * .34f * (.88f + a * .26f)
         val ink = primary.copy(alpha = emphasis)
         val shine = light.copy(alpha = emphasis)
         fun organic(radius: Float, lobes: Int, depth: Float, time: Float, flatten: Float = 1f): Path = Path().apply {

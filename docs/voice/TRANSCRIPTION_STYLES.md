@@ -23,7 +23,7 @@ The default is Liquid Core. Stable preference IDs are stored in `focus_prefs/voi
 
 ## Recording and readability
 
-The selected visual reacts to smoothed microphone RMS. Real recognizer readiness/audio/partial callbacks establish the listening state. Connecting, language checks, phrase completion, cooldowns, user pause and errors do not claim to be listening. Pausing releases the recognizer, retains text and the callback, and offers explicit Resume. Existing service-error recovery and rate-limit cooldowns remain in force; Resume cannot bypass them.
+The selected visual reacts to smoothed microphone RMS. Real recognizer readiness/audio/partial callbacks establish the listening state. Initial connection, sustained waits, language checks, cooldowns, user pause and errors do not claim to be listening. A previously ready session retains its listening presentation across ordinary phrase gaps for at most two seconds; the recognizer state itself stays accurate. Pausing releases the recognizer, retains text and the callback, and offers explicit Resume. Existing service-error recovery and rate-limit cooldowns remain in force; Resume cannot bypass them.
 
 The transcript is selectable, 16sp with 24sp line height, respects font scaling, and scrolls within a bounded area. New captions follow the end until the reader scrolls upward. Captured text remains usable after interruption; **Use text** is disabled when blank. Captions are never visually truncated to the most recent phrase. Untouched interim captions are not promoted into confirmed task-action input. Explicit user corrections are treated as user-approved text.
 
@@ -54,6 +54,8 @@ The cloud Robolectric setup may require the existing `tools/gradle/cloud-test-jv
 
 ## Stable sizing and corrections
 
-The transcript reserves 144dp and grows smoothly up to 192dp as needed. Shorter partial-result revisions do not shrink it during capture; longer text scrolls within the pane. The popup also animates layout changes, and the listening badge supplies connection status without an extra paragraph appearing between speech segments.
+The popup reserves a constant 540dp, capped to 86% of the current screen height, and the transcript uses a fixed 144dp viewport in both reading and editing modes. Text growth and partial-result corrections never resize either surface. Longer text scrolls upward, with auto-follow suspended when the reader scrolls back. Short ordinary phrase handoffs preserve the listening visual and badge; actual pause, errors and backoffs longer than two seconds take effect immediately. Idle movement is restrained, while microphone RMS drives overall expansion and movement speed in all ten styles. Stale RMS levels decay toward rest instead of remaining latched.
 
 In chat and Notes, **Edit** pauses capture and opens an editable transcript inside the popup. **Finish editing** returns to the transcript view; the resume button continues capture after the corrected text. **Use text** uses the current corrections, and Cancel discards the capture session. Late callbacks from the old speech connection cannot overwrite edits. Text already in the chat composer or note is preserved through the existing prefix/attachment flow.
+
+Stability follow-up verification: 41 focused checks passed (31 speech lifecycle/level checks and ten native popup/style checks), debug APK assembled, and the chat dependency boundary passed for 117 source files. New checks cover identical popup/pane bounds across long captions and short revisions, transcript tail scrolling, phrase-gap continuity with immediate pause/backoff presentation, and RMS loudness/decay. Physical phone microphone behaviour remains a device verification.

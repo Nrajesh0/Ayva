@@ -14,6 +14,7 @@ import android.content.Intent
 import android.os.Build
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.Habit
+import com.focusbyrj.app.data.frequency
 import com.focusbyrj.app.data.HabitType
 import com.focusbyrj.app.service.HabitReceiver
 import kotlinx.coroutines.CoroutineScope
@@ -151,7 +152,7 @@ object HabitAlarmScheduler {
         if (habit.isPaused || habit.isArchived || !habit.isReminderEnabled) return null
         val now = System.currentTimeMillis()
 
-        return when (habit.type) {
+        val candidate = when (habit.type) {
             HabitType.ONCE_DAILY -> {
                 val cal = Calendar.getInstance().apply {
                     set(Calendar.HOUR_OF_DAY, habit.fixedReminderHour.coerceIn(0, 23))
@@ -267,5 +268,14 @@ object HabitAlarmScheduler {
                 }
             }
         }
+        val cal = Calendar.getInstance().apply { timeInMillis = candidate }
+        repeat(7) {
+            val date = java.time.Instant.ofEpochMilli(cal.timeInMillis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            if (habit.frequency.scheduled(date)) return cal.timeInMillis
+            cal.add(Calendar.DAY_OF_YEAR, 1)
+            cal.set(Calendar.HOUR_OF_DAY, if (habit.type == HabitType.ONCE_DAILY) habit.fixedReminderHour else habit.windowStartHour)
+            cal.set(Calendar.MINUTE, if (habit.type == HabitType.ONCE_DAILY) habit.fixedReminderMinute else habit.windowStartMinute)
+        }
+        return null
     }
 }

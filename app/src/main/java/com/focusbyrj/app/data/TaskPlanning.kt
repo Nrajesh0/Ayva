@@ -21,12 +21,15 @@ data class TaskPlanning(
     val missingPrerequisites: Int = 0,
     val sessions: List<WorkSession> = emptyList(),
     val workReminders: Boolean = true,
-    val afterMinutes: Int = 0
+    val afterMinutes: Int = 0,
+    val availableFrom: Long? = null,
+    val requireSubtasks: Boolean = false
 ) {
     val workSessions: List<WorkSession> get() = sessions.ifEmpty { start?.let { listOf(WorkSession("primary", it, minutes!!)) }.orEmpty() }
     val end: Long? get() = workSessions.maxOfOrNull { it.end }
     fun withSessions(values: List<WorkSession>) = copy(sessions = values.sortedBy { it.start }, start = values.minOfOrNull { it.start })
     fun validate(taskId: Long? = null) {
+        require(availableFrom == null || availableFrom >= 0)
         require(afterMinutes in 0..10080)
         require(goal.length <= 500 && position in 0..10_000)
         require(parentTaskId == null || parentTaskId > 0 && parentTaskId != taskId)
@@ -47,6 +50,7 @@ data class TaskPlanning(
             .put("minutes", minutes ?: JSONObject.NULL).put("start", start ?: JSONObject.NULL)
             .put("timezone", timezone).put("position", position).put("parentMissing", parentMissing)
             .put("missingPrerequisites", missingPrerequisites).put("sessions", JSONArray(sessions.map { it.json() }))
+            .put("availableFrom", availableFrom ?: JSONObject.NULL).put("requireSubtasks", requireSubtasks)
             .put("workReminders", workReminders).put("afterMinutes", afterMinutes).toString()
     }
     fun remap(taskIds: Map<Long, Long>): TaskPlanning = copy(
@@ -71,7 +75,8 @@ data class TaskPlanning(
             require(duration == null || duration in 1..1440)
             return TaskPlanning(j.getString("goal"), long("parent"), refs.toSet(), duration?.toInt(), long("start"),
                 j.getString("timezone"), j.getInt("position"), j.optBoolean("parentMissing"), j.optInt("missingPrerequisites"),
-                WorkSession.readList(j.optJSONArray("sessions")), j.optBoolean("workReminders", false), j.optInt("afterMinutes"))
+                WorkSession.readList(j.optJSONArray("sessions")), j.optBoolean("workReminders", false), j.optInt("afterMinutes"),
+                if (j.isNull("availableFrom")) null else j.getLong("availableFrom"), j.optBoolean("requireSubtasks"))
                 .also { it.validate() }
         }
         fun remap(raw: String, taskIds: Map<Long, Long>): String = read(raw)?.remap(taskIds)?.json().orEmpty()
@@ -112,5 +117,7 @@ val Task.planning: TaskPlanning?
 val Task.agendaAt: Long?
     get() = listOfNotNull(dueDate, planning?.start).minOrNull()
 
-fun Task.isInTodayAgenda(endExclusive: Long): Boolean = agendaAt?.let { it < endExclusive } ?: (type == TaskType.TASK)
-fun Task.isInUpcomingAgenda(endExclusive: Long): Boolean = type == TaskType.TASK && (agendaAt?.let { it >= endExclusive } == true)
+fun Task.isInTodayAgenda(endExclusive: Long): Boolean =
+    (planning?.availableFrom?.let { it < endExclusive } != false) &&
+        (agendaAt?.let { it < endExclusive } ?: (type == TaskType.TASK))
+fun Task.isInUpcomingAgenda(endExclusive: Long): Boolean = type == TaskType.TASK && (agendaAt?.let { it >= endExclusive } == true || planning?.availableFrom?.let { it >= endExclusive } == true)

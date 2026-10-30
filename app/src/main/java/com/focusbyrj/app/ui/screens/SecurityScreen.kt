@@ -294,7 +294,7 @@ fun SecurityScreen(navController: NavController) {
                         icon = Icons.Filled.VisibilityOff,
                         iconTint = MaterialTheme.colorScheme.primary,
                         title = "Anti-Screenshot Protection",
-                        subtitle = "Prevents screenshots of the app & lock screen.",
+                        subtitle = "Protects app screens and previews. Home-screen widgets are controlled by your launcher.",
                         checked = secureRecents,
                         onCheckedChange = { checked ->
                             secureRecents = checked
@@ -497,6 +497,8 @@ fun SecurityScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            com.focusbyrj.app.ui.components.DataRecoveryTools(onSnapshots = { showSnapshotsSheet = true })
+
             SecuritySectionHeader("DIAGNOSTICS & SYSTEM LOGS")
 
             Card(
@@ -661,7 +663,7 @@ fun SecurityScreen(navController: NavController) {
             icon = { Icon(Icons.Filled.Security, contentDescription = null, tint = Color(0xFF10B981)) },
             title = { Text("Backup Saved Successfully") },
             text = {
-                Text("Your encrypted backup has been saved!\n\n• Notes: ${meta.noteCount}\n• Tasks: ${meta.taskCount}\n• Plans: ${meta.planCount}\n• Habits: ${meta.habitCount}\n• Drill Sessions: ${meta.drillCount}\n• App Restrictions: ${meta.restrictionCount}")
+                Text("Your encrypted backup has been saved and its authenticated archive read back successfully.\n\n• Notes: ${meta.noteCount}\n• Tasks: ${meta.taskCount}\n• Plans: ${meta.planCount}\n• Habits: ${meta.habitCount}\n• Drill Sessions: ${meta.drillCount}\n• App Restrictions: ${meta.restrictionCount}")
             },
             confirmButton = {
                 Button(onClick = { exportSuccessMetadata = null }) {

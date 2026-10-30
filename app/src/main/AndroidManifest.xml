@@ -353,6 +353,21 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".widget.ExamCountdownConfigureActivity" android:exported="true"
+            android:taskAffinity="" android:excludeFromRecents="true" android:theme="@style/Theme.FocusByRj">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
+        <receiver android:name=".widget.ExamCountdownProvider" android:label="Ayva Exam countdown" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/exam_countdown_info" />
+        </receiver>
         <!-- Notes & Checklists Widget Configuration Activity -->
         <activity
             android:name=".widget.NoteWidgetConfigureActivity"

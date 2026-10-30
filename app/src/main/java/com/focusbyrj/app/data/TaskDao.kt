@@ -37,6 +37,8 @@ interface TaskDao {
         val all = getAllTasksList()
         TaskPlanning.validateGraph(all.map { if (it.id == task.id) task else it })
         val planning = task.planning
+        require(planning?.availableFrom == null || task.dueDate == null || planning.availableFrom <= task.dueDate) { "Start showing must be on or before the due date" }
+        if (!old.isCompleted && task.isCompleted) TaskCompletionRules.validate(task, all)
         require(planning?.end == null || task.dueDate == null || planning.end!! <= task.dueDate) { "The work finishes after the deadline" }
         if ((checkWork || planning?.workSessions != old.planning?.workSessions || planning?.prerequisiteTaskIds != old.planning?.prerequisiteTaskIds || planning?.afterMinutes != old.planning?.afterMinutes) && !task.isCompleted && !task.isTrashed && task.deletedAt == null) {
             if (planning?.start != null) {
@@ -57,6 +59,7 @@ interface TaskDao {
     @Transaction
     suspend fun restoreTasks(tasks: List<Task>, replace: Boolean): Map<Long, Long> {
         TaskPlanning.validateGraph(tasks)
+        tasks.forEach { require(it.planning?.availableFrom == null || it.dueDate == null || it.planning!!.availableFrom!! <= it.dueDate) { "Start showing is after the deadline" } }
         val positiveIds = tasks.map { it.id }.filter { it > 0 }
         require(positiveIds.distinct().size == positiveIds.size) { "Duplicate task IDs" }
         if (replace) deleteAllTasks()
@@ -70,6 +73,18 @@ interface TaskDao {
             if (task.planningJson.isNotEmpty()) updateTask(task.copy(planningJson = TaskPlanning.remap(task.planningJson, ids)))
         }
         return ids
+    }
+
+    @Transaction
+    suspend fun deleteWithDependencies(task: Task, detach: Boolean = false) {
+        val current = getTaskById(task.id) ?: return
+        require(current.updatedAt == task.updatedAt) { "This task changed before deletion. Review it again." }
+        val dependents = getAllTasksList().filter { task.id in it.planning?.prerequisiteTaskIds.orEmpty() }
+        require(detach || dependents.isEmpty()) { "Other tasks depend on this task. Remove their Waiting for links first." }
+        dependents.forEach { dependent ->
+            updateTask(dependent.copy(planningJson = dependent.planning!!.copy(prerequisiteTaskIds = dependent.planning!!.prerequisiteTaskIds - task.id).json(), updatedAt = System.currentTimeMillis()))
+        }
+        deleteTask(task)
     }
 
     /**
@@ -133,8 +148,13 @@ interface TaskDao {
     @Query("SELECT id FROM tasks WHERE isCompleted = 1 AND ((completedAt IS NOT NULL AND completedAt < :threshold) OR (completedAt IS NULL AND updatedAt < :threshold))")
     suspend fun getCompletedTaskIdsBefore(threshold: Long): List<Long>
 
-    @Query("DELETE FROM tasks WHERE isCompleted = 1 AND ((completedAt IS NOT NULL AND completedAt < :threshold) OR (completedAt IS NULL AND updatedAt < :threshold))")
-    suspend fun deleteCompletedTasksBefore(threshold: Long)
+    @Transaction
+    suspend fun deleteCompletedTasksBefore(threshold: Long) {
+        val all = getAllTasksList()
+        val referenced = all.flatMap { it.planning?.prerequisiteTaskIds.orEmpty() + listOfNotNull(it.planning?.parentTaskId) }.toSet()
+        val expired = getCompletedTaskIdsBefore(threshold).filterNot { it in referenced }
+        if (expired.isNotEmpty()) hardDeleteTasksByIds(expired)
+    }
 
     @Query("DELETE FROM tasks")
     suspend fun deleteAllTasks()

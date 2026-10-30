@@ -378,6 +378,15 @@ fun SettingsScreen(navController: NavController) {
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
                 )
 
+                SettingsNavigationRow(
+                    icon = Icons.Filled.Palette,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = "Exam countdown widget",
+                    subtitle = "Date, appearance, preview & home-screen placement",
+                    onClick = { context.startActivity(android.content.Intent(context, com.focusbyrj.app.widget.ExamCountdownConfigureActivity::class.java)) },
+                    trailing = { Icon(Icons.Filled.ChevronRight, contentDescription = null) }
+                )
+
                 // Home Screen Widget Customization Row
                 SettingsNavigationRow(
                     icon = Icons.Filled.Palette,

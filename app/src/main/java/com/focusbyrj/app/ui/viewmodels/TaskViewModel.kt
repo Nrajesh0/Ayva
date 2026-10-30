@@ -83,9 +83,17 @@ class TaskViewModel(
      * Directly and permanently deletes the task (standard production To-Do model).
      * Cancels reminders and updates widgets.
      */
-    fun deleteTask(task: Task) {
+    private val _deletionFailures = kotlinx.coroutines.flow.MutableSharedFlow<Long>(extraBufferCapacity = 1)
+    val deletionFailures: kotlinx.coroutines.flow.SharedFlow<Long> = _deletionFailures
+
+    fun deleteTask(task: Task, detach: Boolean = false) {
         viewModelScope.launch {
-            repository.deletePermanently(task)
+            try { repository.deletePermanently(task, detach) } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                android.widget.Toast.makeText(getApplication(), e.message, android.widget.Toast.LENGTH_LONG).show()
+                _deletionFailures.emit(task.id)
+                return@launch
+            }
             TaskReminderHelper.cancelReminder(getApplication(), task)
             TodoWidgetProvider.updateAllWidgets(getApplication())
         }
@@ -117,8 +125,8 @@ class TaskViewModel(
         }
     }
 
-    fun toggleTaskCompletion(task: Task) {
-        TaskReminderHelper.toggleTaskById(getApplication(), task.id)
+    fun toggleTaskCompletion(task: Task, overrideDependencies: Boolean = false) {
+        TaskReminderHelper.toggleTaskById(getApplication(), task.id, overrideDependencies = overrideDependencies)
     }
 
     fun toggleSubtask(task: Task, subtaskId: String) {

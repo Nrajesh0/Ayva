@@ -1,5 +1,7 @@
 package com.focusbyrj.app.util.assistant
 
+import com.focusbyrj.app.data.planning
+
 import android.content.Context
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.util.AyvaTalkEngine
@@ -115,7 +117,7 @@ object AssistantPlanning {
     private fun render(context: Context, state: AssistantSession, tasks: List<Task>, plan: AssistantPlanContext, emotion: Boolean = false, explain: Boolean = false): AyvaTalkEngine.TalkResponse {
         val now = System.currentTimeMillis()
         val endToday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.timeInMillis
-        val eligible = tasks.filter { !it.isCompleted && !it.isTrashed && it.deletedAt == null && it.id !in plan.excluded && (!plan.todayOnly || it.dueDate == null || it.dueDate < endToday) }
+        val eligible = tasks.filter { !it.isCompleted && !it.isTrashed && it.deletedAt == null && it.id !in plan.excluded && (!plan.todayOnly || (it.dueDate == null || it.dueDate < endToday) && (it.planning?.availableFrom?.let { at -> at < endToday } != false)) }
         val comparator = if (plan.order == "due") compareBy<Task> { it.dueDate ?: Long.MAX_VALUE }.thenByDescending { it.isPriority }.thenBy { it.id }
             else compareBy<Task> { if (it.dueDate != null && it.dueDate < now) 0 else 1 }.thenByDescending { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE }.thenBy { it.id }
         val ordered = eligible.sortedWith(comparator)
