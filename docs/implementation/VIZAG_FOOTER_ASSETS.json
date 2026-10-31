@@ -4,16 +4,16 @@
     "duration_ms": 8000,
     "crop_box": [
       17,
-      47,
+      49,
       628,
       220
     ],
     "size": [
       611,
-      173
+      171
     ],
-    "changed_pixels": 9719,
-    "bytes": 1363607
+    "changed_pixels": 11440,
+    "bytes": 1427110
   },
   "kailasagiri": {
     "frames": 96,
@@ -28,8 +28,8 @@
       604,
       180
     ],
-    "changed_pixels": 1753,
-    "bytes": 1286286
+    "changed_pixels": 1528,
+    "bytes": 1290049
   },
   "dolphins_nose": {
     "frames": 96,
@@ -44,24 +44,24 @@
       616,
       163
     ],
-    "changed_pixels": 8469,
-    "bytes": 1013689
+    "changed_pixels": 8352,
+    "bytes": 1007341
   },
   "fishing_harbour": {
     "frames": 96,
     "duration_ms": 8000,
     "crop_box": [
       12,
-      45,
+      50,
       614,
       215
     ],
     "size": [
       602,
-      170
+      165
     ],
-    "changed_pixels": 28046,
-    "bytes": 1810999
+    "changed_pixels": 29816,
+    "bytes": 1977635
   },
   "ins_kursura": {
     "frames": 96,
@@ -76,71 +76,71 @@
       594,
       144
     ],
-    "changed_pixels": 555,
-    "bytes": 1026173
+    "changed_pixels": 584,
+    "bytes": 1209862
   },
   "tenneti_park": {
     "frames": 96,
     "duration_ms": 8000,
     "crop_box": [
       12,
-      57,
+      58,
       628,
       208
     ],
     "size": [
       616,
-      151
+      150
     ],
-    "changed_pixels": 7217,
-    "bytes": 1336959
+    "changed_pixels": 6696,
+    "bytes": 1546367
   },
   "rushikonda": {
     "frames": 96,
     "duration_ms": 8000,
     "crop_box": [
       17,
-      47,
+      49,
       628,
       214
     ],
     "size": [
       611,
-      167
+      165
     ],
-    "changed_pixels": 10075,
-    "bytes": 1291811
+    "changed_pixels": 9461,
+    "bytes": 1325750
   },
   "vizag_port": {
     "frames": 96,
     "duration_ms": 8000,
     "crop_box": [
       19,
-      53,
+      54,
       619,
       215
     ],
     "size": [
       600,
-      162
+      161
     ],
-    "changed_pixels": 10176,
-    "bytes": 1841968
+    "changed_pixels": 10109,
+    "bytes": 1893908
   },
   "simhachalam": {
     "frames": 96,
     "duration_ms": 8000,
     "crop_box": [
       32,
-      43,
+      48,
       600,
       213
     ],
     "size": [
       568,
-      170
+      165
     ],
-    "changed_pixels": 770,
-    "bytes": 1625617
+    "changed_pixels": 834,
+    "bytes": 1625491
   }
 }

@@ -1,0 +1,104 @@
+[
+  {
+    "kind": "bird",
+    "maxSpeed": 21.25,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "bird",
+    "maxSpeed": 25.625,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "bird",
+    "maxSpeed": 30,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "bird",
+    "maxSpeed": 25,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "bird",
+    "maxSpeed": 26.25,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "bird",
+    "maxSpeed": 38.75,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "bird",
+    "maxSpeed": 30.00030517578125,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "bird",
+    "maxSpeed": 22.5,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "bird",
+    "maxSpeed": 25,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "walker",
+    "maxSpeed": 9.000244140625,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "walker",
+    "maxSpeed": 9.000244140625,
+    "direction": -1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "walker",
+    "maxSpeed": 8.00018310546875,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "walker",
+    "maxSpeed": 8.00018310546875,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "visitor",
+    "maxSpeed": 3.000001907348633,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "windsurfer",
+    "maxSpeed": 4.500007629394531,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "boat",
+    "maxSpeed": 4.000244140625,
+    "direction": 1,
+    "visibleSamples": 67
+  },
+  {
+    "kind": "paraglider",
+    "maxSpeed": 12.5,
+    "direction": 1,
+    "visibleSamples": 67
+  }
+]

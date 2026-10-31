@@ -41,3 +41,9 @@ Regression checks now cover changing native frame pixels, scrolling the real Set
 All nine keep their approved landmarks and gain independently moving environmental details. RK Beach, Tenneti Park and Rushikonda reuse the exact palm-crown pixels in swaying layers. The seven coastal scenes add rolling wave fronts; birds glide and flap across every scene. Dolphin’s Nose also gains a small bobbing sailboat. Kursura, the port and Simhachalam gain fluttering flags, with additional walkers at the exhibit and temple. The temple pennant uses a saffron outline.
 
 `tools/enrich_vizag_motion.py` adds these layers to the approved gallery source; export uses the existing native GIF/poster pipeline. `tools/verify_vizag_motion_regions.py` verifies the exported native GIF pixels using the recorded component coordinates in `VIZAG_MOTION_SAMPLES.json`. It checks palm crowns, wave fronts, birds and flags individually, requiring at least two independent environmental regions to change in every scene. Results are in `VIZAG_MOTION_REGIONS.json`.
+
+## 2.0.29 motion pacing and selective paint
+
+Walkers now cover 64–72 source pixels per eight seconds instead of crossing the whole scene. Birds glide in one direction with a slower wingbeat; visitors, gondolas and watercraft also use slow directional routes with staggered low-opacity loop resets. Rushikonda has a coral-canopied paraglider on a separate drifting path. Palm crowns sway gently while their cream trunks remain fixed. Flat paint is limited to vehicle/ship bodies, leaving the landscape outlines intact.
+
+`tools/naturalize_vizag_motion.py` applies these changes to the living gallery. `tools/verify_vizag_natural_motion.cjs` measures actual SVG positions for 17 moving subjects through each loop, checks direction while visible and enforces speed limits matched to their drawn scale. Recorded results are in `VIZAG_NATURAL_MOTION.json`.
