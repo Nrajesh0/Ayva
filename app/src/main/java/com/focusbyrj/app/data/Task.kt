@@ -50,13 +50,14 @@ data class Subtask(
 
     companion object {
         fun listToJson(items: List<Subtask>): String {
+            if (items.isEmpty()) return "[]"
             val arr = org.json.JSONArray()
             items.forEach { arr.put(it.toJsonObject()) }
             return arr.toString()
         }
 
         fun listFromJson(json: String): List<Subtask> {
-            if (json.isBlank()) return emptyList()
+            if (json.isBlank() || json.trim() == "[]") return emptyList()
             return try {
                 val arr = org.json.JSONArray(json)
                 val list = mutableListOf<Subtask>()

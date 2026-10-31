@@ -10,6 +10,15 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = Application::class)
 class TaskOptionsTest {
+    @Test fun recurringChecklistResetsCompletionAndPreservesSteps() {
+        val step = Subtask(title = "Review", isDone = true)
+        val original = Task(title = "Weekly review", dueDate = 1_800_000_000_000L, recurrence = RecurrencePattern.WEEKLY,
+            isCompleted = true, subtasksJson = Subtask.listToJson(listOf(step)))
+        val next = com.focusbyrj.app.util.TaskReminderHelper.generateNextRecurringTask(original)
+        assertEquals(listOf(step.copy(isDone = false)), next.subtasks)
+        assertFalse(next.isCompleted)
+        assertTrue(original.subtasks.single().isDone)
+    }
     @Test fun futureAvailabilitySeparatesTodayAndUpcoming() {
         val task = Task(title = "Prepare", planningJson = TaskPlanning(availableFrom = 2000L).json())
         assertFalse(task.isInTodayAgenda(1000L))

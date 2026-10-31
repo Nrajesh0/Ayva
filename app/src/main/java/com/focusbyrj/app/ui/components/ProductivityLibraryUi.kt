@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -18,20 +20,17 @@ import org.json.JSONArray
     var mine by remember { mutableStateOf(library.entries("template")) }
     var error by remember { mutableStateOf<String?>(null) }
     var remove by remember { mutableStateOf<String?>(null) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Project templates") }, text = {
-        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-            Text("Creates an independent task and checklist. Choose dates in the editor.", style = MaterialTheme.typography.bodySmall)
-            Text("Mine", style = MaterialTheme.typography.titleSmall)
-            if (mine.isEmpty()) Text("Save a task as a template from its editor.")
-            mine.forEach { (id, j) -> Row {
-                TextButton(onClick = { onPick(ProductivityLibrary.instantiate(j)) }, modifier = Modifier.weight(1f)) { Text(j.getString("name")) }
-                TextButton(onClick = { remove = id }) { Text("Delete") }
-            } }
-            Text("Built-in", style = MaterialTheme.typography.titleSmall)
-            ProductivityLibrary.builtIns().forEach { j -> TextButton(onClick = { onPick(ProductivityLibrary.instantiate(j)) }) { Text(j.getString("name")) } }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    FeatureSheet("Templates", "Choose a checklist, then review it before creating your task.", onDismiss) {
+        FeatureGroup("Your templates") {
+            if (mine.isEmpty()) Text("No templates yet. Use + → Create template to make your first.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
+            mine.forEach { (id, j) -> FeatureRow(j.getString("name"), "${j.getJSONArray("steps").length()} steps", Icons.Default.ContentCopy,
+                onClick = { onPick(ProductivityLibrary.instantiate(j)) }, trailing = { IconButton(onClick = { remove = id }) { Icon(Icons.Default.Delete, "Delete ${j.getString("name")}") } }) }
         }
-    }, confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } })
+        FeatureGroup("Ready-made") {
+            ProductivityLibrary.builtIns().forEach { j -> FeatureRow(j.getString("name"), "${j.getJSONArray("steps").length()} steps · customize before saving", Icons.Default.Checklist, onClick = { onPick(ProductivityLibrary.instantiate(j)) }) }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
     remove?.let { id -> AlertDialog(onDismissRequest = { remove = null }, title = { Text("Delete template?") }, text = { Text("Tasks already created from it are kept.") }, confirmButton = {
         TextButton(onClick = { runCatching { library.delete(id); mine = library.entries("template") }.onFailure { error = it.message }; remove = null }) { Text("Delete") }
     }, dismissButton = { TextButton(onClick = { remove = null }) { Text("Cancel") } }) }
@@ -49,16 +48,11 @@ import org.json.JSONArray
     var position by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    Column {
-        Row {
-            TextButton(onClick = { editingId = null; name = ""; ids = emptyList(); editor = true }) { Text("Create habit routine") }
-        }
-        chains.forEach { (id, j) -> Row {
-            TextButton(modifier = Modifier.weight(1f), onClick = {
+    FeatureGroup("Habit routines") {
+        FeatureRow("Create routine", "Link habits into a sequence you can follow", Icons.Default.PlaylistAdd, onClick = { editingId = null; name = ""; ids = emptyList(); editor = true })
+        chains.forEach { (id, j) -> FeatureRow(j.getString("name"), "${j.getJSONArray("habits").length()} habits · tap to start", Icons.Default.PlayArrow, onClick = {
                 val a = j.getJSONArray("habits"); active = (0 until a.length()).map { a.getLong(it) }; position = 0
-            }) { Text(j.getString("name")) }
-            TextButton(onClick = { editingId = id; name = j.getString("name"); val a = j.getJSONArray("habits"); ids = (0 until a.length()).map { a.getLong(it) }; editor = true }) { Text("Edit") }
-        } }
+            }, trailing = { IconButton(onClick = { editingId = id; name = j.getString("name"); val a = j.getJSONArray("habits"); ids = (0 until a.length()).map { a.getLong(it) }; editor = true }) { Icon(Icons.Default.Edit, "Edit ${j.getString("name")}") } }) }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
     if (editor) AlertDialog(onDismissRequest = { editor = false }, title = { Text("Habit routine") }, text = {

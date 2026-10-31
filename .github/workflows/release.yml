@@ -7,6 +7,9 @@ on:
       - master
     paths:
       - 'app/build.gradle.kts'
+      # Source/test repairs must retry an unpublished version after failed CI.
+      - 'app/src/**'
+      - 'app/schemas/**'
       - 'gradle.properties'
       - 'app/proguard-rules.pro'
       - '.github/workflows/release.yml'

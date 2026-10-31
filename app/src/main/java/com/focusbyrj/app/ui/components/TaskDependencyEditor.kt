@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -13,7 +15,7 @@ import com.focusbyrj.app.data.*
     var open by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val names = value.prerequisiteTaskIds.map { ref -> tasks.find { it.id == ref }?.title ?: "Unavailable task" }
-    TextButton(onClick = { open = true }) { Text(if (names.isEmpty() && value.missingPrerequisites == 0) "Waiting for: none" else "Waiting for: ${names.joinToString().ifBlank { "Unavailable task" }}") }
+    FeatureRow("Waiting for", if (names.isEmpty() && value.missingPrerequisites == 0) "No prerequisite · task can be completed independently" else names.joinToString().ifBlank { "Unavailable task" }, Icons.Default.Link, onClick = { open = true })
     if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text("Waiting for") }, text = {
         Column(Modifier.heightIn(max = 350.dp).verticalScroll(rememberScrollState())) {
             Text("Choose a prerequisite. Advanced planning supports multiple links.", style = MaterialTheme.typography.bodySmall)

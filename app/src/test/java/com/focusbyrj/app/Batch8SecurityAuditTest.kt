@@ -420,6 +420,30 @@ class Batch8SecurityAuditTest {
         assertTrue("Auto-saved draft must be moved to trash on deleteCurrentNote()", finalNote!!.isTrashed)
     }
 
+    @Test
+    fun deletionResolvesSessionIdAfterInFlightAutosaveFinishes() = runBlocking {
+        val vm = NotesViewModel(app)
+        vm.openNewNote(asChecklist = false)
+        val session = vm.editingState.value!!.sessionId
+        val id = noteDb.noteDao().insertNote(NoteEntity(title = "Committed before editor ID"))
+        val field = NotesViewModel::class.java.getDeclaredField("persistMutex").apply { isAccessible = true }
+        val mutex = field.get(vm) as kotlinx.coroutines.sync.Mutex
+        @Suppress("UNCHECKED_CAST")
+        val sessions = NotesViewModel::class.java.getDeclaredField("sessionIds").apply { isAccessible = true }.get(vm) as java.util.concurrent.ConcurrentHashMap<String, Long>
+        mutex.lock()
+        try {
+            vm.deleteCurrentNote()
+            sessions[session] = id
+        } finally { mutex.unlock() }
+        kotlinx.coroutines.withTimeout(5000) {
+            while (noteDb.noteDao().getNoteByIdSync(id)?.isTrashed != true) {
+                Shadows.shadowOf(Looper.getMainLooper()).idle()
+                delay(20)
+            }
+        }
+        assertTrue(noteDb.noteDao().getNoteByIdSync(id)!!.isTrashed)
+    }
+
     // BATCH-8-014: restoreNote() and unarchiveNote() must invalidate stale entities from latestNotesCache
     @Test
     fun testNotesViewModelRestoreAndUnarchiveInvalidateLatestNotesCache() = runBlocking {

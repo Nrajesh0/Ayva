@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -18,9 +20,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-@Composable fun DataRecoveryTools(onSnapshots: () -> Unit) {
+@Composable fun DataRecoveryTools(onSnapshots: () -> Unit, entry: @Composable (onOpen: () -> Unit) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var page by remember { mutableStateOf("home") }
     var show by remember { mutableStateOf(false) }
     var storage by remember { mutableStateOf<List<Pair<String, Long>>?>(null) }
     var result by remember { mutableStateOf<String?>(null) }
@@ -35,37 +38,53 @@ import java.io.File
         storage = withContext(Dispatchers.IO) { StorageInventory.read(context) }
         drafts = withContext(Dispatchers.IO) { File(context.filesDir, "editor_drafts").listFiles()?.count { it.extension == "enc" } ?: 0 }
     } }
-    TextButton(onClick = { show = true; inventory() }) { Text("Data & recovery centre") }
-    if (show) AlertDialog(onDismissRequest = { if (!busy) show = false }, title = { Text("Data & recovery") }, text = {
-        Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Recovery", style = MaterialTheme.typography.titleSmall)
-            Text("$drafts saved editor drafts. Reopen the matching task, habit, or chat editor to resume. Drafts are kept until saved or discarded.", style = MaterialTheme.typography.bodySmall)
-            TextButton(enabled = !busy && drafts > 0, onClick = { showDrafts = true }) { Text("Review saved drafts") }
-            TextButton(enabled = !busy, onClick = onSnapshots) { Text("Review safety snapshots") }
-            Text("Snapshots show their scope before restore. Full encrypted backups include attachments; metadata-only snapshots do not.", style = MaterialTheme.typography.bodySmall)
-            if (MaintenanceGate.recoveryRequired) TextButton(enabled = !busy, onClick = {
-                busy = true
-                scope.launch {
-                    try { withContext(Dispatchers.IO) { RestoreJournal.recover(context) }; result = "Interrupted operation recovered. Your original data was restored." }
-                    catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; result = "Recovery could not finish: ${e.message}. Original recovery files are retained." }
-                    finally { busy = false; inventory() }
+    entry { show = true; page = "home"; inventory() }
+    if (show) FeatureSheet(if (page == "home") "Data & recovery" else when(page) { "recovery" -> "Recovery"; "backup" -> "Backup verification"; else -> "Storage" },
+        if (page == "home") "Keep your data safe and understand what's stored." else "", { if (!busy) show = false }) {
+        if (page != "home") TextButton(enabled = !busy, onClick = { page = "home" }) { Icon(Icons.Default.ArrowBack, null, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text("Data & recovery") }
+        when(page) {
+            "home" -> FeatureGroup("") {
+                FeatureRow("Recovery", "$drafts saved drafts · safety snapshots", Icons.Default.Restore, onClick = { page = "recovery" })
+                FeatureRow("Verify a backup", "Check an encrypted archive before relying on it", Icons.Default.VerifiedUser, onClick = { page = "backup" })
+                FeatureRow("Storage", "Usage breakdown & safe temporary-file cleanup", Icons.Default.Storage, onClick = { page = "storage" })
+            }
+            "recovery" -> {
+                FeatureGroup("Restore your work") {
+                    FeatureRow("Saved drafts", "$drafts drafts · review and recover text", Icons.Default.Description, enabled = !busy && drafts > 0, onClick = { showDrafts = true })
+                    FeatureRow("Safety snapshots", "Review recovery points and what each contains", Icons.Default.History, enabled = !busy, onClick = onSnapshots)
+                    if (MaintenanceGate.recoveryRequired) FeatureRow("Interrupted restore", "Retry recovery using the retained original data", Icons.Default.Restore, enabled = !busy, onClick = {
+                        busy = true
+                        scope.launch {
+                            try { withContext(Dispatchers.IO) { RestoreJournal.recover(context) }; result = "Interrupted operation recovered." }
+                            catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; result = "Recovery could not finish: ${e.message}. Original recovery files are retained." }
+                            finally { busy = false; inventory() }
+                        }
+                    })
                 }
-            }) { Text("Retry interrupted recovery") }
-            else Text("No interrupted restore is awaiting recovery.", style = MaterialTheme.typography.bodySmall)
-            HorizontalDivider()
-            TextButton(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Verify an encrypted backup") }
-            Text("Checks password, authenticated contents, structure, and attachment hashes without changing saved data.", style = MaterialTheme.typography.bodySmall)
-            HorizontalDivider()
-            Text("Storage on this device", style = MaterialTheme.typography.titleSmall)
-            storage?.forEach { (name, bytes) -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(name, Modifier.weight(1f)); Text(android.text.format.Formatter.formatFileSize(context, bytes))
-            } } ?: Text("Calculating…")
-            Text("Backups saved through the file picker live outside this app's storage and are not included. Attachments may be shared or locked; none are treated as unused.", style = MaterialTheme.typography.bodySmall)
-            TextButton(enabled = !busy, onClick = { cleanup = true }) { Text("Clean expired temporary exports") }
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            result?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                Text("Drafts remain until saved or discarded. Metadata snapshots do not include attachments; full encrypted backups do.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            "backup" -> {
+                FeatureGroup("Check an archive") {
+                    FeatureRow("Choose encrypted backup", "You’ll need the password used when it was created", Icons.Default.FolderOpen, enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) })
+                }
+                Text("Verification checks the authenticated contents, structure and attachment hashes. It does not restore data or replace anything in the app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            "storage" -> {
+                FeatureGroup("On this device") {
+                    storage?.forEach { (name, bytes) -> Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Text(android.text.format.Formatter.formatFileSize(context, bytes), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } } ?: Text("Calculating…", Modifier.padding(16.dp))
+                }
+                FeatureGroup("Safe cleanup") {
+                    FeatureRow("Expired temporary exports", "Remove shared files older than one hour", Icons.Default.CleaningServices, enabled = !busy, onClick = { cleanup = true })
+                }
+                Text("External file-picker backups are not included. Cleanup keeps attachments, databases, drafts and recovery points.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
-    }, confirmButton = { TextButton(enabled = !busy, onClick = { show = false }) { Text("Close") } })
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        result?.let { Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .4f)) { Text(it, Modifier.padding(14.dp), style = MaterialTheme.typography.bodySmall) } }
+    }
     if (showDrafts) DraftRecoveryDialog { showDrafts = false }
     source?.let { uri -> AlertDialog(onDismissRequest = { if (!busy) { source = null; password = "" } }, title = { Text("Verify backup") }, text = {
         Column { OutlinedTextField(password, { password = it }, enabled = !busy, label = { Text("Backup password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)

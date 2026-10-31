@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
+import androidx.compose.material.icons.filled.Storage
+
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -492,12 +494,18 @@ fun SecurityScreen(navController: NavController) {
                             }
                         }
                     )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                    com.focusbyrj.app.ui.components.DataRecoveryTools(onSnapshots = { showSnapshotsSheet = true }) { open ->
+                        SecurityActionRow(icon = Icons.Filled.Storage, iconTint = MaterialTheme.colorScheme.primary,
+                            title = "Data & recovery", subtitle = "Saved drafts, backup verification & storage",
+                            action = { Button(onClick = open, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), modifier = Modifier.height(36.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) { Text("Open", style = MaterialTheme.typography.labelMedium) } })
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            com.focusbyrj.app.ui.components.DataRecoveryTools(onSnapshots = { showSnapshotsSheet = true })
 
             SecuritySectionHeader("DIAGNOSTICS & SYSTEM LOGS")
 

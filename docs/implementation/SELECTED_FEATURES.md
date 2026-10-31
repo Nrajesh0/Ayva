@@ -6,18 +6,18 @@ no model or model download is introduced. Notes remain outside chat's data acces
 
 ## Tasks
 
-- Task editor: **Waiting for** chooses a prerequisite. Advanced planning retains existing
+- Task editor → **More**: **Waiting for** chooses a prerequisite. Advanced planning retains existing
   multiple-prerequisite and parent/work-session controls. Cycles are rejected transactionally.
 - Completion validates prerequisites. Native task UI offers an explicit **Complete anyway**
   decision for dependencies, without deleting links. This never bypasses required subtasks.
 - Deleting a referenced prerequisite asks before detaching links. Chat deletion rejects references
   outside the selected group. Automatic completed-task cleanup retains referenced tasks.
-- **Start showing on** is independent of deadline and reminder time. Future-start tasks are excluded
+- Under **More**, **Start showing on** is independent of deadline and reminder time. Future-start tasks are excluded
   from Today, remain in All/Upcoming, and retain metadata through backup/import. Dates after the
   deadline are rejected. Recurrences shift availability with the occurrence.
 - **Finish all subtasks before completing** applies to native, assistant, notification and widget
   completion paths. Recurring copies reset checklist completion.
-- **Templates** on Tasks opens Mine/Built-in. The editor's **Save as template** stores title,
+- Tasks **+** opens **Create task**, **Create template**, and **Existing templates**. Template creation uses a dedicated editor and creates no task. Existing templates opens Your templates/Ready-made. The editor's **Save as template** stores title,
   details, priority, checklist structure and its completion requirement. Choosing a template opens
   an independent editable task; dates and live dependency IDs are intentionally not copied.
 
@@ -35,7 +35,7 @@ no model or model download is introduced. Notes remain outside chat's data acces
 
 ## Data & recovery
 
-Settings → Security → **Data & recovery centre** provides:
+Settings → Security → **Data & recovery** uses the existing settings action row and a bottom sheet with Recovery, Verify a backup and Storage destinations:
 
 - Saved editor drafts with read-only review and explicit text copying; original encrypted files remain.
 - Existing scoped safety snapshots and their restore confirmation. Metadata snapshots are clearly
@@ -83,3 +83,15 @@ verification; no phone/emulator is connected to this workspace.
 
 Existing uncommitted voice stability and screenshot-protection changes predate this feature batch
 and are preserved. Excluded features and profile/chat redesigns are not part of this work.
+
+## UI organization follow-up
+
+Tasks + now opens Create task / Create template / Existing templates. Templates have a
+separate draft namespace and do not parse dates out of names. Planning, prerequisites,
+start dates and completion requirements are grouped under the collapsed More section.
+Recovery uses a settings action row and themed bottom sheet with Recovery, Backup
+verification and Storage destinations. Habit routines use a labeled grouped card.
+
+Validation: full suite passed (1,248 checks) before integrating upstream CI repairs;
+32 focused checks and debug assembly passed after rebasing onto those repairs and
+finishing template draft/name handling. Chat dependency boundary passed (117 files).
