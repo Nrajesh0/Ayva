@@ -286,6 +286,9 @@ class SettingsVizagFooterTest {
         compose.onNodeWithText("By Rj").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Made with ❤️ in Vizag").assertIsDisplayed()
         compose.onNodeWithText("RuN", substring = true).assertDoesNotExist()
+        val setup = compose.onNodeWithTag("menu_setup_guide").fetchSemanticsNode().boundsInRoot
+        val footer = compose.onNodeWithTag("settings_vizag_footer").fetchSemanticsNode().boundsInRoot
+        assertTrue("Footer needs breathing room below Setup Guide", footer.top - setup.bottom >= 56 * compose.activity.resources.displayMetrics.density - 1)
         capture(view, "settings-footer-oled")
     }
 

@@ -406,7 +406,7 @@ fun PreferencesHubScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(56.dp))
 
                 SettingsVizagFooter(scene = footerScene)
 

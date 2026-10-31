@@ -1,0 +1,24 @@
+[
+  {
+    "vehicle": "auto",
+    "x": [
+      51.666666666666664,
+      43.01372212692967,
+      34.234505862646564
+    ],
+    "direction": "left"
+  },
+  {
+    "vehicle": "bus",
+    "x": [
+      251.2552783109405,
+      242.76105362182503,
+      233.32855778414518
+    ],
+    "direction": "left"
+  },
+  {
+    "scene": "rushikonda",
+    "paraglider_first_frame_pixels": 252
+  }
+]

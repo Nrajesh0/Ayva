@@ -2,136 +2,136 @@
   {
     "scene": 1,
     "part": "birds",
-    "changed_pixels": 53
+    "changed_pixels": 413
   },
   {
     "scene": 1,
     "part": "palm",
-    "changed_pixels": 1196
+    "changed_pixels": 1006
   },
   {
     "scene": 1,
     "part": "surf",
-    "changed_pixels": 2327
+    "changed_pixels": 2841
   },
   {
     "scene": 1,
     "part": "surf",
-    "changed_pixels": 1890
+    "changed_pixels": 2478
   },
   {
     "scene": 2,
     "part": "birds",
-    "changed_pixels": 58
+    "changed_pixels": 27
   },
   {
     "scene": 2,
     "part": "surf",
-    "changed_pixels": 587
+    "changed_pixels": 544
   },
   {
     "scene": 3,
     "part": "birds",
-    "changed_pixels": 52
+    "changed_pixels": 38
   },
   {
     "scene": 3,
     "part": "surf",
-    "changed_pixels": 6800
+    "changed_pixels": 6723
   },
   {
     "scene": 3,
     "part": "surf",
-    "changed_pixels": 6092
+    "changed_pixels": 5770
   },
   {
     "scene": 4,
     "part": "birds",
-    "changed_pixels": 102
+    "changed_pixels": 67
   },
   {
     "scene": 4,
     "part": "surf",
-    "changed_pixels": 7828
+    "changed_pixels": 7395
   },
   {
     "scene": 5,
     "part": "birds",
-    "changed_pixels": 69
+    "changed_pixels": 63
   },
   {
     "scene": 5,
     "part": "flag",
-    "changed_pixels": 144
+    "changed_pixels": 169
   },
   {
     "scene": 6,
     "part": "birds",
-    "changed_pixels": 37
+    "changed_pixels": 41
   },
   {
     "scene": 6,
     "part": "palm",
-    "changed_pixels": 805
+    "changed_pixels": 677
   },
   {
     "scene": 6,
     "part": "surf",
-    "changed_pixels": 5397
+    "changed_pixels": 6180
   },
   {
     "scene": 6,
     "part": "surf",
-    "changed_pixels": 5159
+    "changed_pixels": 5695
   },
   {
     "scene": 7,
     "part": "birds",
-    "changed_pixels": 44
+    "changed_pixels": 416
   },
   {
     "scene": 7,
     "part": "paraglider",
-    "changed_pixels": 647
+    "changed_pixels": 1272
   },
   {
     "scene": 7,
     "part": "palm",
-    "changed_pixels": 2035
+    "changed_pixels": 1595
   },
   {
     "scene": 7,
     "part": "surf",
-    "changed_pixels": 3708
+    "changed_pixels": 4252
   },
   {
     "scene": 7,
     "part": "surf",
-    "changed_pixels": 3617
+    "changed_pixels": 4399
   },
   {
     "scene": 8,
     "part": "birds",
-    "changed_pixels": 85
+    "changed_pixels": 62
   },
   {
     "scene": 8,
     "part": "surf",
-    "changed_pixels": 7556
+    "changed_pixels": 7658
   },
   {
     "scene": 8,
     "part": "surf",
-    "changed_pixels": 5401
+    "changed_pixels": 5120
   },
   {
     "scene": 9,
     "part": "birds",
-    "changed_pixels": 89
+    "changed_pixels": 64
   },
   {
     "scene": 9,
     "part": "flag",
-    "changed_pixels": 70
+    "changed_pixels": 91
   }
 ]

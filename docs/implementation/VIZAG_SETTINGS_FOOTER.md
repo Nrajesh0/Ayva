@@ -47,3 +47,11 @@ All nine keep their approved landmarks and gain independently moving environment
 Walkers now cover 64–72 source pixels per eight seconds instead of crossing the whole scene. Birds glide in one direction with a slower wingbeat; visitors, gondolas and watercraft also use slow directional routes with staggered low-opacity loop resets. Rushikonda has a coral-canopied paraglider on a separate drifting path. Palm crowns sway gently while their cream trunks remain fixed. Flat paint is limited to vehicle/ship bodies, leaving the landscape outlines intact.
 
 `tools/naturalize_vizag_motion.py` applies these changes to the living gallery. `tools/verify_vizag_natural_motion.cjs` measures actual SVG positions for 17 moving subjects through each loop, checks direction while visible and enforces speed limits matched to their drawn scale. Recorded results are in `VIZAG_NATURAL_MOTION.json`.
+
+## 2.0.30 exported-layer corrections
+
+The bus and auto are isolated SVG vehicle shapes, containing no source-image streetlights or railings. Both left-facing vehicles travel left. Earlier bird layers are removed; each scene has one controlled flock that crosses the full viewport from left to right and exits completely before resetting outside the opposite edge. Loops are now sixteen seconds so a full-width flight remains unhurried.
+
+Rushikonda's paraglider is enlarged, placed in a taller sky area, and visible on the initial poster/frame. Settings adds 24 dp more spacing below Setup Guide (56 dp total spacer).
+
+Native GIF checks in `tools/verify_vizag_bird_frames.py` measure rightward bird displacement at three points in every scene, leftward painted vehicle displacement, and initial-frame paraglider pixels. The source-state check also verifies hidden bird-loop endpoints and the absence of copied-image pixels in vehicle sprites. The Settings integration test measures the gap below Setup Guide.

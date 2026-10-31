@@ -1,7 +1,8 @@
 """Export the approved footer frames as transparent, native Android GIFs.
 
 Usage: python tools/export_vizag_footer.py /path/to/recorded-frames
-Input is the approved 1920x900 nine-scene gallery, 192 PNGs at 24 fps.
+Input is the approved 1920x900 nine-scene gallery at 24 fps.
+Optional second argument is loop duration in seconds (default 8).
 Captions are excluded; Android renders accessible, theme-aware text separately.
 """
 import json,sys
@@ -11,12 +12,14 @@ from PIL import Image
 
 root=Path(__file__).resolve().parents[1]
 frames=Path(sys.argv[1])
+loop_seconds=float(sys.argv[2]) if len(sys.argv)>2 else 8
+source_frames=round(loop_seconds*24)
 names=['rk_beach','kailasagiri','dolphins_nose','fishing_harbour','ins_kursura','tenneti_park','rushikonda','vizag_port','simhachalam']
 report={}
 for i,name in enumerate(names):
  x=i%3*640;y=i//3*300
  shots=[];bounds=[]
- for n in range(0,192,2):
+ for n in range(0,source_frames,2):
   with Image.open(frames/f'{n:03}.png') as sheet:
    tile=sheet.convert('RGB').crop((x,y,x+640,y+252))
   a=np.array(tile);ys,xs=np.nonzero(a.max(axis=2)>45)
@@ -25,7 +28,7 @@ for i,name in enumerate(names):
  shots=[s.crop(box) for s in shots]
  # Shared palette keeps colors stable; reserve index 255 for the background.
  swatch=Image.new('RGB',(shots[0].width,shots[0].height*12))
- for j in range(12):swatch.paste(shots[j*8],(0,j*shots[0].height))
+ for j in range(12):swatch.paste(shots[j*len(shots)//12],(0,j*shots[0].height))
  palette=swatch.quantize(colors=192)
  converted=[]
  for frame in shots:
@@ -35,16 +38,16 @@ for i,name in enumerate(names):
   result=Image.fromarray(indices.astype('uint8'),'P');result.putpalette(palette.getpalette());result.info['transparency']=255
   converted.append(result)
  # GIF durations are stored in centiseconds: distribute rounding without drift.
- durations=[(round((n+1)*100/12)-round(n*100/12))*10 for n in range(96)]
+ durations=[(round((n+1)*100/12)-round(n*100/12))*10 for n in range(len(shots))]
  out=root/'app/src/main/res/raw'/f'vizag_{name}.gif'
  converted[0].save(out,save_all=True,append_images=converted[1:],duration=durations,loop=0,transparency=255,disposal=2,optimize=False)
  rgba=shots[0].convert('RGBA');a=np.array(rgba);a[:,:,3]=np.where(a[:,:,:3].max(axis=2)<24,0,255)
  Image.fromarray(a).save(root/'app/src/main/res/drawable-nodpi'/f'vizag_{name}_poster.webp',lossless=True)
  with Image.open(out) as check:
-  assert check.n_frames==96
+  assert check.n_frames==len(shots)
   check.seek(0);first=np.array(check.convert('RGBA'));check.seek(18);later=np.array(check.convert('RGBA'))
   changed=int((abs(first.astype(int)-later.astype(int)).max(axis=2)>20).sum());assert changed>0
   assert np.any(first[:,:,3]==0)
- report[name]={'frames':96,'duration_ms':sum(durations),'crop_box':list(map(int,box)),'size':list(shots[0].size),'changed_pixels':changed,'bytes':out.stat().st_size}
+ report[name]={'frames':len(shots),'duration_ms':sum(durations),'crop_box':list(map(int,box)),'size':list(shots[0].size),'changed_pixels':changed,'bytes':out.stat().st_size}
  print(name,report[name],flush=True)
 (root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').write_text(json.dumps(report,indent=2)+'\n')

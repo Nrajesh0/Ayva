@@ -1,104 +1,116 @@
 [
   {
     "kind": "bird",
-    "maxSpeed": 21.25,
+    "maxSpeed": 71.25,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 146
   },
   {
     "kind": "bird",
-    "maxSpeed": 25.625,
+    "maxSpeed": 71.25,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 146
   },
   {
     "kind": "bird",
-    "maxSpeed": 30,
+    "maxSpeed": 71.25,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 146
   },
   {
     "kind": "bird",
-    "maxSpeed": 25,
+    "maxSpeed": 46.875,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 139
   },
   {
     "kind": "bird",
-    "maxSpeed": 26.25,
+    "maxSpeed": 48.125,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 139
   },
   {
     "kind": "bird",
-    "maxSpeed": 38.75,
+    "maxSpeed": 71.25,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 146
   },
   {
     "kind": "bird",
-    "maxSpeed": 30.00030517578125,
+    "maxSpeed": 71.25,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 146
   },
   {
     "kind": "bird",
-    "maxSpeed": 22.5,
+    "maxSpeed": 49.813232421875,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 139
   },
   {
     "kind": "bird",
-    "maxSpeed": 25,
+    "maxSpeed": 48.125,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 139
   },
   {
     "kind": "walker",
     "maxSpeed": 9.000244140625,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 134
   },
   {
     "kind": "walker",
     "maxSpeed": 9.000244140625,
     "direction": -1,
-    "visibleSamples": 67
+    "visibleSamples": 134
   },
   {
     "kind": "walker",
     "maxSpeed": 8.00018310546875,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 134
   },
   {
     "kind": "walker",
     "maxSpeed": 8.00018310546875,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 134
+  },
+  {
+    "kind": "bus",
+    "maxSpeed": 29.687500596046448,
+    "direction": -1,
+    "visibleSamples": 134
+  },
+  {
+    "kind": "auto",
+    "maxSpeed": 29.375076293945312,
+    "direction": -1,
+    "visibleSamples": 134
   },
   {
     "kind": "visitor",
     "maxSpeed": 3.000001907348633,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 134
   },
   {
     "kind": "windsurfer",
     "maxSpeed": 4.500007629394531,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 134
   },
   {
     "kind": "boat",
     "maxSpeed": 4.000244140625,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 134
   },
   {
     "kind": "paraglider",
-    "maxSpeed": 12.5,
+    "maxSpeed": 10,
     "direction": 1,
-    "visibleSamples": 67
+    "visibleSamples": 135
   }
 ]
