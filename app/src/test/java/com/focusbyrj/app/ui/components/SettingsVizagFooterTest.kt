@@ -140,6 +140,80 @@ class SettingsVizagFooterTest {
         compose.runOnIdle { assertFalse(drawable.isRunning) }
     }
 
+    @Test fun nativeFramesActuallyChangeRatherThanOnlyReportingRunning() {
+        val artwork = decodeVizagArtwork(app, VizagScene.FISHING_HARBOUR)
+        val animationView = VizagAnimationView(compose.activity)
+        animationView.setArtwork(artwork)
+        assertEquals(View.LAYER_TYPE_NONE, animationView.layerType)
+        animationView.layout(0, 0, 640, 200)
+        val drawable = artwork.drawable as AnimatedImageDrawable
+        drawable.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+        drawable.start()
+        fun frame(): IntArray {
+            val bitmap = Bitmap.createBitmap(640, 200, Bitmap.Config.ARGB_8888)
+            animationView.draw(Canvas(bitmap))
+            val pixels = IntArray(640 * 200)
+            bitmap.getPixels(pixels, 0, 640, 0, 0, 640, 200)
+            bitmap.recycle()
+            return pixels
+        }
+        val first = frame()
+        var changes = 0
+        // Skia's animation clock is native monotonic time in this test runtime.
+        repeat(5) {
+            Thread.sleep(100)
+            val next = frame()
+            changes += first.indices.count { first[it] != next[it] }
+        }
+        animationView.release()
+        assertTrue("Animation must paint changing pixels", changes > 50)
+    }
+
+    @Test fun scrollingTheRealSettingsFooterIntoViewStartsItsAnimation() {
+        Settings.Global.putFloat(app.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        compose.setContent {
+            MaterialTheme { PreferencesHubScreen(rememberNavController()) }
+        }
+        compose.onNodeWithText("By Rj").performScrollTo()
+        fun find(view: View): VizagAnimationView? {
+            if (view is VizagAnimationView) return view
+            if (view is android.view.ViewGroup) for (i in 0 until view.childCount) {
+                find(view.getChildAt(i))?.let { return it }
+            }
+            return null
+        }
+        var animation: VizagAnimationView? = null
+        compose.waitUntil(5000) {
+            compose.runOnUiThread { animation = find(compose.activity.window.decorView) }
+            animation != null
+        }
+        compose.runOnIdle {
+            val field = VizagAnimationView::class.java.getDeclaredField("drawable").apply { isAccessible = true }
+            val drawable = field.get(animation) as AnimatedImageDrawable
+            assertTrue("Visible Settings animation must be running; view shown=${animation!!.isShown}", drawable.isRunning)
+        }
+    }
+
+    @Test fun reducedMotionShowsAnExplicitPlayControlThatStartsTheFooter() {
+        compose.setContent { MaterialTheme { SettingsVizagFooter(VizagScene.RK_BEACH) } }
+        compose.onNodeWithContentDescription("Play animation").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Play animation").assertDoesNotExist()
+        fun find(view: View): VizagAnimationView? {
+            if (view is VizagAnimationView) return view
+            if (view is android.view.ViewGroup) for (i in 0 until view.childCount) find(view.getChildAt(i))?.let { return it }
+            return null
+        }
+        var view: VizagAnimationView? = null
+        compose.waitUntil(5000) {
+            compose.runOnUiThread { view = find(compose.activity.window.decorView) }
+            view != null
+        }
+        compose.runOnIdle {
+            val field = VizagAnimationView::class.java.getDeclaredField("drawable").apply { isAccessible = true }
+            assertTrue((field.get(view) as AnimatedImageDrawable).isRunning)
+        }
+    }
+
     @Test fun returningFromAChildSettingsPagePlaysTheNextScene() {
         compose.setContent {
             MaterialTheme {

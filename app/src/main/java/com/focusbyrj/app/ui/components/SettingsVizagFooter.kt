@@ -25,6 +25,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -137,6 +141,17 @@ internal fun SettingsVizagFooter(
     val lightSurface = MaterialTheme.colorScheme.background.luminance() > .5f
     var foreground by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
     var visible by remember { mutableStateOf(false) }
+    var motionAllowed by remember { mutableStateOf(Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f) }
+    var playDespiteReducedMotion by remember(scene.animation) { mutableStateOf(false) }
+    DisposableEffect(context) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                motionAllowed = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+            }
+        }
+        context.contentResolver.registerContentObserver(Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE), false, observer)
+        onDispose { context.contentResolver.unregisterContentObserver(observer) }
+    }
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, _ ->
             foreground = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
@@ -177,10 +192,18 @@ internal fun SettingsVizagFooter(
                     update = {
                         it.setArtwork(artwork)
                         it.setLightSurface(lightSurface)
-                        it.setPlaybackEnabled(foreground && visible)
+                        it.setPlaybackEnabled(foreground && visible, playDespiteReducedMotion)
                     },
                     onRelease = { it.release() }
                 )
+            }
+            if (!motionAllowed && !playDespiteReducedMotion) {
+                IconButton(
+                    onClick = { playDespiteReducedMotion = true },
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Play animation", tint = MaterialTheme.colorScheme.primary)
+                }
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -227,6 +250,7 @@ internal class VizagAnimationView(context: Context) : View(context) {
     private var artwork: VizagArtwork? = null
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private var playbackEnabled = false
+    private var reducedMotionOverride = false
     private var running = false
     private var startedAt = 0L
     private var elapsed = 0L
@@ -237,8 +261,6 @@ internal class VizagAnimationView(context: Context) : View(context) {
     }
 
     init {
-        // Movie's decoder needs a software canvas on older supported Androids.
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
@@ -249,6 +271,10 @@ internal class VizagAnimationView(context: Context) : View(context) {
         artwork = value
         movie = value?.movie
         drawable = value?.drawable
+        // Only the legacy Movie decoder requires software rendering. Caching the
+        // modern drawable in a software View layer can leave Compose displaying
+        // the first frame even while the drawable reports that it is running.
+        setLayerType(if (movie != null) LAYER_TYPE_SOFTWARE else LAYER_TYPE_NONE, null)
         drawable?.callback = this
         drawable?.colorFilter = paint.colorFilter
         if (Build.VERSION.SDK_INT >= 28) (drawable as? AnimatedImageDrawable)?.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
@@ -267,13 +293,14 @@ internal class VizagAnimationView(context: Context) : View(context) {
         invalidate()
     }
 
-    fun setPlaybackEnabled(value: Boolean) {
+    fun setPlaybackEnabled(value: Boolean, overrideReducedMotion: Boolean = false) {
         playbackEnabled = value
+        reducedMotionOverride = overrideReducedMotion
         updatePlayback()
     }
 
     private fun animationsEnabled(): Boolean =
-        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+        reducedMotionOverride || Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
 
     private fun updatePlayback() {
         val shouldRun = playbackEnabled && (movie != null || drawable != null) && isAttachedToWindow &&
@@ -293,6 +320,12 @@ internal class VizagAnimationView(context: Context) : View(context) {
     }
 
     override fun verifyDrawable(who: Drawable): Boolean = who === drawable || super.verifyDrawable(who)
+
+    override fun invalidateDrawable(who: Drawable) {
+        // The drawable uses source-image bounds, while this View fits/scales and
+        // centers that image. Its dirty rectangle is not in View coordinates.
+        if (who === drawable) invalidate() else super.invalidateDrawable(who)
+    }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
@@ -347,6 +380,9 @@ internal class VizagAnimationView(context: Context) : View(context) {
             image.setBounds(0, 0, image.intrinsicWidth, image.intrinsicHeight)
             image.draw(canvas)
             canvas.restoreToCount(checkpoint)
+            // Explicit full-view ticks also keep AndroidView's Compose host in
+            // sync on devices whose drawable callback only updates its own layer.
+            if (running) postInvalidateDelayed(80L)
             return
         }
         val animation = movie ?: return

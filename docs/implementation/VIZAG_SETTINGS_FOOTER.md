@@ -29,3 +29,9 @@ The bottom of `PreferencesHubScreen` now shows one of nine approved animated Viz
 `:app:testDebugUnitTest --tests 'com.focusbyrj.app.ui.components.SettingsVizagFooterTest' :app:assembleDebug` passed offline. Seven focused tests cover nine-scene persisted rotation, saved-state/theme stability, actual Android 9 animation decoding with alpha, native start/stop/reduced-motion/release behavior, child-page navigation, the GitHub intent, hierarchy/theme/large-text rendering and scrolling the real Settings screen to the footer.
 
 Native-rendered previews are produced under `app/build/reports/vizag-footer/`. Android 7–8.1 compatibility uses the platform Movie implementation and was not device-tested in this environment.
+
+## 2.0.27 playback correction
+
+Modern AnimatedImageDrawable now renders without a forced software View layer. Drawable invalidation redraws the entire scaled/centered View, and an explicit frame tick keeps the Compose host updating while playing. Legacy Movie retains its required software canvas. When Android disables animations, an accessible Play control lets the user explicitly start this scene without changing the phone setting.
+
+Regression checks now cover changing native frame pixels, scrolling the real Settings footer into view with playback enabled, and starting playback through the reduced-motion Play control.
