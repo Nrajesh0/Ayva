@@ -32,6 +32,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.platform.testTag
+import com.focusbyrj.app.ui.components.BoundaryControls
+import com.focusbyrj.app.ui.components.BoundarySelection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -59,6 +64,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -101,7 +107,8 @@ fun DashboardScreen(
     onSetTime: (Int) -> Unit = {},
     onOpenRoutines: () -> Unit = {},
     onOpenHabits: () -> Unit = {},
-    onHabitIncrement: (com.focusbyrj.app.data.Habit) -> Unit = {}
+    onHabitIncrement: (com.focusbyrj.app.data.Habit) -> Unit = {},
+    onDeleteMany: ((List<AppRestriction>) -> Unit)? = null
 ) {
     if (isSessionActive) {
         ActiveSessionScreen(timeRemaining = timeRemaining, initialTime = initialTime, onToggleSession = onToggleSession)
@@ -118,11 +125,13 @@ fun DashboardScreen(
             onSetTime = onSetTime,
             onOpenRoutines = onOpenRoutines,
             onOpenHabits = onOpenHabits,
-            onHabitIncrement = onHabitIncrement
+            onHabitIncrement = onHabitIncrement,
+            onDeleteMany = onDeleteMany
         )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NormalDashboard(
     restrictions: List<AppRestriction>,
@@ -136,8 +145,11 @@ fun NormalDashboard(
     onSetTime: (Int) -> Unit,
     onOpenRoutines: () -> Unit = {},
     onOpenHabits: () -> Unit = {},
-    onHabitIncrement: (com.focusbyrj.app.data.Habit) -> Unit = {}
+    onHabitIncrement: (com.focusbyrj.app.data.Habit) -> Unit = {},
+    onDeleteMany: ((List<AppRestriction>) -> Unit)? = null
 ) {
+    val boundaryState = rememberSaveable(saver = BoundarySelection.Saver) { BoundarySelection() }
+    val matchingRestrictions = restrictions.filter(boundaryState::matches)
     var editingApp by remember { mutableStateOf<AppRestriction?>(null) }
 
     if (editingApp != null) {
@@ -264,30 +276,25 @@ fun NormalDashboard(
             )
             Spacer(modifier = Modifier.height(24.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Your boundaries",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "Swipe to edit or delete",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                )
+        }
+        stickyHeader {
+            Surface(color = MaterialTheme.colorScheme.background) {
+                Column {
+                    BoundaryControls(boundaryState, restrictions) { targets ->
+                        if (onDeleteMany != null) onDeleteMany(targets) else targets.forEach(onDelete)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
             }
-            Spacer(modifier = Modifier.height(16.dp))
         }
 
         if (restrictions.isEmpty()) {
             item { EmptyStateView() }
+        } else if (matchingRestrictions.isEmpty()) {
+            item { Text("No matching boundaries", Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         } else {
-            val manualApps = restrictions.filter { !it.isFromRoutine }
-            val routineApps = restrictions.filter { it.isFromRoutine }
+            val manualApps = matchingRestrictions.filter { !it.isFromRoutine }
+            val routineApps = matchingRestrictions.filter { it.isFromRoutine }
 
             if (manualApps.isNotEmpty()) {
                 item {
@@ -303,7 +310,10 @@ fun NormalDashboard(
                         app = app,
                         onToggle = { onToggle(app) },
                         onEdit = { editingApp = app },
-                        onDelete = { onDelete(app) }
+                        onDelete = { onDelete(app) },
+                        selectionMode = boundaryState.selecting,
+                        selected = app.packageName in boundaryState.selected,
+                        onSelect = { boundaryState.toggle(app.packageName) }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                 }
@@ -326,7 +336,10 @@ fun NormalDashboard(
                         app = app,
                         onToggle = { onToggle(app) },
                         onEdit = { editingApp = app },
-                        onDelete = { onDelete(app) }
+                        onDelete = { onDelete(app) },
+                        selectionMode = boundaryState.selecting,
+                        selected = app.packageName in boundaryState.selected,
+                        onSelect = { boundaryState.toggle(app.packageName) }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                 }
@@ -1196,7 +1209,10 @@ fun SwipeableAppRestrictionCard(
     app: AppRestriction,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onSelect: () -> Unit = {}
 ) {
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -1307,8 +1323,8 @@ fun SwipeableAppRestrictionCard(
             modifier = Modifier
                 .offset { IntOffset(offsetX.value.roundToInt(), 0) }
                 .fillMaxWidth()
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
+                .pointerInput(selectionMode) {
+                    if (!selectionMode) detectHorizontalDragGestures(
                         onDragEnd = {
                             coroutineScope.launch {
                                 val current = offsetX.value
@@ -1347,14 +1363,16 @@ fun SwipeableAppRestrictionCard(
             AppRestrictionCard(
                 app = app,
                 onToggle = {
-                    if (kotlin.math.abs(offsetX.value) > 10f) {
+                    if (selectionMode) { onSelect() } else if (kotlin.math.abs(offsetX.value) > 10f) {
                         coroutineScope.launch {
                             offsetX.animateTo(0f, spring(stiffness = Spring.StiffnessMedium))
                         }
                     } else {
                         onToggle()
                     }
-                }
+                },
+                selectionMode = selectionMode, selected = selected,
+                onLongClick = onSelect
             )
         }
     }
@@ -1626,16 +1644,17 @@ fun EditRestrictionBottomSheet(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun AppRestrictionCard(app: AppRestriction, onToggle: () -> Unit) {
+fun AppRestrictionCard(app: AppRestriction, onToggle: () -> Unit, selectionMode: Boolean = false, selected: Boolean = false, onLongClick: (() -> Unit)? = null) {
     val isLocked = app.isRestricted
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val cardColor = if (isLocked) {
+    val cardColor = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .4f) else if (isLocked) {
         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     } else {
         MaterialTheme.colorScheme.surface
     }
-    val borderColor = if (isLocked) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else if (isLocked) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
     } else {
         MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
@@ -1647,7 +1666,8 @@ fun AppRestrictionCard(app: AppRestriction, onToggle: () -> Unit) {
             .clip(RoundedCornerShape(18.dp))
             .background(cardColor)
             .border(1.dp, borderColor, RoundedCornerShape(18.dp))
-            .clickable { onToggle() }
+            .combinedClickable(onClick = onToggle, onLongClick = onLongClick)
+            .testTag("boundary_card_${app.packageName}")
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(
@@ -1710,7 +1730,7 @@ fun AppRestrictionCard(app: AppRestriction, onToggle: () -> Unit) {
             
             Spacer(modifier = Modifier.width(16.dp))
             
-            Switch(
+            if (selectionMode) Checkbox(checked = selected, onCheckedChange = { onToggle() }) else Switch(
                 checked = isLocked,
                 onCheckedChange = { onToggle() },
                 modifier = Modifier.scale(0.85f),

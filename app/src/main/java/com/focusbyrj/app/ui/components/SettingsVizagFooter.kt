@@ -74,12 +74,12 @@ internal fun decodeVizagArtwork(context: Context, scene: VizagScene): VizagArtwo
 internal const val VIZAG_GITHUB_URL = "https://github.com/Nrajesh0/Ayva"
 
 internal enum class VizagScene(val placeName: String, @RawRes val animation: Int, @DrawableRes val poster: Int) {
-    RK_BEACH("RK Beach promenade", R.raw.vizag_rk_beach, R.drawable.vizag_rk_beach_poster),
+    RK_BEACH("RK Beach", R.raw.vizag_rk_beach, R.drawable.vizag_rk_beach_poster),
     KAILASAGIRI("Kailasagiri", R.raw.vizag_kailasagiri, R.drawable.vizag_kailasagiri_poster),
-    DOLPHINS_NOSE("Dolphin’s Nose Lighthouse", R.raw.vizag_dolphins_nose, R.drawable.vizag_dolphins_nose_poster),
-    FISHING_HARBOUR("Vizag Fishing Harbour", R.raw.vizag_fishing_harbour, R.drawable.vizag_fishing_harbour_poster),
-    INS_KURSURA("INS Kursura · S20", R.raw.vizag_ins_kursura, R.drawable.vizag_ins_kursura_poster),
-    TENNETI_PARK("Tenneti Park · MV Maa", R.raw.vizag_tenneti_park, R.drawable.vizag_tenneti_park_poster),
+    DOLPHINS_NOSE("Dolphin’s Nose", R.raw.vizag_dolphins_nose, R.drawable.vizag_dolphins_nose_poster),
+    FISHING_HARBOUR("Fishing Harbour", R.raw.vizag_fishing_harbour, R.drawable.vizag_fishing_harbour_poster),
+    INS_KURSURA("INS Kursura", R.raw.vizag_ins_kursura, R.drawable.vizag_ins_kursura_poster),
+    TENNETI_PARK("Tenneti Park", R.raw.vizag_tenneti_park, R.drawable.vizag_tenneti_park_poster),
     RUSHIKONDA("Rushikonda", R.raw.vizag_rushikonda, R.drawable.vizag_rushikonda_poster),
     VIZAG_PORT("Vizag Port", R.raw.vizag_vizag_port, R.drawable.vizag_vizag_port_poster),
     SIMHACHALAM("Simhachalam", R.raw.vizag_simhachalam, R.drawable.vizag_simhachalam_poster)

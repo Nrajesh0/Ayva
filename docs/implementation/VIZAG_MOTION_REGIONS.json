@@ -2,17 +2,17 @@
   {
     "scene": 1,
     "part": "birds",
-    "changed_pixels": 413
+    "changed_pixels": 406
   },
   {
     "scene": 1,
     "part": "palm",
-    "changed_pixels": 1006
+    "changed_pixels": 974
   },
   {
     "scene": 1,
     "part": "surf",
-    "changed_pixels": 2841
+    "changed_pixels": 2844
   },
   {
     "scene": 1,
@@ -27,7 +27,7 @@
   {
     "scene": 2,
     "part": "surf",
-    "changed_pixels": 544
+    "changed_pixels": 540
   },
   {
     "scene": 3,

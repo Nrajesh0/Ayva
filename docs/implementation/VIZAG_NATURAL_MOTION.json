@@ -80,14 +80,26 @@
   {
     "kind": "bus",
     "maxSpeed": 29.687500596046448,
-    "direction": -1,
+    "direction": 1,
     "visibleSamples": 134
   },
   {
     "kind": "auto",
     "maxSpeed": 29.375076293945312,
-    "direction": -1,
+    "direction": 1,
     "visibleSamples": 134
+  },
+  {
+    "kind": "gondola",
+    "maxSpeed": 36.00006103515625,
+    "direction": 1,
+    "visibleSamples": 157
+  },
+  {
+    "kind": "gondola",
+    "maxSpeed": 36.00006103515625,
+    "direction": -1,
+    "visibleSamples": 157
   },
   {
     "kind": "visitor",

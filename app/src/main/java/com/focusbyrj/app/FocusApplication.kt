@@ -179,7 +179,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
         .build()
     }
     
-    val repository by lazy { AppRepository(database.appRestrictionDao(), database.scheduleDao()) }
+    val repository by lazy { AppRepository(database) }
     val taskRepository by lazy { TaskRepository(database.taskDao()) }
     val habitRepository by lazy { com.focusbyrj.app.data.HabitRepository(database.habitDao()) }
     val vocabRepository by lazy { com.focusbyrj.app.data.VocabRepository(vocabDatabase.vocabDao()) }

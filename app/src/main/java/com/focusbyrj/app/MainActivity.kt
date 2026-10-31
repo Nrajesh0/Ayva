@@ -687,6 +687,7 @@ fun MainAppScreen(
                             habits = habitsWithProgress,
                             onToggle = { app -> viewModel.toggleRestriction(app) },
                             onDelete = { app -> viewModel.deleteRestriction(app) },
+                            onDeleteMany = { apps -> viewModel.deleteBoundaries(apps) },
                             onUpdate = { app -> viewModel.updateRestriction(app) },
                             isSessionActive = isSessionActive,
                             timeRemaining = timeRemaining,
@@ -795,13 +796,13 @@ fun MainAppScreen(
                     AddRestrictionScreen(navController, viewModel)
                 }
                 composable(Screen.Security.route) {
-                    SecurityScreen(navController)
+                    com.focusbyrj.app.ui.components.SettingsSearchDestination(navController) { SecurityScreen(navController) }
                 }
                 composable(Screen.Settings.route) {
-                    SettingsScreen(navController)
+                    com.focusbyrj.app.ui.components.SettingsSearchDestination(navController) { SettingsScreen(navController) }
                 }
                 composable(Screen.BubbleSettings.route) {
-                    com.focusbyrj.app.ui.screens.BubbleSettingsScreen(navController)
+                    com.focusbyrj.app.ui.components.SettingsSearchDestination(navController) { com.focusbyrj.app.ui.screens.BubbleSettingsScreen(navController) }
                 }
                 composable(Screen.Subscription.route) {
                     SubscriptionScreen(navController)

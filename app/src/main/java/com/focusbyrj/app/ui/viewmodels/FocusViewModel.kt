@@ -261,9 +261,13 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
         }
     }
 
+    fun deleteBoundaries(apps: List<AppRestriction>) {
+        viewModelScope.launch { repository.removeBoundaryPackages(apps.map { it.packageName }.toSet()) }
+    }
+
     fun deleteRestriction(app: AppRestriction) {
         viewModelScope.launch {
-            repository.deleteRestriction(app)
+            repository.removeBoundaryPackages(setOf(app.packageName))
         }
     }
 }

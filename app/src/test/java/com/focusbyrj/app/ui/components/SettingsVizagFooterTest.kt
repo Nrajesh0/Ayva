@@ -79,10 +79,10 @@ class SettingsVizagFooterTest {
                 if (show) SettingsVizagFooter(rememberVizagScene())
             }
         }
-        compose.onNodeWithText("RK Beach promenade").assertIsDisplayed()
+        compose.onNodeWithText("RK Beach").assertIsDisplayed()
         compose.runOnIdle { light = true }
         state.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("RK Beach promenade").assertIsDisplayed()
+        compose.onNodeWithText("RK Beach").assertIsDisplayed()
         assertEquals(1, app.getSharedPreferences("vizag_footer", 0).getInt("next_scene", -1))
         compose.runOnIdle { show = false }
         compose.runOnIdle { show = true }
@@ -226,7 +226,7 @@ class SettingsVizagFooterTest {
                 }
             }
         }
-        compose.onNodeWithText("RK Beach promenade").assertExists()
+        compose.onNodeWithText("RK Beach").assertExists()
         compose.onNodeWithText("App Settings").performScrollTo().performClick()
         compose.onNodeWithText("Return to Settings").performClick()
         compose.onNodeWithText("Kailasagiri").assertExists()
@@ -268,7 +268,7 @@ class SettingsVizagFooterTest {
         assertEquals(Intent.ACTION_VIEW, intent.action)
         assertEquals(VIZAG_GITHUB_URL, intent.dataString)
         compose.runOnIdle { fontScale = 1.6f; scene = VizagScene.DOLPHINS_NOSE }
-        compose.onNodeWithText("Dolphin’s Nose Lighthouse").assertIsDisplayed()
+        compose.onNodeWithText("Dolphin’s Nose").assertIsDisplayed()
         compose.onNodeWithText("Made with ❤️ in Vizag").assertIsDisplayed()
         compose.onNodeWithText("By Rj").assertIsDisplayed()
         capture(view, "footer-large-text")

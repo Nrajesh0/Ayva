@@ -35,8 +35,8 @@ with Image.open(root/'app/src/main/res/raw/vizag_rk_beach.gif') as im:
   for n in [0,6,12]:
    im.seek(n);a=np.array(im.convert('RGBA')).astype(int);mask=(np.abs(a[:,:,:3]-c).max(axis=2)<20)&(a[:,:,3]>150);yy,xx=np.nonzero(mask)
    assert len(xx)>20,(name,n);positions.append(float(xx.mean()))
-  assert all(b<a-2 for a,b in zip(positions,positions[1:])),(name,positions)
-  vehicle_checks.append(dict(vehicle=name,x=positions,direction='left'))
+  assert all(b>a+2 for a,b in zip(positions,positions[1:])),(name,positions)
+  vehicle_checks.append(dict(vehicle=name,x=positions,direction='right'))
 with Image.open(root/'app/src/main/res/raw/vizag_rushikonda.gif') as im:
  im.seek(0);a=np.array(im.convert('RGBA')).astype(int);mask=(np.abs(a[:,:,:3]-(201,113,85)).max(axis=2)<25)&(a[:,:,3]>150)
  assert mask.sum()>150,'Paraglider missing from first frame'

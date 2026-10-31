@@ -55,3 +55,7 @@ The bus and auto are isolated SVG vehicle shapes, containing no source-image str
 Rushikonda's paraglider is enlarged, placed in a taller sky area, and visible on the initial poster/frame. Settings adds 24 dp more spacing below Setup Guide (56 dp total spacer).
 
 Native GIF checks in `tools/verify_vizag_bird_frames.py` measure rightward bird displacement at three points in every scene, leftward painted vehicle displacement, and initial-frame paraglider pixels. The source-state check also verifies hidden bird-loop endpoints and the absence of copied-image pixels in vehicle sprites. The Settings integration test measures the gap below Setup Guide.
+
+## 2.0.31 complete cable routes and clear forward profiles
+
+Both vehicle drawings are explicitly right-facing and travel right together. Kailasagiri cabins now follow the entire measured cable between the hill and support tower, in opposite ascent/descent directions. Opacity is fully maintained throughout the middle of the route; only the short station transitions may fade. Native frame checks verify rightward vehicle movement. All footer labels use the short place name (for example RK Beach, Tenneti Park and INS Kursura).

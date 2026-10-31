@@ -7,6 +7,7 @@
 
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.components.settingsSearchTarget
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -1130,7 +1131,7 @@ private fun SettingsNavigationRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
             .padding(horizontal = 6.dp, vertical = 8.dp),
@@ -1190,7 +1191,7 @@ private fun SettingsStepperRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -1286,7 +1287,7 @@ private fun SettingsSwitchRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -1358,7 +1359,7 @@ private fun SettingsDropdownRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -1491,7 +1492,7 @@ private fun SettingsStringDropdownRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween

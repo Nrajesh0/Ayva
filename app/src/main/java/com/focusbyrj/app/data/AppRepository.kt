@@ -8,11 +8,11 @@
 package com.focusbyrj.app.data
 
 import kotlinx.coroutines.flow.Flow
+import androidx.room.withTransaction
 
-class AppRepository(
-    private val appRestrictionDao: AppRestrictionDao,
-    private val scheduleDao: ScheduleDao
-) {
+class AppRepository(private val database: FocusDatabase) {
+    private val appRestrictionDao = database.appRestrictionDao()
+    private val scheduleDao = database.scheduleDao()
     val allRestrictions: Flow<List<AppRestriction>> = appRestrictionDao.getAllRestrictions()
     val allSchedules: Flow<List<FocusSchedule>> = scheduleDao.getAllSchedules()
 
@@ -34,6 +34,19 @@ class AppRepository(
 
     suspend fun deleteRestriction(app: AppRestriction) {
         appRestrictionDao.deleteRestriction(app.packageName)
+    }
+
+    suspend fun removeBoundaryPackages(packages: Set<String>) {
+        if (packages.isEmpty()) return
+        database.withTransaction {
+            val schedules = scheduleDao.getAllSchedulesSync()
+            for (schedule in schedules) {
+                val entries = schedule.appsToBlock.split(",").filter { it.isNotBlank() }
+                val kept = entries.filter { it.substringBefore("|").trim() !in packages }
+                if (kept.size != entries.size) scheduleDao.insertSchedule(schedule.copy(appsToBlock = kept.joinToString(",")))
+            }
+            appRestrictionDao.deleteRestrictions(packages.toList())
+        }
     }
 
     suspend fun getScheduleById(id: Int): FocusSchedule? {

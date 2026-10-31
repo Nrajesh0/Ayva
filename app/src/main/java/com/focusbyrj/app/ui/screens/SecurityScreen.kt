@@ -4,6 +4,7 @@ import androidx.compose.material.icons.filled.Storage
 
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
+import com.focusbyrj.app.ui.components.settingsSearchTarget
 import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -979,7 +980,7 @@ private fun SecurityActionRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

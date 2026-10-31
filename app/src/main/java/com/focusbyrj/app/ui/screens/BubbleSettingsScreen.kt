@@ -1,6 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
 import android.app.TimePickerDialog
+import com.focusbyrj.app.ui.components.settingsSearchTarget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.*
@@ -77,6 +78,11 @@ fun BubbleSettingsScreen(navController: NavController) {
 
     // Hidden Bubble Customization States
     var isDockingSettingsExpanded by remember { mutableStateOf(false) }
+    val searchTarget = com.focusbyrj.app.ui.components.LocalSettingsSearchTarget.current
+    LaunchedEffect(searchTarget) {
+        if (searchTarget in setOf("Hidden Opacity", "Amount Hidden (Tuck Depth)", "Glow Ring Intensity", "Bubble Accent Color", "Hidden Bubble Docking & Glow")) isDockingSettingsExpanded = true
+    }
+
     var hiddenOpacity by remember { mutableStateOf(prefs.getInt("bubble_hidden_opacity", 85).coerceIn(20, 100)) }
     var hiddenAmount by remember { mutableStateOf(prefs.getInt("bubble_hidden_amount", 60).coerceIn(25, 85)) }
     var glowIntensity by remember { mutableStateOf(prefs.getInt("bubble_glow_intensity", 65).coerceIn(0, 100)) }
@@ -287,7 +293,7 @@ fun BubbleSettingsScreen(navController: NavController) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { isDockingSettingsExpanded = !isDockingSettingsExpanded }
+                        .settingsSearchTarget("Hidden Bubble Docking & Glow").clickable { isDockingSettingsExpanded = !isDockingSettingsExpanded }
                         .padding(horizontal = 8.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -784,7 +790,7 @@ private fun SettingsSliderRow(
 ) {
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .padding(horizontal = 6.dp, vertical = 8.dp)
     ) {
         Row(
@@ -902,7 +908,7 @@ private fun SettingsSwitchRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -970,7 +976,7 @@ private fun SettingsTimePickerRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -1042,7 +1048,7 @@ private fun SettingsStepperRow(
 ) {
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget(title)
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -1148,7 +1154,7 @@ private fun AccentColorDropdownRow(
 
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().settingsSearchTarget("Bubble Accent Color")
             .padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween

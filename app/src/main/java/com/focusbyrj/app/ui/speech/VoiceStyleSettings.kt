@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.speech
 
+import com.focusbyrj.app.ui.components.settingsSearchTarget
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,7 +34,7 @@ fun VoiceStyleSettingsRow() {
         leadingContent = { Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.primary) },
         trailingContent = { Icon(Icons.Default.Visibility, "Choose and preview voice styles") },
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
-        modifier = Modifier.fillMaxWidth().clickable { showPicker = true }.testTag("voice_style_settings"))
+        modifier = Modifier.fillMaxWidth().settingsSearchTarget("Live transcription style").clickable { showPicker = true }.testTag("voice_style_settings"))
     if (showPicker) VoiceStylePicker(selected, onDismiss = { showPicker = false }, onApply = {
         VoiceStyle.save(context, it); selected = it; showPicker = false
     })

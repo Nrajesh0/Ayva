@@ -59,6 +59,7 @@ fun PreferencesHubScreen(
     onOpenSetupGuide: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    var searchingSettings by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val footerScene = rememberVizagScene(navController)
     val economyProfile by FocusEconomyManager.profileFlow.collectAsStateWithLifecycle()
@@ -95,6 +96,20 @@ fun PreferencesHubScreen(
         )
     }
 
+    if (searchingSettings) com.focusbyrj.app.ui.components.SettingsSearchSheet(
+        onDismiss = { searchingSettings = false },
+        onChoose = { entry ->
+            searchingSettings = false
+            if (entry.route == "__setup__") {
+                if (onOpenSetupGuide != null) onOpenSetupGuide() else showSetupDialog = true
+            } else {
+                if (entry.route in setOf("settings", "bubble_settings", "security")) {
+                    navController.currentBackStackEntry?.savedStateHandle?.set("settings_search_target", entry.title)
+                }
+                navController.navigate(entry.route) { launchSingleTop = true }
+            }
+        }
+    )
     Scaffold(
         topBar = {
             TopAppBar(
@@ -103,6 +118,9 @@ fun PreferencesHubScreen(
                         text = "Settings",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
+                },
+                actions = {
+                    IconButton(onClick = { searchingSettings = true }) { Icon(Icons.Default.Search, "Search settings") }
                 },
                 navigationIcon = {
                     IconButton(

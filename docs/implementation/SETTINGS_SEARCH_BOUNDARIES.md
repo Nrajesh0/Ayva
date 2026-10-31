@@ -1,0 +1,7 @@
+# Settings search and boundary management · 2.0.31
+
+Settings has a search action in the top app bar. The search sheet indexes the real App Settings, Bubble Settings and Security controls, plus Profile & Rank, Subscription and Setup Guide. Results match all query words, accept common aliases such as “dark mode”, “privacy” and “PIN”, and link to the relevant page. A destination-scoped target scrolls the corresponding control into view and briefly highlights it. Collapsed bubble appearance controls expand automatically. Searching does not toggle settings or invoke security actions.
+
+Your boundaries has a collapsible search field and selection action. Search matches app names and package names; manual/routine keywords also work. Long-press enters selection mode. In selection mode, card taps/checkboxes select rather than change app locks. A sticky contextual toolbar shows the count, Select all (current filtered results), Deselect all and Delete. Selection and query survive saved-state restoration. Delete confirms the affected names/count. A single Room transaction removes selected restrictions and their entries from routines, preserving unrelated apps and all other routine fields. No blocker overlay/service logic is changed.
+
+Validation covers search aliases/results, navigation and scrolling to a real setting, expanding collapsed controls, filtered selection, long press on actual swipeable dashboard cards, non-destructive cancellation, avoiding lock toggles in selection mode, and persisted removal from both restrictions and routines.
