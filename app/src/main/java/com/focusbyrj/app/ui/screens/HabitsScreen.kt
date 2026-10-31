@@ -164,7 +164,6 @@ fun HabitsScreen(
             contentPadding = PaddingValues(top = 6.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item { com.focusbyrj.app.ui.components.HabitChains(habitsWithProgress) { habit, done -> habitViewModel.incrementProgress(habit, done) } }
             // 1. Overall Daily Summary Card
             item {
                 HabitProgressHeroCard(

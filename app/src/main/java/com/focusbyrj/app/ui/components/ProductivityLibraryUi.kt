@@ -20,14 +20,14 @@ import org.json.JSONArray
     var mine by remember { mutableStateOf(library.entries("template")) }
     var error by remember { mutableStateOf<String?>(null) }
     var remove by remember { mutableStateOf<String?>(null) }
-    FeatureSheet("Templates", "Choose a checklist, then review it before creating your task.", onDismiss) {
+    FeatureSheet("Templates", "Choose a task template, then review its settings before saving.", onDismiss) {
         FeatureGroup("Your templates") {
             if (mine.isEmpty()) Text("No templates yet. Use + → Create template to make your first.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
             mine.forEach { (id, j) -> FeatureRow(j.getString("name"), "${j.getJSONArray("steps").length()} steps", Icons.Default.ContentCopy,
-                onClick = { onPick(ProductivityLibrary.instantiate(j)) }, trailing = { IconButton(onClick = { remove = id }) { Icon(Icons.Default.Delete, "Delete ${j.getString("name")}") } }) }
+                onClick = { runCatching { ProductivityLibrary.instantiate(j) }.onSuccess(onPick).onFailure { error = it.message } }, trailing = { IconButton(onClick = { remove = id }) { Icon(Icons.Default.Delete, "Delete ${j.getString("name")}") } }) }
         }
         FeatureGroup("Ready-made") {
-            ProductivityLibrary.builtIns().forEach { j -> FeatureRow(j.getString("name"), "${j.getJSONArray("steps").length()} steps · customize before saving", Icons.Default.Checklist, onClick = { onPick(ProductivityLibrary.instantiate(j)) }) }
+            ProductivityLibrary.builtIns().forEach { j -> FeatureRow(j.getString("name"), "${j.getJSONArray("steps").length()} steps · customize before saving", Icons.Default.Checklist, onClick = { runCatching { ProductivityLibrary.instantiate(j) }.onSuccess(onPick).onFailure { error = it.message } }) }
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }

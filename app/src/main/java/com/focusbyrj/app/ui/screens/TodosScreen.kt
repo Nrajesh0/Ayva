@@ -75,7 +75,6 @@ fun TodosScreen(
         }
     }
     var templateDraft by remember { mutableStateOf<Task?>(null) }
-    var showCreateMenu by remember { mutableStateOf(false) }
     var creatingTemplate by remember { mutableStateOf(false) }
     var showTemplates by remember { mutableStateOf(false) }
     var editingTaskId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -205,16 +204,6 @@ fun TodosScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showCreateMenu = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = CircleShape
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "Add Task")
-            }
-        }
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -464,6 +453,11 @@ fun TodosScreen(
                     }
                 }
             }
+            com.focusbyrj.app.ui.components.TaskSpeedDialFab(
+                onCreateTask = { creatingTemplate = false; templateDraft = null; showAddDialog = true },
+                onCreateTemplate = { creatingTemplate = true; templateDraft = null; showAddDialog = true },
+                onTemplates = { showTemplates = true },
+                modifier = Modifier.fillMaxSize())
         }
     }
 
@@ -480,13 +474,6 @@ fun TodosScreen(
             text = { Text("Tasks waiting for ${target.title} will become independent. Their contents will be kept.") },
             confirmButton = { TextButton(onClick = { viewModel.deleteTask(target, detach = true); dependencyDelete = null }) { Text("Remove links and delete") } },
             dismissButton = { TextButton(onClick = { dependencyDelete = null }) { Text("Cancel") } })
-    }
-    if (showCreateMenu) com.focusbyrj.app.ui.components.FeatureSheet("Create", "A task for now, or a template to use again.", { showCreateMenu = false }) {
-        com.focusbyrj.app.ui.components.FeatureGroup("") {
-            com.focusbyrj.app.ui.components.FeatureRow("Create task", "Add a task and its steps", Icons.Default.Add, onClick = { creatingTemplate = false; templateDraft = null; showCreateMenu = false; showAddDialog = true })
-            com.focusbyrj.app.ui.components.FeatureRow("Create template", "Build a reusable checklist", Icons.Default.ContentCopy, onClick = { creatingTemplate = true; templateDraft = null; showCreateMenu = false; showAddDialog = true })
-            com.focusbyrj.app.ui.components.FeatureRow("Existing templates", "Your templates and ready-made checklists", Icons.Default.FolderOpen, onClick = { showCreateMenu = false; showTemplates = true })
-        }
     }
     if (showTemplates) com.focusbyrj.app.ui.components.TemplatePicker(onDismiss = { showTemplates = false }, onPick = {
         creatingTemplate = false; templateDraft = it; showTemplates = false; showAddDialog = true
@@ -1134,11 +1121,11 @@ fun AddTaskDialog(
     var newStepText by remember { mutableStateOf(restored.optString("newStepText", "")) }
     
     val parsedResult = remember(title, userManuallySetDate, templateMode) {
-        if (!templateMode && !userManuallySetDate && title.isNotBlank()) SmartDateParser.parse(title) else null
+        if (!userManuallySetDate && title.isNotBlank()) SmartDateParser.parse(title) else null
     }
 
     LaunchedEffect(title) {
-        if (!templateMode && !userManuallySelectedType && initialTask == null && title.isNotBlank()) {
+        if (!userManuallySelectedType && initialTask == null && title.isNotBlank()) {
             val lower = title.lowercase()
             if (lower.contains("birthday") || lower.contains("bday")) {
                 type = TaskType.BIRTHDAY
@@ -1255,8 +1242,8 @@ fun AddTaskDialog(
                     )
                 }
             }
+            if (templateMode) Text(if (type == TaskType.TASK) "All task options are available. Dates and work sessions repeat relative to the day you use this template." else "All task options are available. Birthday and anniversary dates retain their calendar dates; review them when using the template.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(10.dp))
-            
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
@@ -1435,7 +1422,6 @@ fun AddTaskDialog(
             }
             Spacer(modifier = Modifier.height(10.dp))
             
-            if (!templateMode) {
             Text(
                 text = "Category", 
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), 
@@ -1615,8 +1601,6 @@ fun AddTaskDialog(
                 )
             }
             
-            }
-            if (!templateMode || subtasks.isNotEmpty()) {
             Spacer(Modifier.height(16.dp))
             Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .25f),
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .16f))) {
@@ -1624,13 +1608,13 @@ fun AddTaskDialog(
                     Row(Modifier.fillMaxWidth().clickable { moreOptions = !moreOptions }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("More", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            Text(if (templateMode) "Completion requirements" else "Planning, dependencies & start date", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Planning, dependencies & start date", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Icon(if (moreOptions) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = if (moreOptions) "Collapse more options" else "Expand more options")
                     }
                     if (moreOptions) Column(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 
-            if (!templateMode && type == TaskType.TASK) {
+            if (type == TaskType.TASK) {
                 com.focusbyrj.app.ui.components.FeatureRow("Plan work", "Work sessions, estimates & parent task", Icons.Default.Schedule, onClick = {
                     advancedPlanning = !advancedPlanning
                     if (advancedPlanning && nativePlanning == null) nativePlanning = com.focusbyrj.app.data.TaskPlanning(minutes = 30)
@@ -1661,7 +1645,8 @@ fun AddTaskDialog(
                 com.focusbyrj.app.ui.components.FeatureRow("Save as template", "Reuse this title and checklist", Icons.Default.ContentCopy, onClick = {
                     runCatching {
                         com.focusbyrj.app.data.ProductivityLibrary(templateContext).put("template", com.focusbyrj.app.data.ProductivityLibrary.template(
-                            Task(title = title.trim(), details = details, isPriority = isPriority,
+                            Task(title = parsedResult?.cleanText?.takeIf { it.isNotBlank() } ?: title.trim(), details = details, isPriority = isPriority,
+                                type = type, recurrence = effectiveRecurrence, isPersistent = isPersistent, dueDate = effectiveDueDate,
                                 subtasksJson = Subtask.listToJson(subtasks + if (newStepText.isNotBlank()) listOf(Subtask(title = newStepText.trim())) else emptyList()),
                                 planningJson = planning?.json().orEmpty())))
                     }.onSuccess { android.widget.Toast.makeText(templateContext, "Template saved", android.widget.Toast.LENGTH_SHORT).show() }
@@ -1676,7 +1661,6 @@ fun AddTaskDialog(
                 }
                     }
                 }
-            }
             }
             if (initialTask != null && onDelete != null) {
                 Spacer(modifier = Modifier.height(24.dp))

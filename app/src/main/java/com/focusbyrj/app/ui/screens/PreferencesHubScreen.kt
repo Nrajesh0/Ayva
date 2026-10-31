@@ -41,9 +41,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import com.focusbyrj.app.BuildConfig
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.note.NoteDatabase
+import com.focusbyrj.app.ui.components.SettingsVizagFooter
+import com.focusbyrj.app.ui.components.rememberVizagScene
 import com.focusbyrj.app.ui.components.SetupPermissionsDialog
 import com.focusbyrj.app.ui.navigation.Screen
 import com.focusbyrj.app.util.FocusEconomyManager
@@ -59,6 +60,7 @@ fun PreferencesHubScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val footerScene = rememberVizagScene(navController)
     val economyProfile by FocusEconomyManager.profileFlow.collectAsStateWithLifecycle()
 
     var hasUsageStats by remember { mutableStateOf(PermissionUtils.hasUsageStatsPermission(context)) }
@@ -406,28 +408,7 @@ fun PreferencesHubScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // Footer Branding
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "RuN • v${BuildConfig.VERSION_NAME}",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 13.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Stay present. Guard your mind.",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
-                }
+                SettingsVizagFooter(scene = footerScene)
 
                 Spacer(modifier = Modifier.height(20.dp))
             }

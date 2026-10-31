@@ -41,8 +41,37 @@ class ProductivityFeaturesTest {
         val template = ProductivityLibrary.template(source)
         val a = ProductivityLibrary.instantiate(template); val b = ProductivityLibrary.instantiate(template)
         assertNotEquals(a.subtasks.single().id, b.subtasks.single().id)
-        assertFalse(a.subtasks.single().isDone); assertFalse(a.isCompleted); assertNull(a.dueDate)
-        assertTrue(a.planning!!.requireSubtasks); assertNull(a.planning!!.availableFrom); assertTrue(a.planning!!.prerequisiteTaskIds.isEmpty())
+        assertFalse(a.subtasks.single().isDone); assertFalse(a.isCompleted); assertEquals(2000L, a.dueDate)
+        assertTrue(a.planning!!.requireSubtasks); assertEquals(1000L, a.planning!!.availableFrom); assertEquals(setOf(5L), a.planning!!.prerequisiteTaskIds)
+    }
+    @Test fun templatePreservesAllTaskSettingsAndShiftsDatesOnReuse() {
+        val now = Instant.parse("2026-10-20T08:00:00Z").toEpochMilli()
+        val task = Task(title = "Anniversary", details = "Details", type = TaskType.ANNIVERSARY,
+            recurrence = RecurrencePattern.YEARLY, isPersistent = true, isPriority = true,
+            dueDate = now + 172800000,
+            planningJson = TaskPlanning(minutes = 30, start = now + 86400000, availableFrom = now,
+                timezone = "UTC", prerequisiteTaskIds = setOf(7), parentTaskId = 8, requireSubtasks = true, workReminders = false).json())
+        val j = ProductivityLibrary.template(task, now)
+        val copy = ProductivityLibrary.instantiate(j, now + 86400000)
+        assertEquals(task.type, copy.type); assertEquals(task.recurrence, copy.recurrence)
+        assertTrue(copy.isPersistent); assertTrue(copy.isPriority)
+        assertEquals(task.dueDate, copy.dueDate)
+        assertEquals(now, copy.planning!!.availableFrom)
+        assertEquals(now + 86400000, copy.planning!!.start)
+        val relative = ProductivityLibrary.instantiate(ProductivityLibrary.template(task.copy(type = TaskType.TASK), now), now + 86400000)
+        assertEquals(task.dueDate!! + 86400000, relative.dueDate)
+        assertEquals(now + 86400000, relative.planning!!.availableFrom)
+        assertEquals(now + 172800000, relative.planning!!.start)
+        assertFalse(copy.planning!!.workReminders); assertEquals(setOf(7L), copy.planning!!.prerequisiteTaskIds)
+        val imported = ProductivityLibrary.remapChain(j.toString(), emptyMap(), mapOf(7L to 70L, 8L to 80L))!!
+        val rebound = ProductivityLibrary.instantiate(JSONObject(imported), now)
+        assertEquals(setOf(70L), rebound.planning!!.prerequisiteTaskIds); assertEquals(80L, rebound.planning!!.parentTaskId)
+    }
+    @Test fun legacyChecklistTemplatesStillOpenWithTaskDefaults() {
+        val old = JSONObject().put("kind", "template").put("name", "Old checklist").put("steps", JSONArray(listOf("Pack")))
+        val task = ProductivityLibrary.instantiate(old)
+        assertEquals("Pack", task.subtasks.single().title); assertEquals(TaskType.TASK, task.type)
+        assertNull(task.dueDate); assertEquals(RecurrencePattern.NONE, task.recurrence)
     }
     @Test fun importedRoutineOnlyUsesImportedHabits() {
         val raw = JSONObject().put("kind", "chain").put("name", "Morning").put("habits", JSONArray(listOf(1, 2))).toString()

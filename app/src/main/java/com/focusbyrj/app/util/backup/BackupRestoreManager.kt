@@ -1236,7 +1236,7 @@ object BackupRestoreManager {
                         val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                         val edit = sp.edit(); if (cleanRestore) edit.clear()
                         pObj.keys().forEach { key ->
-                            val raw = com.focusbyrj.app.data.ProductivityLibrary.remapChain(pObj.getString(key), restoredHabitIds)
+                            val raw = com.focusbyrj.app.data.ProductivityLibrary.remapChain(pObj.getString(key), restoredHabitIds, taskIdMapping)
                             if (raw != null) {
                                 val kind = JSONObject(raw).getString("kind")
                                 val target = if (!cleanRestore && sp.contains(key)) "${kind}_${UUID.randomUUID()}" else key

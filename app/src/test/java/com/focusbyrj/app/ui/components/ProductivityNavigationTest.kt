@@ -26,13 +26,17 @@ class ProductivityNavigationTest {
         compose.onNodeWithText("New Template").assertIsDisplayed()
         compose.onNodeWithText("Title").performTextInput("Pack for tomorrow")
         compose.onNodeWithText("Save template").performClick()
+        var savedName = ""
         compose.runOnIdle {
-            org.junit.Assert.assertTrue(com.focusbyrj.app.data.ProductivityLibrary(app).entries("template").any { it.second.getString("name") == "Pack for tomorrow" })
+            val saved = com.focusbyrj.app.data.ProductivityLibrary(app).entries("template").single().second
+            savedName = saved.getString("name")
+            org.junit.Assert.assertEquals(com.focusbyrj.app.util.SmartDateParser.parse("Pack for tomorrow")!!.cleanText, savedName)
+            org.junit.Assert.assertNotNull(com.focusbyrj.app.data.ProductivityLibrary.instantiate(saved).dueDate)
             org.junit.Assert.assertTrue(kotlinx.coroutines.runBlocking { db.taskDao().getAllTasksList().isEmpty() })
         }
         compose.onNodeWithContentDescription("Add Task").performClick()
         compose.onNodeWithText("Existing templates").performClick()
-        compose.onNodeWithText("Pack for tomorrow").assertExists()
+        compose.onNodeWithText(savedName).assertExists()
     }
     @Test fun taskPlanningStartsHiddenAndMoreRevealsOrganizedActions() {
         compose.setContent { MaterialTheme { AddTaskDialog(onDismiss = {}, onSave = { _, _ -> }) } }
@@ -46,15 +50,20 @@ class ProductivityNavigationTest {
         compose.onNodeWithText("More").performScrollTo().performClick()
         compose.onNodeWithText("Plan work").assertDoesNotExist()
     }
-    @Test fun templateCreationHasDedicatedTitleAndDoesNotOfferTaskScheduling() {
+    @Test fun templateCreationOffersSameTaskSchedulingAndPlanning() {
         val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>()
         EditorDraftStore(app, "task:0:0:TASK").save(org.json.JSONObject().put("title", "Unfinished task draft"))
         compose.setContent { MaterialTheme { AddTaskDialog(templateMode = true, onDismiss = {}, onSave = { _, _ -> }) } }
         compose.onNodeWithText("New Template").assertIsDisplayed()
         compose.onNodeWithText("Unfinished task draft").assertDoesNotExist()
         compose.onNodeWithText("Save template").assertExists()
-        compose.onNodeWithText("Due Date & Time").assertDoesNotExist()
-        compose.onNodeWithText("Persistent Reminder").assertDoesNotExist()
+        compose.onNodeWithText("Due Date & Time").assertExists()
+        compose.onNodeWithText("Persistent Reminder").assertExists()
+        compose.onNodeWithText("Recurrence").assertExists()
+        compose.onNodeWithText("More").performScrollTo().performClick()
+        compose.onNodeWithText("Plan work").assertExists()
+        compose.onNodeWithText("Waiting for").assertExists()
+        compose.onNodeWithText("Start showing on").assertExists()
     }
     @Test fun recoveryLandingOnlyShowsMainDestinationsAndStorageOpensSeparately() {
         compose.setContent { MaterialTheme { DataRecoveryTools(onSnapshots = {}, entry = { open -> Button(onClick = open) { Text("Open recovery") } }) } }

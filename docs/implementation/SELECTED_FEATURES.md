@@ -18,8 +18,9 @@ no model or model download is introduced. Notes remain outside chat's data acces
 - **Finish all subtasks before completing** applies to native, assistant, notification and widget
   completion paths. Recurring copies reset checklist completion.
 - Tasks **+** opens **Create task**, **Create template**, and **Existing templates**. Template creation uses a dedicated editor and creates no task. Existing templates opens Your templates/Ready-made. The editor's **Save as template** stores title,
-  details, priority, checklist structure and its completion requirement. Choosing a template opens
-  an independent editable task; dates and live dependency IDs are intentionally not copied.
+  all task settings, checklist structure and planning. Choosing a template opens an independent
+  editable task; ordinary task dates repeat relative to use, birthday/anniversary dates remain fixed,
+  and task links are remapped on backup import.
 
 ## Habits
 
@@ -27,7 +28,7 @@ no model or model download is introduced. Notes remain outside chat's data acces
   the existing daily target was met, using Monday–Sunday weeks. Weekly history is labeled in weeks.
 - Selected rest days bridge streaks and are skipped by reminder scheduling/delivery. Once a weekly target is met, reminder delivery waits until the next Monday. Manual logging
   remains available. Schedule changes take effect from their change date.
-- **Create habit routine** on Habits selects and reorders existing habits. Each step logs the normal
+- Habit routines select and reorder existing habits. The added Habits menu card was later removed at the user’s request; existing definitions remain stored. Each step logs the normal
   habit progress; Next is offered when its daily target is met. Skip and Stop preserve progress.
   No additional routine streak, app-blocking rule, or automatic completion is created.
 - Schema 16 adds `habits.frequencyJson`, defaulting older records to daily. Full backups,
@@ -87,7 +88,7 @@ and are preserved. Excluded features and profile/chat redesigns are not part of 
 ## UI organization follow-up
 
 Tasks + now opens Create task / Create template / Existing templates. Templates have a
-separate draft namespace and do not parse dates out of names. Planning, prerequisites,
+separate draft namespace and use the same natural-date parsing as task creation. Planning, prerequisites,
 start dates and completion requirements are grouped under the collapsed More section.
 Recovery uses a settings action row and themed bottom sheet with Recovery, Backup
 verification and Storage destinations. Habit routines use a labeled grouped card.
@@ -95,3 +96,18 @@ verification and Storage destinations. Habit routines use a labeled grouped card
 Validation: full suite passed (1,248 checks) before integrating upstream CI repairs;
 32 focused checks and debug assembly passed after rebasing onto those repairs and
 finishing template draft/name handling. Chat dependency boundary passed (117 files).
+
+## Task template parity and Notes-style plus popup
+
+The Tasks plus button now matches Notes: expanding action pills, rotating plus, dismissible
+scrim and system-back dismissal. The separate task-create bottom sheet is removed. The
+habit-routines menu card is removed without deleting stored routines.
+
+Template creation exposes the same category, date/time parsing, recurrence, persistent
+reminder, priority, subtasks, planning, dependency and start-date controls as tasks. Template
+format 2 retains these fields, shifts ordinary task date/work commitments relative to reuse (birthday/anniversary dates stay fixed) and retains
+review before actual task insertion. Backup merge remaps template task links to imported
+IDs. Legacy checklist templates retain their old defaults. Template drafts stay separate
+from task drafts, and creating a template does not create tasks or schedule reminders.
+
+Validation for template parity: 17 focused UI, template persistence, legacy-template and full-backup round-trip checks passed; debug APK assembled. Chat dependency boundary passed across 117 files. Changes remain local pending the next requested release.
