@@ -45,6 +45,6 @@ for i,name in enumerate(names):
   check.seek(0);first=np.array(check.convert('RGBA'));check.seek(18);later=np.array(check.convert('RGBA'))
   changed=int((abs(first.astype(int)-later.astype(int)).max(axis=2)>20).sum());assert changed>0
   assert np.any(first[:,:,3]==0)
- report[name]={'frames':96,'duration_ms':sum(durations),'size':list(shots[0].size),'changed_pixels':changed,'bytes':out.stat().st_size}
+ report[name]={'frames':96,'duration_ms':sum(durations),'crop_box':list(map(int,box)),'size':list(shots[0].size),'changed_pixels':changed,'bytes':out.stat().st_size}
  print(name,report[name],flush=True)
 (root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').write_text(json.dumps(report,indent=2)+'\n')
