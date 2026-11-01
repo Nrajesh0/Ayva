@@ -180,7 +180,8 @@ fun FocusBottomBar(
                                                 saveState = true
                                             }
                                             launchSingleTop = true
-                                            restoreState = true
+                                            // Profile must open its page, not a saved settings subpage.
+                                            restoreState = screen.route != Screen.Account.route
                                         }
                                     }
                                     if (result.isFailure) {
