@@ -97,6 +97,9 @@ object HabitFloatingOverlayManager {
         return chosen
     }
 
+    @Volatile private var currentPresentationId: Long? = null
+    private var isDismissing = false
+
     var isShowing: Boolean = false
         private set
 
@@ -112,6 +115,7 @@ object HabitFloatingOverlayManager {
 
     internal fun showHabitOverlayDirect(
         context: Context,
+        presentationId: Long,
         habit: Habit,
         completedCount: Int,
         targetCount: Int,
@@ -119,10 +123,11 @@ object HabitFloatingOverlayManager {
     ) {
         val appContext = context.applicationContext ?: context
         handler.post {
+            if (!UnifiedOverlayCoordinator.ownsPresentation(presentationId)) return@post
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(appContext)) {
                     Log.d(TAG, "Overlay permission not granted; fallback to notification.")
-                    UnifiedOverlayCoordinator.onOverlayDismissed(appContext)
+                    UnifiedOverlayCoordinator.onOverlayFailed(appContext, presentationId)
                     return@post
                 }
 
@@ -131,8 +136,10 @@ object HabitFloatingOverlayManager {
                 }
 
                 currentHabitId = habit.id
+                currentPresentationId = presentationId
+                isDismissing = false
                 val wm = appContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: run {
-                    UnifiedOverlayCoordinator.onOverlayDismissed(appContext)
+                    UnifiedOverlayCoordinator.onOverlayFailed(appContext, presentationId)
                     return@post
                 }
                 windowManager = wm
@@ -178,6 +185,22 @@ object HabitFloatingOverlayManager {
                     density = density
                 )
 
+                cardView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                    override fun onViewAttachedToWindow(view: View) = Unit
+                    override fun onViewDetachedFromWindow(view: View) {
+                        if (overlayCard === view && !isDismissing && currentPresentationId == presentationId) {
+                            overlayCard = null
+                            currentHabitId = -1L
+                            currentPresentationId = null
+                            isShowing = false
+                            pulseAnimator?.cancel()
+                            pulseAnimator = null
+                            activeLottieView?.cancelAnimation()
+                            activeLottieView = null
+                            UnifiedOverlayCoordinator.onOverlayFailed(appContext, presentationId)
+                        }
+                    }
+                })
                 overlayCard = cardView
                 wm.addView(cardView, params)
                 isShowing = true
@@ -200,7 +223,17 @@ object HabitFloatingOverlayManager {
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error displaying habit floating overlay", e)
-                UnifiedOverlayCoordinator.onOverlayDismissed(appContext)
+                overlayCard?.let { card ->
+                    card.animate().setListener(null)
+                    card.animate().cancel()
+                    runCatching { windowManager?.removeViewImmediate(card) }
+                }
+                overlayCard = null
+                currentHabitId = -1L
+                currentPresentationId = null
+                isShowing = false
+                isDismissing = false
+                UnifiedOverlayCoordinator.onOverlayFailed(appContext, presentationId)
             }
         }
     }
@@ -215,6 +248,7 @@ object HabitFloatingOverlayManager {
         cardWidth: Int,
         density: Float
     ): View {
+        val ownerPresentationId = currentPresentationId
         val accentColor = try {
             Color.parseColor(habit.colorHex)
         } catch (_: Exception) {
@@ -320,17 +354,27 @@ object HabitFloatingOverlayManager {
             speed = 1.15f
         }
 
-        // Guarantee continuous infinite looping without stopping or pausing
-        lottieView.addLottieOnCompositionLoadedListener {
-            lottieView.repeatCount = LottieDrawable.INFINITE
-            lottieView.repeatMode = LottieDrawable.RESTART
-            lottieView.playAnimation()
+        // Loading is asynchronous: a synchronous try/catch alone cannot catch a
+        // damaged or unsupported animation. Keep the reminder usable with its icon.
+        lottieView.setFailureListener { error ->
+            Log.e(TAG, "Habit artwork could not load: $lottieAsset", error)
+            lottieView.cancelAnimation()
+            lottieView.visibility = View.GONE
+            lottieStage.addView(TextView(context).apply {
+                text = habit.iconEmoji
+                textSize = 36f
+                gravity = Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            })
         }
-        lottieView.addAnimatorListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
+        lottieView.addLottieOnCompositionLoadedListener {
+            if (currentPresentationId == ownerPresentationId && !isDismissing) {
+                lottieView.repeatCount = LottieDrawable.INFINITE
+                lottieView.repeatMode = LottieDrawable.RESTART
                 lottieView.playAnimation()
             }
-        })
+        }
 
         try {
             lottieView.setAnimation(lottieAsset)
@@ -688,7 +732,7 @@ object HabitFloatingOverlayManager {
             }
 
             handler.postDelayed({
-                dismissOverlay()
+                if (currentPresentationId == ownerPresentationId) dismissOverlay()
             }, 220L)
         }
 
@@ -699,7 +743,7 @@ object HabitFloatingOverlayManager {
             subtitleView.text = "Reminder snoozed for 30m"
             HabitAlarmScheduler.snoozeHabit(context, habit.id, 30)
             handler.postDelayed({
-                dismissOverlay()
+                if (currentPresentationId == ownerPresentationId) dismissOverlay()
             }, 220L)
         }
 
@@ -773,9 +817,14 @@ object HabitFloatingOverlayManager {
         }
     }
 
+    internal fun clearOverlay() = dismissOverlayInternal(animated = false)
+
     fun dismissOverlay() {
+        val presentationId = currentPresentationId
         handler.post {
-            dismissOverlayInternal(animated = true)
+            if (presentationId != null && presentationId == currentPresentationId) {
+                dismissOverlayInternal(animated = true)
+            }
         }
     }
 
@@ -793,7 +842,9 @@ object HabitFloatingOverlayManager {
         val card = overlayCard ?: return
         val wm = windowManager ?: return
 
-        if (!isShowing) return
+        if (!isShowing || (isDismissing && animated)) return
+        isDismissing = true
+        val dismissedPresentationId = currentPresentationId
 
         if (animated) {
             card.animate()
@@ -814,15 +865,17 @@ object HabitFloatingOverlayManager {
                                 overlayCard = null
                                 isShowing = false
                                 currentHabitId = -1L
-                                UnifiedOverlayCoordinator.onOverlayDismissed(ctx)
+                                currentPresentationId = null
+                                isDismissing = false
+                                UnifiedOverlayCoordinator.onOverlayDismissed(ctx, dismissedPresentationId)
                             }
                         }
                     }
                 })
                 .start()
         } else {
-            card.animate().cancel()
             card.animate().setListener(null)
+            card.animate().cancel()
             try {
                 wm.removeViewImmediate(card)
             } catch (e: Exception) {
@@ -833,7 +886,9 @@ object HabitFloatingOverlayManager {
                     overlayCard = null
                     isShowing = false
                     currentHabitId = -1L
-                    UnifiedOverlayCoordinator.onOverlayDismissed(ctx)
+                    currentPresentationId = null
+                    isDismissing = false
+                    UnifiedOverlayCoordinator.onOverlayDismissed(ctx, dismissedPresentationId)
                 }
             }
         }

@@ -1,7 +1,6 @@
 package com.focusbyrj.app.service
 
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -22,7 +21,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.focusbyrj.app.R
-import com.focusbyrj.app.ui.screens.TaskReminderPopupActivity
 import com.focusbyrj.app.util.TaskReminderHelper
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -34,6 +32,8 @@ object TaskReminderOverlayManager {
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
     private var currentTaskId: Long = -1L
+    private var rescheduleView: View? = null
+    @Volatile private var currentPresentationId: Long? = null
     private val handler = Handler(Looper.getMainLooper())
     var isShowing = false
         private set
@@ -64,6 +64,7 @@ object TaskReminderOverlayManager {
 
     internal fun showReminderOverlayDirect(
         context: Context,
+        presentationId: Long,
         taskId: Long,
         taskTitle: String,
         taskDetails: String,
@@ -75,6 +76,7 @@ object TaskReminderOverlayManager {
     ) {
         val appContext = context.applicationContext ?: context
         Handler(Looper.getMainLooper()).post {
+            if (!UnifiedOverlayCoordinator.ownsPresentation(presentationId)) return@post
             try {
                 // If already showing this task, update view if needed
                 if (isShowing && currentTaskId == taskId) {
@@ -84,6 +86,7 @@ object TaskReminderOverlayManager {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(appContext)) {
                     val success = tryShowOverlay(
                         context = appContext,
+                        presentationId = presentationId,
                         taskId = taskId,
                         taskTitle = taskTitle,
                         taskDetails = taskDetails,
@@ -91,69 +94,29 @@ object TaskReminderOverlayManager {
                         taskTypeStr = taskTypeStr,
                         taskRecurrenceStr = taskRecurrenceStr,
                         isPersistent = isPersistent,
-                        openRescheduleInitially = openRescheduleInitially
+                        openRescheduleInitially = openRescheduleInitially || UnifiedOverlayCoordinator.requestsReschedule(presentationId)
                     )
                     if (success) {
                         Log.d(TAG, "Floating reminder overlay displayed successfully for task $taskId")
                         return@post
                     }
                 } else {
-                    Log.w(TAG, "Overlay permission not granted. Attempting activity launch.")
+                    Log.w(TAG, "Overlay permission not granted; keeping notification and pending reminder.")
                 }
 
-                // Notify coordinator that overlay slot is released before fallback activity launch
-                UnifiedOverlayCoordinator.onOverlayDismissed(appContext)
-
-                // Fallback to Activity launch if overlay cannot be drawn
-                launchPopupActivity(
-                    context = appContext,
-                    taskId = taskId,
-                    taskTitle = taskTitle,
-                    taskDetails = taskDetails,
-                    taskDueDate = taskDueDate,
-                    taskTypeStr = taskTypeStr,
-                    taskRecurrenceStr = taskRecurrenceStr,
-                    isPersistent = isPersistent,
-                    openReschedule = openRescheduleInitially
-                )
+                // Android 12+ can block background Activity launches. Preserve this
+                // reminder for recovery and keep its system notification available.
+                UnifiedOverlayCoordinator.onOverlayFailed(appContext, presentationId)
             } catch (e: Exception) {
                 Log.e(TAG, "Error in showReminderOverlay", e)
-                UnifiedOverlayCoordinator.onOverlayDismissed(appContext)
+                UnifiedOverlayCoordinator.onOverlayFailed(appContext, presentationId)
             }
-        }
-    }
-
-    private fun launchPopupActivity(
-        context: Context,
-        taskId: Long,
-        taskTitle: String,
-        taskDetails: String,
-        taskDueDate: Long,
-        taskTypeStr: String,
-        taskRecurrenceStr: String,
-        isPersistent: Boolean,
-        openReschedule: Boolean
-    ) {
-        try {
-            val intent = Intent(context, TaskReminderPopupActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra(TaskReminderPopupActivity.EXTRA_TASK_ID, taskId)
-                putExtra(TaskReminderPopupActivity.EXTRA_TASK_TITLE, taskTitle)
-                putExtra(TaskReminderPopupActivity.EXTRA_TASK_DETAILS, taskDetails)
-                putExtra(TaskReminderPopupActivity.EXTRA_TASK_DUE_DATE, taskDueDate)
-                putExtra(TaskReminderPopupActivity.EXTRA_TASK_TYPE, taskTypeStr)
-                putExtra(TaskReminderPopupActivity.EXTRA_TASK_RECURRENCE, taskRecurrenceStr)
-                putExtra(TaskReminderPopupActivity.EXTRA_IS_PERSISTENT, isPersistent)
-                putExtra(TaskReminderPopupActivity.EXTRA_OPEN_RESCHEDULE, openReschedule)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch fallback popup activity", e)
         }
     }
 
     private fun tryShowOverlay(
         context: Context,
+        presentationId: Long,
         taskId: Long,
         taskTitle: String,
         taskDetails: String,
@@ -163,7 +126,8 @@ object TaskReminderOverlayManager {
         isPersistent: Boolean,
         openRescheduleInitially: Boolean
     ): Boolean {
-        hideOverlayDirect(context)
+        // Construction cleanup is not a dismissal of the incoming presentation.
+        hideOverlayDirect(context, notifyCoordinator = false)
 
         return try {
             val wm = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
@@ -225,7 +189,7 @@ object TaskReminderOverlayManager {
             val rootLayout = object : FrameLayout(context) {
                 override fun dispatchKeyEvent(event: android.view.KeyEvent?): Boolean {
                     if (event?.keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP) {
-                        hideOverlay()
+                        dismissTask(taskId, context)
                         return true
                     }
                     return super.dispatchKeyEvent(event)
@@ -236,7 +200,7 @@ object TaskReminderOverlayManager {
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
-                    hideOverlay()
+                    dismissTask(taskId, context)
                 }
             }
 
@@ -347,7 +311,7 @@ object TaskReminderOverlayManager {
                 isFocusable = true
                 setOnClickListener {
                     TaskReminderHelper.ignoreTask(context, taskId)
-                    hideOverlay()
+                    dismissTask(taskId, context)
                 }
             }
             topRow.addView(closeBtn, LinearLayout.LayoutParams(dp(24), dp(24)))
@@ -437,6 +401,7 @@ object TaskReminderOverlayManager {
                 setMargins(0, dp(16), 0, 0)
             }
             mainCard.addView(rescheduleContainer, reschParams)
+            rescheduleView = rescheduleContainer
 
             val reschTitle = TextView(context).apply {
                 text = "Reschedule Reminder"
@@ -452,7 +417,7 @@ object TaskReminderOverlayManager {
                         Toast.makeText(context, "Rescheduled to $label", Toast.LENGTH_SHORT).show()
                     }
                 }
-                hideOverlay()
+                dismissTask(taskId, context)
             }
 
             // Snooze Buttons Row 1: (+15m, +30m, +1h, +3h)
@@ -675,7 +640,7 @@ object TaskReminderOverlayManager {
                 isFocusable = true
                 setOnClickListener {
                     TaskReminderHelper.ignoreTask(context, taskId)
-                    hideOverlay()
+                    dismissTask(taskId, context)
                 }
             }
             val ignoreParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
@@ -729,28 +694,46 @@ object TaskReminderOverlayManager {
                             Toast.makeText(context, "Task completed!", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    hideOverlay()
+                    dismissTask(taskId, context)
                 }
             }
             val completeParams = LinearLayout.LayoutParams(0, dp(48), 1.25f)
             actionsRow.addView(completeBtn, completeParams)
 
+            rootLayout.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(view: View) = Unit
+                override fun onViewDetachedFromWindow(view: View) {
+                    if (overlayView === view && currentPresentationId == presentationId) {
+                        hideOverlayDirect(context, notifyCoordinator = false)
+                        UnifiedOverlayCoordinator.onOverlayFailed(context, presentationId)
+                    }
+                }
+            })
             overlayView = rootLayout
             currentTaskId = taskId
-            isShowing = true
+            currentPresentationId = presentationId
             wm.addView(overlayView, params)
+            isShowing = true
             true
         } catch (e: Exception) {
             Log.e(TAG, "Exception in tryShowOverlay", e)
-            hideOverlayDirect(context)
+            hideOverlayDirect(context, notifyCoordinator = false)
             false
         }
     }
 
-    private fun hideOverlayDirect(fallbackContext: Context? = null) {
+    private fun hideOverlayDirect(fallbackContext: Context? = null, notifyCoordinator: Boolean = true) {
+        val dismissedPresentationId = currentPresentationId
+        val view = overlayView
+        // Relinquish view ownership before removal so the detach listener can tell
+        // intentional dismissal apart from Android unexpectedly removing the window.
+        overlayView = null
+        rescheduleView = null
+        currentTaskId = -1L
+        currentPresentationId = null
+        isShowing = false
         var appContext: Context? = fallbackContext?.applicationContext ?: fallbackContext
         try {
-            val view = overlayView
             if (view != null && windowManager != null) {
                 if (appContext == null) {
                     appContext = view.context.applicationContext
@@ -770,14 +753,33 @@ object TaskReminderOverlayManager {
         } finally {
             overlayView = null
             currentTaskId = -1L
+            currentPresentationId = null
             isShowing = false
-            appContext?.let { UnifiedOverlayCoordinator.onOverlayDismissed(it) }
+            if (notifyCoordinator && dismissedPresentationId != null) {
+                appContext?.let { UnifiedOverlayCoordinator.onOverlayDismissed(it, dismissedPresentationId) }
+            }
         }
     }
 
+    internal fun clearOverlay() = hideOverlayDirect(notifyCoordinator = false)
+
+    internal fun openReschedule(taskId: Long) {
+        if (currentTaskId == taskId) rescheduleView?.visibility = View.VISIBLE
+    }
+
     fun hideOverlay(context: Context? = null) {
-        Handler(Looper.getMainLooper()).post {
-            hideOverlayDirect(context)
+        // Capture ownership now, rather than closing whichever window exists when
+        // this asynchronous callback eventually runs.
+        val presentationId = currentPresentationId
+        handler.post {
+            if (presentationId != null && currentPresentationId == presentationId) hideOverlayDirect(context)
+        }
+    }
+
+    fun dismissTask(taskId: Long, context: Context? = null) {
+        UnifiedOverlayCoordinator.removeQueuedTask(taskId)
+        handler.post {
+            if (currentTaskId == taskId) hideOverlayDirect(context)
         }
     }
 }

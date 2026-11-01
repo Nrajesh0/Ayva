@@ -48,7 +48,7 @@ class HabitActionReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 // Ensure floating overlay is dismissed when notification action is clicked
-                HabitFloatingOverlayManager.dismissOverlay()
+                HabitFloatingOverlayManager.dismissHabit(habitId)
 
                 val app = appContext as? FocusApplication ?: return@launch
                 val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

@@ -1,0 +1,62 @@
+{
+  "summary": {
+    "tests": 143,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "suites": [
+    {
+      "suite": "com.focusbyrj.app.Batch4SecurityAuditTest",
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.focusbyrj.app.HabitFeatureTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.focusbyrj.app.data.TaskOptionsTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.focusbyrj.app.service.ReminderOverlayQueueTest",
+      "tests": 80,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.focusbyrj.app.service.ReminderOverlayRecoveryTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "com.focusbyrj.app.util.CanonicalTaskPlanningTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "apk": "/workspace/artifacts/Ayva-v2.0.33-notification-queue-debug.apk",
+  "bytes": 87858209,
+  "sha256": "8b807cb48b4ddaa54056923ab6625a368adc9d34860ba9ac29fa1a142264c3d4",
+  "versionName": "2.0.33",
+  "versionCode": 133,
+  "releaseChecks": {
+    "chatBoundary": "passed",
+    "dictionary": "passed",
+    "assembleDebug": "passed"
+  }
+}

@@ -119,6 +119,7 @@ object TaskReminderHelper {
     }
 
     fun cancelDeadlineReminderById(context: Context, taskId: Long) {
+        com.focusbyrj.app.service.TaskReminderOverlayManager.dismissTask(taskId, context)
         kotlin.runCatching {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
             
@@ -181,7 +182,7 @@ object TaskReminderHelper {
                 com.focusbyrj.app.util.assistant.AssistantActionExecutor.execute(context,
                     com.focusbyrj.app.util.assistant.AssistantAction.CompleteTasks(listOf(taskId)))
                 cancelReminderById(context, taskId)
-                com.focusbyrj.app.service.TaskReminderOverlayManager.hideOverlay()
+                com.focusbyrj.app.service.TaskReminderOverlayManager.dismissTask(taskId, context)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 android.util.Log.e("TaskReminderHelper", "Couldn't complete task", e)
@@ -204,7 +205,7 @@ object TaskReminderHelper {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         notificationManager?.cancel(taskId.toInt())
         cancelReminderById(context, taskId)
-        com.focusbyrj.app.service.TaskReminderOverlayManager.hideOverlay()
+        com.focusbyrj.app.service.TaskReminderOverlayManager.dismissTask(taskId, context)
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -260,7 +261,7 @@ object TaskReminderHelper {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         notificationManager?.cancel(taskId.toInt())
         cancelReminderById(context, taskId)
-        com.focusbyrj.app.service.TaskReminderOverlayManager.hideOverlay()
+        com.focusbyrj.app.service.TaskReminderOverlayManager.dismissTask(taskId, context)
     }
 
     fun parseSmartDateTime(input: String): Long? {

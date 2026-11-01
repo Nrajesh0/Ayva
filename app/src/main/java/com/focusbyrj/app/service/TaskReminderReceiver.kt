@@ -18,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.focusbyrj.app.FocusApplication
 
-
 class TaskReminderReceiver : BroadcastReceiver() {
     companion object {
         const val TASKS_GROUP_KEY = "com.focusbyrj.app.TASKS_GROUP"
@@ -72,7 +71,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
                             val nm = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                             nm?.cancel(taskId.toInt())
                             TaskReminderHelper.cleanUpTaskSummaryNotification(appContext, taskId)
-                            TaskReminderOverlayManager.hideOverlay()
+                            TaskReminderOverlayManager.dismissTask(taskId, appContext)
                             return@launch
                         }
                         
@@ -97,6 +96,26 @@ class TaskReminderReceiver : BroadcastReceiver() {
                     val notificationStyle = prefs.getString("task_notification_style", "Both") ?: "Both"
                     val showNotification = true
                     val showFloating = isPriority || notificationStyle == "Both" || notificationStyle == "Floating Bar"
+
+                    if (showFloating) {
+                        // Display floating modal pop-up in the middle of the screen via direct overlay
+                        TaskReminderOverlayManager.showReminderOverlay(
+                            context = appContext,
+                            taskId = taskId,
+                            taskTitle = title,
+                            taskDetails = details,
+                            taskDueDate = dueDate,
+                            taskTypeStr = typeStr,
+                            taskRecurrenceStr = recurrenceStr,
+                            isPersistent = isPersistent,
+                            openRescheduleInitially = false
+                        )
+                    }
+
+                    if (isPersistent) {
+                        val intervalMins = prefs.getInt("persistent_reminder_interval", 15)
+                        TaskReminderHelper.scheduleNaggingReminder(appContext, taskId, title, intervalMins)
+                    }
 
                     val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     
@@ -252,26 +271,6 @@ class TaskReminderReceiver : BroadcastReceiver() {
                         }
                     }
 
-                    if (showFloating) {
-                        // Display floating modal pop-up in the middle of the screen via direct overlay
-                        TaskReminderOverlayManager.showReminderOverlay(
-                            context = appContext,
-                            taskId = taskId,
-                            taskTitle = title,
-                            taskDetails = details,
-                            taskDueDate = dueDate,
-                            taskTypeStr = typeStr,
-                            taskRecurrenceStr = recurrenceStr,
-                            isPersistent = isPersistent,
-                            openRescheduleInitially = false
-                        )
-                    }
-
-                    if (isPersistent) {
-                        val intervalMins = prefs.getInt("persistent_reminder_interval", 15)
-                        TaskReminderHelper.scheduleNaggingReminder(appContext, taskId, title, intervalMins)
-                    }
-
                 } finally {
                     try {
                         if (wakeLock != null && wakeLock.isHeld) {
@@ -279,6 +278,9 @@ class TaskReminderReceiver : BroadcastReceiver() {
                         }
                     } catch (_: Exception) {}
                 }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                android.util.Log.e("TaskReminderReceiver", "Could not dispatch task reminder", error)
             } finally {
                 pendingResult.finish()
             }

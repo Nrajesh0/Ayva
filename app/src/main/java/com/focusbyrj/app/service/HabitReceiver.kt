@@ -149,6 +149,18 @@ class HabitReceiver : BroadcastReceiver() {
                     android.provider.Settings.canDrawOverlays(appContext)
                 } else true
 
+                // Enqueue the floating reminder independently of the optional system copy.
+                HabitFloatingOverlayManager.showHabitOverlay(
+                    context = appContext,
+                    habit = habit,
+                    completedCount = completedCount,
+                    targetCount = targetCount,
+                    currentStreak = currentStreak
+                )
+
+                // Automatically schedule the next interval / occurrence
+                HabitAlarmScheduler.scheduleHabitReminder(appContext, habit, todayLog?.lastCompletedTimestamp)
+
                 if (enableTopNotifications || !hasOverlayPermission) {
                     createHabitNotificationChannel(appContext)
                     val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -289,18 +301,6 @@ class HabitReceiver : BroadcastReceiver() {
                         }
                     }
                 }
-
-                // 2026 Floating Dynamic Island Window Overlay
-                HabitFloatingOverlayManager.showHabitOverlay(
-                    context = appContext,
-                    habit = habit,
-                    completedCount = completedCount,
-                    targetCount = targetCount,
-                    currentStreak = currentStreak
-                )
-
-                // Automatically schedule the next interval / occurrence
-                HabitAlarmScheduler.scheduleHabitReminder(appContext, habit, todayLog?.lastCompletedTimestamp)
 
             } catch (e: Exception) {
                 e.printStackTrace()

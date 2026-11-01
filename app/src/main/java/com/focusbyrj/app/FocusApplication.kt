@@ -64,6 +64,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
         com.focusbyrj.app.data.drill.DrillSessionRepository.init(this)
         com.focusbyrj.app.service.HabitReceiver.createHabitNotificationChannel(this)
         com.focusbyrj.app.util.AyvaAlertCategory.createNotificationChannels(this)
+        com.focusbyrj.app.service.UnifiedOverlayCoordinator.restorePending(this)
 
         try {
             app.rive.runtime.kotlin.core.Rive.init(this)
