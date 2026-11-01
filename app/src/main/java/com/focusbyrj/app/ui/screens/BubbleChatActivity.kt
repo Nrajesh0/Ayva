@@ -928,8 +928,10 @@ fun ChatInterface() {
     }
 
 
-    val parsedResult = remember(inputText) {
-        if (inputText.isNotBlank()) SmartDateParser.parse(inputText) else null
+    val previewPrefs = remember(context) { context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE) }
+    val datePreviewEnabled by com.focusbyrj.app.ui.components.rememberSetting(previewPrefs, "smart_regex_enabled", true)
+    val parsedResult = remember(inputText, datePreviewEnabled) {
+        com.focusbyrj.app.util.SettingsPreferenceRules.datePreview(inputText, datePreviewEnabled)
     }
 
     fun sendMessage(overrideText: String? = null, actionLabel: String? = null) {
@@ -1168,7 +1170,7 @@ fun ChatInterface() {
                                     com.focusbyrj.app.util.AyvaTalkEngine.TalkResponse(
                                         formattedText = "💬 How can I help you? Ask me anything about FocusByRj settings, routines, vacation mode, or troubleshooting.",
                                         actions = listOf(
-                                            com.focusbyrj.app.util.TalkAction.NavigateAppScreen("settings", "Open Settings", "⚙️")
+                                            com.focusbyrj.app.util.TalkAction.NavigateAppScreen("preferences_hub", "Open Settings", "⚙️")
                                         )
                                     )
                                 }
@@ -1587,7 +1589,7 @@ fun ChatInterface() {
                                     com.focusbyrj.app.util.AyvaTalkEngine.TalkResponse(
                                         formattedText = "💬 How can I help you? Ask me anything about FocusByRj settings, routines, vacation mode, or troubleshooting.",
                                         actions = listOf(
-                                            com.focusbyrj.app.util.TalkAction.NavigateAppScreen("settings", "Open Settings", "⚙️")
+                                            com.focusbyrj.app.util.TalkAction.NavigateAppScreen("preferences_hub", "Open Settings", "⚙️")
                                         )
                                     )
                                 }

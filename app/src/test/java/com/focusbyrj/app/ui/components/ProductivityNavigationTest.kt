@@ -66,12 +66,12 @@ class ProductivityNavigationTest {
         compose.onNodeWithText("Start showing on").assertExists()
     }
     @Test fun recoveryLandingOnlyShowsMainDestinationsAndStorageOpensSeparately() {
-        compose.setContent { MaterialTheme { DataRecoveryTools(onSnapshots = {}, entry = { open -> Button(onClick = open) { Text("Open recovery") } }) } }
-        compose.onNodeWithText("Open recovery").performClick()
-        compose.onNodeWithText("Recovery").assertExists()
+        compose.setContent { MaterialTheme { com.focusbyrj.app.ui.screens.DataRecoveryScreen(androidx.navigation.compose.rememberNavController()) } }
+        compose.onNodeWithText("Saved drafts").assertExists()
+        compose.onNodeWithText("Safety snapshots").assertExists()
         compose.onNodeWithText("Verify a backup").assertExists()
         compose.onNodeWithText("Databases").assertDoesNotExist()
-        compose.onNodeWithText("Storage", substring = false).performClick()
+        compose.onNodeWithText("Manage", substring = false).performClick()
         compose.onNodeWithText("Databases").assertExists()
         compose.onNodeWithText("Expired temporary exports").assertExists()
     }

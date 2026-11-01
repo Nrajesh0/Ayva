@@ -6,6 +6,7 @@ import com.focusbyrj.app.util.AppThemeManager
 import com.focusbyrj.app.util.ThemeMode
 import com.focusbyrj.app.util.AptitudeManager
 import java.util.Locale
+import com.focusbyrj.app.util.SettingsPreferenceRules
 
 data class AssistantPreferenceSpec(
     val key: String, val type: String, val title: String, val aliases: List<String>,
@@ -16,14 +17,14 @@ data class AssistantPreferenceSpec(
 /** All chat preference writes, including legacy chips, use this validation and side-effect path. */
 object AssistantPreferences {
     val specs = listOf(
-        AssistantPreferenceSpec("soft_lock_duration", "int", "Soft-mode wait", listOf("soft mode wait timer", "soft mode wait", "wait timer", "wait time", "wait delay"), "10", "seconds", 5..60, group = AssistantSettingGroup.BLOCKING),
-        AssistantPreferenceSpec("soft_unlock_duration", "int", "Soft-mode relief", listOf("soft mode relief", "relief duration", "relief time", "soft unlock duration"), "5", "minutes", 1..60, group = AssistantSettingGroup.BLOCKING),
-        AssistantPreferenceSpec("persistent_reminder_interval", "int", "Reminder interval", listOf("persistent reminder interval", "persistent reminders", "reminder interval"), "15", "minutes", 1..1440),
-        AssistantPreferenceSpec("auto_hide_duration_sec", "int", "Bubble auto-hide delay", listOf("bubble auto hide delay", "auto hide delay", "auto-hide delay", "auto hide duration"), "3", "seconds", 1..300, owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
+        AssistantPreferenceSpec("soft_lock_duration", "int", "Soft-mode wait", listOf("soft mode wait timer", "soft mode wait", "wait timer", "wait time", "wait delay"), "10", "seconds", SettingsPreferenceRules.softWait, group = AssistantSettingGroup.BLOCKING),
+        AssistantPreferenceSpec("soft_unlock_duration", "int", "Soft-mode relief", listOf("soft mode relief", "relief duration", "relief time", "soft unlock duration"), "5", "minutes", SettingsPreferenceRules.softRelief, group = AssistantSettingGroup.BLOCKING),
+        AssistantPreferenceSpec("persistent_reminder_interval", "int", "Reminder interval", listOf("persistent reminder interval", "persistent reminders", "reminder interval"), "15", "minutes", SettingsPreferenceRules.reminderInterval),
+        AssistantPreferenceSpec("auto_hide_duration_sec", "int", "Bubble auto-hide delay", listOf("bubble auto hide delay", "auto hide delay", "auto-hide delay", "auto hide duration"), "3", "seconds", SettingsPreferenceRules.bubbleAutoHide, owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
         AssistantPreferenceSpec("app_theme_mode", "string", "App theme", listOf("app theme", "theme mode", "theme"), "system", values = ThemeMode.entries.map { it.id }, group = AssistantSettingGroup.APPEARANCE),
         AssistantPreferenceSpec("app_theme_color", "string", "Accent color", listOf("accent color", "accent colour", "theme color", "theme colour"), "emerald", values = AppThemeColor.entries.map { it.id }, group = AssistantSettingGroup.APPEARANCE),
         AssistantPreferenceSpec("overlay_theme_mode", "string", "Overlay theme", listOf("overlay theme", "block screen theme"), "system", values = ThemeMode.entries.map { it.id }, group = AssistantSettingGroup.APPEARANCE),
-        AssistantPreferenceSpec("task_notification_style", "string", "Task notification style", listOf("task notification style", "notification style"), "Both", values = listOf("Notification Only", "Floating Bar", "Both")),
+        AssistantPreferenceSpec("task_notification_style", "string", "Task notification style", listOf("task notification style", "notification style"), "Both", values = listOf("Notification Only", "Both")),
         AssistantPreferenceSpec("default_start_tab", "string", "Default launch tab", listOf("default launch tab", "default tab", "start tab", "launch tab"), "dashboard", values = listOf("dashboard", "todos", "time", "account"), group = AssistantSettingGroup.APPEARANCE),
         AssistantPreferenceSpec("bubble_enabled", "boolean", "Floating bubble", listOf("floating bubble", "bubble"), "false", owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
         AssistantPreferenceSpec("hide_in_landscape", "boolean", "Hide bubble in landscape", listOf("hide in landscape", "hide bubble in landscape", "landscape hiding"), "true", owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
@@ -35,7 +36,7 @@ object AssistantPreferences {
         AssistantPreferenceSpec("morning_brief_time", "string", "Morning briefing time", listOf("morning briefing time", "morning brief time"), "08:00 AM", unit = "clock", owner = "bubble_prefs"),
         AssistantPreferenceSpec("evening_brief_time", "string", "Evening briefing time", listOf("evening briefing time", "evening brief time"), "08:00 PM", unit = "clock", owner = "bubble_prefs"),
         AssistantPreferenceSpec("auto_hide_enabled", "boolean", "Bubble auto-hide", listOf("bubble auto hide", "auto hide", "auto-hide"), "false", owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
-        AssistantPreferenceSpec("smart_regex_enabled", "boolean", "Smart command detection", listOf("smart regex", "smart command detection", "smart detection"), "true", owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
+        AssistantPreferenceSpec("smart_regex_enabled", "boolean", "Live date preview", listOf("live date preview", "smart regex", "smart command detection", "smart detection"), "true", owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
         AssistantPreferenceSpec("bubble_hidden_opacity", "int", "Hidden bubble opacity", listOf("hidden bubble opacity", "bubble opacity", "hidden opacity"), "85", "%", 20..100, owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
         AssistantPreferenceSpec("bubble_hidden_amount", "int", "Bubble hidden amount", listOf("bubble hidden amount", "hidden amount", "bubble docking amount"), "60", "%", 25..85, owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
         AssistantPreferenceSpec("bubble_glow_intensity", "int", "Bubble glow intensity", listOf("bubble glow intensity", "glow intensity", "bubble glow"), "65", "%", 0..100, owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
@@ -65,7 +66,8 @@ object AssistantPreferences {
                 require(spec.range?.contains(number) == true) { "Use ${spec.range?.first}–${spec.range?.last} ${spec.unit}" }
                 number.toString()
             }
-            else -> if (spec.key == "streak_notification_time" && value.lowercase() in setOf("", "random", "randomized")) ""
+            else -> if (spec.key == "task_notification_style") SettingsPreferenceRules.taskStyleValue(value)
+                else if (spec.key == "streak_notification_time" && value.lowercase() in setOf("", "random", "randomized")) ""
                 else if (spec.unit == "clock") parseClock(value) ?: error("Use a time such as 9:30am or 18:00")
                 else spec.values.find { it.equals(value, true) } ?: error("Choose ${spec.values.joinToString()}")
         }
@@ -83,6 +85,12 @@ object AssistantPreferences {
             return null
         }
         if (spec.unit == "clock") return if (spec.key == "streak_notification_time" && Regex("\\b(?:random|randomized)\\b").containsMatchIn(lower)) "" else parseClock(lower)
+        if (spec.key == "task_notification_style") {
+            when {
+                "notification only" in lower || "bar only" in lower || lower == "notification bar" -> return "Notification Only"
+                "floating bar" in lower || "both" == lower || "notification + popup" in lower || "notification bar + floating popup" in lower -> return "Both"
+            }
+        }
         if (spec.type == "string") {
             val named = when (spec.key) {
                 "app_theme_mode", "overlay_theme_mode" -> ThemeMode.entries.filter { lower.contains(it.displayName.lowercase()) }.singleOrNull()?.id
@@ -138,11 +146,13 @@ object AssistantPreferences {
             "streak_notification_time", "streak_notification_enabled" -> com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(context)
             "morning_brief_time", "evening_brief_time" -> com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(context)
         }
+        if (key == "default_start_tab") context.getSharedPreferences("focus_app_prefs", 0).edit().putString(key, validated).apply()
         return true
     }
 
     fun display(spec: AssistantPreferenceSpec, value: String): String = when {
         spec.type == "boolean" -> if (value == "true") "On" else "Off"
+        spec.key == "task_notification_style" -> SettingsPreferenceRules.taskStyleLabel(value)
         spec.key == "streak_notification_time" && value.isBlank() -> "Random alerts (twice daily, 9 AM–8 PM)"
         spec.key in setOf("app_theme_mode", "overlay_theme_mode") -> ThemeMode.entries.find { it.id == value }?.displayName ?: value
         spec.key == "app_theme_color" -> AppThemeColor.entries.find { it.id == value }?.displayName ?: value
@@ -151,11 +161,7 @@ object AssistantPreferences {
         else -> value
     }
 
-    fun route(spec: AssistantPreferenceSpec): String = when {
-        spec.key == "secure_recents" -> "security"
-        spec.owner == "bubble_prefs" -> "bubble_settings"
-        else -> "settings"
-    }
+    fun route(spec: AssistantPreferenceSpec): String = SettingsPreferenceRules.routeFor(spec.key)
 
     fun previewQuery(spec: AssistantPreferenceSpec, value: String): String {
         return AssistantCapabilities.setting(spec.key).query(spec.type, value)

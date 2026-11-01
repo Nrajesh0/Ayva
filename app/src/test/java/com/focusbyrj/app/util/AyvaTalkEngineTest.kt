@@ -57,7 +57,7 @@ class AyvaTalkEngineTest {
         val resp = AyvaTalkEngine.answerTalkQueryWithActions(context = androidx.test.core.app.ApplicationProvider.getApplicationContext(), query = "/talk persistent reminders")
         assertNotNull(resp.actions)
         assertTrue(resp.actions.isNotEmpty())
-        assertTrue(resp.actions.any { it.label.contains("Settings") || it.label.contains("5m") || it.label.contains("15m") })
+        assertTrue(resp.actions.any { it is TalkAction.NavigateAppScreen && it.route == "settings_notifications" })
     }
 
     @Test
@@ -82,6 +82,6 @@ class AyvaTalkEngineTest {
     fun testSecurityAndPermissionsQuery() = kotlinx.coroutines.runBlocking {
         val answer = AyvaTalkEngine.answerTalkQuery(context = androidx.test.core.app.ApplicationProvider.getApplicationContext(), query = "/talk security and permissions")
         assertTrue(answer.contains("Security") || answer.contains("Usage Access") || answer.contains("Permissions"))
-        assertTrue(answer.contains("Usage Access") || answer.contains("Display Over") || answer.contains("Overlay") || answer.contains("Battery"))
+        assertTrue(answer.contains("Usage access", ignoreCase = true) && answer.contains("Notifications", ignoreCase = true) && answer.contains("Alarms & reminders", ignoreCase = true))
     }
 }

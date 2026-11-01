@@ -107,7 +107,7 @@ object AssistantAppKnowledge {
                 else -> "$explanation\n${hint(spec)}"
             }
             return FeatureTurn.Reply("**${catalogue?.optString("title") ?: spec.title}**\nCurrently **$current**.\n$detail".trim(),
-                listOf(TalkAction.NavigateAppScreen(AssistantPreferences.route(spec), "Open ${if (spec.owner == "bubble_prefs") "Bubble Settings" else if (spec.key == "secure_recents") "Security" else "App Settings"}")),
+                listOf(TalkAction.NavigateAppScreen(AssistantPreferences.route(spec), "Open ${when (AssistantPreferences.route(spec)) { "bubble_settings" -> "Bubble Settings"; "security" -> "Security & permissions"; "settings_focus" -> "Focus & behavior"; "settings_notifications" -> "Notifications & reminders"; else -> "Appearance" }}")),
                 settingKey = spec.key, topicId = catalogue?.optString("id"))
         }
         // Explanations never execute feature commands, even when they contain verbs such as “block”.

@@ -8,6 +8,12 @@
 package com.focusbyrj.app.ui.screens.security
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -52,9 +58,9 @@ fun ExportBackupPasswordDialog(
             )
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Text(
-                    "Your backup will be encrypted using military-grade AES-256-GCM. You will need this exact password to restore your data.",
+                    "Your backup will be encrypted using AES-256-GCM. You will need this exact password to restore your data.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -169,9 +175,12 @@ fun RestoreBackupPasswordDialog(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var cleanRestore by remember { mutableStateOf(false) }
+    var confirmReplacement by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
+    if (!confirmReplacement) AlertDialog(
+        modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         onDismissRequest = { if (!isRestoring) onDismiss() },
         shape = RoundedCornerShape(24.dp),
         icon = {
@@ -189,7 +198,7 @@ fun RestoreBackupPasswordDialog(
             )
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Text(
                     "Enter the password that was set when this backup archive was created.",
                     style = MaterialTheme.typography.bodySmall,
@@ -222,18 +231,19 @@ fun RestoreBackupPasswordDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().testTag("restore_replace_mode")
+                        .toggleable(value = cleanRestore, enabled = !isRestoring, role = Role.Checkbox, onValueChange = { cleanRestore = it }),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Checkbox(
                         checked = cleanRestore,
-                        onCheckedChange = { cleanRestore = it },
+                        onCheckedChange = null,
                         enabled = !isRestoring
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Column {
-                        Text("Clean Restore (Replace IDs)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                        Text("Recommended when moving to a new device.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.weight(1f)) {
+                        Text("Replace current data with this backup", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text("Records absent from the backup can be removed. Leave off to add records instead.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -265,8 +275,10 @@ fun RestoreBackupPasswordDialog(
                 onClick = {
                     if (password.isEmpty()) {
                         errorMessage = "Please enter the password."
+                    } else if (cleanRestore) {
+                        confirmReplacement = true
                     } else {
-                        onConfirm(password, cleanRestore)
+                        onConfirm(password, false)
                     }
                 },
                 enabled = !isRestoring,
@@ -283,6 +295,17 @@ fun RestoreBackupPasswordDialog(
             }
         }
     )
+    if (confirmReplacement) AlertDialog(
+        onDismissRequest = { confirmReplacement = false },
+        title = { Text("Replace current app data?") },
+        text = { Text("This restores the backup's records and settings and can remove current records that are not in it, including changes made after the backup. Check that you chose the correct backup before continuing. A vault recovery phrase cannot replace this backup's password.") },
+        confirmButton = { TextButton(enabled = !isRestoring, onClick = {
+            confirmReplacement = false
+            onConfirm(password, true)
+        }) { Text("Replace data & restore") } },
+        dismissButton = { TextButton(onClick = { confirmReplacement = false }) { Text("Go back") } }
+    )
+
 }
 
 @Composable
@@ -314,7 +337,7 @@ fun ConfigureRestoredVaultPinDialog(
             )
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Text(
                     "This backup contains private notes from the Secret Archive Vault. Set a 6-digit PIN to securely encrypt and initialize the vault on this device.",
                     style = MaterialTheme.typography.bodySmall,

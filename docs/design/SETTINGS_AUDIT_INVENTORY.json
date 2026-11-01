@@ -1,0 +1,630 @@
+{
+  "date": "2026-11-01",
+  "baseCommit": "25802c7751b93e3240ca0684105f6a18a1988f65",
+  "scope": "Current working tree, including the pending titles-only UI and smaller footer changes; source audit only.",
+  "indexedDestinations": 48,
+  "indexedBySection": {
+    "Bubble Settings": 14,
+    "Account": 2,
+    "Assistance": 1,
+    "App Settings": 16,
+    "Security & Permissions": 15
+  },
+  "inventory": [
+    {
+      "title": "Hidden Bubble Docking & Glow",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 83,
+      "conditional": false
+    },
+    {
+      "title": "Bubble Accent Color",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 83,
+      "conditional": false
+    },
+    {
+      "title": "Profile & Rank",
+      "currentSection": "Account",
+      "route": "account",
+      "proposedOwner": "Profile card > Profile & achievements",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/PreferencesHubScreen.kt",
+      "line": 296,
+      "conditional": false
+    },
+    {
+      "title": "Subscription",
+      "currentSection": "Account",
+      "route": "subscription",
+      "proposedOwner": "Profile > Pro license",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/PreferencesHubScreen.kt",
+      "line": 392,
+      "conditional": false
+    },
+    {
+      "title": "Setup Guide",
+      "currentSection": "Assistance",
+      "route": "__setup__",
+      "proposedOwner": "Help & about > Permission setup",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/PreferencesHubScreen.kt",
+      "line": 412,
+      "conditional": false
+    },
+    {
+      "title": "App Background Theme",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Appearance",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 185,
+      "conditional": false
+    },
+    {
+      "title": "Locked Screen Overlay",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Appearance",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 202,
+      "conditional": false
+    },
+    {
+      "title": "Accent Theme",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Appearance",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 222,
+      "conditional": false
+    },
+    {
+      "title": "Heatmap Palette",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Appearance",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 257,
+      "conditional": false
+    },
+    {
+      "title": "Streak Source",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Focus & behavior",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 293,
+      "conditional": false
+    },
+    {
+      "title": "App Launcher Icon",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Appearance",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 339,
+      "conditional": false
+    },
+    {
+      "title": "Exam countdown widget",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Appearance > Widgets",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 379,
+      "conditional": false
+    },
+    {
+      "title": "Home Screen Widget",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Appearance > Widgets",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 388,
+      "conditional": false
+    },
+    {
+      "title": "Soft Mode Wait Timer",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Focus & behavior",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 417,
+      "conditional": false
+    },
+    {
+      "title": "Soft Mode Relief Duration",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Focus & behavior",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 441,
+      "conditional": false
+    },
+    {
+      "title": "Persistent Reminder Interval",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Notifications & reminders",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 465,
+      "conditional": false
+    },
+    {
+      "title": "Routine Notifications",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Notifications & reminders",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 497,
+      "conditional": false
+    },
+    {
+      "title": "Task Notification Style",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Notifications & reminders",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 513,
+      "conditional": false
+    },
+    {
+      "title": "Habit Top Notifications",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Notifications & reminders",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 533,
+      "conditional": false
+    },
+    {
+      "title": "Default Launch Tab",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Focus & behavior",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt",
+      "line": 553,
+      "conditional": false
+    },
+    {
+      "title": "Enable Chat Bubble",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 150,
+      "conditional": false
+    },
+    {
+      "title": "Auto-hide Bubble",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 213,
+      "conditional": false
+    },
+    {
+      "title": "Smart Regex Parsing",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 249,
+      "conditional": false
+    },
+    {
+      "title": "Hide in Landscape / Video Mode",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 263,
+      "conditional": false
+    },
+    {
+      "title": "Hidden Opacity",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 83,
+      "conditional": false
+    },
+    {
+      "title": "Amount Hidden (Tuck Depth)",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 83,
+      "conditional": false
+    },
+    {
+      "title": "Glow Ring Intensity",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 83,
+      "conditional": false
+    },
+    {
+      "title": "Morning Briefing",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 476,
+      "conditional": false
+    },
+    {
+      "title": "Evening Wrap-up",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 493,
+      "conditional": false
+    },
+    {
+      "title": "Vacation Mode",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 510,
+      "conditional": false
+    },
+    {
+      "title": "Streak & Practice Alerts",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 551,
+      "conditional": false
+    },
+    {
+      "title": "Practice Alert Time",
+      "currentSection": "Bubble Settings",
+      "route": "bubble_settings",
+      "proposedOwner": "Bubble Settings (keep existing UI); related sections link here",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 575,
+      "conditional": true
+    },
+    {
+      "title": "Usage Access",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Security & permissions > Device permissions",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 197,
+      "conditional": false
+    },
+    {
+      "title": "Display Over Apps",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Security & permissions > Device permissions",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 214,
+      "conditional": false
+    },
+    {
+      "title": "Battery Restrictions",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Security & permissions > Device permissions",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 231,
+      "conditional": false
+    },
+    {
+      "title": "Uninstall Protection",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Security & permissions > Privacy / Private notes vault",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 254,
+      "conditional": false
+    },
+    {
+      "title": "Anti-Screenshot Protection",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Security & permissions > Privacy / Private notes vault",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 289,
+      "conditional": false
+    },
+    {
+      "title": "Secret Vault Passcode",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Security & permissions > Privacy / Private notes vault",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 316,
+      "conditional": false
+    },
+    {
+      "title": "Export Recovery Phrase",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Security & permissions > Privacy / Private notes vault",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 337,
+      "conditional": true
+    },
+    {
+      "title": "Emergency Phrase Recovery",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Security & permissions > Privacy / Private notes vault",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 372,
+      "conditional": false
+    },
+    {
+      "title": "Export Encrypted Backup",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Data & recovery",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 397,
+      "conditional": false
+    },
+    {
+      "title": "Restore from Backup",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Data & recovery",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 430,
+      "conditional": false
+    },
+    {
+      "title": "Safety Snapshots (Auto-Recovery)",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Data & recovery",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 456,
+      "conditional": false
+    },
+    {
+      "title": "Data & recovery",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Data & recovery",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 479,
+      "conditional": false
+    },
+    {
+      "title": "Record Diagnostics",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Help & about > Diagnostics",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 496,
+      "conditional": false
+    },
+    {
+      "title": "Export Diagnostic Logs",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Help & about > Diagnostics",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 512,
+      "conditional": false
+    },
+    {
+      "title": "Clear Recorded Logs",
+      "currentSection": "Security & Permissions",
+      "route": "security",
+      "proposedOwner": "Help & about > Diagnostics",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 566,
+      "conditional": false
+    },
+    {
+      "title": "Live transcription style",
+      "currentSection": "App Settings",
+      "route": "settings",
+      "proposedOwner": "Appearance",
+      "source": "app/src/main/java/com/focusbyrj/app/ui/speech/VoiceStyleSettings.kt",
+      "line": 33,
+      "conditional": false
+    }
+  ],
+  "evidence": {
+    "duplicate_security_shortcut": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/PreferencesHubScreen.kt",
+      "line": 322,
+      "needle": "Text(\"Security Vault\""
+    },
+    "duplicate_theme_setter": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt",
+      "line": 357,
+      "needle": "AppThemeManager.setThemeMode(context, mode)"
+    },
+    "account_theme_subset": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt",
+      "line": 3684,
+      "needle": "\"Sys\" to ThemeMode.SYSTEM"
+    },
+    "account_theme_misclassification": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt",
+      "line": 3692,
+      "needle": "ThemeMode.DARK -> themeMode != ThemeMode.SYSTEM && themeMode != ThemeMode.LIGHT"
+    },
+    "duplicate_backup_account": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt",
+      "line": 196,
+      "needle": "BackupRestoreManager.createEncryptedBackup(context, uri, password)"
+    },
+    "duplicate_backup_security": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 122,
+      "needle": "BackupRestoreManager.createEncryptedBackup(context, uri, password)"
+    },
+    "duplicate_snapshots_nested": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/components/DataRecoveryTools.kt",
+      "line": 54,
+      "needle": "FeatureRow(\"Safety snapshots\""
+    },
+    "missing_notifications_control_state": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 84,
+      "needle": "var hasNotifications by remember"
+    },
+    "readiness_four": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/PreferencesHubScreen.kt",
+      "line": 88,
+      "needle": "val allConfigured = hasUsageStats && hasOverlay && isBatteryUnrestricted && hasNotifications"
+    },
+    "readiness_five": {
+      "source": "app/src/main/java/com/focusbyrj/app/util/PermissionUtils.kt",
+      "line": 197,
+      "needle": "hasExactAlarmPermission(context)"
+    },
+    "notification_always_system": {
+      "source": "app/src/main/java/com/focusbyrj/app/service/TaskReminderReceiver.kt",
+      "line": 97,
+      "needle": "val showNotification = true"
+    },
+    "notification_priority_override": {
+      "source": "app/src/main/java/com/focusbyrj/app/service/TaskReminderReceiver.kt",
+      "line": 98,
+      "needle": "val showFloating = isPriority || notificationStyle == \"Both\" || notificationStyle == \"Floating Bar\""
+    },
+    "theme_modes": {
+      "source": "app/src/main/java/com/focusbyrj/app/util/AppThemeManager.kt",
+      "line": 152,
+      "needle": "enum class ThemeMode"
+    },
+    "account_biometric_label": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt",
+      "line": 3613,
+      "needle": "text = \"Biometric login & vaults\""
+    },
+    "account_biometric_active_literal": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt",
+      "line": 3627,
+      "needle": "text = \"ACTIVE\","
+    },
+    "account_biometric_navigation": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt",
+      "line": 359,
+      "needle": "onBiometricClick = {"
+    },
+    "account_lock_app_action": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt",
+      "line": 376,
+      "needle": "onLockAppImmediately = {"
+    },
+    "account_static_audit_logs": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt",
+      "line": 3868,
+      "needle": "val logItems = listOf("
+    },
+    "clean_restore_label": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/security/BackupDialogs.kt",
+      "line": 235,
+      "needle": "Text(\"Clean Restore (Replace IDs)\""
+    },
+    "clean_restore_prune": {
+      "source": "app/src/main/java/com/focusbyrj/app/util/backup/BackupRestoreManager.kt",
+      "line": 965,
+      "needle": "noteDb.noteDao().deleteNotesNotIn(restoredIds)"
+    },
+    "smart_regex_ui": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 74,
+      "needle": "prefs.getBoolean(\"smart_regex_enabled\", true)"
+    },
+    "chat_repeat_range": {
+      "source": "app/src/main/java/com/focusbyrj/app/util/assistant/AssistantPreferences.kt",
+      "line": 21,
+      "needle": "\"15\", \"minutes\", 1..1440"
+    },
+    "ui_repeat_range": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreenHelper.kt",
+      "line": 34,
+      "needle": "private val VALID_INTERVALS = listOf(5, 10, 15, 30, 60, 120, 180, 240, 300, 360)"
+    },
+    "chat_bubble_range": {
+      "source": "app/src/main/java/com/focusbyrj/app/util/assistant/AssistantPreferences.kt",
+      "line": 22,
+      "needle": "\"3\", \"seconds\", 1..300"
+    },
+    "ui_bubble_range": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 235,
+      "needle": "autoHideDuration < 15"
+    },
+    "ui_wait_range": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreenHelper.kt",
+      "line": 61,
+      "needle": "fun coerceSoftLockDuration(seconds: Int): Int = seconds.coerceIn(5, 60)"
+    },
+    "runtime_wait_range": {
+      "source": "app/src/main/java/com/focusbyrj/app/service/BlockOverlayManager.kt",
+      "line": 136,
+      "needle": ".getInt(\"soft_lock_duration\", 10).coerceIn(5, 120)"
+    },
+    "widget_first_instance": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreenHelper.kt",
+      "line": 25,
+      "needle": "ids[0] else 0"
+    },
+    "notes_widget_config": {
+      "source": "app/src/main/java/com/focusbyrj/app/widget/NoteWidgetConfigureActivity.kt",
+      "line": 97,
+      "needle": "class NoteWidgetConfigureActivity"
+    },
+    "search_title_identity": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/components/SettingsSearch.kt",
+      "line": 65,
+      "needle": "if(target==title)"
+    },
+    "cloud_copy": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/components/SettingsSearchCatalog.kt",
+      "line": 9,
+      "needle": "Pro features and cloud sync"
+    },
+    "vault_settings_notes": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArchiveVaultDialogs.kt",
+      "line": 1555,
+      "needle": "fun ArchiveVaultSettingsDialog("
+    },
+    "vault_security_status_only": {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt",
+      "line": 319,
+      "needle": "GrantedBadge(if (isVaultRecoveryConfigured)"
+    }
+  },
+  "smartRegexLiteralReferences": [
+    {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 74
+    },
+    {
+      "source": "app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt",
+      "line": 254
+    },
+    {
+      "source": "app/src/main/java/com/focusbyrj/app/util/assistant/AssistantPreferences.kt",
+      "line": 38
+    }
+  ],
+  "applicationSourceTreeSha256": "e4aa42e935af4754a500c3bba85ec99aa1939e37fee40500e0f48df879d39add",
+  "verification": "All 33 evidence anchors resolve; all 48 indexed entries mapped; all main-source Kotlin/Java hashes unchanged by this audit. No device or runtime verification claimed."
+}

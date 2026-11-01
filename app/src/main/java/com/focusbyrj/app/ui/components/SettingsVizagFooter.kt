@@ -170,7 +170,7 @@ internal fun SettingsVizagFooter(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            modifier = Modifier.widthIn(max = 328.dp).fillMaxWidth().height(106.dp)
+            modifier = Modifier.widthIn(max = 288.dp).fillMaxWidth().height(93.dp)
                 .onGloballyPositioned { coordinates ->
                     val rect = coordinates.boundsInWindow()
                     val root = coordinates.findRootCoordinates().boundsInWindow()

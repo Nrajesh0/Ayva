@@ -431,14 +431,14 @@ object AyvaTalkEngine {
         if (isSettingsLocationQuery) {
             val settingsActions = listOf(
                 TalkAction.NavigateAppScreen("preferences_hub", "Preferences Hub ⚙️", "⚙️"),
-                TalkAction.NavigateAppScreen("settings", "App Settings 🎨", "🎨"),
+                TalkAction.NavigateAppScreen("settings_appearance", "Appearance 🎨", "🎨"),
                 TalkAction.NavigateAppScreen("security", "Security & Permissions 🔒", "🔒"),
                 TalkAction.NavigateAppScreen("bubble_settings", "Bubble Settings 🫧", "🫧"),
                 TalkAction.NavigateAppScreen("account", "Account & Profile 👤", "👤")
             )
             val json = serializeActionsJson("preferences_hub_navigation", settingsActions)
             return TalkResponse(
-                formattedText = "⚙️ **Preferences & Settings Hub**\n\nThe settings menu has moved to the **Preferences & Settings Hub**!\n\n**How to access it:**\n1. Look at the top-right corner of the top header bar on the home screen.\n2. Tap your **Profile Avatar Ring**.\n3. This opens your centralized hub for:\n• **Security & Permissions** — Permissions, Tamper Defense, Anti-Screenshot & Backups\n• **App Settings** — Themes, Accent Colors, Heatmaps, Soft Delays & Reminders\n• **Bubble Settings** — Floating Ayva Bubble & Video Call Auto-Hide\n• **Account & Profile** — Avatar customizer, XP level, Gold economy & Trophies\n• **Subscription** — Lifetime Pro & Cloud Sync\n• **Setup Guide** — Step-by-step permissions onboarding\n\n_Tap any quick button below to jump straight to the screen!_",
+                formattedText = "⚙️ **Preferences & Settings Hub**\n\nThe settings menu has moved to the **Preferences & Settings Hub**!\n\n**How to access it:**\n1. Look at the top-right corner of the top header bar on the home screen.\n2. Tap your **Profile Avatar Ring**.\n3. This opens your centralized hub for:\n• **Appearance** — Themes, colors, transcription and widgets\n• **Focus & behavior** — Soft-block timing, launch screen and streak display\n• **Notifications & reminders** — Task popups, routine and habit alerts\n• **Security & permissions** — Device access, privacy and private notes vault\n• **Data & recovery** — Encrypted backups, snapshots, drafts and storage\n• **Bubble Settings** — Floating assistant and existing practice controls\n• **Help & about** — Setup, diagnostics and version\n• **Profile** — Identity, achievements and lifetime Pro license\n\n_Tap any quick button below to jump straight to the screen!_",
                 actions = settingsActions,
                 topicId = "preferences_hub_navigation",
                 jsonPayload = json

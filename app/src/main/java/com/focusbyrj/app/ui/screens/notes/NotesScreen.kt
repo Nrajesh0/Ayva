@@ -203,8 +203,7 @@ fun NotesScreen(
     var showVaultUnlockDialog by remember { mutableStateOf(false) }
     var showVaultFirstTimeDialog by remember { mutableStateOf(false) }
     var showVaultSettingsDialog by remember { mutableStateOf(false) }
-    var showVaultChangePinDialog by remember { mutableStateOf(false) }
-    var showVaultDisableConfirmDialog by remember { mutableStateOf(false) }
+
     var showVaultMnemonicRecoveryDialog by remember { mutableStateOf(false) }
     var showVaultExportPhraseDialog by remember { mutableStateOf(false) }
     var exportedPhraseWords by remember { mutableStateOf<List<String>?>(null) }
@@ -1876,42 +1875,7 @@ fun NotesScreen(
             }
 
             if (showVaultSettingsDialog) {
-                ArchiveVaultSettingsDialog(
-                    vaultStatus = vaultStatus,
-                    onDismiss = { showVaultSettingsDialog = false },
-                    onLockVault = {
-                        showVaultSettingsDialog = false
-                        viewModel.lockVault()
-                        Toast.makeText(context, "Archive Vault locked 🔒", Toast.LENGTH_SHORT).show()
-                    },
-                    onChangePasscode = {
-                        showVaultSettingsDialog = false
-                        showVaultChangePinDialog = true
-                    },
-                    onDisablePasscode = {
-                        showVaultSettingsDialog = false
-                        showVaultDisableConfirmDialog = true
-                    },
-                    onSetPasscode = {
-                        showVaultSettingsDialog = false
-                        showVaultFirstTimeDialog = true
-                    },
-                    onEmergencyRecoveryClick = {
-                        showVaultSettingsDialog = false
-                        showVaultMnemonicRecoveryDialog = true
-                    },
-                    isRecoveryPhraseBackedUp = isRecoveryPhraseBackedUp,
-                    onExportRecoveryPhrase = {
-                        showVaultSettingsDialog = false
-                        val words = viewModel.getOrConfigureRecoveryPhrase()
-                        if (words != null) {
-                            exportedPhraseWords = words
-                            showVaultExportPhraseDialog = true
-                        } else {
-                            Toast.makeText(context, "Please unlock vault first", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
+                com.focusbyrj.app.ui.screens.PrivateVaultSettingsSheet(viewModel) { showVaultSettingsDialog = false }
             }
 
             if (showVaultExportPhraseDialog && exportedPhraseWords != null) {
@@ -1944,29 +1908,9 @@ fun NotesScreen(
                 )
             }
 
-            if (showVaultChangePinDialog) {
-                ArchiveVaultChangePasscodeDialog(
-                    onDismiss = { showVaultChangePinDialog = false },
-                    onVerifyCurrentPin = { pin -> viewModel.verifyVaultPasscode(pin) },
-                    onSaveNewPin = { newPin -> viewModel.setVaultPasscode(newPin) },
-                    onSuccess = {
-                        showVaultChangePinDialog = false
-                        Toast.makeText(context, "Vault passcode updated successfully! 🔒", Toast.LENGTH_SHORT).show()
-                    }
-                )
-            }
 
-            if (showVaultDisableConfirmDialog) {
-                ArchiveVaultDisableConfirmDialog(
-                    onDismiss = { showVaultDisableConfirmDialog = false },
-                    onVerifyCurrentPin = { pin -> viewModel.verifyVaultPasscode(pin) },
-                    onDisableConfirmed = {
-                        showVaultDisableConfirmDialog = false
-                        viewModel.disableVaultPasscode()
-                        Toast.makeText(context, "Passcode protection turned off 🔓", Toast.LENGTH_SHORT).show()
-                    }
-                )
-            }
+
+
         }
     }
 }

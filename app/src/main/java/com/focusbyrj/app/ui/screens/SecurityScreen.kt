@@ -1,10 +1,13 @@
 package com.focusbyrj.app.ui.screens
 
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Alarm
 
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import com.focusbyrj.app.ui.components.settingsSearchTarget
+import com.focusbyrj.app.ui.components.SettingsMenuRow
+import com.focusbyrj.app.ui.components.SettingsMenuSectionHeader
 import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -69,856 +72,60 @@ import java.util.Locale
 @Composable
 fun SecurityScreen(navController: NavController) {
     val context = LocalContext.current
-    val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    val permissions by com.focusbyrj.app.ui.components.rememberDevicePermissions()
     val prefs = remember { context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE) }
-    var secureRecents by remember { mutableStateOf(prefs.getBoolean("secure_recents", false)) }
-    val adminComponent = ComponentName(context, FocusDeviceAdminReceiver::class.java)
-    var isUninstallProtectionEnabled by remember { mutableStateOf(dpm.isAdminActive(adminComponent)) }
-    
-    var hasUsageStats by remember { mutableStateOf(PermissionUtils.hasUsageStatsPermission(context)) }
-    var hasOverlay by remember { mutableStateOf(PermissionUtils.hasOverlayPermission(context)) }
-    var isBatteryUnrestricted by remember { mutableStateOf(PermissionUtils.isIgnoringBatteryOptimizations(context)) }
-    var hasNotifications by remember { mutableStateOf(PermissionUtils.hasNotificationPermission(context)) }
-    var showBatteryInfoDialog by remember { mutableStateOf(false) }
-    
-    // Vault & Recovery State
-    var vaultStatus by remember { mutableStateOf(ArchiveVaultSecurity.getVaultStatus(context)) }
-    var isVaultRecoveryConfigured by remember { mutableStateOf(ArchiveVaultSecurity.isRecoveryConfigured(context)) }
-    var isVaultPhraseBackedUp by remember { mutableStateOf(ArchiveVaultSecurity.isRecoveryPhraseBackedUp(context)) }
-    var showVaultFirstTimeDialog by remember { mutableStateOf(false) }
-    var showVaultMnemonicRecoveryDialog by remember { mutableStateOf(false) }
-    var showVaultExportPhraseDialog by remember { mutableStateOf(false) }
-    var showVaultUnlockForExportDialog by remember { mutableStateOf(false) }
-    var exportedPhraseWords by remember { mutableStateOf<List<String>?>(null) }
-    
-    // Backup & Restore State
-    var showExportPasswordDialog by remember { mutableStateOf(false) }
-    var showRestorePasswordDialog by remember { mutableStateOf(false) }
-    var showSnapshotsSheet by remember { mutableStateOf(false) }
-    var isExporting by remember { mutableStateOf(false) }
-    var isRestoring by remember { mutableStateOf(false) }
-    var pendingExportPassword by remember { mutableStateOf<String?>(null) }
-    var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var pendingRestorePassword by remember { mutableStateOf<String?>(null) }
-    var pendingRestoreCleanRestore by remember { mutableStateOf(false) }
-    var showConfigureVaultPinDialog by remember { mutableStateOf(false) }
-    var exportErrorAlert by remember { mutableStateOf<String?>(null) }
-    var exportSuccessMetadata by remember { mutableStateOf<BackupRestoreManager.BackupMetadata?>(null) }
-    val coroutineScope = rememberCoroutineScope()
-
-    // Diagnostics State
-    var isDiagnosticsEnabled by remember { mutableStateOf(DiagnosticManager.isRecordingEnabled()) }
-    var diagnosticStorageText by remember { mutableStateOf(DiagnosticManager.getFormattedDiagnosticStorage(context)) }
-    var isExportingDiagnostics by remember { mutableStateOf(false) }
-
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val password = pendingExportPassword
-        if (uri != null && password != null) {
-            isExporting = true
-            coroutineScope.launch {
-                val result = BackupRestoreManager.createEncryptedBackup(context, uri, password)
-                isExporting = false
-                pendingExportPassword = null
-                if (result.isSuccess) {
-                    exportSuccessMetadata = result.getOrNull()
-                } else {
-                    exportErrorAlert = result.exceptionOrNull()?.message ?: "Backup export failed."
-                }
-            }
-        } else {
-            pendingExportPassword = null
-            isExporting = false
-        }
-    }
-
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            pendingRestoreUri = uri
-            showRestorePasswordDialog = true
-        }
-    }
-
-    val adminLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        isUninstallProtectionEnabled = dpm.isAdminActive(adminComponent)
-    }
-
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
+    var secureRecents by com.focusbyrj.app.ui.components.rememberSetting(prefs, "secure_recents", false)
+    val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    val admin = ComponentName(context, FocusDeviceAdminReceiver::class.java)
+    var adminEnabled by remember { mutableStateOf(dpm.isAdminActive(admin)) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { adminEnabled = dpm.isAdminActive(admin) }
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME || event == androidx.lifecycle.Lifecycle.Event.ON_START) {
-                isUninstallProtectionEnabled = dpm.isAdminActive(adminComponent)
-                hasUsageStats = PermissionUtils.hasUsageStatsPermission(context)
-                hasOverlay = PermissionUtils.hasOverlayPermission(context)
-                isBatteryUnrestricted = PermissionUtils.isIgnoringBatteryOptimizations(context)
-                hasNotifications = PermissionUtils.hasNotificationPermission(context)
-                vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
-                isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) adminEnabled = dpm.isAdminActive(admin)
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    com.focusbyrj.app.ui.components.SettingsMenuPage("Security & permissions", navController) {
+        SettingsMenuSectionHeader("DEVICE PERMISSIONS")
+        com.focusbyrj.app.util.DevicePermission.entries.filter { it.applicable }.forEach { permission ->
+            val icon = when(permission) {
+                com.focusbyrj.app.util.DevicePermission.USAGE -> Icons.Default.QueryStats
+                com.focusbyrj.app.util.DevicePermission.OVERLAY -> Icons.Default.Layers
+                com.focusbyrj.app.util.DevicePermission.BATTERY -> Icons.Default.BatteryFull
+                com.focusbyrj.app.util.DevicePermission.NOTIFICATIONS -> Icons.Default.Notifications
+                com.focusbyrj.app.util.DevicePermission.ALARMS -> Icons.Default.Alarm
+            }
+            SettingsMenuRow(icon, permission.title, Modifier.settingsSearchTarget(permission.settingId),
+                onClick = if (permission == com.focusbyrj.app.util.DevicePermission.NOTIFICATIONS) ({ permission.request(context) }) else null) {
+                if (permission in permissions.granted) GrantedBadge("Allowed") else GrantButton { permission.request(context) }
+            }
+            HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
+        }
+        Text("Blocking needs usage, overlay and background access. Notifications and alarm access support timely reminders.", Modifier.padding(horizontal = 6.dp, vertical = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SettingsMenuSectionHeader("PRIVACY & PROTECTION")
+        SettingsMenuRow(Icons.Default.Security, "Uninstall protection", Modifier.settingsSearchTarget("privacy.uninstall")) {
+            GrantButton(text = if (adminEnabled) "Disable" else "Enable") {
+                if (adminEnabled) { dpm.removeActiveAdmin(admin); adminEnabled = false }
+                else launcher.launch(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                    putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin)
+                    putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Prevent accidental removal during focus sessions.")
+                })
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { navController.popBackStack() }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Text(
-                "Security",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onBackground
-            )
+        SettingsMenuRow(Icons.Default.VisibilityOff, "Screenshot protection", Modifier.settingsSearchTarget("privacy.screenshots")) {
+            Switch(checked = secureRecents, onCheckedChange = { enabled ->
+                secureRecents = enabled
+                com.focusbyrj.app.ui.components.writeSetting(context, "secure_recents", enabled)
+                var current: Context? = context
+                while (current is android.content.ContextWrapper && current !is android.app.Activity) current = current.baseContext
+                if (current is com.focusbyrj.app.MainActivity) current.updateSecureWindowFlags()
+                else (current as? android.app.Activity)?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            })
         }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            SecuritySectionHeader("SYSTEM PERMISSIONS")
-            
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    SecurityActionRow(
-                        icon = Icons.Filled.QueryStats,
-                        iconTint = MaterialTheme.colorScheme.primary,
-                        title = "Usage Access",
-                        subtitle = "Detect foreground apps to block.",
-                        action = {
-                            if (hasUsageStats) {
-                                GrantedBadge()
-                            } else {
-                                GrantButton { PermissionUtils.requestUsageStatsPermission(context) }
-                            }
-                        }
-                    )
-                    
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                    
-                    SecurityActionRow(
-                        icon = Icons.Filled.Layers,
-                        iconTint = MaterialTheme.colorScheme.secondary,
-                        title = "Display Over Apps",
-                        subtitle = "Show mindful pause & lock screens.",
-                        action = {
-                            if (hasOverlay) {
-                                GrantedBadge()
-                            } else {
-                                GrantButton { PermissionUtils.requestOverlayPermission(context) }
-                            }
-                        }
-                    )
-                    
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                    
-                    SecurityActionRow(
-                        icon = Icons.Filled.BatteryFull,
-                        iconTint = MaterialTheme.colorScheme.error,
-                        title = "Battery Restrictions",
-                        subtitle = "Prevent Android from killing the blocker.",
-                        action = {
-                            if (isBatteryUnrestricted) {
-                                GrantedBadge("Unrestricted ✓", MaterialTheme.colorScheme.tertiary)
-                            } else {
-                                GrantButton(text = "Enable", containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError) { 
-                                    showBatteryInfoDialog = true 
-                                }
-                            }
-                        }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            SecuritySectionHeader("APP INTEGRITY & TAMPER DEFENSE")
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    SecurityActionRow(
-                        icon = Icons.Filled.Security,
-                        iconTint = Color(0xFFFFB74D),
-                        title = "Uninstall Protection",
-                        subtitle = "Prevent accidental app deletion.",
-                        action = {
-                            Button(
-                                onClick = {
-                                    if (isUninstallProtectionEnabled) {
-                                        dpm.removeActiveAdmin(adminComponent)
-                                        isUninstallProtectionEnabled = false
-                                    } else {
-                                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                                            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-                                            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Prevent accidental app deletion during deep focus sessions.")
-                                        }
-                                        adminLauncher.launch(intent)
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    contentColor = MaterialTheme.colorScheme.onSurface
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Text(if (isUninstallProtectionEnabled) "Disable" else "Enable", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    )
-                    
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                    
-                    SecuritySwitchRow(
-                        icon = Icons.Filled.VisibilityOff,
-                        iconTint = MaterialTheme.colorScheme.primary,
-                        title = "Anti-Screenshot Protection",
-                        subtitle = "Protects app screens and previews. Home-screen widgets are controlled by your launcher.",
-                        checked = secureRecents,
-                        onCheckedChange = { checked ->
-                            secureRecents = checked
-                            prefs.edit().putBoolean("secure_recents", checked).apply()
-                            (context as? android.app.Activity)?.let { activity ->
-                                if (checked) {
-                                    activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-                                } else {
-                                    activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-                                }
-                            }
-                        }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            SecuritySectionHeader("DATA VAULT & BACKUP")
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    // Secret Vault Protection
-                    SecurityActionRow(
-                        icon = Icons.Filled.Lock,
-                        iconTint = MaterialTheme.colorScheme.primary,
-                        title = "Secret Vault Passcode",
-                        subtitle = if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
-                            if (isVaultRecoveryConfigured) "Argon2id + BIP-39 recovery active." else "PIN active (no emergency phrase)."
-                        } else {
-                            "Protect archived notes with 6-digit PIN & recovery phrase."
-                        },
-                        action = {
-                            if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
-                                GrantedBadge(if (isVaultRecoveryConfigured) "Protected ✓" else "Enabled")
-                            } else {
-                                GrantButton(text = "Setup") {
-                                    showVaultFirstTimeDialog = true
-                                }
-                            }
-                        }
-                    )
-
-                    if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-
-                        // View / Export Recovery Phrase
-                        SecurityActionRow(
-                            icon = Icons.Filled.Key,
-                            iconTint = if (isVaultPhraseBackedUp) MaterialTheme.colorScheme.primary else Color(0xFFE5A93C),
-                            title = "Export Recovery Phrase",
-                            subtitle = if (isVaultPhraseBackedUp) {
-                                "View or export your 12-word vault emergency recovery phrase."
-                            } else {
-                                "Action needed: View & back up your 12-word recovery phrase."
-                            },
-                            action = {
-                                Button(
-                                    onClick = {
-                                        val words = ArchiveVaultSecurity.getStoredRecoveryPhrase(context)
-                                        if (words != null) {
-                                            exportedPhraseWords = words
-                                            showVaultExportPhraseDialog = true
-                                        } else {
-                                            // Vault is locked, prompt for PIN first
-                                            showVaultUnlockForExportDialog = true
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isVaultPhraseBackedUp) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFE5A93C),
-                                        contentColor = if (isVaultPhraseBackedUp) MaterialTheme.colorScheme.onSurface else Color.Black
-                                    ),
-                                    shape = RoundedCornerShape(12.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text(if (isVaultPhraseBackedUp) "View" else "Back Up", style = MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                        )
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-
-                    // Emergency Mnemonic Recovery
-                    SecurityActionRow(
-                        icon = Icons.Filled.Security,
-                        iconTint = if (isVaultRecoveryConfigured) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        title = "Emergency Phrase Recovery",
-                        subtitle = if (isVaultRecoveryConfigured) {
-                            "Reset PIN and recover your secret vault with your 12-word phrase."
-                        } else {
-                            "Configure a vault passcode to enable 12-word emergency recovery."
-                        },
-                        action = {
-                            Button(
-                                onClick = { showVaultMnemonicRecoveryDialog = true },
-                                enabled = isVaultRecoveryConfigured || vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Text("Recover", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    )
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-
-                    SecurityActionRow(
-                        icon = Icons.Filled.CloudUpload,
-                        iconTint = MaterialTheme.colorScheme.primary,
-                        title = "Export Encrypted Backup",
-                        subtitle = "AES-256 encrypted archive of all notes, tasks, habits, drills & settings.",
-                        action = {
-                            Button(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        val (canExport, reason) = BackupRestoreManager.canCreateBackup(context)
-                                        if (!canExport) {
-                                            exportErrorAlert = reason
-                                        } else {
-                                            showExportPasswordDialog = true
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Text("Export", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    )
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-
-                    SecurityActionRow(
-                        icon = Icons.Filled.CloudDownload,
-                        iconTint = MaterialTheme.colorScheme.tertiary,
-                        title = "Restore from Backup",
-                        subtitle = "Decrypt and restore your data using your backup password.",
-                        action = {
-                            Button(
-                                onClick = {
-                                    importLauncher.launch(arrayOf("*/*"))
-                                },
-                                enabled = !isRestoring && !isExporting,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Text(if (isRestoring) "Restoring..." else "Restore", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-
-                    SecurityActionRow(
-                        icon = Icons.Filled.Security,
-                        iconTint = MaterialTheme.colorScheme.secondary,
-                        title = "Safety Snapshots (Auto-Recovery)",
-                        subtitle = "View and restore daily rolling backups and pre-operation recovery points.",
-                        action = {
-                            Button(
-                                onClick = {
-                                    showSnapshotsSheet = true
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Text("Snapshots", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                    com.focusbyrj.app.ui.components.DataRecoveryTools(onSnapshots = { showSnapshotsSheet = true }) { open ->
-                        SecurityActionRow(icon = Icons.Filled.Storage, iconTint = MaterialTheme.colorScheme.primary,
-                            title = "Data & recovery", subtitle = "Saved drafts, backup verification & storage",
-                            action = { Button(onClick = open, shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), modifier = Modifier.height(36.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)) { Text("Open", style = MaterialTheme.typography.labelMedium) } })
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-
-            SecuritySectionHeader("DIAGNOSTICS & SYSTEM LOGS")
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    SecuritySwitchRow(
-                        icon = Icons.Filled.QueryStats,
-                        iconTint = MaterialTheme.colorScheme.primary,
-                        title = "Record Diagnostics",
-                        subtitle = "Continuous in-app event & performance logging for troubleshooting.",
-                        checked = isDiagnosticsEnabled,
-                        onCheckedChange = { checked ->
-                            isDiagnosticsEnabled = checked
-                            DiagnosticManager.setRecordingEnabled(checked)
-                            diagnosticStorageText = DiagnosticManager.getFormattedDiagnosticStorage(context)
-                        }
-                    )
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-
-                    SecurityActionRow(
-                        icon = Icons.Filled.Share,
-                        iconTint = MaterialTheme.colorScheme.secondary,
-                        title = "Export Diagnostic Logs",
-                        subtitle = "Packages telemetry, app events, logcat, and crash dump into a shareable ZIP.",
-                        action = {
-                            Button(
-                                onClick = {
-                                    if (!isExportingDiagnostics) {
-                                        coroutineScope.launch {
-                                            isExportingDiagnostics = true
-                                            val result = DiagnosticManager.createDiagnosticZip(context)
-                                            isExportingDiagnostics = false
-                                            if (result.isSuccess) {
-                                                val zip = result.getOrNull()
-                                                if (zip != null) {
-                                                    DiagnosticManager.shareDiagnosticBundle(context, zip)
-                                                    diagnosticStorageText = DiagnosticManager.getFormattedDiagnosticStorage(context)
-                                                }
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    "Failed to export diagnostics: ${result.exceptionOrNull()?.message}",
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                            }
-                                        }
-                                    }
-                                },
-                                enabled = !isExportingDiagnostics,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                if (isExportingDiagnostics) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                } else {
-                                    Text("Export", style = MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                        }
-                    )
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-
-                    SecurityActionRow(
-                        icon = Icons.Filled.Delete,
-                        iconTint = MaterialTheme.colorScheme.error,
-                        title = "Clear Recorded Logs",
-                        subtitle = "Storage footprint: $diagnosticStorageText. Reset and delete stored logs.",
-                        action = {
-                            Button(
-                                onClick = {
-                                    DiagnosticManager.clearAllLogs(context)
-                                    diagnosticStorageText = DiagnosticManager.getFormattedDiagnosticStorage(context)
-                                    Toast.makeText(context, "Diagnostic logs cleared.", Toast.LENGTH_SHORT).show()
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Text("Clear", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(64.dp))
-        }
-    }
-
-    if (showExportPasswordDialog) {
-        ExportBackupPasswordDialog(
-            isExporting = isExporting,
-            onDismiss = { 
-                showExportPasswordDialog = false 
-                pendingExportPassword = null
-            },
-            onConfirm = { password ->
-                showExportPasswordDialog = false
-                pendingExportPassword = password
-                val suggestedName = BackupRestoreManager.generateBackupFileName()
-                exportLauncher.launch(suggestedName)
-            }
-        )
-    }
-
-    // Exporting In-Progress Modal Dialog
-    if (isExporting) {
-        androidx.compose.ui.window.Dialog(onDismissRequest = { /* Modal: cannot dismiss while writing */ }) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
-                    Spacer(modifier = Modifier.width(20.dp))
-                    Column {
-                        Text(
-                            "Exporting Backup...",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Encrypting databases and media. Please wait...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    // Export Success Confirmation Dialog
-    if (exportSuccessMetadata != null) {
-        val meta = exportSuccessMetadata!!
-        AlertDialog(
-            onDismissRequest = { exportSuccessMetadata = null },
-            icon = { Icon(Icons.Filled.Security, contentDescription = null, tint = Color(0xFF10B981)) },
-            title = { Text("Backup Saved Successfully") },
-            text = {
-                Text("Your encrypted backup has been saved and its authenticated archive read back successfully.\n\n• Notes: ${meta.noteCount}\n• Tasks: ${meta.taskCount}\n• Plans: ${meta.planCount}\n• Habits: ${meta.habitCount}\n• Drill Sessions: ${meta.drillCount}\n• App Restrictions: ${meta.restrictionCount}")
-            },
-            confirmButton = {
-                Button(onClick = { exportSuccessMetadata = null }) {
-                    Text("Done")
-                }
-            }
-        )
-    }
-
-    // Export Error Dialog
-    if (exportErrorAlert != null) {
-        AlertDialog(
-            onDismissRequest = { exportErrorAlert = null },
-            icon = { Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Backup Not Created") },
-            text = {
-                Text(exportErrorAlert ?: "Unknown backup error.")
-            },
-            confirmButton = {
-                Button(onClick = { exportErrorAlert = null }) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-
-    if (showRestorePasswordDialog && pendingRestoreUri != null) {
-        val uri = pendingRestoreUri!!
-        RestoreBackupPasswordDialog(
-            isRestoring = isRestoring,
-            onDismiss = {
-                showRestorePasswordDialog = false
-                pendingRestoreUri = null
-                pendingRestorePassword = null
-            },
-            onConfirm = { password, cleanRestore ->
-                isRestoring = true
-                pendingRestorePassword = password
-                pendingRestoreCleanRestore = cleanRestore
-                coroutineScope.launch {
-                    val result = BackupRestoreManager.restoreEncryptedBackup(context, uri, password, cleanRestore)
-                    isRestoring = false
-                    val ex = result.exceptionOrNull()
-                    if (ex is BackupRestoreManager.RequiresVaultSetupException) {
-                        showRestorePasswordDialog = false
-                        showConfigureVaultPinDialog = true
-                    } else {
-                        showRestorePasswordDialog = false
-                        pendingRestoreUri = null
-                        pendingRestorePassword = null
-                        if (result.isSuccess) {
-                            val meta = result.getOrNull()
-                            vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
-                            isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
-                            Toast.makeText(
-                                context,
-                                "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits and ${meta?.planCount ?: 0} plans.",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            Toast.makeText(
-                                context,
-                                "Restore failed: ${ex?.message ?: "Unknown error"}",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    }
-                }
-            }
-        )
-    }
-
-    if (showConfigureVaultPinDialog && pendingRestoreUri != null && pendingRestorePassword != null) {
-        val uri = pendingRestoreUri!!
-        val password = pendingRestorePassword!!
-        val cleanRestore = pendingRestoreCleanRestore
-        ConfigureRestoredVaultPinDialog(
-            isRestoring = isRestoring,
-            onDismiss = {
-                showConfigureVaultPinDialog = false
-                pendingRestoreUri = null
-                pendingRestorePassword = null
-            },
-            onConfirm = { pin ->
-                isRestoring = true
-                coroutineScope.launch {
-                    val result = BackupRestoreManager.restoreEncryptedBackup(
-                        context = context,
-                        sourceUri = uri,
-                        password = password,
-                        cleanRestore = cleanRestore,
-                        vaultPin = pin
-                    )
-                    isRestoring = false
-                    showConfigureVaultPinDialog = false
-                    pendingRestoreUri = null
-                    pendingRestorePassword = null
-                    if (result.isSuccess) {
-                        val meta = result.getOrNull()
-                        vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
-                        isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
-                        Toast.makeText(
-                            context,
-                            "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits and ${meta?.planCount ?: 0} plans.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        Toast.makeText(
-                            context,
-                            "Restore failed: ${result.exceptionOrNull()?.message ?: "Unknown error"}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }
-            }
-        )
-    }
-
-    if (showSnapshotsSheet) {
-        SafetySnapshotsBottomSheet(
-            onDismiss = { showSnapshotsSheet = false }
-        )
-    }
-    
-    if (showBatteryInfoDialog) {
-        AlertDialog(
-            onDismissRequest = { showBatteryInfoDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Why 'No Restrictions' on Battery?")
-                }
-            },
-            text = {
-                Column {
-                    Text(
-                        "Modern Android enforces aggressive background limits on apps when battery optimization is enabled (Optimized or Restricted).",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "Without 'No Restrictions' / 'Unrestricted', Android will freeze or kill the blocker background service, causing locks to stop working.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "Setting this to Unrestricted allows RuN to guard your boundaries 24/7 without consuming significant battery.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showBatteryInfoDialog = false
-                        PermissionUtils.requestIgnoreBatteryOptimizations(context)
-                    }
-                ) {
-                    Text("Set Unrestricted", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBatteryInfoDialog = false }) {
-                    Text("Close", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(24.dp)
-        )
-    }
-
-    if (showVaultFirstTimeDialog) {
-        ArchiveVaultFirstTimeDialog(
-            onDismiss = { showVaultFirstTimeDialog = false },
-            onSkip = {
-                showVaultFirstTimeDialog = false
-                ArchiveVaultSecurity.skipPasscodeSetup(context)
-                vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
-                isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
-            },
-            onPasscodeSet = { pin, mnemonicWords ->
-                showVaultFirstTimeDialog = false
-                ArchiveVaultSecurity.setPasscode(context, pin, mnemonicWords)
-                vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
-                isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
-                isVaultPhraseBackedUp = ArchiveVaultSecurity.isRecoveryPhraseBackedUp(context)
-                Toast.makeText(context, "Secret Vault configured with Emergency Phrase! 🔒", Toast.LENGTH_SHORT).show()
-            }
-        )
-    }
-
-    if (showVaultUnlockForExportDialog) {
-        ArchiveVaultUnlockDialog(
-            onDismiss = { showVaultUnlockForExportDialog = false },
-            onVerify = { pin -> ArchiveVaultSecurity.verifyPasscode(context, pin) },
-            onSuccess = {
-                showVaultUnlockForExportDialog = false
-                val words = ArchiveVaultSecurity.getOrConfigureRecoveryPhrase(context)
-                if (words != null) {
-                    exportedPhraseWords = words
-                    showVaultExportPhraseDialog = true
-                }
-            },
-            initialLockoutSeconds = ArchiveVaultSecurity.getRemainingLockoutSeconds(context)
-        )
-    }
-
-    if (showVaultExportPhraseDialog && exportedPhraseWords != null) {
-        ArchiveVaultExportPhraseDialog(
-            phraseWords = exportedPhraseWords!!,
-            isBackedUp = isVaultPhraseBackedUp,
-            onDismiss = {
-                showVaultExportPhraseDialog = false
-                exportedPhraseWords = null
-            },
-            onMarkBackedUp = {
-                ArchiveVaultSecurity.markRecoveryPhraseBackedUp(context)
-                isVaultPhraseBackedUp = true
-                showVaultExportPhraseDialog = false
-                exportedPhraseWords = null
-                Toast.makeText(context, "Recovery phrase safely backed up! ✓", Toast.LENGTH_SHORT).show()
-            }
-        )
-    }
-
-    if (showVaultMnemonicRecoveryDialog) {
-        ArchiveVaultMnemonicRecoveryDialog(
-            onDismiss = { showVaultMnemonicRecoveryDialog = false },
-            onRecover = { words, newPin ->
-                val ok = ArchiveVaultSecurity.recoverVaultWithMnemonic(context, words, newPin)
-                if (ok) {
-                    vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
-                    isVaultRecoveryConfigured = ArchiveVaultSecurity.isRecoveryConfigured(context)
-                    isVaultPhraseBackedUp = ArchiveVaultSecurity.isRecoveryPhraseBackedUp(context)
-                }
-                ok
-            },
-            onSuccess = {
-                showVaultMnemonicRecoveryDialog = false
-                Toast.makeText(context, "Vault successfully recovered and new PIN set! 🔓", Toast.LENGTH_LONG).show()
-            }
-        )
+        Text("Screenshot protection covers this app's screens and previews. Your launcher controls home-screen widgets.", Modifier.padding(horizontal = 6.dp, vertical = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        com.focusbyrj.app.ui.components.SettingsMenuLink(Icons.Default.Lock, "Private notes vault", "vault.home", navController)
     }
 }
 
@@ -926,25 +133,26 @@ fun SecurityScreen(navController: NavController) {
 fun GrantedBadge(text: String = "Granted ✓", color: Color = MaterialTheme.colorScheme.tertiary) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(color.copy(alpha = 0.14f))
-            .border(0.8.dp, color.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.12f))
             .padding(horizontal = 10.dp, vertical = 5.dp)
     ) {
-        Text(text, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(text, color = color, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
 fun GrantButton(
     text: String = "Grant",
-    containerColor: Color = MaterialTheme.colorScheme.primary,
-    contentColor: Color = MaterialTheme.colorScheme.onPrimary,
+    containerColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Button(
         onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
+        enabled = enabled,
+        shape = CircleShape,
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = contentColor
@@ -952,99 +160,10 @@ fun GrantButton(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
         modifier = Modifier.height(32.dp)
     ) {
-        Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
-
-@Composable
-private fun SecuritySectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelSmall.copy(
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.2.sp
-        ),
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-    )
-}
-
-@Composable
-private fun SecurityActionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconTint: Color,
-    title: String,
-    subtitle: String,
-    action: @Composable () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth().settingsSearchTarget(title)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(iconTint.copy(alpha = 0.14f))
-                .border(1.dp, iconTint.copy(alpha = 0.3f), RoundedCornerShape(11.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(19.dp)
-            )
-        }
-        Spacer(modifier = Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        action()
-    }
-}
-
-@Composable
-private fun SecuritySwitchRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconTint: Color,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    SecurityActionRow(
-        icon = icon,
-        iconTint = iconTint,
-        title = title,
-        subtitle = subtitle,
-        action = {
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            )
-        }
-    )
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

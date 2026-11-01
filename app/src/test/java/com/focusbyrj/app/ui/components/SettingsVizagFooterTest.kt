@@ -220,14 +220,14 @@ class SettingsVizagFooterTest {
                 val nav = rememberNavController()
                 NavHost(nav, startDestination = Screen.PreferencesHub.route) {
                     composable(Screen.PreferencesHub.route) { PreferencesHubScreen(nav) }
-                    composable(Screen.Settings.route) {
+                    composable("settings_appearance") {
                         Button(onClick = { nav.popBackStack() }) { Text("Return to Settings") }
                     }
                 }
             }
         }
         compose.onNodeWithText("RK Beach").assertExists()
-        compose.onNodeWithText("App Settings").performScrollTo().performClick()
+        compose.onNodeWithText("Appearance").performScrollTo().performClick()
         compose.onNodeWithText("Return to Settings").performClick()
         compose.onNodeWithText("Kailasagiri").assertExists()
     }
@@ -282,13 +282,13 @@ class SettingsVizagFooterTest {
                 PreferencesHubScreen(rememberNavController())
             }
         }
-        compose.onNodeWithText("Setup Guide").assertExists()
+        compose.onNodeWithText("Help & about").assertExists()
         compose.onNodeWithText("By Rj").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Made with ❤️ in Vizag").assertIsDisplayed()
         compose.onNodeWithText("RuN", substring = true).assertDoesNotExist()
-        val setup = compose.onNodeWithTag("menu_setup_guide").fetchSemanticsNode().boundsInRoot
+        val setup = compose.onNodeWithTag("menu_help_about").fetchSemanticsNode().boundsInRoot
         val footer = compose.onNodeWithTag("settings_vizag_footer").fetchSemanticsNode().boundsInRoot
-        assertTrue("Footer needs breathing room below Setup Guide", footer.top - setup.bottom >= 56 * compose.activity.resources.displayMetrics.density - 1)
+        assertTrue("Footer needs breathing room below the last Settings row", footer.top - setup.bottom >= 56 * compose.activity.resources.displayMetrics.density - 1)
         capture(view, "settings-footer-oled")
     }
 

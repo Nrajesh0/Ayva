@@ -79,7 +79,7 @@ fun SubscriptionScreen(navController: NavController) {
             }
             Spacer(modifier = Modifier.width(16.dp))
             Text(
-                text = "Subscription",
+                text = "Pro license",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -206,7 +206,7 @@ private fun ProStatusCard(isPro: Boolean) {
                 text = if (isPro) {
                     "Lifetime License Verified."
                 } else {
-                    "Unlock all achievements, max gold, and tier levels to test out all premium features."
+                    "Activate your lifetime Pro license on this device."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -20,10 +20,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-@Composable fun DataRecoveryTools(onSnapshots: () -> Unit, entry: @Composable (onOpen: () -> Unit) -> Unit) {
+@Composable fun DataRecoveryTools(entry: @Composable (onOpen: (String) -> Unit) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var page by remember { mutableStateOf("home") }
+    var page by remember { mutableStateOf("backup") }
     var show by remember { mutableStateOf(false) }
     var storage by remember { mutableStateOf<List<Pair<String, Long>>?>(null) }
     var result by remember { mutableStateOf<String?>(null) }
@@ -31,27 +31,36 @@ import java.io.File
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var showDrafts by remember { mutableStateOf(false) }
-    var drafts by remember { mutableIntStateOf(0) }
     var cleanup by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { source = it; password = "" }
     fun inventory() { scope.launch {
         storage = withContext(Dispatchers.IO) { StorageInventory.read(context) }
-        drafts = withContext(Dispatchers.IO) { File(context.filesDir, "editor_drafts").listFiles()?.count { it.extension == "enc" } ?: 0 }
     } }
-    entry { show = true; page = "home"; inventory() }
-    if (show) FeatureSheet(if (page == "home") "Data & recovery" else when(page) { "recovery" -> "Recovery"; "backup" -> "Backup verification"; else -> "Storage" },
-        if (page == "home") "Keep your data safe and understand what's stored." else "", { if (!busy) show = false }) {
-        if (page != "home") TextButton(enabled = !busy, onClick = { page = "home" }) { Icon(Icons.Default.ArrowBack, null, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text("Data & recovery") }
+    fun chooseBackup() {
+        runCatching { picker.launch(arrayOf("*/*")) }.onFailure { result = "No file picker is available to select a backup." }
+    }
+    fun openPage(destination: String) {
+        if (busy) return
+        result = null
+        if (destination == "drafts") showDrafts = true
+        else { show = true; page = destination; inventory() }
+    }
+    val target = SettingsSearchCatalog.id(LocalSettingsSearchTarget.current)
+    LaunchedEffect(target) {
+        when (target) {
+            "data.verify" -> { openPage("backup"); chooseBackup() }
+            "data.repair" -> openPage("recovery")
+            "data.drafts" -> openPage("drafts")
+            "data.storage" -> openPage("storage")
+            "data.cleanup" -> { openPage("storage"); cleanup = true }
+        }
+    }
+    entry(::openPage)
+    if (show) FeatureSheet(when (page) { "recovery" -> "Interrupted restore"; "backup" -> "Backup verification"; else -> "Storage" },
+        "", { if (!busy) show = false }) {
         when(page) {
-            "home" -> FeatureGroup("") {
-                FeatureRow("Recovery", "$drafts saved drafts · safety snapshots", Icons.Default.Restore, onClick = { page = "recovery" })
-                FeatureRow("Verify a backup", "Check an encrypted archive before relying on it", Icons.Default.VerifiedUser, onClick = { page = "backup" })
-                FeatureRow("Storage", "Usage breakdown & safe temporary-file cleanup", Icons.Default.Storage, onClick = { page = "storage" })
-            }
             "recovery" -> {
                 FeatureGroup("Restore your work") {
-                    FeatureRow("Saved drafts", "$drafts drafts · review and recover text", Icons.Default.Description, enabled = !busy && drafts > 0, onClick = { showDrafts = true })
-                    FeatureRow("Safety snapshots", "Review recovery points and what each contains", Icons.Default.History, enabled = !busy, onClick = onSnapshots)
                     if (MaintenanceGate.recoveryRequired) FeatureRow("Interrupted restore", "Retry recovery using the retained original data", Icons.Default.Restore, enabled = !busy, onClick = {
                         busy = true
                         scope.launch {
@@ -61,11 +70,11 @@ import java.io.File
                         }
                     })
                 }
-                Text("Drafts remain until saved or discarded. Metadata snapshots do not include attachments; full encrypted backups do.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (MaintenanceGate.recoveryRequired) "Original recovery files are kept until repair succeeds." else "No interrupted restore needs repair. Your saved data is unchanged.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             "backup" -> {
                 FeatureGroup("Check an archive") {
-                    FeatureRow("Choose encrypted backup", "You’ll need the password used when it was created", Icons.Default.FolderOpen, enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) })
+                    FeatureRow("Choose encrypted backup", "You’ll need the password used when it was created", Icons.Default.FolderOpen, enabled = !busy, onClick = { chooseBackup() })
                 }
                 Text("Verification checks the authenticated contents, structure and attachment hashes. It does not restore data or replace anything in the app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

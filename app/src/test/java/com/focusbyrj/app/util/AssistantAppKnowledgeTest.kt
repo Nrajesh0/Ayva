@@ -90,7 +90,8 @@ class AssistantAppKnowledgeTest {
     }
     @Test fun nativeChoicesAndCustomValuesGeneratePreviewsWithoutWriting() = runBlocking {
         val style = AssistantPreferences.find("notification style")!!
-        assertEquals(listOf("Notification Only", "Floating Bar", "Both"), style.values)
+        assertEquals(listOf("Notification Only", "Both"), style.values)
+        assertEquals("Both", AssistantPreferences.validate(style.key, style.type, "Floating Bar"))
         assertEquals(listOf("dashboard", "todos", "time", "account"), AssistantPreferences.find("launch tab")!!.values)
         for (key in listOf("soft_lock_duration", "soft_unlock_duration", "auto_hide_duration_sec", "bubble_hidden_opacity", "app_theme_mode")) {
             val spec = AssistantPreferences.specs.first { it.key == key }
@@ -107,7 +108,7 @@ class AssistantAppKnowledgeTest {
         val vault = say("/talk how to set pin lock").formattedText
         assertTrue(vault.contains("6-digit") && vault.contains("12-word"))
         assertFalse(vault.contains("does not have or use a PIN"))
-        assertTrue(say("/talk task notification style").formattedText.contains("Notification Only"))
+        assertTrue(say("/talk task notification style").formattedText.contains("Notification bar"))
         val uninstall = say("/talk why can't I uninstall").formattedText
         assertTrue(uninstall, uninstall.contains("can prevent"))
         assertTrue(say("/talk read my notes").formattedText.contains("privacy", ignoreCase = true))
@@ -117,7 +118,7 @@ class AssistantAppKnowledgeTest {
         val help = say("/talk persistant remidners")
         assertTrue(help.formattedText.contains("Persistent Task Reminders"))
         assertEquals("setting:persistent_reminder_interval", state().topic)
-        assertTrue(say("where is it?").formattedText.contains("App Settings"))
+        assertTrue(say("where is it?").formattedText.contains("Notifications & reminders"))
         assertTrue(say("what is the range?").formattedText.contains("1440"))
         assertNull(state().expected)
         val preview = say("change it")

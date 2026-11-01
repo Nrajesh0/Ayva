@@ -284,23 +284,24 @@ class Batch12SecurityAuditTest {
         assertEquals(15, SettingsScreenHelper.getNextReminderInterval(10, isIncrement = true))
         assertEquals(30, SettingsScreenHelper.getNextReminderInterval(15, isIncrement = true))
         assertEquals(360, SettingsScreenHelper.getNextReminderInterval(300, isIncrement = true))
-        assertEquals(360, SettingsScreenHelper.getNextReminderInterval(360, isIncrement = true))
+        assertEquals(720, SettingsScreenHelper.getNextReminderInterval(360, isIncrement = true))
 
         // Sequential decrement progression
         assertEquals(300, SettingsScreenHelper.getNextReminderInterval(360, isIncrement = false))
         assertEquals(5, SettingsScreenHelper.getNextReminderInterval(10, isIncrement = false))
-        assertEquals(5, SettingsScreenHelper.getNextReminderInterval(5, isIncrement = false))
+        assertEquals(1, SettingsScreenHelper.getNextReminderInterval(5, isIncrement = false))
 
         // Corrupted value recovery: snaps to nearest valid interval without deadlocking
-        assertEquals(5, SettingsScreenHelper.getNextReminderInterval(-10, isIncrement = true))
+        assertEquals(1, SettingsScreenHelper.getNextReminderInterval(-10, isIncrement = true))
         assertEquals(30, SettingsScreenHelper.getNextReminderInterval(25, isIncrement = true))
         assertEquals(15, SettingsScreenHelper.getNextReminderInterval(25, isIncrement = false))
-        assertEquals(360, SettingsScreenHelper.getNextReminderInterval(1000, isIncrement = true))
-        assertEquals(360, SettingsScreenHelper.getNextReminderInterval(1000, isIncrement = false))
+        assertEquals(1440, SettingsScreenHelper.getNextReminderInterval(1000, isIncrement = true))
+        assertEquals(720, SettingsScreenHelper.getNextReminderInterval(1000, isIncrement = false))
 
         // Duration coercion
         assertEquals(5, SettingsScreenHelper.coerceSoftLockDuration(-10))
-        assertEquals(60, SettingsScreenHelper.coerceSoftLockDuration(100))
+        assertEquals(100, SettingsScreenHelper.coerceSoftLockDuration(100))
+        assertEquals(120, SettingsScreenHelper.coerceSoftLockDuration(200))
         assertEquals(10, SettingsScreenHelper.coerceSoftLockDuration(10))
 
         assertEquals(1, SettingsScreenHelper.coerceSoftUnlockDuration(-5))

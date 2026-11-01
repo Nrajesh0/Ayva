@@ -25,10 +25,16 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.delay
 
-internal data class SettingsSearchEntry(val title: String, val subtitle: String, val section: String, val route: String) {
-    fun matches(query: String): Boolean = query.trim().split(Regex("\\s+")).all { word ->
-        (title+" "+subtitle+" "+section+" "+SettingsSearchAliases[title].orEmpty()+ (if(route=="security") " privacy permissions safety" else "")).contains(
-            if(word.length>3 && !word.endsWith("ss")) word.removeSuffix("s") else word, ignoreCase=true)
+internal data class SettingsSearchEntry(
+    val title: String, val subtitle: String, val section: String, val route: String,
+    val id: String = title, val aliases: List<String> = emptyList()
+) {
+    fun matches(query: String): Boolean {
+        val words = query.trim().split(Regex("\\s+"))
+        val haystack = listOf(title, subtitle, section, aliases.joinToString(" "),
+            (listOf(title) + aliases).joinToString(" ") { SettingsSearchAliases[it].orEmpty() }).joinToString(" ")
+        return words.all { word -> haystack.contains(
+            if (word.length > 3 && !word.endsWith("ss")) word.removeSuffix("s") else word, ignoreCase = true) }
     }
 }
 private val SettingsSearchAliases = mapOf(
@@ -62,7 +68,7 @@ fun Modifier.settingsSearchTarget(title: String): Modifier = composed {
     val requester = remember { BringIntoViewRequester() }
     var highlighted by remember { mutableStateOf(false) }
     LaunchedEffect(target,title) {
-        if(target==title) { delay(350); requester.bringIntoView(); highlighted=true; delay(2400); highlighted=false }
+        if(SettingsSearchCatalog.id(target)==SettingsSearchCatalog.id(title)) { delay(350); requester.bringIntoView(); highlighted=true; delay(2400); highlighted=false }
     }
     this.bringIntoViewRequester(requester).background(
         if(highlighted) MaterialTheme.colorScheme.primaryContainer.copy(alpha=.5f) else androidx.compose.ui.graphics.Color.Transparent,
@@ -88,7 +94,7 @@ internal fun SettingsSearchSheet(onDismiss: () -> Unit, onChoose: (SettingsSearc
             Text("${matches.size} settings",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(Modifier.fillMaxWidth().heightIn(max=520.dp),contentPadding=PaddingValues(vertical=8.dp)) {
                 if(matches.isEmpty()) item {Text("No matching settings. Try another word.",Modifier.padding(vertical=24.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)}
-                items(matches,key={it.route+it.title}) { entry ->
+                items(matches,key={it.id}) { entry ->
                     ListItem(headlineContent={Text(entry.title)},supportingContent={Text(listOf(entry.section,entry.subtitle).filter { it.isNotBlank() }.joinToString(" · "))},
                         modifier=Modifier.clickable{keyboard?.hide();onChoose(entry)}.testTag("setting_result_${entry.title}"),
                         colors=ListItemDefaults.colors(containerColor=MaterialTheme.colorScheme.surface))

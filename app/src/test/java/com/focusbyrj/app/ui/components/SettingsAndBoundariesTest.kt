@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.navigation.compose.*
+import com.focusbyrj.app.ui.navigation.settingsDestinations
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.focusbyrj.app.data.*
@@ -36,31 +37,30 @@ class SettingsAndBoundariesTest {
     private val apps=listOf(AppRestriction("com.video","Video",true),AppRestriction("com.social","Social",true),AppRestriction("org.reader","Reader",false))
 
     @Test fun settingsSearchFindsControlsAcrossSectionsAndHandlesPluralQueries() {
-        assertTrue(SettingsSearchCatalog.entries.any{it.title=="Persistent Reminder Interval"&&it.matches("reminders")})
+        assertTrue(SettingsSearchCatalog.entries.any{it.id=="notifications.repeat"&&it.matches("reminders")})
         assertTrue(SettingsSearchCatalog.entries.any{it.route=="security"&&it.matches("privacy screenshot")})
         assertTrue(SettingsSearchCatalog.entries.any{it.title=="Hidden Opacity"})
-        assertTrue(SettingsSearchCatalog.entries.any{it.title=="App Background Theme"&&it.matches("dark mode")})
+        assertTrue(SettingsSearchCatalog.entries.any{it.id=="appearance.theme"&&it.matches("dark mode")})
         var chosen: SettingsSearchEntry?=null
         compose.setContent {MaterialTheme {SettingsSearchSheet({}, {chosen=it})}}
         compose.onNodeWithTag("settings_search_query").performTextInput("reminders")
-        compose.onNodeWithText("Persistent Reminder Interval").performClick()
-        compose.runOnIdle {assertEquals("settings",chosen!!.route)}
+        compose.onNodeWithText("Persistent reminder interval").performClick()
+        compose.runOnIdle {assertEquals("settings_notifications",chosen!!.route)}
     }
 
     @Test fun selectingSearchResultNavigatesAndScrollsToTheActualSetting() {
         compose.setContent {MaterialTheme {
             val nav=rememberNavController()
             NavHost(nav,startDestination="preferences_hub") {
-                composable("preferences_hub"){PreferencesHubScreen(nav)}
-                composable("settings"){SettingsSearchDestination(nav){SettingsScreen(nav)}}
+                settingsDestinations(nav, vaultContent = { Text("Vault") })
             }
         }}
         compose.onNodeWithContentDescription("Search settings").performClick()
         compose.onNodeWithTag("settings_search_query").performTextInput("default launch")
-        compose.onNodeWithText("Default Launch Tab").performClick()
-        compose.waitUntil(5000) {compose.onAllNodesWithText("Default Launch Tab").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithText("Default launch screen").performClick()
+        compose.waitUntil(5000) {compose.onAllNodesWithText("Default launch screen").fetchSemanticsNodes().isNotEmpty()}
         compose.mainClock.advanceTimeBy(1000)
-        compose.onNodeWithText("Default Launch Tab").assertIsDisplayed()
+        compose.onNodeWithText("Default launch screen").assertIsDisplayed()
     }
 
     @Test fun collapsedBubbleSettingsExpandForASearchTarget() {

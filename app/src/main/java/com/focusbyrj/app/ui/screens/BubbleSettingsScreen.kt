@@ -59,28 +59,24 @@ val BUBBLE_ACCENT_COLORS = listOf(
 fun BubbleSettingsScreen(navController: NavController) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE) }
-    
-    var isBubbleEnabled by remember { mutableStateOf(prefs.getBoolean("bubble_enabled", false)) }
-    var morningBriefTime by remember { mutableStateOf(prefs.getString("morning_brief_time", "08:00 AM") ?: "08:00 AM") }
-    var eveningBriefTime by remember { mutableStateOf(prefs.getString("evening_brief_time", "08:00 PM") ?: "08:00 PM") }
-    var vacationMode by remember { mutableStateOf(prefs.getBoolean("vacation_mode", false)) }
-    var streakNotificationEnabled by remember { 
-        mutableStateOf(prefs.getBoolean("streak_notification_enabled", prefs.getBoolean("random_drills_notification_enabled", true))) 
-    }
-    var streakNotificationTime by remember { 
-        mutableStateOf(prefs.getString("streak_notification_time", "") ?: "") 
-    }
+
+    var isBubbleEnabled by com.focusbyrj.app.ui.components.rememberSetting(prefs, "bubble_enabled", false)
+    var morningBriefTime by com.focusbyrj.app.ui.components.rememberSetting(prefs, "morning_brief_time", "08:00 AM")
+    var eveningBriefTime by com.focusbyrj.app.ui.components.rememberSetting(prefs, "evening_brief_time", "08:00 PM")
+    var vacationMode by com.focusbyrj.app.ui.components.rememberSetting(prefs, "vacation_mode", false)
+    var streakNotificationEnabled by com.focusbyrj.app.ui.components.rememberSetting(prefs, "streak_notification_enabled", prefs.getBoolean("random_drills_notification_enabled", true))
+    var streakNotificationTime by com.focusbyrj.app.ui.components.rememberSetting(prefs, "streak_notification_time", "")
     var showStreakTimeDialog by remember { mutableStateOf(false) }
-    var smartRegexEnabled by remember { mutableStateOf(prefs.getBoolean("smart_regex_enabled", true)) }
-    var autoHideEnabled by remember { mutableStateOf(prefs.getBoolean("auto_hide_enabled", false)) }
-    var autoHideDuration by remember { mutableStateOf(prefs.getInt("auto_hide_duration_sec", 3)) }
-    var hideInLandscape by remember { mutableStateOf(prefs.getBoolean("hide_in_landscape", true)) }
+    var smartRegexEnabled by com.focusbyrj.app.ui.components.rememberSetting(prefs, "smart_regex_enabled", true)
+    var autoHideEnabled by com.focusbyrj.app.ui.components.rememberSetting(prefs, "auto_hide_enabled", false)
+    var autoHideDuration by com.focusbyrj.app.ui.components.rememberSetting(prefs, "auto_hide_duration_sec", 3)
+    var hideInLandscape by com.focusbyrj.app.ui.components.rememberSetting(prefs, "hide_in_landscape", true)
 
     // Hidden Bubble Customization States
     var isDockingSettingsExpanded by remember { mutableStateOf(false) }
     val searchTarget = com.focusbyrj.app.ui.components.LocalSettingsSearchTarget.current
     LaunchedEffect(searchTarget) {
-        if (searchTarget in setOf("Hidden Opacity", "Amount Hidden (Tuck Depth)", "Glow Ring Intensity", "Bubble Accent Color", "Hidden Bubble Docking & Glow")) isDockingSettingsExpanded = true
+        if (com.focusbyrj.app.ui.components.SettingsSearchCatalog.id(searchTarget) in setOf("bubble.opacity", "bubble.depth", "bubble.glow", "bubble.accent", "bubble.docking")) isDockingSettingsExpanded = true
     }
 
     var hiddenOpacity by remember { mutableStateOf(prefs.getInt("bubble_hidden_opacity", 85).coerceIn(20, 100)) }
@@ -137,7 +133,7 @@ fun BubbleSettingsScreen(navController: NavController) {
                     .verticalScroll(rememberScrollState())
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 // --- GENERAL / APPEARANCE ---
                 SettingsSectionHeader(title = "GENERAL & APPEARANCE")
                 Column(
@@ -150,10 +146,10 @@ fun BubbleSettingsScreen(navController: NavController) {
                             title = "Enable Chat Bubble",
                             subtitle = "Show floating assistant icon across apps",
                             checked = isBubbleEnabled,
-                            onCheckedChange = { 
-                                isBubbleEnabled = it 
+                            onCheckedChange = {
+                                isBubbleEnabled = it
                                 prefs.edit().putBoolean("bubble_enabled", it).apply()
-                                
+
                                 if (it) {
                                     BubbleService.clearSnooze(context)
                                     BubbleService.startIfEnabled(context, ignoreSnooze = true)
@@ -232,7 +228,7 @@ fun BubbleSettingsScreen(navController: NavController) {
                                     prefs.edit().putBoolean("auto_hide_enabled", true)
                                         .putInt("auto_hide_duration_sec", 1).apply()
                                     notifyService()
-                                } else if (autoHideDuration < 15) {
+                                } else if (autoHideDuration < com.focusbyrj.app.util.SettingsPreferenceRules.bubbleAutoHide.last) {
                                     autoHideDuration += 1
                                     prefs.edit().putBoolean("auto_hide_enabled", true)
                                         .putInt("auto_hide_duration_sec", autoHideDuration).apply()
@@ -246,12 +242,12 @@ fun BubbleSettingsScreen(navController: NavController) {
                         )
                         SettingsSwitchRow(
                             icon = Icons.Filled.AutoFixHigh,
-                            title = "Smart Regex Parsing",
-                            subtitle = "Automatically parse priority and tags in chat",
+                            title = "Live date preview",
+                            subtitle = "Preview detected dates while typing; commands still work",
                             checked = smartRegexEnabled,
-                            onCheckedChange = { 
-                                smartRegexEnabled = it 
-                                prefs.edit().putBoolean("smart_regex_enabled", it).apply()
+                            onCheckedChange = {
+                                smartRegexEnabled = it
+                                com.focusbyrj.app.ui.components.writeSetting(context, "smart_regex_enabled", it)
                             }
                         )
                         HorizontalDivider(
@@ -260,12 +256,12 @@ fun BubbleSettingsScreen(navController: NavController) {
                         )
                         SettingsSwitchRow(
                             icon = Icons.Filled.ScreenRotation,
-                            title = "Hide in Landscape / Video Mode",
-                            subtitle = "Instantly hide bubble during video playback and landscape orientation",
+                            title = "Hide in landscape",
+                            subtitle = "Hide the bubble while the screen is in landscape",
                             checked = hideInLandscape,
-                            onCheckedChange = { 
-                                hideInLandscape = it 
-                                prefs.edit().putBoolean("hide_in_landscape", it).apply()
+                            onCheckedChange = {
+                                hideInLandscape = it
+                                com.focusbyrj.app.ui.components.writeSetting(context, "hide_in_landscape", it)
                             }
                         )
                     }
@@ -564,7 +560,7 @@ fun BubbleSettingsScreen(navController: NavController) {
                             }
                         }
                     )
-                    if (streakNotificationEnabled) {
+
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
                             modifier = Modifier.padding(start = 54.dp, end = 6.dp)
@@ -574,12 +570,13 @@ fun BubbleSettingsScreen(navController: NavController) {
                             icon = Icons.Filled.AccessTime,
                             title = "Practice Alert Time",
                             subtitle = if (isRandom) "Randomized 2x daily (9:00 AM – 8:00 PM)" else "Daily at exact time",
-                            timeText = if (isRandom) "Random (9am-8pm)" else streakNotificationTime,
+                            timeText = if (!streakNotificationEnabled || vacationMode) "Paused" else if (isRandom) "Random (9am-8pm)" else streakNotificationTime,
                             onClick = {
-                                showStreakTimeDialog = true
+                                if (streakNotificationEnabled && !vacationMode) showStreakTimeDialog = true
+                                else android.widget.Toast.makeText(context, "Enable practice alerts and turn off Vacation Mode to change their time.", android.widget.Toast.LENGTH_LONG).show()
                             }
                         )
-                    }
+
                 }
 
                 if (showStreakTimeDialog) {
@@ -614,7 +611,7 @@ fun BubbleSettingsScreen(navController: NavController) {
                                 onClick = {
                                     showStreakTimeDialog = false
                                     showTimePicker(
-                                        context, 
+                                        context,
                                         if (streakNotificationTime.isNotBlank() && !streakNotificationTime.equals("Random", ignoreCase = true)) streakNotificationTime else "06:00 PM"
                                     ) { newTime ->
                                         streakNotificationTime = newTime
@@ -894,7 +891,7 @@ private fun SettingsSectionHeader(title: String) {
             fontSize = 11.sp
         ),
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-        modifier = Modifier.padding(start = 6.dp, top = 20.dp, bottom = 6.dp)
+        modifier = Modifier.settingsSearchTarget(if (title == "DAILY SUMMARIES & PRACTICE") "notifications.practice" else title).padding(start = 6.dp, top = 20.dp, bottom = 6.dp)
     )
 }
 

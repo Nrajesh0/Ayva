@@ -30,11 +30,14 @@ fun VoiceStyleSettingsRow() {
     val context = LocalContext.current
     var selected by remember { mutableStateOf(VoiceStyle.read(context)) }
     var showPicker by remember { mutableStateOf(false) }
-    ListItem(headlineContent = { Text("Live transcription style") }, supportingContent = { Text("${selected.title} · Choose and preview") },
-        leadingContent = { Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.primary) },
-        trailingContent = { Icon(Icons.Default.Visibility, "Choose and preview voice styles") },
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.background),
-        modifier = Modifier.fillMaxWidth().settingsSearchTarget("Live transcription style").clickable { showPicker = true }.testTag("voice_style_settings"))
+    com.focusbyrj.app.ui.components.SettingsMenuRow(
+        Icons.Default.Mic, "Transcription style",
+        modifier = Modifier.settingsSearchTarget("appearance.voice").testTag("voice_style_settings"),
+        iconTint = MaterialTheme.colorScheme.primary,
+        onClick = { showPicker = true }
+    ) {
+        Icon(Icons.Default.Visibility, "Choose and preview voice styles", Modifier.size(18.dp))
+    }
     if (showPicker) VoiceStylePicker(selected, onDismiss = { showPicker = false }, onApply = {
         VoiceStyle.save(context, it); selected = it; showPicker = false
     })

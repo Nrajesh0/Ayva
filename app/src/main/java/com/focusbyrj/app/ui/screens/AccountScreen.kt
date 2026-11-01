@@ -12,8 +12,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
@@ -76,11 +74,9 @@ import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.data.note.NoteEntity
 import com.focusbyrj.app.ui.navigation.Screen
-import com.focusbyrj.app.ui.screens.security.ExportBackupPasswordDialog
-import com.focusbyrj.app.ui.screens.security.RestoreBackupPasswordDialog
-import com.focusbyrj.app.ui.screens.security.ConfigureRestoredVaultPinDialog
+import com.focusbyrj.app.ui.components.SettingsNavigation
+import com.focusbyrj.app.ui.components.SettingsMenuRow
 import com.focusbyrj.app.util.*
-import com.focusbyrj.app.util.backup.BackupRestoreManager
 import com.focusbyrj.app.ui.screens.notes.RichTextEngine
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -137,7 +133,8 @@ private data class EnclaveColors(
 @Composable
 fun AccountScreen(
     navController: NavController? = null,
-    onOpenNote: ((Long) -> Unit)? = null
+    onOpenNote: ((Long) -> Unit)? = null,
+    onLockPrivateVault: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -167,7 +164,7 @@ fun AccountScreen(
     }
 
     // Navigation & Tab state
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Overview, 1: Achievements, 2: Logs
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: Overview, 1: Achievements
 
     // Dialog & sheet states
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -178,49 +175,6 @@ fun AccountScreen(
     var showEnclaveSystemDialog by remember { mutableStateOf(false) }
     var showStreakDialog by remember { mutableStateOf(false) }
     var showChoosePinnedNotesDialog by remember { mutableStateOf(false) }
-
-    // Backup & Export states
-    var showExportPasswordDialog by remember { mutableStateOf(false) }
-    var pendingExportPassword by remember { mutableStateOf<String?>(null) }
-    var isExporting by remember { mutableStateOf(false) }
-    var exportErrorAlert by remember { mutableStateOf<String?>(null) }
-    var exportSuccessMetadata by remember { mutableStateOf<BackupRestoreManager.BackupMetadata?>(null) }
-
-    val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/octet-stream")
-    ) { uri ->
-        val password = pendingExportPassword
-        if (uri != null && password != null) {
-            isExporting = true
-            coroutineScope.launch {
-                val result = BackupRestoreManager.createEncryptedBackup(context, uri, password)
-                isExporting = false
-                pendingExportPassword = null
-                if (result.isSuccess) {
-                    exportSuccessMetadata = result.getOrNull()
-                } else {
-                    exportErrorAlert = result.exceptionOrNull()?.message ?: "Backup export failed."
-                }
-            }
-        } else {
-            pendingExportPassword = null
-            isExporting = false
-        }
-    }
-
-    var showRestorePasswordDialog by remember { mutableStateOf(false) }
-    var showConfigureVaultPinDialog by remember { mutableStateOf(false) }
-    var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var pendingRestorePassword by remember { mutableStateOf<String?>(null) }
-    var pendingRestoreCleanRestore by remember { mutableStateOf(false) }
-    var isRestoring by remember { mutableStateOf(false) }
-
-    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            pendingRestoreUri = uri
-            showRestorePasswordDialog = true
-        }
-    }
 
     // Dynamic Year and Month badge
     val cal = remember { Calendar.getInstance() }
@@ -242,11 +196,6 @@ fun AccountScreen(
     }
     val shortNodeId = remember(nodeId) {
         if (nodeId.length > 8) "${nodeId.take(6)}...${nodeId.takeLast(4)}" else nodeId
-    }
-
-    // App blocking enforcement master toggle
-    var isAppBlockingEnabled by remember {
-        mutableStateOf(sharedPrefs.getBoolean("app_blocking_enforced", true))
     }
 
     // Effective streak calculations
@@ -313,7 +262,7 @@ fun AccountScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // NAVIGATION TABS: Overview | Achievements | Logs
+            // NAVIGATION TABS: Overview | Achievements
             EnclaveTabsRow(
                 colors = enclaveColors,
                 selectedTabIndex = selectedTab,
@@ -339,43 +288,19 @@ fun AccountScreen(
                         profilePinnedIds = profilePinnedIds,
                         dailyResisted = dailyResisted,
                         themeMode = themeMode,
-                        isAppBlockingEnabled = isAppBlockingEnabled,
                         onClaimRewards = {
                             FocusEconomyManager.claimPendingRewards()
                             Toast.makeText(context, "Rewards claimed into your balance!", Toast.LENGTH_SHORT).show()
                         },
-                        onToggleAppBlocking = { enabled ->
-                            isAppBlockingEnabled = enabled
-                            sharedPrefs.edit().putBoolean("app_blocking_enforced", enabled).apply()
-                            Toast.makeText(
-                                context,
-                                if (enabled) "App Blocking Shields: ACTIVE" else "App Blocking Shields: PAUSED",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        },
-                        onThemeModeSelected = { mode ->
-                            AppThemeManager.setThemeMode(context, mode)
-                        },
-                        onBiometricClick = {
-                            navController?.navigate(Screen.Security.route) { launchSingleTop = true }
-                                ?: Toast.makeText(context, "Vault & Security is active", Toast.LENGTH_SHORT).show()
-                        },
-                        onManualExport = {
-                            coroutineScope.launch {
-                                val (canExport, reason) = BackupRestoreManager.canCreateBackup(context)
-                                if (!canExport) {
-                                    exportErrorAlert = reason
-                                } else {
-                                    showExportPasswordDialog = true
-                                }
-                            }
-                        },
-                        onRestoreBackup = {
-                            importLauncher.launch(arrayOf("*/*"))
-                        },
+                        onFocusSettingsClick = { navController?.let { SettingsNavigation.open(it, "focus.home") } },
+                        onAppearanceClick = { navController?.let { SettingsNavigation.open(it, "appearance.theme") } },
+                        onSecurityClick = { navController?.let { SettingsNavigation.open(it, "security.home") } },
+                        onProLicenseClick = { navController?.let { SettingsNavigation.open(it, "profile.pro") } },
+                        onManualExport = { navController?.let { SettingsNavigation.open(it, "data.export") } },
+                        onRestoreBackup = { navController?.let { SettingsNavigation.open(it, "data.restore") } },
                         onLockAppImmediately = {
-                            ArchiveVaultSecurity.lockVault()
-                            Toast.makeText(context, "Identity Protocol Locked. All vaults secured.", Toast.LENGTH_SHORT).show()
+                            if (onLockPrivateVault != null) onLockPrivateVault() else ArchiveVaultSecurity.lockVault()
+                            Toast.makeText(context, "Private notes vault locked.", Toast.LENGTH_SHORT).show()
                         },
                         onOpenNote = { noteId ->
                             if (onOpenNote != null) {
@@ -399,16 +324,7 @@ fun AccountScreen(
                     // TAB 1: ACHIEVEMENTS
                     AchievementsEnclaveTab(colors = enclaveColors, profile = profile, stats = stats)
                 }
-                2 -> {
-                    // TAB 2: SYSTEM ENCLAVE LOGS
-                    EnclaveLogsTab(
-                        colors = enclaveColors,
-                        profile = profile,
-                        nodeId = nodeId,
-                        yearMonth = yearMonthBadge,
-                        restrictedCount = rawRestrictions.count { it.isRestricted }
-                    )
-                }
+
             }
         }
     }
@@ -548,179 +464,7 @@ fun AccountScreen(
         )
     }
 
-    // 9. Manual Export Password Dialog
-    if (showExportPasswordDialog) {
-        ExportBackupPasswordDialog(
-            isExporting = isExporting,
-            onDismiss = {
-                showExportPasswordDialog = false
-                pendingExportPassword = null
-            },
-            onConfirm = { password ->
-                showExportPasswordDialog = false
-                pendingExportPassword = password
-                val suggestedName = BackupRestoreManager.generateBackupFileName()
-                exportLauncher.launch(suggestedName)
-            }
-        )
-    }
 
-    // 10. Exporting In-Progress Modal Dialog
-    if (isExporting) {
-        androidx.compose.ui.window.Dialog(onDismissRequest = { /* Modal: cannot dismiss while writing */ }) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
-                    Spacer(modifier = Modifier.width(20.dp))
-                    Column {
-                        Text(
-                            "Exporting Backup...",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Encrypting databases and media. Please wait...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    // 11. Export Success Confirmation Dialog
-    if (exportSuccessMetadata != null) {
-        val meta = exportSuccessMetadata!!
-        AlertDialog(
-            onDismissRequest = { exportSuccessMetadata = null },
-            icon = { Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF10B981)) },
-            title = { Text("Backup Saved Successfully") },
-            text = {
-                Text("Your encrypted backup has been written.\n\n• Notes: ${meta.noteCount}\n• Tasks: ${meta.taskCount}\n• Plans: ${meta.planCount}\n• Habits: ${meta.habitCount}\n• Drill Sessions: ${meta.drillCount}\n• App Restrictions: ${meta.restrictionCount}")
-            },
-            confirmButton = {
-                Button(onClick = { exportSuccessMetadata = null }) {
-                    Text("Done")
-                }
-            }
-        )
-    }
-
-    // 12. Export Error Dialog
-    if (exportErrorAlert != null) {
-        AlertDialog(
-            onDismissRequest = { exportErrorAlert = null },
-            icon = { Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Backup Not Created") },
-            text = {
-                Text(exportErrorAlert ?: "Unknown backup error.")
-            },
-            confirmButton = {
-                Button(onClick = { exportErrorAlert = null }) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-
-    // 13. Restore Backup Password Dialog
-    if (showRestorePasswordDialog && pendingRestoreUri != null) {
-        val uri = pendingRestoreUri!!
-        RestoreBackupPasswordDialog(
-            isRestoring = isRestoring,
-            onDismiss = {
-                showRestorePasswordDialog = false
-                pendingRestoreUri = null
-                pendingRestorePassword = null
-            },
-            onConfirm = { password, cleanRestore ->
-                isRestoring = true
-                pendingRestorePassword = password
-                pendingRestoreCleanRestore = cleanRestore
-                coroutineScope.launch {
-                    val result = BackupRestoreManager.restoreEncryptedBackup(context, uri, password, cleanRestore)
-                    isRestoring = false
-                    val ex = result.exceptionOrNull()
-                    if (ex is BackupRestoreManager.RequiresVaultSetupException) {
-                        showRestorePasswordDialog = false
-                        showConfigureVaultPinDialog = true
-                    } else {
-                        showRestorePasswordDialog = false
-                        pendingRestoreUri = null
-                        pendingRestorePassword = null
-                        if (result.isSuccess) {
-                            val meta = result.getOrNull()
-                            Toast.makeText(
-                                context,
-                                "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits and ${meta?.planCount ?: 0} plans.",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            Toast.makeText(
-                                context,
-                                "Restore failed: ${ex?.message ?: "Unknown error"}",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    }
-                }
-            }
-        )
-    }
-
-    // 14. Configure Vault PIN for Restored Vault Notes
-    if (showConfigureVaultPinDialog && pendingRestoreUri != null && pendingRestorePassword != null) {
-        val uri = pendingRestoreUri!!
-        val password = pendingRestorePassword!!
-        val cleanRestore = pendingRestoreCleanRestore
-        ConfigureRestoredVaultPinDialog(
-            isRestoring = isRestoring,
-            onDismiss = {
-                showConfigureVaultPinDialog = false
-                pendingRestoreUri = null
-                pendingRestorePassword = null
-            },
-            onConfirm = { pin ->
-                isRestoring = true
-                coroutineScope.launch {
-                    val result = BackupRestoreManager.restoreEncryptedBackup(
-                        context = context,
-                        sourceUri = uri,
-                        password = password,
-                        cleanRestore = cleanRestore,
-                        vaultPin = pin
-                    )
-                    isRestoring = false
-                    showConfigureVaultPinDialog = false
-                    pendingRestoreUri = null
-                    pendingRestorePassword = null
-                    if (result.isSuccess) {
-                        val meta = result.getOrNull()
-                        Toast.makeText(
-                            context,
-                            "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits and ${meta?.planCount ?: 0} plans.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        Toast.makeText(
-                            context,
-                            "Restore failed: ${result.exceptionOrNull()?.message ?: "Unknown error"}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }
-            }
-        )
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1314,7 +1058,7 @@ private fun EnclaveAchievementsPreviewRow(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. NAVIGATION TABS ROW: Overview | Achievements | Logs
+// 4. NAVIGATION TABS ROW: Overview | Achievements
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun EnclaveTabsRow(
@@ -1322,7 +1066,7 @@ private fun EnclaveTabsRow(
     selectedTabIndex: Int,
     onTabSelected: (Int) -> Unit
 ) {
-    val tabs = listOf("Overview", "Achievements", "Logs")
+    val tabs = listOf("Overview", "Achievements")
 
     Box(
         modifier = Modifier
@@ -1400,11 +1144,11 @@ private fun OverviewTabContent(
     profilePinnedIds: Set<Long>,
     dailyResisted: Int,
     themeMode: ThemeMode,
-    isAppBlockingEnabled: Boolean,
     onClaimRewards: () -> Unit,
-    onToggleAppBlocking: (Boolean) -> Unit,
-    onThemeModeSelected: (ThemeMode) -> Unit,
-    onBiometricClick: () -> Unit,
+    onFocusSettingsClick: () -> Unit,
+    onAppearanceClick: () -> Unit,
+    onSecurityClick: () -> Unit,
+    onProLicenseClick: () -> Unit,
     onManualExport: () -> Unit,
     onRestoreBackup: () -> Unit,
     onLockAppImmediately: () -> Unit,
@@ -1511,11 +1255,11 @@ private fun OverviewTabContent(
         // ── SECTION 4: SYSTEM PREFERENCES ──────────────────────────────────────
         EnclaveSystemPreferencesSection(
             colors = colors,
-            isAppBlockingEnabled = isAppBlockingEnabled,
-            onToggleAppBlocking = onToggleAppBlocking,
+            onFocusSettingsClick = onFocusSettingsClick,
             themeMode = themeMode,
-            onThemeModeSelected = onThemeModeSelected,
-            onBiometricClick = onBiometricClick
+            onAppearanceClick = onAppearanceClick,
+            onSecurityClick = onSecurityClick,
+            onProLicenseClick = onProLicenseClick
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -1602,13 +1346,13 @@ private fun OverviewTabContent(
         ) {
             Icon(
                 imageVector = Icons.Filled.PowerSettingsNew,
-                contentDescription = "Lock app",
+                contentDescription = "Lock private notes vault",
                 tint = colors.textMuted,
                 modifier = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = "Lock app immediately",
+                text = "Lock private notes vault",
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp
@@ -3477,246 +3221,32 @@ private fun CyberNoteThumbnail(
 @Composable
 private fun EnclaveSystemPreferencesSection(
     colors: EnclaveColors,
-    isAppBlockingEnabled: Boolean,
-    onToggleAppBlocking: (Boolean) -> Unit,
+    onFocusSettingsClick: () -> Unit,
     themeMode: ThemeMode,
-    onThemeModeSelected: (ThemeMode) -> Unit,
-    onBiometricClick: () -> Unit
+    onAppearanceClick: () -> Unit,
+    onSecurityClick: () -> Unit,
+    onProLicenseClick: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Tune,
-                    contentDescription = "System Preferences",
-                    tint = colors.textPrimary,
-                    modifier = Modifier.size(15.dp)
-                )
-                Text(
-                    text = "SYSTEM PREFERENCES",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        letterSpacing = 1.sp,
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    color = colors.textPrimary
-                )
+    Text("SETTINGS SHORTCUTS", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textMuted)
+    Spacer(Modifier.height(10.dp))
+    Surface(shape = RoundedCornerShape(18.dp), color = colors.cardBg, border = BorderStroke(1.dp, colors.cardBorder)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+            SettingsMenuRow(Icons.Default.Palette, "Appearance", onClick = onAppearanceClick) {
+                Text(themeMode.displayName, fontSize = 12.sp, color = colors.textMuted)
             }
-
-            Text(
-                text = "ENCLAVE",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.5.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                color = colors.textMuted
-            )
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Preference Card
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            color = colors.cardBg,
-            border = BorderStroke(1.dp, colors.cardBorder)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 8.dp)
-            ) {
-                // Item 1: App blocking
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Memory,
-                            contentDescription = "App blocking",
-                            tint = colors.textPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "App blocking shields",
-                                style = MaterialTheme.typography.titleSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.5.sp
-                                ),
-                                color = colors.textPrimary
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Native overlay defense against distraction loops",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                color = colors.textMuted
-                            )
-                        }
-                    }
-
-                    Switch(
-                        checked = isAppBlockingEnabled,
-                        onCheckedChange = { onToggleAppBlocking(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                            checkedTrackColor = colors.accentPrimary,
-                            uncheckedThumbColor = colors.textMuted,
-                            uncheckedTrackColor = colors.subCardBg,
-                            uncheckedBorderColor = colors.subCardBorder
-                        )
-                    )
-                }
-
-                HorizontalDivider(color = colors.cardBorder, thickness = 0.8.dp)
-
-                // Item 2: Biometric login
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onBiometricClick() }
-                        .padding(vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Key,
-                            contentDescription = "Biometric login",
-                            tint = colors.textPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "Biometric login & vaults",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.5.sp
-                            ),
-                            color = colors.textPrimary
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "ACTIVE",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.5.sp,
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = colors.accentCyan
-                        )
-                        Icon(
-                            imageVector = Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = colors.textMuted,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                HorizontalDivider(color = colors.cardBorder, thickness = 0.8.dp)
-
-                // Item 3: Theme mode
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Palette,
-                            contentDescription = "Theme",
-                            tint = colors.textPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = "Theme mode",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.5.sp
-                            ),
-                            color = colors.textPrimary
-                        )
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = colors.subCardBg,
-                        border = BorderStroke(1.dp, colors.subCardBorder)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(3.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val options = listOf(
-                                "Sys" to ThemeMode.SYSTEM,
-                                "Light" to ThemeMode.LIGHT,
-                                "Dark" to ThemeMode.DARK
-                            )
-                            options.forEach { (label, mode) ->
-                                val isSelected = when (mode) {
-                                    ThemeMode.SYSTEM -> themeMode == ThemeMode.SYSTEM
-                                    ThemeMode.LIGHT -> themeMode == ThemeMode.LIGHT
-                                    ThemeMode.DARK -> themeMode != ThemeMode.SYSTEM && themeMode != ThemeMode.LIGHT
-                                    else -> false
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isSelected) colors.cardBg else Color.Transparent)
-                                        .clickable { onThemeModeSelected(mode) }
-                                        .padding(horizontal = 9.dp, vertical = 5.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = label,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            fontSize = 11.5.sp
-                                        ),
-                                        color = if (isSelected) colors.textPrimary else colors.textMuted
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+            SettingsMenuRow(Icons.Default.Lock, "Focus & behavior", onClick = onFocusSettingsClick) {
+                Icon(Icons.Default.ChevronRight, null, Modifier.size(16.dp))
+            }
+            SettingsMenuRow(Icons.Default.Security, "Security & permissions", onClick = onSecurityClick) {
+                Icon(Icons.Default.ChevronRight, null, Modifier.size(16.dp))
+            }
+            SettingsMenuRow(Icons.Default.Star, "Pro license", onClick = onProLicenseClick) {
+                Icon(Icons.Default.ChevronRight, null, Modifier.size(16.dp))
             }
         }
     }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 6. ACHIEVEMENTS TAB (TAB 1)
@@ -3857,107 +3387,7 @@ private fun AchievementsEnclaveTab(
 // ─────────────────────────────────────────────────────────────────────────────
 // 7. SYSTEM ENCLAVE LOGS (TAB 2)
 // ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun EnclaveLogsTab(
-    colors: EnclaveColors,
-    profile: UserProfile,
-    nodeId: String,
-    yearMonth: String,
-    restrictedCount: Int
-) {
-    val logItems = listOf(
-        Triple("13:07:44", "ZERO-KNOWLEDGE AUDIT", "Memory key sanitization verified on vault background handshake."),
-        Triple("12:45:10", "ENCLAVE SHIELD DEFENSE", "Active access boundary defended ($restrictedCount apps restricted)."),
-        Triple("11:20:00", "NODE HEARTBEAT", "Node $nodeId verified deterministic state alignment with Enclave layer."),
-        Triple("09:15:32", "DISCIPLINE ENGINE", "Focus session checkpoint completed: +45m logged into local ledger."),
-        Triple("Genesis", "IDENTITY GENESIS", "${profile.name} $yearMonth protocol active. Hardware cryptographic key live.")
-    )
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            color = colors.cardBg,
-            border = BorderStroke(1.dp, colors.cardBorder)
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "ENCLAVE AUDIT TRAIL",
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            letterSpacing = 1.sp,
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = colors.textPrimary
-                    )
-                    Text(
-                        text = "NODE VERIFIED",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = colors.accentCyan
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                logItems.forEachIndexed { i, (time, tag, msg) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(
-                            text = time,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 10.5.sp,
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = colors.textMuted,
-                            modifier = Modifier.width(68.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = tag,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace
-                                ),
-                                color = colors.accentCyan
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = msg,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp
-                                ),
-                                color = colors.textSecondary
-                            )
-                        }
-                    }
-                    if (i < logItems.size - 1) {
-                        HorizontalDivider(color = colors.cardBorder, thickness = 0.8.dp)
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 8. INTERACTIVE MODALS & DIALOGS
@@ -5018,8 +4448,8 @@ private fun EnclaveOverflowMenu(
 
                 EnclaveMenuItem(colors = colors, icon = Icons.Filled.Face, label = "Avatar Wardrobe & Shop", onClick = onAvatarStore)
                 EnclaveMenuItem(colors = colors, icon = Icons.Filled.Info, label = "Economy & Discipline Rules", onClick = onEconomyRules)
-                EnclaveMenuItem(colors = colors, icon = Icons.Filled.Settings, label = "Preferences & Sync Hub", onClick = onPreferencesHub)
-                EnclaveMenuItem(colors = colors, icon = Icons.Filled.Security, label = "Zero-Knowledge Vaults & Security", onClick = onSecurityVaults)
+                EnclaveMenuItem(colors = colors, icon = Icons.Filled.Settings, label = "Settings", onClick = onPreferencesHub)
+                EnclaveMenuItem(colors = colors, icon = Icons.Filled.Security, label = "Security & permissions", onClick = onSecurityVaults)
                 EnclaveMenuItem(colors = colors, icon = Icons.Filled.ContentCopy, label = "Copy Identity Node ID", onClick = onCopyNodeId)
             }
         }

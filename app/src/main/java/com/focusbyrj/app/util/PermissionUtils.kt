@@ -147,6 +147,7 @@ object PermissionUtils {
 
     
     fun hasNotificationPermission(context: Context): Boolean {
+        if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         }
@@ -170,7 +171,8 @@ object PermissionUtils {
                 }
                 context.startActivity(intent)
             } catch (e: Exception) {
-                openAppBatterySettings(context)
+                runCatching { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
         }
     }
@@ -184,16 +186,11 @@ object PermissionUtils {
                 }
                 context.startActivity(intent)
             } catch (e: Exception) {
-                openAppBatterySettings(context)
+                runCatching { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             }
         }
     }
 
-    fun areAllPermissionsGranted(context: Context): Boolean {
-        return hasUsageStatsPermission(context) && 
-               hasOverlayPermission(context) && 
-               isIgnoringBatteryOptimizations(context) &&
-               hasNotificationPermission(context) &&
-               hasExactAlarmPermission(context)
-    }
+    fun areAllPermissionsGranted(context: Context): Boolean = DevicePermissionState.read(context).ready
 }

@@ -62,10 +62,13 @@ fun SetupPermissionsDialog(
     hasOverlay: Boolean,
     isBatteryUnrestricted: Boolean,
     hasNotifications: Boolean = true,
+    hasExactAlarms: Boolean? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     var showWhyBatteryDialog by remember { mutableStateOf(false) }
+    val livePermissions by rememberDevicePermissions()
+    val exactAlarmsGranted = hasExactAlarms ?: (com.focusbyrj.app.util.DevicePermission.ALARMS in livePermissions.granted)
 
     Dialog(
         onDismissRequest = { },
@@ -128,7 +131,7 @@ fun SetupPermissionsDialog(
 
                 PermissionSetupCard(
                     number = "01",
-                    title = "Usage Detection",
+                    title = "Usage access",
                     subtitle = "Detects when you open a distracting app so we can intercept it immediately.",
                     isGranted = hasUsageStats,
                     onAction = { PermissionUtils.requestUsageStatsPermission(context) }
@@ -138,7 +141,7 @@ fun SetupPermissionsDialog(
 
                 PermissionSetupCard(
                     number = "02",
-                    title = "Strict Enforcement",
+                    title = "Display over other apps",
                     subtitle = "Allows the focus shield to draw over blocked apps, preventing doom-scrolling.",
                     isGranted = hasOverlay,
                     onAction = { PermissionUtils.requestOverlayPermission(context) }
@@ -148,7 +151,7 @@ fun SetupPermissionsDialog(
 
                 PermissionSetupCard(
                     number = "03",
-                    title = "Background Persistence",
+                    title = "Battery & background access",
                     subtitle = "Prevents Android from killing your focus sessions to save battery.",
                     isGranted = isBatteryUnrestricted,
                     onAction = { PermissionUtils.requestIgnoreBatteryOptimizations(context) },
@@ -163,6 +166,15 @@ fun SetupPermissionsDialog(
                     onAction = { PermissionUtils.requestNotificationPermission(context) }
                 )
 
+                if (com.focusbyrj.app.util.DevicePermission.ALARMS.applicable) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PermissionSetupCard(
+                        number = "05", title = "Alarms & reminders",
+                        subtitle = com.focusbyrj.app.util.DevicePermission.ALARMS.explanation,
+                        isGranted = exactAlarmsGranted,
+                        onAction = { PermissionUtils.requestExactAlarmPermission(context) }
+                    )
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 }
                 
@@ -173,7 +185,7 @@ fun SetupPermissionsDialog(
                         .navigationBarsPadding()
                         .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 48.dp)
                 ) {
-                    val allGranted = hasUsageStats && hasOverlay && isBatteryUnrestricted && hasNotifications
+                    val allGranted = hasUsageStats && hasOverlay && isBatteryUnrestricted && hasNotifications && exactAlarmsGranted
                     Button(
                         onClick = onDismiss,
                         modifier = Modifier

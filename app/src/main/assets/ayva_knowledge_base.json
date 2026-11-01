@@ -1,14 +1,14 @@
 [
   {
     "id": "preferences_hub_navigation",
-    "title": "Preferences & Settings Hub",
+    "title": "Settings",
     "emoji": "⚙️",
-    "directExplanation": "The menu settings have moved to the centralized **Preferences & Settings Hub**. You can access App Settings, Security & Permissions, Bubble Settings, Profile Customization, Subscriptions, and the Setup Guide all in one place.",
-    "whereToGo": "Top Header Bar -> Tap Profile Avatar Ring (or tap button below)",
+    "directExplanation": "Settings groups Appearance, Focus & behavior, Notifications & reminders, Security & permissions, Data & recovery, Bubble Settings, and Help & about. Your profile contains identity, achievements and Pro license.",
+    "whereToGo": "Tap the profile avatar to open Settings",
     "whatToClick": [
-      "1. Tap your Profile Avatar in the top right corner of the home screen.",
-      "2. Choose Security & Permissions, App Settings, Bubble Settings, Subscription, or Profile.",
-      "3. Or tap 'Preferences Hub' below to jump directly there!"
+      "Tap the profile avatar to open Settings.",
+      "Choose Appearance, Focus & behavior, Notifications & reminders, Security & permissions, Data & recovery, Bubble Settings, or Help & about.",
+      "Tap the profile card for your profile and achievements; Pro license opens lifetime activation."
     ],
     "keywords": [
       "settings",
@@ -35,12 +35,11 @@
     "id": "security_and_permissions",
     "title": "Security & Permissions Overview",
     "emoji": "🔒",
-    "directExplanation": "FocusByRj features tamper defense and system permissions to maintain your focus without needing a PIN lock. It includes:\n• **Usage Access**: Detects foreground apps to enforce focus blocks.\n• **Display Over Apps**: Direct window overlay for blocking screens.\n• **Battery Restrictions**: Prevents Android from killing background services.\n• **Uninstall Protection**: Device Administrator defense against impulsive deletion.\n• **Anti-Screenshot Protection**: Prevents screenshots of sensitive screens.\n• **Data Vault**: AES-256 password-encrypted backup and restore.",
-    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions",
+    "directExplanation": "Security & permissions shows Usage access, Display over other apps, Battery & background access, Notifications, and Alarms & reminders. It also manages screenshot protection, uninstall protection and the private notes vault. Backups are in Data & recovery; diagnostics are in Help & about.",
+    "whereToGo": "Settings > Security & permissions",
     "whatToClick": [
-      "Tap Profile Avatar in the top header",
-      "Tap Security & Permissions",
-      "Grant permissions or toggle Uninstall Protection and Anti-Screenshot"
+      "Open Settings > Security & permissions.",
+      "Review device access, privacy protection, or Private notes vault."
     ],
     "keywords": [
       "security",
@@ -60,11 +59,11 @@
     "title": "Notes Vault PIN and App Blocking",
     "emoji": "🔐",
     "directExplanation": "Archived/secret notes can be protected with a 6-digit vault PIN and a 12-word recovery phrase in Security & Permissions. App blocking is separate: Soft Mode uses a wait timer and relief window; Strict Mode has no ordinary wait-to-bypass button. A notes PIN does not unlock blocked apps.",
-    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions / App Settings",
+    "whereToGo": "Settings > Security & permissions > Private notes vault",
     "whatToClick": [
-      "Open Security & Permissions.",
-      "Use Notes Vault passcode setup for archived notes.",
-      "Use the app blocking controls separately for Soft or Strict Mode."
+      "Open Settings > Security & permissions > Private notes vault.",
+      "Choose Set up beside Vault PIN.",
+      "App boundaries have separate Soft and Strict Mode controls."
     ],
     "keywords": [
       "pin",
@@ -87,7 +86,7 @@
       "recovery phrase",
       "pin lock"
     ],
-    "route": "security",
+    "route": "settings_vault",
     "isPackageSettingUri": false,
     "whyOrTip": "Archived/secret notes can be protected with a 6-digit vault PIN and a 12-word recovery phrase in Security & Permissions. App blocking is separate: Soft Mode uses a wait timer and relief window; Strict Mode has no ordinary wait-to-bypass button. A notes PIN does not unlock blocked apps."
   },
@@ -96,11 +95,10 @@
     "title": "App Background Theme Mode",
     "emoji": "🌓",
     "directExplanation": "Choose System Default, Dark Minimal, Pitch Black, Graphite Black, Obsidian Black, Clean Light, Frost White, Paper White, Warm Sepia, or Ivory White. Theme and accent color are separate settings.",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> App Background Theme",
+    "whereToGo": "Settings > Appearance",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Select Light, Dark, or System under Appearance"
+      "Open Settings > Appearance > App theme.",
+      "Choose from the full list of system, dark and light themes."
     ],
     "keywords": [
       "dark mode",
@@ -111,7 +109,7 @@
       "app appearance",
       "mode"
     ],
-    "route": "settings",
+    "route": "settings_appearance",
     "isPackageSettingUri": false,
     "prefKey": "app_theme_mode",
     "prefType": "string",
@@ -123,11 +121,10 @@
     "title": "App Accent Color",
     "emoji": "🎨",
     "directExplanation": "Changes the highlight color used by buttons and active elements. The current choices are the color palettes listed in App Settings; changing the accent does not change the background theme.",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> Accent Theme",
+    "whereToGo": "Settings > Appearance",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Choose an accent color like Emerald, Ocean, Violet, Sunset, Amber, Rose, Crimson, or Monolith"
+      "Open Settings > Appearance > Accent color.",
+      "Choose your preferred accent."
     ],
     "keywords": [
       "accent color",
@@ -139,7 +136,7 @@
       "violet",
       "palette"
     ],
-    "route": "settings",
+    "route": "settings_appearance",
     "isPackageSettingUri": false,
     "prefKey": "app_theme_color",
     "prefType": "string",
@@ -151,11 +148,10 @@
     "title": "Activity Heatmap Color Theme",
     "emoji": "🟩",
     "directExplanation": "Select the color gradient palette for your productivity activity grid (Emerald, GitHub Classic, Ocean, Neon Violet, Sunset Fire, Monochrome).",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> Heatmap Theme",
+    "whereToGo": "Settings > Appearance",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Select your preferred Heatmap Theme"
+      "Open Settings > Appearance > Heatmap palette.",
+      "Choose a palette."
     ],
     "keywords": [
       "heatmap",
@@ -166,7 +162,7 @@
       "emerald grid",
       "stats color"
     ],
-    "route": "settings",
+    "route": "settings_appearance",
     "isPackageSettingUri": false
   },
   {
@@ -174,11 +170,10 @@
     "title": "Lock Screen Overlay Theme Mode",
     "emoji": "🛡️",
     "directExplanation": "Sets the theme strictly for the full-screen app blocker overlay.",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Appearance -> Locked Screen Overlay",
+    "whereToGo": "Settings > Appearance",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Select Light, Dark, or System for the overlay"
+      "Open Settings > Appearance > Block screen theme.",
+      "Choose the theme for the blocking screen."
     ],
     "keywords": [
       "overlay theme",
@@ -186,7 +181,7 @@
       "lock screen color",
       "block mode color"
     ],
-    "route": "settings",
+    "route": "settings_appearance",
     "isPackageSettingUri": false,
     "prefKey": "overlay_theme_mode",
     "prefType": "string",
@@ -196,11 +191,11 @@
     "id": "soft_mode_wait_timer",
     "title": "Soft Mode Wait Timer",
     "emoji": "⏱️",
-    "directExplanation": "The wait on a Soft Mode block screen before its relief option becomes available. The supported range is 5–60 seconds. This is separate from the number of minutes of relief.",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Soft Mode Delay",
+    "directExplanation": "The wait on a Soft Mode block screen before its relief option becomes available. The supported range is 5–120 seconds. This is separate from the number of minutes of relief.",
+    "whereToGo": "Settings > Focus & behavior",
     "whatToClick": [
-      "Open App Settings.",
-      "Choose Soft Mode Wait Timer, then a value from 5–60 seconds."
+      "Open Settings > Focus & behavior > Soft-block delay.",
+      "Choose a value from 5–120 seconds."
     ],
     "keywords": [
       "soft mode wait timer",
@@ -212,22 +207,22 @@
       "block timer",
       "soft lock duration"
     ],
-    "route": "settings",
+    "route": "settings_focus",
     "isPackageSettingUri": false,
     "prefKey": "soft_lock_duration",
     "prefType": "int",
     "diagnosticKey": "soft_mode_wait_timer",
-    "whyOrTip": "The wait on a Soft Mode block screen before its relief option becomes available. The supported range is 5–60 seconds. This is separate from the number of minutes of relief."
+    "whyOrTip": "The wait on a Soft Mode block screen before its relief option becomes available. The supported range is 5–120 seconds. This is separate from the number of minutes of relief."
   },
   {
     "id": "soft_mode_relief_duration",
     "title": "Soft Mode Relief Duration",
     "emoji": "🕊️",
     "directExplanation": "The temporary access window after the Soft Mode wait. The supported range is 1–60 minutes. This does not change the wait timer or turn a Strict Mode rule into Soft Mode.",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Temporary Access Relief Window",
+    "whereToGo": "Settings > Focus & behavior",
     "whatToClick": [
-      "Open App Settings.",
-      "Choose Soft Mode Relief Duration, then a value from 1–60 minutes."
+      "Open Settings > Focus & behavior > Temporary unlock duration.",
+      "Choose a value from 1–60 minutes."
     ],
     "keywords": [
       "relief duration",
@@ -238,7 +233,7 @@
       "soft unlock duration",
       "temporary access"
     ],
-    "route": "settings",
+    "route": "settings_focus",
     "isPackageSettingUri": false,
     "prefKey": "soft_unlock_duration",
     "prefType": "int",
@@ -292,11 +287,11 @@
     "title": "Persistent Task Reminders",
     "emoji": "🔔",
     "directExplanation": "The interval for repeat alerts on tasks with Persistent Reminders enabled. The supported range is 1–1440 minutes. Priority alone does not make a task persistent. Due times, completion, Android notification permissions and battery restrictions also affect delivery.",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Persistent Reminders Interval",
+    "whereToGo": "Settings > Notifications & reminders",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Choose your reminder interval (e.g., 5m, 15m, 30m, 1h, 2h)"
+      "Open Settings > Notifications & reminders > Persistent reminder interval.",
+      "Choose a repeat interval from 1 minute to 24 hours.",
+      "Enable persistent reminders on the individual task."
     ],
     "keywords": [
       "persistent reminders",
@@ -306,7 +301,7 @@
       "reminder interval",
       "alarm interval"
     ],
-    "route": "settings",
+    "route": "settings_notifications",
     "isPackageSettingUri": false,
     "prefKey": "persistent_reminder_interval",
     "prefType": "int",
@@ -318,11 +313,10 @@
     "title": "Routine Start/End Notifications",
     "emoji": "📅",
     "directExplanation": "Alerts you when a scheduled focus routine begins or finishes.",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Routine Alerts",
+    "whereToGo": "Settings > Notifications & reminders",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap App Settings",
-      "Toggle Routine Alerts on or off"
+      "Open Settings > Notifications & reminders > Routine alerts.",
+      "Turn routine alerts on or off."
     ],
     "keywords": [
       "routine notifications",
@@ -330,7 +324,7 @@
       "routine alerts",
       "start notification"
     ],
-    "route": "settings",
+    "route": "settings_notifications",
     "isPackageSettingUri": false,
     "prefKey": "routine_notifications",
     "prefType": "boolean",
@@ -340,12 +334,11 @@
     "id": "task_notification_style",
     "title": "Task Notification Style",
     "emoji": "📱",
-    "directExplanation": "The available styles are Notification Only, Floating Bar, and Both. These control reminder presentation, not separate sound/alarm modes. System notifications are still posted by the reminder receiver; priority tasks can also use the floating bar. Android channels, volume and Do Not Disturb control sound.",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Notification Style",
+    "directExplanation": "Task reminder delivery offers Notification bar or Notification + popup. A system notification backup is retained. Priority tasks also show a floating popup even when notification-bar-only delivery is selected. The legacy Floating Bar and Both values have the same popup behavior. Android channels, volume and Do Not Disturb control sound.",
+    "whereToGo": "Settings > Notifications & reminders",
     "whatToClick": [
-      "Open App Settings.",
-      "Choose Task Notification Style.",
-      "Select Notification Only, Floating Bar, or Both."
+      "Open Settings > Notifications & reminders > Task reminder delivery.",
+      "Choose Notification bar or Notification + popup."
     ],
     "keywords": [
       "notification style",
@@ -354,12 +347,12 @@
       "how to notify",
       "sound or banner"
     ],
-    "route": "settings",
+    "route": "settings_notifications",
     "isPackageSettingUri": false,
     "prefKey": "task_notification_style",
     "prefType": "string",
     "diagnosticKey": "task_notification_style",
-    "whyOrTip": "The available styles are Notification Only, Floating Bar, and Both. These control reminder presentation, not separate sound/alarm modes. System notifications are still posted by the reminder receiver; priority tasks can also use the floating bar. Android channels, volume and Do Not Disturb control sound."
+    "whyOrTip": "Task reminder delivery offers Notification bar or Notification + popup. A system notification backup is retained. Priority tasks also show a floating popup even when notification-bar-only delivery is selected. The legacy Floating Bar and Both values have the same popup behavior. Android channels, volume and Do Not Disturb control sound."
   },
   {
     "id": "bubble_enable_disable",
@@ -440,38 +433,37 @@
   },
   {
     "id": "bubble_smart_regex",
-    "title": "Smart Regex Parsing",
+    "title": "Live date preview",
     "emoji": "🪄",
-    "directExplanation": "Bubble Settings includes a Smart Regex Parsing toggle for priority and tags. The current chat coordinator does not consult that flag, so changing it does not disable its date or intent parsing. Use /talk for app information and /create for a literal task. This toggle is not an AI model.",
-    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Smart Regex Parsing",
+    "directExplanation": "Live date preview shows detected dates while you type. Turning it off hides that preview; task creation and explicit commands still parse dates. This preference does not select an AI model.",
+    "whereToGo": "Settings > Bubble Settings > Live date preview",
     "whatToClick": [
-      "Tap Profile Avatar in the top header",
-      "Tap Bubble Settings",
-      "Toggle 'Smart Regex Parsing'"
+      "Open Settings > Bubble Settings > Live date preview.",
+      "Turn the detected-date preview on or off."
     ],
     "keywords": [
       "smart regex",
       "regex parsing",
       "tags in chat",
       "priority regex",
-      "chat regex"
+      "chat regex",
+      "live date preview"
     ],
     "route": "bubble_settings",
     "isPackageSettingUri": false,
-    "whyOrTip": "Bubble Settings includes a Smart Regex Parsing toggle for priority and tags. The current chat coordinator does not consult that flag, so changing it does not disable its date or intent parsing. Use /talk for app information and /create for a literal task. This toggle is not an AI model.",
+    "whyOrTip": "Live date preview shows detected dates while you type. Turning it off hides that preview; task creation and explicit commands still parse dates. This preference does not select an AI model.",
     "prefKey": "smart_regex_enabled",
     "prefType": "boolean"
   },
   {
     "id": "bubble_hide_in_landscape",
-    "title": "Hide Bubble in Landscape & Video Mode",
+    "title": "Hide bubble in landscape",
     "emoji": "📱",
-    "directExplanation": "Automatically suppresses the floating bubble when watching videos or playing games in landscape orientation.",
-    "whereToGo": "Top Header -> Profile Avatar -> Bubble Settings -> Hide in Landscape / Video Mode",
+    "directExplanation": "Hide in landscape hides the floating bubble while the phone is in landscape orientation. It does not detect video playback in portrait orientation.",
+    "whereToGo": "Settings > Bubble Settings > Hide in landscape",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap Bubble Settings",
-      "Toggle 'Hide in Landscape / Video Mode'"
+      "Open Settings > Bubble Settings > Hide in landscape.",
+      "Turn landscape hiding on or off."
     ],
     "keywords": [
       "hide in landscape",
@@ -485,7 +477,8 @@
     "isPackageSettingUri": false,
     "prefKey": "hide_in_landscape",
     "prefType": "boolean",
-    "diagnosticKey": "bubble_hide_in_landscape"
+    "diagnosticKey": "bubble_hide_in_landscape",
+    "whyOrTip": "Hide in landscape hides the floating bubble while the phone is in landscape orientation. It does not detect video playback in portrait orientation."
   },
   {
     "id": "vacation_mode",
@@ -521,12 +514,11 @@
     "id": "anti_screenshot_protection",
     "title": "Anti-Screenshot Protection",
     "emoji": "🛡️",
-    "directExplanation": "Uses Android secure-window protection on supported app screens and obscures their recent-app previews. Its coverage depends on the window and Android; it is not a guarantee against every form of capture.",
+    "directExplanation": "Screenshot protection covers app screens and recent previews. Sensitive vault and recovery screens remain protected even when the general preference is off. Your launcher controls home-screen widgets.",
     "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Anti-Screenshot Protection",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap Security & Permissions",
-      "Toggle 'Anti-Screenshot Protection'"
+      "Open Settings > Security & permissions > Screenshot protection.",
+      "Turn general screenshot and recent-preview protection on or off."
     ],
     "keywords": [
       "anti screenshot",
@@ -542,7 +534,7 @@
     "prefKey": "secure_recents",
     "prefType": "boolean",
     "diagnosticKey": "secure_recents_blur",
-    "whyOrTip": "Uses Android secure-window protection on supported app screens and obscures their recent-app previews. Its coverage depends on the window and Android; it is not a guarantee against every form of capture."
+    "whyOrTip": "Screenshot protection covers app screens and recent previews. Sensitive vault and recovery screens remain protected even when the general preference is off. Your launcher controls home-screen widgets."
   },
   {
     "id": "uninstall_protection",
@@ -551,9 +543,8 @@
     "directExplanation": "Prevents deleting the app during impulsive moments by requiring Device Administrator deactivation.",
     "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Uninstall Protection",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap Security & Permissions",
-      "Toggle 'Uninstall Protection' to enable or disable"
+      "Open Settings > Security & permissions > Uninstall protection.",
+      "Enable or disable device administrator access in Android."
     ],
     "keywords": [
       "uninstall protection",
@@ -574,11 +565,11 @@
     "title": "Data Vault & Encrypted Backup",
     "emoji": "📦",
     "directExplanation": "Export or restore a password-encrypted backup from Security & Permissions. Keep the archive password safe. Export, file selection, password entry and restore happen in the dedicated backup interface; chat cannot view the vault or silently restore data. Use backup status to check recorded backup evidence.",
-    "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Data Vault & Backup",
+    "whereToGo": "Settings > Data & recovery",
     "whatToClick": [
-      "Tap Profile Avatar -> Security & Permissions",
-      "Tap 'Export Encrypted Backup' and set an archive password to save",
-      "Or tap 'Restore from Backup' to select an archive file and decrypt"
+      "Open Settings > Data & recovery.",
+      "Choose Create encrypted backup and set an archive password, or Restore encrypted backup and select an archive.",
+      "Keep replacement mode off to add records. Replacing current data requires a separate confirmation."
     ],
     "keywords": [
       "backup",
@@ -591,7 +582,7 @@
       "encrypted backup",
       "save data"
     ],
-    "route": "security",
+    "route": "settings_data",
     "isPackageSettingUri": false,
     "whyOrTip": "Export or restore a password-encrypted backup from Security & Permissions. Keep the archive password safe. Export, file selection, password entry and restore happen in the dedicated backup interface; chat cannot view the vault or silently restore data. Use backup status to check recorded backup evidence."
   },
@@ -600,10 +591,10 @@
     "title": "Default Launch Tab",
     "emoji": "🏠",
     "directExplanation": "Choose which screen opens on launch: Focus, Tasks, Time, or Account. Routines and Notes are not launch-tab choices.",
-    "whereToGo": "Top Header -> Profile Avatar -> App Settings -> Blocking & Preferences -> Default Launch Tab",
+    "whereToGo": "Settings > Focus & behavior",
     "whatToClick": [
-      "Open App Settings.",
-      "Choose Default Launch Tab: Focus, Tasks, Time, or Account."
+      "Open Settings > Focus & behavior > Default launch screen.",
+      "Choose Focus, Tasks, Time, or Account."
     ],
     "keywords": [
       "start tab",
@@ -612,7 +603,7 @@
       "startup screen",
       "first screen"
     ],
-    "route": "settings",
+    "route": "settings_focus",
     "isPackageSettingUri": false,
     "prefKey": "default_start_tab",
     "prefType": "string",
@@ -647,13 +638,13 @@
   },
   {
     "id": "pro_subscription",
-    "title": "Pro Subscription and Activation",
+    "title": "Pro license",
     "emoji": "⭐",
-    "directExplanation": "The Subscription screen shows the available Pro benefits and activation/license controls. Cloud/account availability depends on its own setup and service status; a chat answer or license alone does not establish that your data is syncing.",
-    "whereToGo": "Top Header -> Profile Avatar -> Subscription",
+    "directExplanation": "Pro uses a signed lifetime license key. This is license activation, not a recurring subscription or a cloud-sync service.",
+    "whereToGo": "Settings > Profile > Pro license",
     "whatToClick": [
-      "Tap the Profile Avatar in the top header",
-      "Tap Subscription to view Pro benefits and upgrade"
+      "Open Settings > Pro license, or Profile > Pro license.",
+      "Use a valid signed lifetime license key to activate Pro."
     ],
     "keywords": [
       "subscription",
@@ -666,7 +657,7 @@
     ],
     "route": "subscription",
     "isPackageSettingUri": false,
-    "whyOrTip": "The Subscription screen shows the available Pro benefits and activation/license controls. Cloud/account availability depends on its own setup and service status; a chat answer or license alone does not establish that your data is syncing."
+    "whyOrTip": "Pro uses a signed lifetime license key. This is license activation, not a recurring subscription or a cloud-sync service."
   },
   {
     "id": "practice_alert_time",
@@ -900,11 +891,11 @@
     "title": "Interactive Home Screen Widget",
     "emoji": "📱",
     "directExplanation": "Add an interactive task checklist or Keep-style note widget to your home screen with direct tap check-off, category cycling, and custom OLED/Glass styling.",
-    "whereToGo": "Phone Home Screen -> Long Press -> Widgets -> FocusByRj -> Todo List or Note Widget",
+    "whereToGo": "Settings > Appearance > Widgets",
     "whatToClick": [
-      "Long press an empty space on your phone's home screen.",
-      "Tap Widgets -> FocusByRj -> drag Todo List or Note Widget to home screen.",
-      "Configure widget theme (OLED Black, Glass, Material 3), opacity, and tap Save."
+      "Open Settings > Appearance > Widgets.",
+      "Choose Tasks widget, Notes widget, or Exam countdown.",
+      "Select the existing widget instance to edit, or add a new widget. Tasks and Notes also have a separate Default style option."
     ],
     "keywords": [
       "widget",
@@ -916,7 +907,8 @@
       "interactive widget"
     ],
     "isPackageSettingUri": false,
-    "diagnosticKey": "homescreen_widget"
+    "diagnosticKey": "homescreen_widget",
+    "route": "settings_widgets"
   },
   {
     "id": "arithmetic_drills",
@@ -1021,8 +1013,8 @@
     "directExplanation": "Battery optimization exemptions can improve background reliability for the blocker, reminders and floating bubble. Android and device-maker restrictions still affect delivery; this setting cannot guarantee the service will always run.",
     "whereToGo": "Top Header -> Profile Avatar -> Security & Permissions -> Battery Restrictions",
     "whatToClick": [
-      "Tap Profile Avatar -> Security & Permissions",
-      "Tap Battery Restrictions -> select 'Don't optimize' or 'Unrestricted'"
+      "Open Settings > Security & permissions > Battery & background access.",
+      "Grant background access in Android; manufacturer-specific battery controls may also apply."
     ],
     "keywords": [
       "battery",
@@ -1056,7 +1048,7 @@
     "id": "live_transcription",
     "title": "Live Transcription",
     "directExplanation": "/transcribe opens live on-device speech transcription on Android 12 or later. Microphone permission and an installed compatible on-device speech service/language are required. Ayva does not use an online fallback or download speech/language models. Finalized transcripts can become reviewed task drafts; partial captions never execute actions. Chat does not read saved Notes attachments.",
-    "whereToGo": "Open bubble settings",
+    "whereToGo": "Settings > Appearance",
     "whatToClick": [],
     "keywords": [
       "live transcription",
@@ -1065,7 +1057,7 @@
       "transcribe",
       "transcription"
     ],
-    "route": "bubble_settings"
+    "route": "settings_appearance"
   },
   {
     "id": "habit_tracking",
@@ -1115,7 +1107,7 @@
     "id": "bubble_auto_hide_enabled",
     "title": "Bubble Auto-Hide",
     "directExplanation": "Enables automatic tucking of the floating bubble into the screen edge after its idle delay. Change the delay separately. Turning auto-hide off does not disable the floating bubble.",
-    "whereToGo": "Preferences & Settings Hub -> Bubble Settings",
+    "whereToGo": "Settings > Bubble Settings",
     "keywords": [
       "bubble auto hide",
       "auto-hide"
@@ -1129,7 +1121,7 @@
     "id": "bubble_hidden_opacity",
     "title": "Hidden Bubble Opacity",
     "directExplanation": "Controls how visible the docked bubble remains, from 20% to 100%. A higher value makes it more opaque; it does not change the amount tucked off-screen.",
-    "whereToGo": "Preferences & Settings Hub -> Bubble Settings",
+    "whereToGo": "Settings > Bubble Settings",
     "keywords": [
       "hidden bubble opacity",
       "hidden opacity",
@@ -1144,7 +1136,7 @@
     "id": "bubble_hidden_amount",
     "title": "Bubble Hidden Amount",
     "directExplanation": "Controls how far the bubble tucks into the screen edge when docked, from 25% to 85%. A higher amount hides more of the bubble. Opacity and glow are separate.",
-    "whereToGo": "Preferences & Settings Hub -> Bubble Settings",
+    "whereToGo": "Settings > Bubble Settings",
     "keywords": [
       "bubble hidden amount",
       "hidden amount",
@@ -1159,7 +1151,7 @@
     "id": "bubble_glow_intensity",
     "title": "Bubble Glow Intensity",
     "directExplanation": "Controls the brightness of the docked bubble glow, from 0% to 100%. This changes its visual glow and does not enable notifications or change reminder frequency.",
-    "whereToGo": "Preferences & Settings Hub -> Bubble Settings",
+    "whereToGo": "Settings > Bubble Settings",
     "keywords": [
       "bubble glow intensity",
       "glow intensity",
@@ -1174,7 +1166,7 @@
     "id": "habit_top_notifications",
     "title": "Habit Top Notifications",
     "directExplanation": "Requests Android notifications for habit reminders alongside the habit reminder interface. If overlay permission is unavailable, the reminder receiver can use notifications as a fallback even when this preference is off. Android notification permissions and channels still apply.",
-    "whereToGo": "Preferences & Settings Hub -> App Settings",
+    "whereToGo": "Settings > Notifications & reminders",
     "keywords": [
       "habit notifications",
       "habit top notifications"
@@ -1182,7 +1174,7 @@
     "whatToClick": [],
     "prefKey": "habit_top_notifications",
     "prefType": "boolean",
-    "route": "settings"
+    "route": "settings_notifications"
   },
   {
     "id": "offline_dictionary",

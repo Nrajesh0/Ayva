@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import com.focusbyrj.app.ui.navigation.settingsDestinations
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -424,10 +425,8 @@ fun MainAppScreen(
         }
         ctx as? MainActivity
     }
-    val isSensitiveRoute = currentDestination?.route in setOf(
-        Screen.Empty.route,
-        Screen.Security.route
-    )
+    val isSensitiveRoute = currentDestination?.route == Screen.Empty.route ||
+        currentDestination?.route in com.focusbyrj.app.ui.navigation.SettingsRoutes.sensitive
     LaunchedEffect(isSensitiveRoute, activity) {
         activity?.updateSecureWindowFlags(isSensitiveRoute)
     }
@@ -501,25 +500,12 @@ fun MainAppScreen(
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     
-    var hasUsageStats by remember { mutableStateOf(PermissionUtils.hasUsageStatsPermission(context)) }
-    var hasOverlay by remember { mutableStateOf(PermissionUtils.hasOverlayPermission(context)) }
-    var isBatteryUnrestricted by remember { mutableStateOf(PermissionUtils.isIgnoringBatteryOptimizations(context)) }
-    var hasNotifications by remember { mutableStateOf(PermissionUtils.hasNotificationPermission(context)) }
-
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME || event == androidx.lifecycle.Lifecycle.Event.ON_START) {
-                hasUsageStats = PermissionUtils.hasUsageStatsPermission(context)
-                hasOverlay = PermissionUtils.hasOverlayPermission(context)
-                isBatteryUnrestricted = PermissionUtils.isIgnoringBatteryOptimizations(context)
-                hasNotifications = PermissionUtils.hasNotificationPermission(context)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    val allConfigured = hasUsageStats && hasOverlay && isBatteryUnrestricted && hasNotifications
+    val permissionState by com.focusbyrj.app.ui.components.rememberDevicePermissions()
+    val hasUsageStats = com.focusbyrj.app.util.DevicePermission.USAGE in permissionState.granted
+    val hasOverlay = com.focusbyrj.app.util.DevicePermission.OVERLAY in permissionState.granted
+    val isBatteryUnrestricted = com.focusbyrj.app.util.DevicePermission.BATTERY in permissionState.granted
+    val hasNotifications = com.focusbyrj.app.util.DevicePermission.NOTIFICATIONS in permissionState.granted
+    val allConfigured = permissionState.ready
 
     var showSetupDialog by remember { mutableStateOf(!hasSeenOnboarding && !allConfigured) }
 
@@ -535,17 +521,6 @@ fun MainAppScreen(
     }
 
 
-    androidx.compose.runtime.LaunchedEffect(showSetupDialog) {
-        if (showSetupDialog) {
-            while (true) {
-                hasUsageStats = PermissionUtils.hasUsageStatsPermission(context)
-                hasOverlay = PermissionUtils.hasOverlayPermission(context)
-                isBatteryUnrestricted = PermissionUtils.isIgnoringBatteryOptimizations(context)
-                hasNotifications = PermissionUtils.hasNotificationPermission(context)
-                kotlinx.coroutines.delay(1000)
-            }
-        }
-    }
 
     if (showSetupDialog) {
         SetupPermissionsDialog(
@@ -553,6 +528,7 @@ fun MainAppScreen(
             hasOverlay = hasOverlay,
             isBatteryUnrestricted = isBatteryUnrestricted,
             hasNotifications = hasNotifications,
+            hasExactAlarms = com.focusbyrj.app.util.DevicePermission.ALARMS in permissionState.granted,
             onDismiss = {
                 prefs.edit().putBoolean("has_seen_permission_onboarding", true).apply()
                 showSetupDialog = false
@@ -577,7 +553,7 @@ fun MainAppScreen(
                 )
                 val notesEditingState by notesViewModel.editingState.collectAsStateWithLifecycle()
                 val isEditingNote = currentDestination?.route == Screen.Empty.route && notesEditingState != null
-                if (currentDestination?.route !in hideBottomBarRoutes && !isSessionActive && !isEditingNote) {
+                if (currentDestination?.route !in hideBottomBarRoutes && currentDestination?.route?.startsWith("settings_") != true && !isSessionActive && !isEditingNote) {
                     FocusBottomBar(
                         items = items,
                         currentDestination = currentDestination,
@@ -758,6 +734,7 @@ fun MainAppScreen(
                 composable(Screen.Account.route) {
                     AccountScreen(
                         navController = navController,
+                        onLockPrivateVault = { notesViewModel.lockVault() },
                         onOpenNote = { noteId ->
                             notesViewModel.openNoteById(noteId, returnRoute = Screen.Account.route)
                             navController.navigate(Screen.Empty.route) {
@@ -770,12 +747,7 @@ fun MainAppScreen(
                         }
                     )
                 }
-                composable(Screen.PreferencesHub.route) {
-                    com.focusbyrj.app.ui.screens.PreferencesHubScreen(
-                        navController = navController,
-                        onOpenSetupGuide = { showSetupDialog = true }
-                    )
-                }
+
                 composable(Screen.EmptyTab.route) {
                     Box(modifier = Modifier.fillMaxSize())
                 }
@@ -795,18 +767,12 @@ fun MainAppScreen(
                 composable(Screen.AddRestriction.route) {
                     AddRestrictionScreen(navController, viewModel)
                 }
-                composable(Screen.Security.route) {
-                    com.focusbyrj.app.ui.components.SettingsSearchDestination(navController) { SecurityScreen(navController) }
-                }
-                composable(Screen.Settings.route) {
-                    com.focusbyrj.app.ui.components.SettingsSearchDestination(navController) { SettingsScreen(navController) }
-                }
-                composable(Screen.BubbleSettings.route) {
-                    com.focusbyrj.app.ui.components.SettingsSearchDestination(navController) { com.focusbyrj.app.ui.screens.BubbleSettingsScreen(navController) }
-                }
-                composable(Screen.Subscription.route) {
-                    SubscriptionScreen(navController)
-                }
+                settingsDestinations(
+                    nav = navController,
+                    onSetup = { showSetupDialog = true },
+                    onDataRestored = { notesViewModel.refreshVaultStatus() },
+                    vaultContent = { com.focusbyrj.app.ui.screens.PrivateVaultSettingsScreen(navController, notesViewModel) }
+                )
                 composable(Screen.Todos.route) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         MainTopBar(

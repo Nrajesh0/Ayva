@@ -8,6 +8,8 @@
 package com.focusbyrj.app.ui.screens
 
 import com.focusbyrj.app.ui.components.settingsSearchTarget
+import com.focusbyrj.app.ui.components.*
+import com.focusbyrj.app.util.SettingsPreferenceRules
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -23,6 +25,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.BrightnessAuto
@@ -88,29 +93,27 @@ val launchTabOptions = listOf(
     LaunchTabOption("account", "Account", Icons.Filled.Person, "Profile, rank & trophy achievements")
 )
 
+enum class SettingsCategory(val title: String) {
+    APPEARANCE("Appearance"), FOCUS("Focus & behavior"), NOTIFICATIONS("Notifications & reminders")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(navController: NavController) {
+fun SettingsScreen(navController: NavController, category: SettingsCategory = SettingsCategory.APPEARANCE) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE) }
 
-    var softLockDuration by remember { mutableStateOf(SettingsScreenHelper.coerceSoftLockDuration(prefs.getInt("soft_lock_duration", 10))) }
-    var softUnlockDuration by remember { mutableStateOf(SettingsScreenHelper.coerceSoftUnlockDuration(prefs.getInt("soft_unlock_duration", 5))) }
-    var routineNotifications by remember { mutableStateOf(prefs.getBoolean("routine_notifications", true)) }
-    var persistentReminderInterval by remember { mutableStateOf(prefs.getInt("persistent_reminder_interval", 15)) }
-    var defaultStartTab by remember {
-        mutableStateOf(prefs.getString("default_start_tab", "dashboard") ?: "dashboard")
-    }
+    var softLockDuration by rememberSetting(prefs, "soft_lock_duration", 10)
+    var softUnlockDuration by rememberSetting(prefs, "soft_unlock_duration", 5)
+    var routineNotifications by rememberSetting(prefs, "routine_notifications", true)
+    var persistentReminderInterval by rememberSetting(prefs, "persistent_reminder_interval", 15)
+    var defaultStartTab by rememberSetting(prefs, "default_start_tab", "dashboard")
     var showTabDropdown by remember { mutableStateOf(false) }
 
-    var taskNotificationStyle by remember {
-        mutableStateOf(prefs.getString("task_notification_style", "Both") ?: "Both")
-    }
+    var taskNotificationStyle by rememberSetting(prefs, "task_notification_style", "Both")
     var showNotificationDropdown by remember { mutableStateOf(false) }
 
-    var habitTopNotifications by remember {
-        mutableStateOf(prefs.getBoolean("habit_top_notifications", false))
-    }
+    var habitTopNotifications by rememberSetting(prefs, "habit_top_notifications", false)
 
     val currentAppTheme by AppThemeManager.themeFlow.collectAsState()
     val currentThemeMode by AppThemeManager.themeModeFlow.collectAsState()
@@ -128,62 +131,14 @@ fun SettingsScreen(navController: NavController) {
     var showAppThemeModeDropdown by remember { mutableStateOf(false) }
     var showOverlayThemeModeDropdown by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Settings",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = { navController.popBackStack() },
-                        modifier = Modifier.testTag("settings_back_button")
-                    ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                )
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // --- APPEARANCE SECTION (2026 Calm Minimal) ---
-            SettingsSectionHeader(title = "APPEARANCE")
-            com.focusbyrj.app.ui.speech.VoiceStyleSettingsRow()
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-            ) {
+    SettingsMenuPage(category.title, navController) {
+        when (category) {
+            SettingsCategory.APPEARANCE -> {
+                SettingsMenuSectionHeader("APP & DISPLAY")
+                com.focusbyrj.app.ui.speech.VoiceStyleSettingsRow()
                 SettingsStringDropdownRow(
                     icon = Icons.Filled.DarkMode,
                     title = "App Background Theme",
-                    subtitle = "Select overall app appearance",
                     selectedText = currentThemeMode.displayName,
                     isExpanded = showAppThemeModeDropdown,
                     onExpandChange = { showAppThemeModeDropdown = it },
@@ -194,14 +149,10 @@ fun SettingsScreen(navController: NavController) {
                         showAppThemeModeDropdown = false
                     }
                 )
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
                 SettingsStringDropdownRow(
                     icon = Icons.Filled.ScreenLockPortrait,
                     title = "Locked Screen Overlay",
-                    subtitle = "Appearance of the blocking screen",
                     selectedText = currentOverlayThemeMode.displayName,
                     isExpanded = showOverlayThemeModeDropdown,
                     onExpandChange = { showOverlayThemeModeDropdown = it },
@@ -212,17 +163,11 @@ fun SettingsScreen(navController: NavController) {
                         showOverlayThemeModeDropdown = false
                     }
                 )
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                // Accent Color Row
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
                 SettingsNavigationRow(
                     icon = Icons.Filled.Palette,
                     iconTint = currentAppTheme.primary,
                     title = "Accent Theme",
-                    subtitle = currentAppTheme.displayName,
                     onClick = { showAppThemeSheet = true },
                     trailing = {
                         Row(
@@ -247,18 +192,11 @@ fun SettingsScreen(navController: NavController) {
                         }
                     }
                 )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                // Heatmap Palette Row
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
                 SettingsNavigationRow(
                     icon = Icons.Filled.Whatshot,
                     iconTint = currentHeatmapTheme.colors.last(),
                     title = "Heatmap Palette",
-                    subtitle = currentHeatmapTheme.displayName,
                     onClick = { showHeatmapThemeSheet = true },
                     trailing = {
                         Row(
@@ -284,18 +222,105 @@ fun SettingsScreen(navController: NavController) {
                         }
                     }
                 )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
+                val currentIconOption = remember(currentAppIconId) { AppIconManager.getCurrentIcon(context) }
+                SettingsNavigationRow(
+                    icon = Icons.Filled.Stars,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = "App Launcher Icon",
+                    onClick = { showAppIconSheet = true },
+                    trailing = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(id = currentIconOption.previewRes),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(RoundedCornerShape(5.dp))
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Filled.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 )
-
-                // Streak Display Source Row
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
+                SettingsMenuLink(Icons.Filled.Widgets, "Widgets", "appearance.widgets", navController)
+            }
+            SettingsCategory.FOCUS -> {
+                SettingsMenuSectionHeader("BLOCKING")
+                SettingsMenuLink(Icons.Filled.Security, "Manage app boundaries", "focus.boundaries", navController)
+                SettingsStepperRow(
+                    icon = Icons.Filled.HourglassTop,
+                    title = "Soft Mode Wait Timer",
+                    valueText = "${softLockDuration}s",
+                    onDecrement = {
+                        if (softLockDuration > 5) {
+                            softLockDuration = (softLockDuration - 5).coerceIn(SettingsPreferenceRules.softWait)
+                            writeSetting(context, "soft_lock_duration", softLockDuration)
+                        }
+                    },
+                    onIncrement = {
+                        if (softLockDuration < SettingsPreferenceRules.softWait.last) {
+                            softLockDuration = (softLockDuration + 5).coerceIn(SettingsPreferenceRules.softWait)
+                            writeSetting(context, "soft_lock_duration", softLockDuration)
+                        }
+                    }
+                )
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
+                SettingsStepperRow(
+                    icon = Icons.Filled.LockOpen,
+                    title = "Soft Mode Relief Duration",
+                    valueText = "${softUnlockDuration}m",
+                    onDecrement = {
+                        if (softUnlockDuration > 1) {
+                            softUnlockDuration = (softUnlockDuration - if (softUnlockDuration > 5) 5 else 1).coerceIn(SettingsPreferenceRules.softRelief)
+                            writeSetting(context, "soft_unlock_duration", softUnlockDuration)
+                        }
+                    },
+                    onIncrement = {
+                        if (softUnlockDuration < 60) {
+                            softUnlockDuration = (softUnlockDuration + if (softUnlockDuration >= 5) 5 else 1).coerceIn(SettingsPreferenceRules.softRelief)
+                            writeSetting(context, "soft_unlock_duration", softUnlockDuration)
+                        }
+                    }
+                )
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
+                SettingsMenuSectionHeader("STARTUP & PROGRESS")
+                val currentTabOption = launchTabOptions.find { it.route == defaultStartTab } ?: launchTabOptions.first()
+                SettingsDropdownRow(
+                    icon = currentTabOption.icon,
+                    title = "Default Launch Tab",
+                    selectedText = currentTabOption.title,
+                    isExpanded = showTabDropdown,
+                    onExpandChange = { showTabDropdown = it },
+                    options = launchTabOptions,
+                    selectedOptionRoute = defaultStartTab,
+                    onOptionSelected = { option ->
+                        defaultStartTab = option.route
+                        writeSetting(context, "default_start_tab", option.route)
+                        showTabDropdown = false
+                    }
+                )
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
                 SettingsNavigationRow(
                     icon = Icons.Filled.Whatshot,
                     iconTint = Color(0xFFFF9600),
                     title = "Streak Source",
-                    subtitle = currentStreakSource.title,
                     onClick = { showStreakSourceSheet = true },
                     trailing = {
                         Row(
@@ -327,153 +352,28 @@ fun SettingsScreen(navController: NavController) {
                         }
                     }
                 )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                // App Launcher Icon Row
-                val currentIconOption = remember(currentAppIconId) {
-                    AppIconManager.getCurrentIcon(context)
-                }
-
-                SettingsNavigationRow(
-                    icon = Icons.Filled.Stars,
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    title = "App Launcher Icon",
-                    subtitle = currentIconOption.title,
-                    onClick = { showAppIconSheet = true },
-                    trailing = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Image(
-                                    painter = painterResource(id = currentIconOption.previewRes),
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .clip(RoundedCornerShape(5.dp))
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.Filled.ChevronRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                SettingsNavigationRow(
-                    icon = Icons.Filled.Palette,
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    title = "Exam countdown widget",
-                    subtitle = "Date, appearance, preview & home-screen placement",
-                    onClick = { context.startActivity(android.content.Intent(context, com.focusbyrj.app.widget.ExamCountdownConfigureActivity::class.java)) },
-                    trailing = { Icon(Icons.Filled.ChevronRight, contentDescription = null) }
-                )
-
-                // Home Screen Widget Customization Row
-                SettingsNavigationRow(
-                    icon = Icons.Filled.Palette,
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    title = "Home Screen Widget",
-                    subtitle = "Themes, accent colors & opacity",
-                    onClick = {
-                        val intent = SettingsScreenHelper.createWidgetConfigureIntent(context)
-                        context.startActivity(intent)
-                    },
-                    trailing = {
-                        Icon(
-                            imageVector = Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                )
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
+                SettingsMenuLink(Icons.Filled.Whatshot, "Practice & vacation settings", "bubble.vacation", navController)
             }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // --- BLOCKING & CONTROLS SECTION (2026 Calm Minimal) ---
-            SettingsSectionHeader(title = "BLOCKING & PREFERENCES")
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-            ) {
-                // Soft Lock Wait Timer Stepper
-                SettingsStepperRow(
-                    icon = Icons.Filled.HourglassTop,
-                    title = "Soft Mode Wait Timer",
-                    subtitle = "Delay before unlock button activates",
-                    valueText = "${softLockDuration}s",
-                    onDecrement = {
-                        if (softLockDuration > 5) {
-                            softLockDuration -= 5
-                            prefs.edit().putInt("soft_lock_duration", softLockDuration).apply()
-                        }
-                    },
-                    onIncrement = {
-                        if (softLockDuration < 60) {
-                            softLockDuration += 5
-                            prefs.edit().putInt("soft_lock_duration", softLockDuration).apply()
-                        }
+            SettingsCategory.NOTIFICATIONS -> {
+                SettingsMenuSectionHeader("TASKS & ROUTINES")
+                SettingsStringDropdownRow(
+                    icon = Icons.Filled.NotificationsActive,
+                    title = "Task Notification Style",
+                    selectedText = SettingsPreferenceRules.taskStyleLabel(taskNotificationStyle),
+                    isExpanded = showNotificationDropdown,
+                    onExpandChange = { showNotificationDropdown = it },
+                    options = listOf("Notification bar", "Notification + popup"),
+                    onOptionSelected = { option ->
+                        taskNotificationStyle = SettingsPreferenceRules.taskStyleValue(option)
+                        writeSetting(context, "task_notification_style", option)
+                        showNotificationDropdown = false
                     }
                 )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                // Soft Unlock Relief Duration Stepper
-                SettingsStepperRow(
-                    icon = Icons.Filled.LockOpen,
-                    title = "Soft Mode Relief Duration",
-                    subtitle = "Temporary unlock access window",
-                    valueText = "${softUnlockDuration}m",
-                    onDecrement = {
-                        if (softUnlockDuration > 1) {
-                            softUnlockDuration -= if (softUnlockDuration > 5) 5 else 1
-                            prefs.edit().putInt("soft_unlock_duration", softUnlockDuration).apply()
-                        }
-                    },
-                    onIncrement = {
-                        if (softUnlockDuration < 60) {
-                            softUnlockDuration += if (softUnlockDuration >= 5) 5 else 1
-                            prefs.edit().putInt("soft_unlock_duration", softUnlockDuration).apply()
-                        }
-                    }
-                )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                // Persistent Reminder Interval Stepper
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
                 SettingsStepperRow(
                     icon = Icons.Filled.NotificationsActive,
                     title = "Persistent Reminder Interval",
-                    subtitle = "Alert interval for pending tasks",
                     valueText = if (persistentReminderInterval >= 60) {
                         val h = persistentReminderInterval / 60
                         val m = persistentReminderInterval % 60
@@ -485,118 +385,45 @@ fun SettingsScreen(navController: NavController) {
                         val newInterval = SettingsScreenHelper.getNextReminderInterval(persistentReminderInterval, isIncrement = false)
                         if (newInterval != persistentReminderInterval) {
                             persistentReminderInterval = newInterval
-                            prefs.edit().putInt("persistent_reminder_interval", newInterval).apply()
+                            writeSetting(context, "persistent_reminder_interval", newInterval)
                         }
                     },
                     onIncrement = {
                         val newInterval = SettingsScreenHelper.getNextReminderInterval(persistentReminderInterval, isIncrement = true)
                         if (newInterval != persistentReminderInterval) {
                             persistentReminderInterval = newInterval
-                            prefs.edit().putInt("persistent_reminder_interval", newInterval).apply()
+                            writeSetting(context, "persistent_reminder_interval", newInterval)
                         }
                     }
                 )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                // Routine Notifications Toggle
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
                 SettingsSwitchRow(
                     icon = Icons.Filled.Notifications,
                     title = "Routine Notifications",
-                    subtitle = "Alerts when routines start and end",
                     checked = routineNotifications,
                     onCheckedChange = { isEnabled ->
                         routineNotifications = isEnabled
-                        prefs.edit().putBoolean("routine_notifications", isEnabled).apply()
+                        writeSetting(context, "routine_notifications", isEnabled)
                         com.focusbyrj.app.service.FocusBlockerService.updateNotificationState(context)
                     }
                 )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                SettingsStringDropdownRow(
-                    icon = Icons.Filled.NotificationsActive,
-                    title = "Task Notification Style",
-                    subtitle = "Alert style for due tasks",
-                    selectedText = taskNotificationStyle,
-                    isExpanded = showNotificationDropdown,
-                    onExpandChange = { showNotificationDropdown = it },
-                    options = listOf("Notification Only", "Floating Bar", "Both"),
-                    onOptionSelected = { option ->
-                        taskNotificationStyle = option
-                        prefs.edit().putString("task_notification_style", option).apply()
-                        showNotificationDropdown = false
-                    }
-                )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                // Habit Top Notifications Toggle
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
                 SettingsSwitchRow(
                     icon = Icons.Filled.Notifications,
                     title = "Habit Top Notifications",
-                    subtitle = "Status bar alerts alongside floating reminder",
                     checked = habitTopNotifications,
                     onCheckedChange = { isEnabled ->
                         habitTopNotifications = isEnabled
-                        prefs.edit().putBoolean("habit_top_notifications", isEnabled).apply()
+                        writeSetting(context, "habit_top_notifications", isEnabled)
                     }
                 )
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 54.dp, end = 6.dp),
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                // Default Launch Tab Dropdown Row
-                val currentTabOption = remember(defaultStartTab) {
-                    launchTabOptions.find { it.route == defaultStartTab } ?: launchTabOptions[0]
-                }
-
-                SettingsDropdownRow(
-                    icon = currentTabOption.icon,
-                    title = "Default Launch Tab",
-                    subtitle = "Screen shown when opening app",
-                    selectedText = currentTabOption.title,
-                    isExpanded = showTabDropdown,
-                    onExpandChange = { showTabDropdown = it },
-                    options = launchTabOptions,
-                    selectedOptionRoute = defaultStartTab,
-                    onOptionSelected = { option ->
-                        defaultStartTab = option.route
-                        prefs.edit().putString("default_start_tab", option.route).apply()
-                        context.getSharedPreferences("focus_app_prefs", Context.MODE_PRIVATE)
-                            .edit().putString("default_start_tab", option.route).apply()
-                        showTabDropdown = false
-                    }
-                )
+                HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
+                Text("A notification-bar backup is always retained. Priority tasks also show a floating popup, even when notification-bar-only delivery is selected.", Modifier.padding(horizontal = 6.dp, vertical = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SettingsMenuSectionHeader("RELATED SETTINGS")
+                SettingsMenuLink(Icons.Filled.Schedule, "Daily summaries & practice", "notifications.practice", navController)
+                SettingsMenuLink(Icons.Filled.Notifications, "Device notification access", "permissions.notifications", navController)
+                SettingsMenuLink(Icons.Filled.Alarm, "Alarms & reminders access", "permissions.alarms", navController)
             }
-
-                Spacer(modifier = Modifier.height(24.dp))
-            }
-            
-            // Footer info
-            Text(
-                text = "RuN",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold, 
-                    letterSpacing = 2.sp
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 32.dp, top = 8.dp)
-                    .wrapContentWidth(Alignment.CenterHorizontally)
-            )
         }
     }
 
@@ -1109,7 +936,7 @@ fun SettingsScreen(navController: NavController) {
 @Composable
 private fun SettingsSectionHeader(title: String) {
     Text(
-        text = title,
+        text = SettingsSearchCatalog.resolve(title)?.title ?: title,
         style = MaterialTheme.typography.labelSmall.copy(
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 1.4.sp,
@@ -1125,7 +952,6 @@ private fun SettingsNavigationRow(
     icon: ImageVector,
     iconTint: Color,
     title: String,
-    subtitle: String,
     onClick: () -> Unit,
     trailing: @Composable () -> Unit
 ) {
@@ -1157,23 +983,14 @@ private fun SettingsNavigationRow(
                 )
             }
             Spacer(modifier = Modifier.width(14.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.5.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
+            Text(
+                text = SettingsSearchCatalog.resolve(title)?.title ?: title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
         Spacer(modifier = Modifier.width(8.dp))
         trailing()
@@ -1184,7 +1001,6 @@ private fun SettingsNavigationRow(
 private fun SettingsStepperRow(
     icon: ImageVector,
     title: String,
-    subtitle: String,
     valueText: String,
     onDecrement: () -> Unit,
     onIncrement: () -> Unit
@@ -1215,23 +1031,14 @@ private fun SettingsStepperRow(
                 )
             }
             Spacer(modifier = Modifier.width(14.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.5.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
+            Text(
+                text = SettingsSearchCatalog.resolve(title)?.title ?: title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -1281,7 +1088,6 @@ private fun SettingsStepperRow(
 private fun SettingsSwitchRow(
     icon: ImageVector,
     title: String,
-    subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
@@ -1311,23 +1117,14 @@ private fun SettingsSwitchRow(
                 )
             }
             Spacer(modifier = Modifier.width(14.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.5.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
+            Text(
+                text = SettingsSearchCatalog.resolve(title)?.title ?: title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -1349,7 +1146,6 @@ private fun SettingsSwitchRow(
 private fun SettingsDropdownRow(
     icon: ImageVector,
     title: String,
-    subtitle: String,
     selectedText: String,
     isExpanded: Boolean,
     onExpandChange: (Boolean) -> Unit,
@@ -1383,23 +1179,14 @@ private fun SettingsDropdownRow(
                 )
             }
             Spacer(modifier = Modifier.width(14.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.5.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
+            Text(
+                text = SettingsSearchCatalog.resolve(title)?.title ?: title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -1483,7 +1270,6 @@ private fun SettingsDropdownRow(
 private fun SettingsStringDropdownRow(
     icon: ImageVector,
     title: String,
-    subtitle: String,
     selectedText: String,
     isExpanded: Boolean,
     onExpandChange: (Boolean) -> Unit,
@@ -1516,23 +1302,14 @@ private fun SettingsStringDropdownRow(
                 )
             }
             Spacer(modifier = Modifier.width(14.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.5.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-            }
+            Text(
+                text = SettingsSearchCatalog.resolve(title)?.title ?: title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
 
         Spacer(modifier = Modifier.width(12.dp))
