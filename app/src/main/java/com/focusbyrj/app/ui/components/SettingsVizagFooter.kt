@@ -6,15 +6,14 @@ import android.content.Intent
 import android.database.ContentObserver
 import android.graphics.Canvas
 import android.graphics.ImageDecoder
-import android.graphics.Movie
 import android.graphics.Paint
 import android.graphics.drawable.AnimatedImageDrawable
+import android.graphics.drawable.Animatable
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Handler
 import android.os.Build
 import android.os.Looper
-import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
 import android.widget.Toast
@@ -61,14 +60,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Suppress("DEPRECATION")
-internal data class VizagArtwork(val drawable: Drawable? = null, val movie: Movie? = null)
+internal data class VizagArtwork(val drawable: Drawable? = null)
 
 @Suppress("DEPRECATION")
 internal fun decodeVizagArtwork(context: Context, scene: VizagScene): VizagArtwork =
     if (Build.VERSION.SDK_INT >= 28) {
         VizagArtwork(drawable = ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.resources, scene.animation)))
     } else {
-        VizagArtwork(movie = context.resources.openRawResource(scene.animation).use { Movie.decodeStream(it) })
+        VizagArtwork(drawable = LegacyWebpDrawable(context.resources.openRawResource(scene.animation).use { it.readBytes() }))
     }
 
 internal const val VIZAG_GITHUB_URL = "https://github.com/Nrajesh0/Ayva"
@@ -179,7 +178,7 @@ internal fun SettingsVizagFooter(
                 },
             contentAlignment = Alignment.Center
         ) {
-            if (artwork?.drawable == null && artwork?.movie == null) {
+            if (artwork?.drawable == null) {
                 Image(
                     painterResource(scene.poster), contentDescription = null,
                     modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
@@ -242,18 +241,15 @@ internal fun SettingsVizagFooter(
     }
 }
 
-/** Native, dependency-free GIF playback, compatible with Android 7 and newer. */
+/** Lossless WebP playback, retaining Android 7+ compatibility. */
 @Suppress("DEPRECATION")
 internal class VizagAnimationView(context: Context) : View(context) {
-    private var movie: Movie? = null
     private var drawable: Drawable? = null
     private var artwork: VizagArtwork? = null
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private var playbackEnabled = false
     private var reducedMotionOverride = false
     private var running = false
-    private var startedAt = 0L
-    private var elapsed = 0L
     private var lightSurface = false
     private var observing = false
     private val motionObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
@@ -269,18 +265,12 @@ internal class VizagAnimationView(context: Context) : View(context) {
         stopDrawable()
         drawable?.callback = null
         artwork = value
-        movie = value?.movie
         drawable = value?.drawable
-        // Only the legacy Movie decoder requires software rendering. Caching the
-        // modern drawable in a software View layer can leave Compose displaying
-        // the first frame even while the drawable reports that it is running.
-        setLayerType(if (movie != null) LAYER_TYPE_SOFTWARE else LAYER_TYPE_NONE, null)
+        setLayerType(LAYER_TYPE_NONE, null)
         drawable?.callback = this
         drawable?.colorFilter = paint.colorFilter
         if (Build.VERSION.SDK_INT >= 28) (drawable as? AnimatedImageDrawable)?.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
         running = false
-        elapsed = 0L
-        startedAt = SystemClock.uptimeMillis()
         updatePlayback()
         invalidate()
     }
@@ -303,20 +293,16 @@ internal class VizagAnimationView(context: Context) : View(context) {
         reducedMotionOverride || Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
 
     private fun updatePlayback() {
-        val shouldRun = playbackEnabled && (movie != null || drawable != null) && isAttachedToWindow &&
+        val shouldRun = playbackEnabled && drawable != null && isAttachedToWindow &&
             windowVisibility == VISIBLE && isShown && animationsEnabled()
         if (shouldRun == running) return
-        if (shouldRun) startedAt = SystemClock.uptimeMillis()
-        else elapsed += SystemClock.uptimeMillis() - startedAt
         running = shouldRun
-        if (Build.VERSION.SDK_INT >= 28) {
-            (drawable as? AnimatedImageDrawable)?.let { if (running) it.start() else it.stop() }
-        }
+        (drawable as? Animatable)?.let { if (running) it.start() else it.stop() }
         invalidate()
     }
 
     private fun stopDrawable() {
-        if (Build.VERSION.SDK_INT >= 28) (drawable as? AnimatedImageDrawable)?.stop()
+        (drawable as? Animatable)?.stop()
     }
 
     override fun verifyDrawable(who: Drawable): Boolean = who === drawable || super.verifyDrawable(who)
@@ -354,7 +340,6 @@ internal class VizagAnimationView(context: Context) : View(context) {
     }
 
     private fun stopObserving() {
-        if (running) elapsed += SystemClock.uptimeMillis() - startedAt
         running = false
         stopDrawable()
         if (observing) context.contentResolver.unregisterContentObserver(motionObserver)
@@ -365,7 +350,6 @@ internal class VizagAnimationView(context: Context) : View(context) {
         stopObserving()
         drawable?.callback = null
         drawable = null
-        movie = null
         artwork = null
     }
 
@@ -385,17 +369,5 @@ internal class VizagAnimationView(context: Context) : View(context) {
             if (running) postInvalidateDelayed(80L)
             return
         }
-        val animation = movie ?: return
-        if (animation.width() <= 0 || animation.height() <= 0) return
-        val scale = minOf(width.toFloat() / animation.width(), height.toFloat() / animation.height())
-        val duration = animation.duration().takeIf { it > 0 } ?: 8000
-        val time = if (animationsEnabled()) elapsed + if (running) SystemClock.uptimeMillis() - startedAt else 0L else 0L
-        animation.setTime((time % duration).toInt())
-        val checkpoint = canvas.save()
-        canvas.translate((width - animation.width() * scale) / 2, (height - animation.height() * scale) / 2)
-        canvas.scale(scale, scale)
-        animation.draw(canvas, 0f, 0f, paint)
-        canvas.restoreToCount(checkpoint)
-        if (running) postInvalidateDelayed(80L)
     }
 }

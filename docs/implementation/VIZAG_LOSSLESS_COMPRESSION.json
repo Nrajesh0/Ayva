@@ -1,0 +1,110 @@
+{
+  "vizag_dolphins_nose": {
+    "gif_bytes": 2009130,
+    "webp_bytes": 1692898,
+    "frames": 192,
+    "duration_ms": 16000,
+    "size": [
+      616,
+      163
+    ],
+    "all_visible_pixels_and_alpha_equal": true,
+    "all_frame_durations_equal": true
+  },
+  "vizag_fishing_harbour": {
+    "gif_bytes": 3938475,
+    "webp_bytes": 3164918,
+    "frames": 192,
+    "duration_ms": 16000,
+    "size": [
+      616,
+      166
+    ],
+    "all_visible_pixels_and_alpha_equal": true,
+    "all_frame_durations_equal": true
+  },
+  "vizag_ins_kursura": {
+    "gif_bytes": 2421203,
+    "webp_bytes": 1245210,
+    "frames": 192,
+    "duration_ms": 16000,
+    "size": [
+      616,
+      144
+    ],
+    "all_visible_pixels_and_alpha_equal": true,
+    "all_frame_durations_equal": true
+  },
+  "vizag_kailasagiri": {
+    "gif_bytes": 2569617,
+    "webp_bytes": 1163466,
+    "frames": 192,
+    "duration_ms": 16000,
+    "size": [
+      616,
+      180
+    ],
+    "all_visible_pixels_and_alpha_equal": true,
+    "all_frame_durations_equal": true
+  },
+  "vizag_rk_beach": {
+    "gif_bytes": 2578618,
+    "webp_bytes": 1948560,
+    "frames": 192,
+    "duration_ms": 16000,
+    "size": [
+      616,
+      171
+    ],
+    "all_visible_pixels_and_alpha_equal": true,
+    "all_frame_durations_equal": true
+  },
+  "vizag_rushikonda": {
+    "gif_bytes": 2728850,
+    "webp_bytes": 2233908,
+    "frames": 192,
+    "duration_ms": 16000,
+    "size": [
+      616,
+      180
+    ],
+    "all_visible_pixels_and_alpha_equal": true,
+    "all_frame_durations_equal": true
+  },
+  "vizag_simhachalam": {
+    "gif_bytes": 3225213,
+    "webp_bytes": 1799146,
+    "frames": 192,
+    "duration_ms": 16000,
+    "size": [
+      616,
+      165
+    ],
+    "all_visible_pixels_and_alpha_equal": true,
+    "all_frame_durations_equal": true
+  },
+  "vizag_tenneti_park": {
+    "gif_bytes": 3083316,
+    "webp_bytes": 2445476,
+    "frames": 192,
+    "duration_ms": 16000,
+    "size": [
+      616,
+      150
+    ],
+    "all_visible_pixels_and_alpha_equal": true,
+    "all_frame_durations_equal": true
+  },
+  "vizag_vizag_port": {
+    "gif_bytes": 3793225,
+    "webp_bytes": 2763322,
+    "frames": 192,
+    "duration_ms": 16000,
+    "size": [
+      616,
+      161
+    ],
+    "all_visible_pixels_and_alpha_equal": true,
+    "all_frame_durations_equal": true
+  }
+}

@@ -1,11 +1,11 @@
-"""Export the approved footer frames as transparent, native Android GIFs.
+"""Export the approved footer frames as transparent, lossless animated WebP.
 
 Usage: python tools/export_vizag_footer.py /path/to/recorded-frames
 Input is the approved 1920x900 nine-scene gallery at 24 fps.
 Optional second argument is loop duration in seconds (default 8).
 Captions are excluded; Android renders accessible, theme-aware text separately.
 """
-import json,sys
+import json,sys,tempfile,subprocess
 from pathlib import Path
 import numpy as np
 from PIL import Image
@@ -16,6 +16,7 @@ loop_seconds=float(sys.argv[2]) if len(sys.argv)>2 else 8
 source_frames=round(loop_seconds*24)
 names=['rk_beach','kailasagiri','dolphins_nose','fishing_harbour','ins_kursura','tenneti_park','rushikonda','vizag_port','simhachalam']
 report={}
+intermediate=tempfile.TemporaryDirectory(prefix='vizag-export-')
 for i,name in enumerate(names):
  x=i%3*640;y=i//3*300
  shots=[];bounds=[]
@@ -39,7 +40,7 @@ for i,name in enumerate(names):
   converted.append(result)
  # GIF durations are stored in centiseconds: distribute rounding without drift.
  durations=[(round((n+1)*100/12)-round(n*100/12))*10 for n in range(len(shots))]
- out=root/'app/src/main/res/raw'/f'vizag_{name}.gif'
+ out=Path(intermediate.name)/f'vizag_{name}.gif'
  converted[0].save(out,save_all=True,append_images=converted[1:],duration=durations,loop=0,transparency=255,disposal=2,optimize=False)
  rgba=shots[0].convert('RGBA');a=np.array(rgba);a[:,:,3]=np.where(a[:,:,:3].max(axis=2)<24,0,255)
  Image.fromarray(a).save(root/'app/src/main/res/drawable-nodpi'/f'vizag_{name}_poster.webp',lossless=True)
@@ -50,4 +51,9 @@ for i,name in enumerate(names):
   assert np.any(first[:,:,3]==0)
  report[name]={'frames':len(shots),'duration_ms':sum(durations),'crop_box':list(map(int,box)),'size':list(shots[0].size),'changed_pixels':changed,'bytes':out.stat().st_size}
  print(name,report[name],flush=True)
+subprocess.run([sys.executable,str(root/'tools/compress_vizag_animations.py'),intermediate.name],check=True)
+for name,item in report.items():
+ item['bytes']=(root/'app/src/main/res/raw'/f'vizag_{name}.webp').stat().st_size
+ item['encoding']='lossless animated WebP'
+intermediate.cleanup()
 (root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').write_text(json.dumps(report,indent=2)+'\n')

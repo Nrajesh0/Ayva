@@ -13,7 +13,9 @@
       171
     ],
     "changed_pixels": 8740,
-    "bytes": 2578618
+    "bytes": 1948560,
+    "source_gif_bytes": 2578618,
+    "encoding": "lossless animated WebP"
   },
   "kailasagiri": {
     "frames": 192,
@@ -29,7 +31,9 @@
       180
     ],
     "changed_pixels": 1722,
-    "bytes": 2569617
+    "bytes": 1163466,
+    "source_gif_bytes": 2569617,
+    "encoding": "lossless animated WebP"
   },
   "dolphins_nose": {
     "frames": 192,
@@ -45,7 +49,9 @@
       163
     ],
     "changed_pixels": 8332,
-    "bytes": 2009130
+    "bytes": 1692898,
+    "source_gif_bytes": 2009130,
+    "encoding": "lossless animated WebP"
   },
   "fishing_harbour": {
     "frames": 192,
@@ -61,7 +67,9 @@
       166
     ],
     "changed_pixels": 29692,
-    "bytes": 3938475
+    "bytes": 3164918,
+    "source_gif_bytes": 3938475,
+    "encoding": "lossless animated WebP"
   },
   "ins_kursura": {
     "frames": 192,
@@ -77,7 +85,9 @@
       144
     ],
     "changed_pixels": 499,
-    "bytes": 2421203
+    "bytes": 1245210,
+    "source_gif_bytes": 2421203,
+    "encoding": "lossless animated WebP"
   },
   "tenneti_park": {
     "frames": 192,
@@ -93,7 +103,9 @@
       150
     ],
     "changed_pixels": 6631,
-    "bytes": 3083316
+    "bytes": 2445476,
+    "source_gif_bytes": 3083316,
+    "encoding": "lossless animated WebP"
   },
   "rushikonda": {
     "frames": 192,
@@ -109,7 +121,9 @@
       180
     ],
     "changed_pixels": 10086,
-    "bytes": 2728850
+    "bytes": 2233908,
+    "source_gif_bytes": 2728850,
+    "encoding": "lossless animated WebP"
   },
   "vizag_port": {
     "frames": 192,
@@ -125,7 +139,9 @@
       161
     ],
     "changed_pixels": 10029,
-    "bytes": 3793225
+    "bytes": 2763322,
+    "source_gif_bytes": 3793225,
+    "encoding": "lossless animated WebP"
   },
   "simhachalam": {
     "frames": 192,
@@ -141,6 +157,8 @@
       165
     ],
     "changed_pixels": 672,
-    "bytes": 3225213
+    "bytes": 1799146,
+    "source_gif_bytes": 3225213,
+    "encoding": "lossless animated WebP"
   }
 }

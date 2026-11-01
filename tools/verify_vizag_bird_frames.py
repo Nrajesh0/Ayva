@@ -1,4 +1,4 @@
-"""Verify rightward flight in the actual packaged GIF frames, not only SVG state.
+"""Verify rightward flight in the actual packaged WebP frames, not only SVG state.
 Usage: python tools/verify_vizag_bird_frames.py bird-regions.json
 Regions contain the expected scene-space locations transformed to gallery pixels.
 """
@@ -10,7 +10,7 @@ assets=json.loads((root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').read_tex
 regions=json.loads(Path(sys.argv[1]).read_text());result=[]
 for r in regions:
  i=r['scene']-1;name=list(assets)[i];meta=assets[name];crop=meta['crop_box'];ox=i%3*640+crop[0];oy=i//3*300+crop[1]
- with Image.open(root/'app/src/main/res/raw'/f'vizag_{name}.gif') as im:
+ with Image.open(root/'app/src/main/res/raw'/f'vizag_{name}.webp') as im:
   assert im.n_frames==192
   im.seek(0);baseline=np.array(im.convert('RGBA')).astype(int)
   positions=[]
@@ -25,11 +25,11 @@ for r in regions:
    positions.append(float(xx.mean()+x0))
   assert all(b>a+20 for a,b in zip(positions,positions[1:])),(name,positions)
   result.append(dict(scene=name,sampled_frames=[36,72,144],bird_x=positions))
-print('Verified rightward bird displacement in exported native GIFs for all nine scenes')
+print('Verified rightward bird displacement in exported native WebPs for all nine scenes')
 (root/'docs/implementation/VIZAG_BIRD_FRAME_CHECKS.json').write_text(json.dumps(result,indent=2)+'\n')
 
 vehicle_checks=[]
-with Image.open(root/'app/src/main/res/raw/vizag_rk_beach.gif') as im:
+with Image.open(root/'app/src/main/res/raw/vizag_rk_beach.webp') as im:
  for name,c in [('auto',(207,155,53)),('bus',(57,143,158))]:
   positions=[]
   for n in [0,6,12]:
@@ -37,9 +37,9 @@ with Image.open(root/'app/src/main/res/raw/vizag_rk_beach.gif') as im:
    assert len(xx)>20,(name,n);positions.append(float(xx.mean()))
   assert all(b>a+2 for a,b in zip(positions,positions[1:])),(name,positions)
   vehicle_checks.append(dict(vehicle=name,x=positions,direction='right'))
-with Image.open(root/'app/src/main/res/raw/vizag_rushikonda.gif') as im:
+with Image.open(root/'app/src/main/res/raw/vizag_rushikonda.webp') as im:
  im.seek(0);a=np.array(im.convert('RGBA')).astype(int);mask=(np.abs(a[:,:,:3]-(201,113,85)).max(axis=2)<25)&(a[:,:,3]>150)
  assert mask.sum()>150,'Paraglider missing from first frame'
  vehicle_checks.append(dict(scene='rushikonda',paraglider_first_frame_pixels=int(mask.sum())))
 (root/'docs/implementation/VIZAG_VEHICLE_FRAME_CHECKS.json').write_text(json.dumps(vehicle_checks,indent=2)+'\n')
-print('Verified vehicle direction and initial paraglider visibility in the native GIFs')
+print('Verified vehicle direction and initial paraglider visibility in the native WebPs')
