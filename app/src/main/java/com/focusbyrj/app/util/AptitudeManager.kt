@@ -539,7 +539,7 @@ object AptitudeManager {
             putInt(KEY_WEEKLY_XP, weeklyXp)
             putBoolean(KEY_WAGER_ACTIVE, wagerActive)
             putInt(KEY_WAGER_DAYS, wagerDays)
-        }
+        }?.apply()
 
         // Sync streak rewards to economy
         FocusEconomyManager.syncStreaks(newStreak, newLongest)

@@ -239,6 +239,9 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         updateSecureWindowFlags()
+        // Regranting overlay permission should recover the bubble independently
+        // of usage-access polling or a full Activity recreation.
+        kotlin.runCatching { com.focusbyrj.app.service.BubbleService.startIfEnabled(this) }
         kotlin.runCatching { com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.TodoWidgetProvider.updateAllWidgets(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(this) }

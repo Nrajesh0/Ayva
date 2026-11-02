@@ -20,7 +20,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -106,45 +109,26 @@ object BubbleChatManager {
     private val _messagesFlow = MutableStateFlow<List<PersistedChatMessage>>(emptyList())
     val messagesFlow: StateFlow<List<PersistedChatMessage>> = _messagesFlow.asStateFlow()
 
-    @Volatile
-    private var isInitialized = false
-    // AtomicBoolean for idempotent init: compareAndSet(false, true) is the only way to enter init body (P2-003)
+    private val stateLock = Any()
+    private val persistenceMutex = Mutex()
+    private val beforeLoad = mutableListOf<(List<PersistedChatMessage>) -> List<PersistedChatMessage>>()
+    private var revision = 0L
+    private var persistedRevision = -1L
+    @Volatile internal var generation = 0L
+        private set
+    private val _transcriptGeneration = MutableStateFlow(0L)
+    val transcriptGeneration: StateFlow<Long> = _transcriptGeneration.asStateFlow()
+    @Volatile private var isInitialized = false
+    private val _loaded = MutableStateFlow(false)
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
     private val initLatch = java.util.concurrent.atomic.AtomicBoolean(false)
 
     fun init(context: Context) {
-        // Idempotent: only the first concurrent caller proceeds (BATCH-9-P2-003)
         if (!initLatch.compareAndSet(false, true)) return
-
-        val appContext = context.applicationContext
-        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        _unreadCountFlow.value = prefs.getInt(KEY_UNREAD_COUNT, 0)
-
-        val database = AyvaChatDatabase.getDatabase(appContext)
-
-        scope.launch {
-            try {
-                val count = database.chatDao().getMessageCount()
-                if (count == 0) {
-                    // Check if legacy messages exist in SharedPreferences
-                    val legacyJson = prefs.getString(KEY_MESSAGES, null)
-                    if (!legacyJson.isNullOrBlank()) {
-                        val legacyList = parseLegacyJson(legacyJson)
-                        if (legacyList.isNotEmpty()) {
-                            database.chatDao().insertMessages(legacyList.map { it.toEntity() })
-                        }
-                        prefs.edit().remove(KEY_MESSAGES).apply()
-                    }
-                }
-
-                // Initial read
-                val initial = database.chatDao().getAllMessagesSync().map { it.toPersistedChatMessage() }
-                _messagesFlow.value = initial
-                isInitialized = true
-            } catch (e: Exception) {
-                android.util.Log.e("BubbleChatManager", "Error initializing chat DB", e)
-                isInitialized = true
-            }
+        synchronized(stateLock) {
+            _unreadCountFlow.value = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_UNREAD_COUNT, 0)
         }
+        persist(context)
     }
 
     private fun JSONObject.optNullableString(name: String): String? {
@@ -194,259 +178,223 @@ object BubbleChatManager {
         return list
     }
 
-    fun getUnreadCount(context: Context): Int {
+    /** Concurrent edits are a delta against what that editor actually saw. */
+    internal fun mergeChanges(
+        current: List<PersistedChatMessage>,
+        before: List<PersistedChatMessage>,
+        after: List<PersistedChatMessage>
+    ): List<PersistedChatMessage> {
+        val previous = before.associateBy { it.id }
+        val incoming = after.associateBy { it.id }
+        val result = current.associateByTo(linkedMapOf()) { it.id }
+        (previous.keys - incoming.keys).forEach(result::remove)
+        after.forEach { message ->
+            if (previous[message.id] != message) result[message.id] = message
+        }
+        return result.values.toList().takeLast(50)
+    }
+
+    private fun trim(messages: List<PersistedChatMessage>) = messages.distinctBy { it.id }.takeLast(50)
+
+    // All Room reads/writes share this mutex, including the initial read. Memory
+    // mutations use stateLock and are replayed over the initial DB snapshot.
+    private suspend fun loadLocked(context: Context) {
+        if (isInitialized) return
+        val db = AyvaChatDatabase.getDatabase(context.applicationContext)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val count = prefs.getInt(KEY_UNREAD_COUNT, 0)
-        _unreadCountFlow.value = count
-        return count
+        if (db.chatDao().getMessageCount() == 0) {
+            prefs.getString(KEY_MESSAGES, null)?.takeIf { it.isNotBlank() }?.let { json ->
+                val legacy = parseLegacyJson(json)
+                if (legacy.isNotEmpty()) db.chatDao().insertMessages(legacy.map { it.toEntity() })
+                prefs.edit().remove(KEY_MESSAGES).apply()
+            }
+        }
+        val original = db.chatDao().getAllMessagesSync().map { it.toPersistedChatMessage() }
+        synchronized(stateLock) {
+            val merged = trim(beforeLoad.fold(original) { list, change -> change(list) })
+            if (beforeLoad.isEmpty() && merged == original) persistedRevision = revision
+            beforeLoad.clear()
+            _messagesFlow.value = merged
+            isInitialized = true
+            _loaded.value = true
+        }
     }
 
-    fun setUnreadCount(context: Context, count: Int) {
-        val safeCount = count.coerceAtLeast(0)
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putInt(KEY_UNREAD_COUNT, safeCount).apply()
-        _unreadCountFlow.value = safeCount
-        val intent = Intent(ACTION_UNREAD_COUNT_CHANGED).apply { setPackage(context.packageName) }
-        context.sendBroadcast(intent)
+    private suspend fun persistLocked(context: Context) {
+        val snapshot = synchronized(stateLock) {
+            if (persistedRevision == revision) null else revision to _messagesFlow.value
+        } ?: return
+        AyvaChatDatabase.getDatabase(context.applicationContext).chatDao()
+            .syncAllMessages(snapshot.second.map { it.toEntity() })
+        synchronized(stateLock) { persistedRevision = snapshot.first }
     }
 
-    fun incrementUnread(context: Context) {
-        val current = getUnreadCount(context)
-        setUnreadCount(context, current + 1)
+    private fun persist(context: Context) {
+        val app = context.applicationContext
+        scope.launch {
+            repeat(3) { attempt ->
+                // Suspend during maintenance rather than poll or let a write escape
+                // the restore interval. Retain dirty memory if a disk error persists.
+                com.focusbyrj.app.util.backup.MaintenanceGate.busy.first { !it }
+                try {
+                    persistenceMutex.withLock { loadLocked(app); persistLocked(app) }
+                    return@launch
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    if (attempt == 2) {
+                        android.util.Log.e("BubbleChatManager", "Chat changes remain pending for retry", error)
+                        if (!isInitialized) initLatch.set(false)
+                    } else delay(250L * (attempt + 1))
+                }
+            }
+        }
     }
 
-    fun clearUnread(context: Context) {
-        setUnreadCount(context, 0)
+    suspend fun awaitInitialized(context: Context): Boolean = withContext(Dispatchers.IO) {
+        try {
+            com.focusbyrj.app.util.backup.MaintenanceGate.busy.first { !it }
+            persistenceMutex.withLock { loadLocked(context.applicationContext); persistLocked(context.applicationContext) }
+            true
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            android.util.Log.w("BubbleChatManager", "Chat is not ready yet", error)
+            initLatch.set(false)
+            false
+        }
     }
+
+    /** Called inside restore's maintenance interval, before queued UI writes resume. */
+    internal suspend fun reloadAfterRestore(context: Context) = withContext(Dispatchers.IO) {
+        persistenceMutex.withLock {
+            synchronized(stateLock) {
+                beforeLoad.clear()
+                generation++
+                _transcriptGeneration.value = generation
+                revision++
+                persistedRevision = -1L
+                isInitialized = false
+                _loaded.value = false
+                _messagesFlow.value = emptyList()
+                initLatch.set(true)
+            }
+            try { loadLocked(context.applicationContext) }
+            catch (error: Exception) { initLatch.set(false); throw error }
+            getUnreadCount(context)
+        }
+        context.sendBroadcast(Intent(ACTION_MESSAGES_CHANGED).setPackage(context.packageName))
+        context.sendBroadcast(Intent(ACTION_UNREAD_COUNT_CHANGED).setPackage(context.packageName))
+    }
+
+    private fun mutate(context: Context, updateActivity: Boolean = false, expectedGeneration: Long? = null,
+                       change: (List<PersistedChatMessage>) -> List<PersistedChatMessage>) {
+        init(context)
+        synchronized(stateLock) {
+            if (expectedGeneration != null && expectedGeneration != generation) return
+            if (!isInitialized) beforeLoad.add(change)
+            val next = trim(change(_messagesFlow.value))
+            if (next != _messagesFlow.value || !isInitialized) {
+                _messagesFlow.value = next
+                revision++
+            }
+        }
+        if (updateActivity) updateLastActivityTime(context)
+        persist(context)
+        context.sendBroadcast(Intent(ACTION_MESSAGES_CHANGED).setPackage(context.packageName))
+    }
+
+    fun getUnreadCount(context: Context): Int = synchronized(stateLock) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(KEY_UNREAD_COUNT, 0)
+            .coerceAtLeast(0).also { _unreadCountFlow.value = it }
+    }
+
+    private fun changeUnread(context: Context, change: (Int) -> Int) {
+        synchronized(stateLock) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val next = change(prefs.getInt(KEY_UNREAD_COUNT, 0)).coerceAtLeast(0)
+            prefs.edit().putInt(KEY_UNREAD_COUNT, next).apply()
+            _unreadCountFlow.value = next
+        }
+        context.sendBroadcast(Intent(ACTION_UNREAD_COUNT_CHANGED).setPackage(context.packageName))
+    }
+
+    fun setUnreadCount(context: Context, count: Int) = changeUnread(context) { count }
+    fun incrementUnread(context: Context) = changeUnread(context) { if (it == Int.MAX_VALUE) it else it + 1 }
+    fun clearUnread(context: Context) = setUnreadCount(context, 0)
 
     fun updateLastActivityTime(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putLong(KEY_LAST_ACTIVITY, System.currentTimeMillis()).apply()
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putLong(KEY_LAST_ACTIVITY, System.currentTimeMillis()).apply()
     }
 
     fun isInactiveTimeout(context: Context): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val lastActivity = prefs.getSafeLong(KEY_LAST_ACTIVITY, 0L)
-        if (lastActivity == 0L) return false
-        return (System.currentTimeMillis() - lastActivity) > INACTIVITY_TIMEOUT_MS
+        val last = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getSafeLong(KEY_LAST_ACTIVITY, 0L)
+        return last != 0L && System.currentTimeMillis() - last > INACTIVITY_TIMEOUT_MS
     }
 
-    /**
-     * Marks all unviewed messages as viewed now when the user opens the chat window.
-     */
     fun markAllAsViewed(context: Context) {
         val now = System.currentTimeMillis()
-        val allMessages = getMessages(context)
-        var modified = false
-        val updated = allMessages.map { msg ->
-            if (msg.firstViewedTimestamp == 0L) {
-                modified = true
-                msg.copy(firstViewedTimestamp = now)
-            } else {
-                msg
-            }
-        }
-        if (modified) {
-            saveMessages(context, updated, updateActivityTimestamp = true)
+        mutate(context, updateActivity = true) { list ->
+            list.map { if (it.firstViewedTimestamp == 0L) it.copy(firstViewedTimestamp = now) else it }
         }
     }
 
-    /**
-     * Periodically cleans up the chat stream:
-     * - Welcome greeting card NEVER disappears on a timer.
-     * - Active interactive drills and quizzes NEVER expire while the user is actively working on them.
-     * - Unread / unviewed alerts and reminders NEVER expire before the user opens the chat window.
-     * - Once opened and viewed, all chat history (queries, bot answers, task/habit addition confirmations,
-     *   briefings, completed quiz/drill summaries, solutions, and claim XP cards) stays for exactly 10 minutes.
-     * - Clearing chat messages has ZERO effect on saved tasks, habits, XP, drill stats, or routines.
-     */
+    /** Unviewed items and active questions keep the existing ten-minute policy. */
     fun checkAndClearIfInactive(context: Context, isDrillOrQuizActive: Boolean = false): Boolean {
         val now = System.currentTimeMillis()
-
-        val allMessages = getMessages(context)
-        if (allMessages.isEmpty()) return false
-
-        val filtered = allMessages.filter { msg ->
-            // 1. Welcome greeting card NEVER expires on a timer
-            if (msg.isWelcome || msg.id.startsWith("welcome_") ||
-                msg.text.contains("Hey! Ayva is on deck", ignoreCase = true) ||
-                msg.text.contains("ready for action", ignoreCase = true) ||
-                msg.text.contains("Ayva here!", ignoreCase = true) ||
-                msg.text.contains("I'm Ayva", ignoreCase = true) ||
-                msg.text.contains("anti-procrastination", ignoreCase = true)) {
-                return@filter true
+        val before = _messagesFlow.value
+        mutate(context) { list ->
+            list.filter { msg ->
+                msg.isWelcome || msg.id.startsWith("welcome_") ||
+                    msg.text.contains("Hey! Ayva is on deck", true) || msg.text.contains("ready for action", true) ||
+                    msg.text.contains("Ayva here!", true) || msg.text.contains("I'm Ayva", true) ||
+                    msg.text.contains("anti-procrastination", true) || isDrillOrQuizActive ||
+                    msg.isActiveDrillOrQuizQuestion || msg.firstViewedTimestamp == 0L ||
+                    now - msg.firstViewedTimestamp < CHAT_LIFETIME_MS
             }
-
-            // 2. Active interactive drill or quiz questions NEVER expire while the user is actively working on them!
-            if (isDrillOrQuizActive || msg.isActiveDrillOrQuizQuestion) {
-                return@filter true
-            }
-
-            // 3. Unread / unviewed messages NEVER expire before the user opens the chat window to view them!
-            if (msg.firstViewedTimestamp == 0L) {
-                return@filter true
-            }
-
-            // 4. Completed drill summaries, solutions, claim XP cards, and all viewed queries/alerts stay for exactly 10 minutes after being viewed/completed!
-            val timeSinceViewed = now - msg.firstViewedTimestamp
-            timeSinceViewed < CHAT_LIFETIME_MS
         }
-
-        if (filtered.size < allMessages.size) {
-            if (filtered.isEmpty()) {
-                clearMessages(context)
-            } else {
-                saveMessages(context, filtered, updateActivityTimestamp = false)
-            }
-            return true
-        }
-
-        return false
-    }
-
-    fun deleteMessage(context: Context, id: String) {
-        val current = _messagesFlow.value.toMutableList()
-        val removed = current.removeAll { it.id == id }
-        if (removed) {
-            _messagesFlow.value = current
-            scope.launch {
-                try {
-                    val db = AyvaChatDatabase.getDatabase(context.applicationContext)
-                    db.chatDao().deleteMessage(id)
-                } catch (_: Exception) {}
-            }
-            val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(context.packageName) }
-            context.sendBroadcast(intent)
-        }
+        return _messagesFlow.value.size < before.size
     }
 
     fun getMessages(context: Context): List<PersistedChatMessage> {
-        if (isInitialized) {
-            return _messagesFlow.value
-        }
-        val cached = _messagesFlow.value
-        if (cached.isNotEmpty()) return cached
-
-        // Emergency fallback: query DB synchronously.
-        // IMPORTANT (BATCH-9-P2-004): runBlocking BLOCKS the calling thread regardless of the
-        // dispatcher argument. This path should only be hit pre-init and only from background
-        // threads. If called on the main thread it risks ANR; callers should await init() instead.
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            android.util.Log.w("BubbleChatManager", "getMessages() called on main thread before init() completed — returning empty list to avoid ANR")
-            return emptyList()
-        }
-        return try {
-            val db = AyvaChatDatabase.getDatabase(context.applicationContext)
-            runBlocking(Dispatchers.IO) {
-                val list = db.chatDao().getAllMessagesSync().map { it.toPersistedChatMessage() }
-                _messagesFlow.value = list
-                isInitialized = true
-                list
-            }
-        } catch (_: Exception) {
-            emptyList()
-        }
+        init(context)
+        return _messagesFlow.value
     }
 
+    /** Authoritative replacement; UI edits should use applyMessageChanges instead. */
     fun saveMessages(context: Context, messages: List<PersistedChatMessage>, updateActivityTimestamp: Boolean = true) {
-        val appContext = context.applicationContext
-        val trimmed = if (messages.size > 50) messages.takeLast(50) else messages
-        _messagesFlow.value = trimmed
-        isInitialized = true
-
-        if (updateActivityTimestamp) {
-            val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putLong(KEY_LAST_ACTIVITY, System.currentTimeMillis()).apply()
-        }
-
-        scope.launch {
-            try {
-                val db = AyvaChatDatabase.getDatabase(appContext)
-                // Re-read the latest in-memory snapshot inside the coroutine to capture any
-                // addMessage() calls that raced between the outer assignment and this DB write (BATCH-9-P2-002)
-                val latestSnapshot = _messagesFlow.value
-                db.chatDao().syncAllMessages(latestSnapshot.map { it.toEntity() })
-            } catch (e: Exception) {
-                android.util.Log.e("BubbleChatManager", "Failed to persist chat messages to Room", e)
-            }
-        }
-
-        val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(appContext.packageName) }
-        appContext.sendBroadcast(intent)
+        val snapshot = messages.toList()
+        mutate(context, updateActivityTimestamp) { snapshot }
     }
 
-    fun addMessage(context: Context, message: PersistedChatMessage, incrementBadge: Boolean = false, updateActivity: Boolean = !incrementBadge) {
-        val appContext = context.applicationContext
-        val current = _messagesFlow.value.toMutableList()
-        current.add(message)
-        val trimmed = if (current.size > 50) current.takeLast(50) else current
-        _messagesFlow.value = trimmed
-
-        if (updateActivity) {
-            val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putLong(KEY_LAST_ACTIVITY, System.currentTimeMillis()).apply()
-        }
-
-        scope.launch {
-            try {
-                val db = AyvaChatDatabase.getDatabase(appContext)
-                db.chatDao().insertMessage(message.toEntity())
-                val count = db.chatDao().getMessageCount()
-                if (count > 50) {
-                    db.chatDao().deleteOldestMessages(count - 50)
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("BubbleChatManager", "Failed to add chat message to Room", e)
-            }
-        }
-
-        if (incrementBadge) {
-            incrementUnread(appContext)
-        }
-
-        val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(appContext.packageName) }
-        appContext.sendBroadcast(intent)
+    fun applyMessageChanges(context: Context, before: List<PersistedChatMessage>, after: List<PersistedChatMessage>,
+                            updateActivityTimestamp: Boolean = true, expectedGeneration: Long? = null) {
+        val prior = before.toList()
+        val next = after.toList()
+        mutate(context, updateActivityTimestamp, expectedGeneration) { current -> mergeChanges(current, prior, next) }
     }
 
-    fun updateMessage(context: Context, updatedMessage: PersistedChatMessage) {
-        val appContext = context.applicationContext
-        val current = _messagesFlow.value.toMutableList()
-        val index = current.indexOfFirst { it.id == updatedMessage.id }
-        if (index != -1) {
-            current[index] = updatedMessage
-            _messagesFlow.value = current
-            scope.launch {
-                try {
-                    val db = AyvaChatDatabase.getDatabase(appContext)
-                    db.chatDao().insertMessage(updatedMessage.toEntity())
-                } catch (e: Exception) {
-                    android.util.Log.e("BubbleChatManager", "Failed to update chat message in Room", e)
-                }
-            }
-            val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(appContext.packageName) }
-            appContext.sendBroadcast(intent)
+    fun ensureWelcomeIfEmpty(context: Context, welcome: PersistedChatMessage) = mutate(context) { list ->
+        if (list.isEmpty()) listOf(welcome) else list
+    }
+
+    fun addMessage(context: Context, message: PersistedChatMessage, incrementBadge: Boolean = false,
+                   updateActivity: Boolean = !incrementBadge) {
+        synchronized(stateLock) {
+            mutate(context, updateActivity) { list -> list.filterNot { it.id == message.id } + message }
+            if (incrementBadge) incrementUnread(context)
         }
     }
+
+    fun updateMessage(context: Context, updatedMessage: PersistedChatMessage) = mutate(context) { list ->
+        list.map { if (it.id == updatedMessage.id) updatedMessage else it }
+    }
+
+    fun deleteMessage(context: Context, id: String) = mutate(context) { list -> list.filterNot { it.id == id } }
 
     fun clearMessages(context: Context) {
-        val appContext = context.applicationContext
-        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().remove(KEY_MESSAGES).putLong(KEY_LAST_ACTIVITY, System.currentTimeMillis()).apply()
-        _messagesFlow.value = emptyList()
-        isInitialized = true
-        clearUnread(appContext)
-
-        scope.launch {
-            try {
-                val db = AyvaChatDatabase.getDatabase(appContext)
-                db.chatDao().clearAllMessages()
-            } catch (e: Exception) {
-                android.util.Log.e("BubbleChatManager", "Failed to clear chat messages from Room", e)
-            }
-        }
-
-        val intent = Intent(ACTION_MESSAGES_CHANGED).apply { setPackage(appContext.packageName) }
-        appContext.sendBroadcast(intent)
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().remove(KEY_MESSAGES).apply()
+        mutate(context, updateActivity = true) { emptyList() }
+        clearUnread(context)
     }
 
     // --- In-Flight Drill State Persistence ---

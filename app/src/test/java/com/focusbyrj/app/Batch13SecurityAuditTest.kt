@@ -157,8 +157,7 @@ class Batch13SecurityAuditTest {
             putExtra(BatteryManager.EXTRA_VOLTAGE, 3800)
         }
         val info1 = DeviceStatsHelper.parseBatteryInfo(context, intentNegativeLevel)
-        assertTrue("Battery rawPercentage must be non-negative", info1.rawChargePercentage >= 0)
-        assertTrue("Battery rawPercentage must not exceed 100", info1.rawChargePercentage <= 100)
+        assertNull("Invalid battery level is unavailable, not a guessed charge", info1.rawChargePercentage)
 
         // Scale is 0 (division by zero guard)
         val intentZeroScale = Intent(Intent.ACTION_BATTERY_CHANGED).apply {
@@ -167,8 +166,8 @@ class Batch13SecurityAuditTest {
             putExtra(BatteryManager.EXTRA_VOLTAGE, 3900)
         }
         val info2 = DeviceStatsHelper.parseBatteryInfo(context, intentZeroScale)
-        assertTrue("Battery rawPercentage with zero scale must default safely", info2.rawChargePercentage in 0..100)
-        assertFalse("Real remaining must not be NaN", info2.realRemainingCapacityPercent.isNaN())
+        assertNull("Zero scale must yield unavailable charge", info2.rawChargePercentage)
+        assertNull("Cannot calculate capacity without measured health", info2.realRemainingCapacityPercent)
     }
 
     @Test

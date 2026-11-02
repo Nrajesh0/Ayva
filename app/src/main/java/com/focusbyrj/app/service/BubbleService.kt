@@ -79,8 +79,7 @@ class BubbleService : Service() {
     private var isCloseViewAdded = false
     private val snoozeHandler = Handler(Looper.getMainLooper())
     private val snoozeExpiredRunnable = Runnable {
-        clearSnooze(this@BubbleService)
-        resumeBubble()
+        restoreSnoozeTimer()
     }
 
     private val permissionRestoreHandler = Handler(Looper.getMainLooper())
@@ -93,6 +92,12 @@ class BubbleService : Service() {
     private var taskObserverJob: Job? = null
     private var latestOverdueCount: Int = 0
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
+
+    private val overlayPermissionListener = android.app.AppOpsManager.OnOpChangedListener { op, pkg ->
+        if (op == android.app.AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW && pkg == packageName) {
+            permissionRestoreHandler.post { if (isRunning) stopIfUnavailable() }
+        }
+    }
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {}
@@ -123,32 +128,58 @@ class BubbleService : Service() {
         @Volatile
         var isRunning = false
         var isChatOpen = false
+        private val temporaryHideReasons = mutableSetOf<String>()
+
+        fun hideTemporarily(context: Context, reason: String) {
+            temporaryHideReasons.add(reason)
+            context.sendBroadcast(Intent("com.focusbyrj.app.HIDE_BUBBLE").setPackage(context.packageName).putExtra(EXTRA_HIDE_REASON, reason))
+        }
+
+        fun releaseTemporaryHide(context: Context, reason: String) {
+            temporaryHideReasons.remove(reason)
+            context.sendBroadcast(Intent("com.focusbyrj.app.SHOW_BUBBLE").setPackage(context.packageName).putExtra(EXTRA_HIDE_REASON, reason))
+        }
         const val ACTION_SETTINGS_CHANGED = "com.focusbyrj.app.BUBBLE_SETTINGS_CHANGED"
         const val ACTION_HIDE_FOR_PERMISSION = "com.focusbyrj.app.HIDE_FOR_PERMISSION"
         const val ACTION_RESTORE_FROM_PERMISSION = "com.focusbyrj.app.RESTORE_FROM_PERMISSION"
         const val ACTION_SNOOZE_BUBBLE = "com.focusbyrj.app.SNOOZE_BUBBLE"
         const val ACTION_RESUME_BUBBLE = "com.focusbyrj.app.RESUME_BUBBLE"
+        const val ACTION_SNOOZE_EXPIRED = "com.focusbyrj.app.SNOOZE_EXPIRED"
+        const val EXTRA_HIDE_REASON = "bubble_hide_reason"
         const val ACTION_SHOW_ALERT_PREVIEW = "com.focusbyrj.app.SHOW_ALERT_PREVIEW"
         const val ACTION_VERIFY_BUBBLE_STATE = "com.focusbyrj.app.VERIFY_BUBBLE_STATE"
         const val EXTRA_ALERT_TEXT = "extra_alert_text"
 
         const val PREFS_KEY_SNOOZED_UNTIL = "bubble_snoozed_until"
+        private const val KEY_SNOOZE_ELAPSED = "bubble_snoozed_elapsed"
+        private const val KEY_SNOOZE_BOOT = "bubble_snoozed_boot"
         const val DEFAULT_SNOOZE_DURATION_MS = 10 * 60 * 1000L // 10 minutes
 
-        fun isSnoozed(context: Context): Boolean {
+        private fun remainingSnoozeMs(context: Context): Long {
             val prefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
-            val snoozedUntil = prefs.getLong(PREFS_KEY_SNOOZED_UNTIL, 0L)
-            return System.currentTimeMillis() < snoozedUntil
+            val wallDeadline = prefs.getLong(PREFS_KEY_SNOOZED_UNTIL, 0L)
+            if (wallDeadline == 0L) return 0L
+            val boot = android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 0)
+            val elapsedDeadline = prefs.getLong(KEY_SNOOZE_ELAPSED, 0L)
+            return if (elapsedDeadline > 0L && prefs.getInt(KEY_SNOOZE_BOOT, -1) == boot)
+                elapsedDeadline - android.os.SystemClock.elapsedRealtime()
+            else wallDeadline - System.currentTimeMillis()
         }
 
+        fun isSnoozed(context: Context): Boolean = remainingSnoozeMs(context) > 0L
+
         fun snooze(context: Context, durationMs: Long = DEFAULT_SNOOZE_DURATION_MS) {
+            clearSnooze(context)
             val prefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
-            prefs.edit().putLong(PREFS_KEY_SNOOZED_UNTIL, System.currentTimeMillis() + durationMs).apply()
+            prefs.edit().putLong(PREFS_KEY_SNOOZED_UNTIL, System.currentTimeMillis() + durationMs)
+                .putLong(KEY_SNOOZE_ELAPSED, android.os.SystemClock.elapsedRealtime() + durationMs)
+                .putInt(KEY_SNOOZE_BOOT, android.provider.Settings.Global.getInt(context.contentResolver,
+                    android.provider.Settings.Global.BOOT_COUNT, 0)).apply()
 
             // Backup with AlarmManager so if the process dies while snoozed, it automatically resumes
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
             val resumeIntent = Intent(context, BubbleService::class.java).apply {
-                action = ACTION_RESUME_BUBBLE
+                action = ACTION_SNOOZE_EXPIRED
                 setPackage(context.packageName)
             }
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -158,42 +189,63 @@ class BubbleService : Service() {
                 PendingIntent.getService(context, 103, resumeIntent, flags)
             }
             try {
-                alarmManager?.set(android.app.AlarmManager.ELAPSED_REALTIME, android.os.SystemClock.elapsedRealtime() + durationMs, pendingIntent)
-            } catch (_: Exception) {}
+                val at = android.os.SystemClock.elapsedRealtime() + durationMs
+                if (alarmManager?.canScheduleExactAlarms() == true) {
+                    // User-requested, non-wakeup exact alarm: permits foreground
+                    // recovery when available without waking a sleeping phone.
+                    alarmManager.setExact(android.app.AlarmManager.ELAPSED_REALTIME, at, pendingIntent)
+                } else alarmManager?.set(android.app.AlarmManager.ELAPSED_REALTIME, at, pendingIntent)
+            } catch (_: SecurityException) {
+                runCatching { alarmManager?.set(android.app.AlarmManager.ELAPSED_REALTIME,
+                    android.os.SystemClock.elapsedRealtime() + durationMs, pendingIntent) }
+            } catch (error: Exception) {
+                android.util.Log.w("BubbleService", "Could not schedule snooze backup", error)
+            }
         }
 
         fun clearSnooze(context: Context) {
             val prefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
-            prefs.edit().remove(PREFS_KEY_SNOOZED_UNTIL).apply()
+            prefs.edit().remove(PREFS_KEY_SNOOZED_UNTIL).remove(KEY_SNOOZE_ELAPSED).remove(KEY_SNOOZE_BOOT).apply()
 
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
-            val resumeIntent = Intent(context, BubbleService::class.java).apply {
-                action = ACTION_RESUME_BUBBLE
-                setPackage(context.packageName)
-            }
-            val flags = PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-            val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                PendingIntent.getForegroundService(context, 103, resumeIntent, flags)
-            } else {
-                PendingIntent.getService(context, 103, resumeIntent, flags)
-            }
-            if (pendingIntent != null) {
-                try { alarmManager?.cancel(pendingIntent) } catch (_: Exception) {}
+            val manager = context.getSystemService(android.app.AlarmManager::class.java)
+            // Retire both the current timer and the legacy resume alarm on upgrade.
+            for (action in listOf(ACTION_SNOOZE_EXPIRED, ACTION_RESUME_BUBBLE)) {
+                val intent = Intent(context, BubbleService::class.java).setAction(action).setPackage(context.packageName)
+                PendingIntent.getForegroundService(context, 103, intent,
+                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let {
+                    manager?.cancel(it)
+                    it.cancel()
+                }
             }
         }
-        
-        fun startIfEnabled(context: Context, ignoreSnooze: Boolean = false) {
+
+        private fun cancelLegacyRestart(context: Context) {
+            val intent = Intent(context, BubbleService::class.java).setPackage(context.packageName)
+            PendingIntent.getForegroundService(context, 1, intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let {
+                context.getSystemService(android.app.AlarmManager::class.java)?.cancel(it)
+                it.cancel()
+            }
+        }
+
+        fun disable(context: Context) {
+            context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE).edit().putBoolean("bubble_enabled", false).apply()
+            clearSnooze(context)
+            cancelLegacyRestart(context)
+            context.stopService(Intent(context, BubbleService::class.java))
+        }
+
+        fun startIfEnabled(context: Context, ignoreSnooze: Boolean = false): Boolean {
             val prefs = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
-            if (prefs.getBoolean("bubble_enabled", false) && android.provider.Settings.canDrawOverlays(context)) {
-                if (!ignoreSnooze && isSnoozed(context)) {
-                    return
-                }
-                val intent = Intent(context, BubbleService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
+            if (!prefs.getBoolean("bubble_enabled", false) || !android.provider.Settings.canDrawOverlays(context)) return false
+            if (ignoreSnooze) clearSnooze(context)
+            // A snoozed service still restores its remaining timer after process recreation.
+            return try {
+                context.startForegroundService(Intent(context, BubbleService::class.java))
+                true
+            } catch (error: Exception) {
+                android.util.Log.w("BubbleService", "Android deferred bubble startup", error)
+                false
             }
         }
     }
@@ -223,10 +275,11 @@ class BubbleService : Service() {
                     updateBadgeCount(0)
                 }
                 "com.focusbyrj.app.HIDE_BUBBLE" -> {
+                    temporaryHideReasons.add(intent.getStringExtra(EXTRA_HIDE_REASON) ?: "legacy")
                     removeBubbleFromWindowManager()
                 }
                 "com.focusbyrj.app.SHOW_BUBBLE" -> {
-                    clearSnooze(this@BubbleService)
+                    temporaryHideReasons.remove(intent.getStringExtra(EXTRA_HIDE_REASON) ?: "legacy")
                     addBubbleToWindowManager()
                 }
                 ACTION_HIDE_FOR_PERMISSION -> {
@@ -255,20 +308,7 @@ class BubbleService : Service() {
                 ACTION_SETTINGS_CHANGED -> {
                     applyBubbleStyleSettings()
                 }
-                ACTION_SHOW_ALERT_PREVIEW -> {
-                    val alertText = intent.getStringExtra(EXTRA_ALERT_TEXT)
-                    if (!alertText.isNullOrBlank()) {
-                        clearSnooze(this@BubbleService)
-                        addBubbleToWindowManager()
-                        unpeekBubble(animate = false)
-                        showNotificationPreviewPill(alertText)
-                        resetHideTimer()
-                        val latestMsg = BubbleChatManager.getMessages(this@BubbleService).lastOrNull { !it.isUser }
-                        if (latestMsg != null) {
-                            lastPreviewedMessageId = latestMsg.id
-                        }
-                    }
-                }
+                ACTION_SHOW_ALERT_PREVIEW -> showAlertPreview(intent.getStringExtra(EXTRA_ALERT_TEXT))
             }
         }
     }
@@ -277,6 +317,7 @@ class BubbleService : Service() {
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (stopIfUnavailable() || !isRunning) return START_NOT_STICKY
         val action = intent?.action
         if (action != null && intent.getPackage() != null && intent.getPackage() != packageName) {
             return START_STICKY
@@ -294,32 +335,22 @@ class BubbleService : Service() {
                     }
                 }
             }
-            ACTION_SHOW_ALERT_PREVIEW -> {
-                val alertText = intent.getStringExtra(EXTRA_ALERT_TEXT)
-                if (!alertText.isNullOrBlank()) {
-                    clearSnooze(this)
-                    addBubbleToWindowManager()
-                    unpeekBubble(animate = false)
-                    showNotificationPreviewPill(alertText)
-                    resetHideTimer()
-                    val latestMsg = BubbleChatManager.getMessages(this).lastOrNull { !it.isUser }
-                    if (latestMsg != null) {
-                        lastPreviewedMessageId = latestMsg.id
-                    }
-                }
-            }
+            ACTION_SNOOZE_EXPIRED -> restoreSnoozeTimer()
+            ACTION_SHOW_ALERT_PREVIEW -> showAlertPreview(intent?.getStringExtra(EXTRA_ALERT_TEXT))
+            null -> { restoreSnoozeTimer(); addBubbleToWindowManager() }
         }
         return START_STICKY
     }
     
     override fun onCreate() {
         super.onCreate()
-        isRunning = true
-        
+        isRunning = false
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
 
-        updateNotification()
+        cancelLegacyRestart(this)
+        if (!updateNotification() || stopIfUnavailable()) return
+        isRunning = true
 
         val filter = IntentFilter().apply {
             addAction("com.focusbyrj.app.CHAT_CLOSED")
@@ -352,10 +383,56 @@ class BubbleService : Service() {
         }
         
         displayManager.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+        runCatching {
+            getSystemService(android.app.AppOpsManager::class.java)?.startWatchingMode(
+                android.app.AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, packageName, overlayPermissionListener)
+        }
         
         setupBubble()
+        restoreSnoozeTimer()
         startObservingTasks()
         resetHideTimer()
+    }
+
+    private fun enabledAndAllowed(): Boolean =
+        getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE).getBoolean("bubble_enabled", false) &&
+            android.provider.Settings.canDrawOverlays(this)
+
+    private fun stopIfUnavailable(): Boolean {
+        if (enabledAndAllowed()) return false
+        clearSnooze(this)
+        cancelLegacyRestart(this)
+        isRunning = false
+        removeBubbleFromWindowManager()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        return true
+    }
+
+    private fun mayShowBubble(): Boolean = enabledAndAllowed() && !isChatOpen &&
+        !isSnoozed(this) && !isHiddenForPermission && temporaryHideReasons.isEmpty() &&
+        !(getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE).getBoolean("hide_in_landscape", true) && isLandscapeMode())
+
+    private fun restoreSnoozeTimer() {
+        snoozeHandler.removeCallbacks(snoozeExpiredRunnable)
+        val until = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE).getLong(PREFS_KEY_SNOOZED_UNTIL, 0L)
+        val remaining = remainingSnoozeMs(this)
+        if (remaining > 0) {
+            snoozeHandler.postDelayed(snoozeExpiredRunnable, remaining)
+        } else if (until != 0L) {
+            clearSnooze(this)
+            addBubbleToWindowManager()
+            updateNotification()
+        }
+    }
+
+    private fun showAlertPreview(text: String?) {
+        if (text.isNullOrBlank() || !mayShowBubble()) return
+        addBubbleToWindowManager()
+        unpeekBubble(animate = false)
+        showNotificationPreviewPill(text)
+        resetHideTimer()
+        BubbleChatManager.getMessages(this).lastOrNull { !it.isUser }?.let { lastPreviewedMessageId = it.id }
     }
 
     private fun showCloseView() {
@@ -392,6 +469,10 @@ class BubbleService : Service() {
 
     @Synchronized
     private fun removeBubbleFromWindowManager() {
+        hideHandler.removeCallbacks(hideRunnable)
+        peekAnimator?.cancel()
+        springXAnim?.cancel()
+        bubbleView?.animate()?.cancel()
         dismissPreviewPill(animated = false)
         hideCloseView()
         try {
@@ -413,14 +494,7 @@ class BubbleService : Service() {
     private fun addBubbleToWindowManager() {
         // Also covers notification, settings and permission-restore paths while
         // chat is open, so none can put the launcher over the chat header.
-        if (isChatOpen) return
-        if (isSnoozed(this)) return
-        if (isHiddenForPermission) return
-        val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("bubble_enabled", false)) return
-        if (!android.provider.Settings.canDrawOverlays(this)) return
-        val hideInLandscape = prefs.getBoolean("hide_in_landscape", true)
-        if (hideInLandscape && isLandscapeMode()) return
+        if (!mayShowBubble()) return
 
         val bv = bubbleView ?: return
         val lp = layoutParams ?: return
@@ -876,7 +950,7 @@ class BubbleService : Service() {
     }
 
     private fun showNotificationPreviewPill(rawText: String, category: com.focusbyrj.app.util.AyvaAlertCategory = com.focusbyrj.app.util.AyvaAlertCategory.infer(rawText)) {
-        if (isChatOpen) return
+        if (!mayShowBubble() || !isBubbleAdded) return
         if (!category.isEnabled(this)) return
         val currentBubbleView = bubbleView ?: return
         val currentLayoutParams = layoutParams ?: return
@@ -1028,7 +1102,8 @@ class BubbleService : Service() {
     private fun applyBubbleStyleSettings() {
         val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
         val isEnabled = prefs.getBoolean("bubble_enabled", false)
-        if (!isEnabled || isSnoozed(this) || isHiddenForPermission) {
+        if (stopIfUnavailable()) return
+        if (!mayShowBubble()) {
             removeBubbleFromWindowManager()
             return
         } else {
@@ -1062,7 +1137,7 @@ class BubbleService : Service() {
     }
 
     private fun peekBubble(force: Boolean = false) {
-        if (isChatOpen) return
+        if (!mayShowBubble() || !isBubbleAdded) return
         if (!force && isPeeking) return
         val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
         if (!force && !prefs.getBoolean("auto_hide_enabled", false)) return
@@ -1169,7 +1244,7 @@ class BubbleService : Service() {
 
     private fun resetHideTimer() {
         hideHandler.removeCallbacks(hideRunnable)
-        if (isChatOpen || isPeeking) return
+        if (!mayShowBubble() || !isBubbleAdded || isPeeking) return
         val prefs = getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
         if (prefs.getBoolean("auto_hide_enabled", false)) {
             val durationSecs = prefs.getInt("auto_hide_duration_sec", 3)
@@ -1271,25 +1346,14 @@ class BubbleService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        if (isSnoozed(this)) return
-        // Ensure the service restarts if the app task was swiped away from recent apps
-        val restartServiceIntent = Intent(applicationContext, BubbleService::class.java).also {
-            it.setPackage(packageName)
-        }
-        val flags = PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-        val restartServicePendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            PendingIntent.getForegroundService(this, 1, restartServiceIntent, flags)
-        } else {
-            PendingIntent.getService(this, 1, restartServiceIntent, flags)
-        }
-        val alarmService = applicationContext.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
-        alarmService?.set(android.app.AlarmManager.ELAPSED_REALTIME, android.os.SystemClock.elapsedRealtime() + 1000, restartServicePendingIntent)
+        // The foreground service remains sticky. A separate inexact restart alarm
+        // can revive a disabled service and is not a reliable background exemption.
     }
 
-    private fun updateNotification() {
+    private fun updateNotification(): Boolean {
         val channelId = "ayva_bubble_fg_channel"
         val channelName = "Ayva Floating Bubble"
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -1350,22 +1414,31 @@ class BubbleService : Service() {
             } else {
                 startForeground(2001, notification)
             }
-        } catch (_: Exception) {
-            startForeground(2001, notification)
+            return true
+        } catch (error: Exception) {
+            android.util.Log.w("BubbleService", "Could not promote bubble service", error)
+            stopSelf()
+            return false
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         taskObserverJob?.cancel()
         serviceScope.cancel()
+        bubbleView?.animate()?.cancel()
+        closeView?.animate()?.cancel()
         springXAnim?.cancel()
         peekAnimator?.cancel()
         hideHandler.removeCallbacks(hideRunnable)
         snoozeHandler.removeCallbacks(snoozeExpiredRunnable)
         permissionRestoreHandler.removeCallbacks(permissionRestoreRunnable)
         previewDismissHandler.removeCallbacks(previewDismissRunnable)
+        kotlin.runCatching {
+            getSystemService(android.app.AppOpsManager::class.java)?.stopWatchingMode(overlayPermissionListener)
+        }
         kotlin.runCatching { unregisterReceiver(receiver) }
         kotlin.runCatching { unregisterReceiver(systemReceiver) }
         try {

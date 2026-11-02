@@ -127,7 +127,6 @@ object FocusSessionManager {
         context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE).edit().putBoolean("isSessionActive", false).remove("focus_task_id").apply()
         activeState.value = false
         (context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)?.cancel(endIntent(context))
-        DndHelper.setDndMode(context, false)
     }
     private fun bootCount(context: Context): Int = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, 0)
     private fun endIntent(context: Context) = PendingIntent.getBroadcast(

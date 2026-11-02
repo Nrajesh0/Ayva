@@ -1,0 +1,6 @@
+<resources>
+    <color name="battery_widget_surface">#101318</color>
+    <color name="battery_widget_border">#30363F</color>
+    <color name="battery_widget_primary">#E4E8EE</color>
+    <color name="battery_widget_secondary">#A1ABB8</color>
+</resources>

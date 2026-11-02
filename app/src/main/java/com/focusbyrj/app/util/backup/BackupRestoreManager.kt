@@ -1315,7 +1315,7 @@ object BackupRestoreManager {
             // Reload In-Memory Managers
             try { FocusEconomyManager.init(app) } catch (_: Exception) {}
             try { FocusStatsManager.init(app) } catch (_: Exception) {}
-            try { BubbleChatManager.init(app) } catch (_: Exception) {}
+            try { BubbleChatManager.reloadAfterRestore(app) } catch (_: Exception) {}
             try { AptitudeManager.init(app) } catch (_: Exception) {}
             try { DailyQuestManager.init(app) } catch (_: Exception) {}
 

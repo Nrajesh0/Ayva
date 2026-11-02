@@ -81,7 +81,7 @@ class FocusBlockerService : Service() {
 
     private var currentForegroundPackage: String? = null
     private var monitoringJob: kotlinx.coroutines.Job? = null
-    private var isScreenOn = true
+    @Volatile private var isScreenOn = false
 
     private val screenReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -157,6 +157,7 @@ class FocusBlockerService : Service() {
         startForegroundServiceNotification()
         startRestrictionMonitorLoop()
         startRoutineMonitorLoop()
+        isScreenOn = (getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager)?.isInteractive == true
         startAppMonitoringLoop()
     }
 
@@ -206,9 +207,10 @@ class FocusBlockerService : Service() {
     }
 
     private fun startAppMonitoringLoop() {
+        if (!isScreenOn) return
         if (monitoringJob?.isActive == true) return
         monitoringJob = scope.launch {
-            while (isActive) {
+            while (isActive && isScreenOn) {
                 kotlin.runCatching {
                     val currentPackage = getForegroundPackage()
                     if (!currentPackage.isNullOrBlank()) {
@@ -689,7 +691,6 @@ class FocusBlockerService : Service() {
         UsageBreakTracker.reset()
         // Do NOT wipe isSessionActive here; focus sessions and locks must persist
         // across service recreations or low memory kills until explicitly ended by user or timer.
-        com.focusbyrj.app.util.DndHelper.setDndMode(applicationContext, false)
         kotlin.runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 stopForeground(STOP_FOREGROUND_REMOVE)

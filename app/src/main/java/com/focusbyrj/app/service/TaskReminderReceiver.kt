@@ -68,8 +68,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
                         // If the task was rescheduled to a time in the future, dismiss active notification and overlay.
                         // Do NOT cancel the alarm from AlarmManager, because that is the newly scheduled future alarm!
                         if (task.dueDate != null && task.dueDate > System.currentTimeMillis() + 60000L) {
-                            val nm = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                            nm?.cancel(taskId.toInt())
+                            com.focusbyrj.app.util.TaskNotifications.cancel(appContext, taskId)
                             TaskReminderHelper.cleanUpTaskSummaryNotification(appContext, taskId)
                             TaskReminderOverlayManager.dismissTask(taskId, appContext)
                             return@launch
@@ -137,6 +136,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
                     // Tap Action Intent (Direct background receiver opening floating modal in the middle of the screen)
                     val popupActionIntent = Intent(appContext, TaskActionReceiver::class.java).apply {
                         action = TaskActionReceiver.ACTION_SHOW_POPUP
+                        data = android.net.Uri.parse("runtask://action/$taskId/$action")
                         putExtra(TaskActionReceiver.EXTRA_TASK_ID, taskId)
                         putExtra("taskTitle", title)
                         putExtra("taskDetails", details)
@@ -155,6 +155,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
                     // Reschedule Action Intent (Direct background receiver opening reschedule popup on home screen)
                     val rescheduleActionIntent = Intent(appContext, TaskActionReceiver::class.java).apply {
                         action = TaskActionReceiver.ACTION_OPEN_RESCHEDULE
+                        data = android.net.Uri.parse("runtask://action/$taskId/$action")
                         putExtra(TaskActionReceiver.EXTRA_TASK_ID, taskId)
                         putExtra("taskTitle", title)
                         putExtra("taskDetails", details)
@@ -173,6 +174,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
                     // Complete Action Intent (Direct background receiver)
                     val completeActionIntent = Intent(appContext, TaskActionReceiver::class.java).apply {
                         action = TaskActionReceiver.ACTION_COMPLETE_TASK
+                        data = android.net.Uri.parse("runtask://action/$taskId/$action")
                         putExtra(TaskActionReceiver.EXTRA_TASK_ID, taskId)
                     }
                     val completePendingIntent = PendingIntent.getBroadcast(
@@ -185,6 +187,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
                     // Ignore Action Intent (Direct background receiver)
                     val ignoreActionIntent = Intent(appContext, TaskActionReceiver::class.java).apply {
                         action = TaskActionReceiver.ACTION_IGNORE_TASK
+                        data = android.net.Uri.parse("runtask://action/$taskId/$action")
                         putExtra(TaskActionReceiver.EXTRA_TASK_ID, taskId)
                     }
                     val ignorePendingIntent = PendingIntent.getBroadcast(
@@ -196,6 +199,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
 
                     val deleteIntent = Intent(appContext, TaskActionReceiver::class.java).apply {
                         action = TaskActionReceiver.ACTION_TASK_DISMISSED
+                        data = android.net.Uri.parse("runtask://action/$taskId/$action")
                         putExtra(TaskActionReceiver.EXTRA_TASK_ID, taskId)
                     }
                     val deletePendingIntent = PendingIntent.getBroadcast(
@@ -232,13 +236,13 @@ class TaskReminderReceiver : BroadcastReceiver() {
                     }
 
                     if (showNotification) {
-                        notificationManager.notify(taskId.toInt(), builder.build())
+                        com.focusbyrj.app.util.TaskNotifications.post(notificationManager, taskId, builder.build())
 
                         // Only post group summary if there are multiple active task notifications
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                             val activeNotifs = notificationManager.activeNotifications ?: emptyArray()
                             val activeTasks = activeNotifs.filter {
-                                it.id != TASKS_SUMMARY_ID && it.notification.group == TASKS_GROUP_KEY
+                                com.focusbyrj.app.util.TaskNotifications.isChild(it)
                             }
                             if (activeTasks.size >= 2) {
                                 val inboxStyle = NotificationCompat.InboxStyle().setSummaryText("Tasks & To-Dos")

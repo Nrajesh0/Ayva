@@ -174,7 +174,7 @@ internal object RestoreJournal {
         }.onFailure { runCatching { com.focusbyrj.app.util.WorkSessionReminders.retry(app) } }
         runCatching { com.focusbyrj.app.util.FocusEconomyManager.init(app) }
         runCatching { com.focusbyrj.app.util.FocusStatsManager.init(app) }
-        runCatching { com.focusbyrj.app.util.BubbleChatManager.init(app) }
+        runCatching { com.focusbyrj.app.util.BubbleChatManager.reloadAfterRestore(app) }
         runCatching { com.focusbyrj.app.util.AptitudeManager.init(app) }
         runCatching { com.focusbyrj.app.util.DailyQuestManager.init(app) }
         checkpoint("recovered")

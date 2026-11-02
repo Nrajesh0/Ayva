@@ -149,8 +149,7 @@ object TaskReminderHelper {
             alarmManager.cancel(pendingLegacy)
 
             // 3. Clear notification for this task and remove orphaned summary notification if no task notifications left
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            notificationManager?.cancel(taskId.toInt())
+            TaskNotifications.cancel(context, taskId)
             cleanUpTaskSummaryNotification(context, taskId)
         }
     }
@@ -160,9 +159,8 @@ object TaskReminderHelper {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val activeNotifs = notificationManager.activeNotifications ?: emptyArray()
             val remainingTaskNotifs = activeNotifs.filter {
-                it.id != TaskReminderReceiver.TASKS_SUMMARY_ID &&
-                (dismissedTaskId == null || it.id != dismissedTaskId.toInt()) &&
-                it.notification.group == TaskReminderReceiver.TASKS_GROUP_KEY
+                TaskNotifications.isChild(it) &&
+                (dismissedTaskId == null || !TaskNotifications.matches(it, dismissedTaskId))
             }
             if (remainingTaskNotifs.size < 2) {
                 notificationManager.cancel(TaskReminderReceiver.TASKS_SUMMARY_ID)
@@ -202,8 +200,7 @@ object TaskReminderHelper {
             onDone?.invoke()
             return
         }
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        notificationManager?.cancel(taskId.toInt())
+        TaskNotifications.cancel(context, taskId)
         cancelReminderById(context, taskId)
         com.focusbyrj.app.service.TaskReminderOverlayManager.dismissTask(taskId, context)
 
@@ -241,7 +238,7 @@ object TaskReminderHelper {
                     val action = if (existing.isCompleted) com.focusbyrj.app.util.assistant.AssistantAction.EditTasks(listOf(taskId), com.focusbyrj.app.util.assistant.TaskField.REOPEN, "true")
                         else com.focusbyrj.app.util.assistant.AssistantAction.CompleteTasks(listOf(taskId), overrideDependencies)
                     com.focusbyrj.app.util.assistant.AssistantActionExecutor.execute(context, action)
-                    (context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(taskId.toInt())
+                    TaskNotifications.cancel(context, taskId)
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -258,8 +255,7 @@ object TaskReminderHelper {
     }
 
     fun ignoreTask(context: Context, taskId: Long) {
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        notificationManager?.cancel(taskId.toInt())
+        TaskNotifications.cancel(context, taskId)
         cancelReminderById(context, taskId)
         com.focusbyrj.app.service.TaskReminderOverlayManager.dismissTask(taskId, context)
     }

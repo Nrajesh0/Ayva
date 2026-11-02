@@ -10,6 +10,8 @@ import com.focusbyrj.app.util.assistant.AssistantChatState
 import com.focusbyrj.app.util.assistant.AssistantItemReference
 import com.focusbyrj.app.util.assistant.AssistantPresentation
 import kotlinx.coroutines.sync.withLock
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 
 import com.focusbyrj.app.util.router.AyvaIntentRouter
 import com.focusbyrj.app.util.router.RouterDestination
@@ -433,46 +435,47 @@ fun ChatInterface() {
     val coroutineScope = rememberCoroutineScope()
     val messageMutex = remember { kotlinx.coroutines.sync.Mutex() }
     
-    val profile by FocusEconomyManager.profileFlow.collectAsState()
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val profile by FocusEconomyManager.profileFlow.collectAsStateWithLifecycle()
     
     val prefs = remember { context.getSharedPreferences("bubble_prefs", android.content.Context.MODE_PRIVATE) }
     
-    var messages by remember { 
-        BubbleChatManager.markAllAsViewed(context)
-        BubbleChatManager.checkAndClearIfInactive(context)
-        val stored = BubbleChatManager.getMessages(context)
-        val initialList = if (stored.isEmpty()) {
-            val welcome = PersistedChatMessage(
+    var messages by remember {
+        mutableStateOf(BubbleChatManager.getMessages(context).map { it.toChatMessage() })
+    }
+    val persistedBaseline = remember {
+        java.util.concurrent.atomic.AtomicReference(BubbleChatManager.messagesFlow.value)
+    }
+    fun ChatMessage.recordForChat(visible: Boolean = lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)): PersistedChatMessage =
+        toStableChatRecord(persistedBaseline.get().firstOrNull { it.id == id }, visible)
+    val persistedGeneration = remember { java.util.concurrent.atomic.AtomicLong(BubbleChatManager.generation) }
+    fun persistMessages(context: Context, proposed: List<PersistedChatMessage>, updateActivityTimestamp: Boolean = true) {
+        val before = persistedBaseline.getAndSet(proposed.toList())
+        BubbleChatManager.applyMessageChanges(context, before, proposed, updateActivityTimestamp, persistedGeneration.get())
+    }
+    val chatLoaded by BubbleChatManager.loaded.collectAsStateWithLifecycle()
+    val chatGeneration by BubbleChatManager.transcriptGeneration.collectAsStateWithLifecycle()
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while (!BubbleChatManager.awaitInitialized(context)) delay(1000L)
+            BubbleChatManager.ensureWelcomeIfEmpty(context, PersistedChatMessage(
                 id = "welcome_${System.currentTimeMillis()}",
                 text = com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context),
-                isUser = false,
-                timestamp = System.currentTimeMillis()
-            )
-            BubbleChatManager.saveMessages(context, listOf(welcome))
-            listOf(welcome)
-        } else {
-            stored
+                isUser = false, isWelcome = true))
+            BubbleChatManager.markAllAsViewed(context)
+            BubbleChatManager.clearUnread(context)
         }
-        mutableStateOf<List<ChatMessage>>(
-            initialList.map { it.toChatMessage() }
-        ) 
     }
     var showSearch by remember { mutableStateOf(false) }
     var showClearHistory by remember { mutableStateOf(false) }
     var showReferencePicker by remember { mutableStateOf(false) }
     var availableReferences by remember { mutableStateOf<List<AssistantItemReference>>(emptyList()) }
-    var assistantChatState by remember { mutableStateOf(AssistantChatState()) }
     var referenceRevision by remember { mutableIntStateOf(0) }
     var replyToMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var requestsInFlight by remember { mutableIntStateOf(0) }
 
-    // A UI projection only: reads do not extend the encrypted session's 15-minute lifetime.
-    LaunchedEffect(messages, referenceRevision) {
-        while (true) {
-            assistantChatState = withContext(Dispatchers.IO) { OfflineAssistant.chatState(context) }
-            val remaining = assistantChatState.expiresAt - System.currentTimeMillis() + 1L
-            delay(remaining.coerceIn(1L, 5_000L))
-        }
+    var assistantChatState by rememberChatStateProjection(messages, referenceRevision) {
+        withContext(Dispatchers.IO) { OfflineAssistant.chatState(context) }
     }
     fun changeReference(reference: AssistantItemReference?) {
         coroutineScope.launch {
@@ -525,7 +528,7 @@ fun ChatInterface() {
                         messages.filter { !it.isArithmetic } + summaryMsg
                     }
                     messages = newMsgs
-                    BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                    persistMessages(context, messages.map { it.recordForChat() })
                     showDrillSummaryMessage = summaryMsg
                     activeDrillSession = null
                     break
@@ -560,7 +563,7 @@ fun ChatInterface() {
     DisposableEffect(audioMemoManager) {
         onDispose { audioMemoManager.release() }
     }
-    val recordingState by audioMemoManager.recordingState.collectAsState()
+    val recordingState by audioMemoManager.recordingState.collectAsStateWithLifecycle()
     val transcriptForActions = remember { java.util.concurrent.atomic.AtomicReference<Pair<String, Long>?>(null) }
     var initialInputBeforeTranscription by remember { mutableStateOf("") }
 
@@ -709,59 +712,29 @@ fun ChatInterface() {
         prefs.edit().putFloat("chat_font_size_sp", clamped).apply()
     }
     
-    val persistedFlowMessages by BubbleChatManager.messagesFlow.collectAsState()
-    
-    // Dynamically sync messages whenever background alerts (streak prompts, summaries) are received or updated
-    LaunchedEffect(persistedFlowMessages) {
-        if (persistedFlowMessages.isNotEmpty()) {
-            val incomingIds = persistedFlowMessages.map { it.id }.toSet()
-            val existingMap = messages.associateBy { it.id }
-            var changed = false
-            val merged = mutableListOf<ChatMessage>()
+    val persistedFlowMessages by BubbleChatManager.messagesFlow.collectAsStateWithLifecycle()
 
-            // Update existing or preserve in order
-            for (pMsg in persistedFlowMessages) {
-                val existing = existingMap[pMsg.id]
-                val converted = pMsg.toChatMessage()
-                if (existing == null) {
-                    merged.add(converted)
-                    changed = true
-                } else if (existing.text != converted.text ||
-                           existing.streakPromptJson != converted.streakPromptJson ||
-                           existing.drillSummaryJson != converted.drillSummaryJson ||
-                           existing.taskSummaryJson != converted.taskSummaryJson ||
-                           existing.vocabJson != converted.vocabJson ||
-                           existing.habitsSummaryJson != converted.habitsSummaryJson) {
-                    merged.add(converted)
-                    changed = true
-                } else {
-                    merged.add(existing)
-                }
+    LaunchedEffect(persistedFlowMessages, chatLoaded, chatGeneration) {
+        if (chatLoaded) {
+            val local = messages.map { it.recordForChat(visible = false) }
+            val generation = BubbleChatManager.generation
+            val projected = if (persistedGeneration.get() == generation)
+                BubbleChatManager.mergeChanges(persistedFlowMessages, persistedBaseline.get(), local)
+                else persistedFlowMessages
+            persistedBaseline.set(persistedFlowMessages)
+            persistedGeneration.set(generation)
+            val current = messages.associateBy { it.id }
+            messages = projected.map { record ->
+                current[record.id]?.takeIf { it.toPersistedChatMessage(markViewedIfActive = false) == record } ?: record.toChatMessage()
             }
-
-            // Include any locally dispatched messages (user or bot) not yet committed to persistence
-            for (msg in messages) {
-                if (msg.id !in incomingIds) {
-                    merged.add(msg)
-                }
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED) &&
+                projected.any { it.firstViewedTimestamp == 0L }) {
+                BubbleChatManager.markAllAsViewed(context)
+                BubbleChatManager.clearUnread(context)
             }
-
-            if (changed || merged.size != messages.size) {
-                messages = merged
-            }
-        } else if (messages.isNotEmpty() && messages.none { it.isUser }) {
-            // Background cleared the stream
-            val welcome = ChatMessage(
-                id = "welcome_${System.currentTimeMillis()}",
-                text = com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context),
-                isUser = false,
-                timestamp = System.currentTimeMillis()
-            )
-            messages = listOf(welcome)
         }
     }
 
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -802,20 +775,20 @@ fun ChatInterface() {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     
     LaunchedEffect(messages) {
-        BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() }, updateActivityTimestamp = false)
+        persistMessages(context, messages.map { it.recordForChat() }, updateActivityTimestamp = false)
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(0)
         }
     }
     
     val focusApp = remember { context.applicationContext as com.focusbyrj.app.FocusApplication }
-    val allTasksList by focusApp.taskRepository.allTasks.collectAsState(initial = emptyList())
+    val allTasksList by focusApp.taskRepository.allTasks.collectAsStateWithLifecycle(initialValue = emptyList())
     val pendingTasksList = remember(allTasksList) {
         allTasksList.filter { !it.isCompleted }
             .sortedWith(compareByDescending<com.focusbyrj.app.data.Task> { it.isPriority }.thenBy { it.dueDate ?: Long.MAX_VALUE })
     }
 
-    val restrictions by focusApp.database.appRestrictionDao().getAllRestrictions().collectAsState(initial = emptyList())
+    val restrictions by focusApp.database.appRestrictionDao().getAllRestrictions().collectAsStateWithLifecycle(initialValue = emptyList())
     val lockedPackages = remember(restrictions) {
         restrictions.filter { it.isRestricted }.map { it.packageName }.toSet()
     }
@@ -829,25 +802,16 @@ fun ChatInterface() {
         BubbleChatManager.updateLastActivityTime(context)
     }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(15_000L)
-            val clearedOrPruned = BubbleChatManager.checkAndClearIfInactive(context, isDrillOrQuizActive = activeDrillSession != null)
-            if (clearedOrPruned) {
-                val currentPersisted = BubbleChatManager.getMessages(context)
-                if (currentPersisted.isEmpty()) {
-                    val welcome = ChatMessage(
-                        id = "welcome_${System.currentTimeMillis()}",
-                        text = com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context),
-                        isUser = false,
-                        timestamp = System.currentTimeMillis(),
-                        firstViewedTimestamp = System.currentTimeMillis()
-                    )
-                    messages = listOf(welcome)
-                } else {
-                    messages = currentPersisted.map { it.toChatMessage() }
-                }
-            }
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            do {
+                BubbleChatManager.checkAndClearIfInactive(context, isDrillOrQuizActive = activeDrillSession != null)
+                BubbleChatManager.ensureWelcomeIfEmpty(context, PersistedChatMessage(
+                    id = "welcome_${System.currentTimeMillis()}",
+                    text = com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context),
+                    isUser = false, isWelcome = true))
+                delay(15_000L)
+            } while (true)
         }
     }
 
@@ -969,7 +933,7 @@ fun ChatInterface() {
                 talkActionJson = quoted?.let { AssistantPresentation.withReply(it.text, quotedTarget, it.id) })
             val updatedUserList = messages + userMsg
             messages = updatedUserList
-            BubbleChatManager.saveMessages(context, updatedUserList.map { it.toPersistedChatMessage() })
+            persistMessages(context, updatedUserList.map { it.recordForChat() })
             val finalizedVoice = transcriptForActions.getAndSet(null)
             val vocabularyCard = messages.lastOrNull { it.isVocabBrief && it.vocabJson != null }
             val completedTest = messages.lastOrNull { it.isDrillSummary && it.drillSummaryJson != null }
@@ -1005,7 +969,7 @@ fun ChatInterface() {
                                 id = "assistant_${java.util.UUID.randomUUID()}", text = assisted.formattedText,
                                 isUser = false, isTalkAction = assisted.actions.isNotEmpty(), talkActionJson = assisted.jsonPayload
                             )
-                            BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                            persistMessages(context, messages.map { it.recordForChat() })
                         }
                         return@launch
                     }
@@ -1025,7 +989,7 @@ fun ChatInterface() {
                             )
                             withContext(Dispatchers.Main) {
                                 messages = messages + conflictMsg
-                                BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                                persistMessages(context, messages.map { it.recordForChat() })
                             }
                             return@launch
                         }
@@ -1040,7 +1004,7 @@ fun ChatInterface() {
                             )
                             withContext(Dispatchers.Main) {
                                 messages = messages + confirmMsg
-                                BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                                persistMessages(context, messages.map { it.recordForChat() })
                             }
                             return@launch
                         }
@@ -1155,7 +1119,7 @@ fun ChatInterface() {
                                         timestamp = System.currentTimeMillis()
                                     )
                                     messages = listOf(welcome)
-                                    BubbleChatManager.saveMessages(context, listOf(
+                                    persistMessages(context, listOf(
                                         PersistedChatMessage(welcome.id, welcome.text, welcome.isUser, welcome.timestamp)
                                     ))
                                     BubbleChatManager.clearUnread(context)
@@ -1377,7 +1341,7 @@ fun ChatInterface() {
                                     lastSummaryTasks = sortedTasks
                                     val updated = messages + summaryResponse
                                     messages = updated
-                                    BubbleChatManager.saveMessages(context, updated.map { it.toPersistedChatMessage() })
+                                    persistMessages(context, updated.map { it.recordForChat() })
                                 }
                                 return@launch
                             }
@@ -1414,7 +1378,7 @@ fun ChatInterface() {
                                     withContext(Dispatchers.Main) {
                                         val updated = messages + summaryResponse
                                         messages = updated
-                                        BubbleChatManager.saveMessages(context, updated.map { it.toPersistedChatMessage() })
+                                        persistMessages(context, updated.map { it.recordForChat() })
                                     }
                                 } else {
                                     // Default /vocab, /vocab stats, /srs, /retention shows the Spaced Repetition Hub card
@@ -1427,7 +1391,7 @@ fun ChatInterface() {
                                     withContext(Dispatchers.Main) {
                                         val updated = messages + hubResponse
                                         messages = updated
-                                        BubbleChatManager.saveMessages(context, updated.map { it.toPersistedChatMessage() })
+                                        persistMessages(context, updated.map { it.recordForChat() })
                                     }
                                 }
                                 return@launch
@@ -1488,7 +1452,7 @@ fun ChatInterface() {
                                     withContext(Dispatchers.Main) {
                                         val updated = messages + summaryResponse
                                         messages = updated
-                                        BubbleChatManager.saveMessages(context, updated.map { it.toPersistedChatMessage() })
+                                        persistMessages(context, updated.map { it.recordForChat() })
                                     }
                                     return@launch
                                 }
@@ -1548,7 +1512,7 @@ fun ChatInterface() {
                                 withContext(Dispatchers.Main) {
                                     val updated = messages + habitMsg
                                     messages = updated
-                                    BubbleChatManager.saveMessages(context, updated.map { it.toPersistedChatMessage() })
+                                    persistMessages(context, updated.map { it.recordForChat() })
                                 }
                                 return@launch
                             }
@@ -1560,7 +1524,7 @@ fun ChatInterface() {
                                         id = "talk_${java.util.UUID.randomUUID()}", text = response.formattedText,
                                         isUser = false, isTalkAction = response.actions.isNotEmpty(), talkActionJson = response.jsonPayload
                                     )
-                                    BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                                    persistMessages(context, messages.map { it.recordForChat() })
                                 }
                                 return@launch
                             }
@@ -1577,7 +1541,7 @@ fun ChatInterface() {
                                         id = "assistant_${java.util.UUID.randomUUID()}", text = result?.formattedText ?: "Please choose the tasks to reschedule.",
                                         isUser = false, isTalkAction = result?.actions?.isNotEmpty() == true, talkActionJson = result?.jsonPayload
                                     )
-                                    BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                                    persistMessages(context, messages.map { it.recordForChat() })
                                 }
                                 return@launch
                             }
@@ -1609,7 +1573,7 @@ fun ChatInterface() {
                                 withContext(Dispatchers.Main) {
                                     val updated = messages + talkMsg
                                     messages = updated
-                                    BubbleChatManager.saveMessages(context, updated.map { it.toPersistedChatMessage() })
+                                    persistMessages(context, updated.map { it.recordForChat() })
                                 }
                                 return@launch
                             }
@@ -1624,7 +1588,7 @@ fun ChatInterface() {
                             )
                             val updated = messages + replyBotMsg
                             messages = updated
-                            BubbleChatManager.saveMessages(context, updated.map { it.toPersistedChatMessage() })
+                            persistMessages(context, updated.map { it.recordForChat() })
                         }
                         return@launch
                     }
@@ -1639,7 +1603,7 @@ fun ChatInterface() {
                             isUser = false
                         )
                         messages = messages + errMsg
-                        BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                        persistMessages(context, messages.map { it.recordForChat() })
                     }
                 } finally {
                     messageMutex.unlock()
@@ -1682,7 +1646,7 @@ fun ChatInterface() {
                     messages.filter { !it.isArithmetic } + summaryMsg
                 }
                 messages = newMsgs
-                BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                persistMessages(context, messages.map { it.recordForChat() })
                 showDrillSummaryMessage = summaryMsg
                 activeDrillSession = null
             } else {
@@ -1783,7 +1747,7 @@ fun ChatInterface() {
                 messages.filter { !it.isArithmetic } + summaryMsg
             }
             messages = newMsgs
-            BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+            persistMessages(context, messages.map { it.recordForChat() })
             showDrillSummaryMessage = summaryMsg
             activeDrillSession = null
         }
@@ -1901,7 +1865,7 @@ fun ChatInterface() {
                             val newList = messages.toMutableList()
                             newList[idx] = updatedMsg
                             messages = newList
-                            BubbleChatManager.updateMessage(context, updatedMsg.toPersistedChatMessage())
+                            persistMessages(context, newList.map { it.recordForChat() })
                         }
                     },
                     onViewSolutions = { json ->
@@ -1917,10 +1881,10 @@ fun ChatInterface() {
                                 timestamp = System.currentTimeMillis()
                             )
                             messages = listOf(welcome)
-                            BubbleChatManager.saveMessages(context, listOf(welcome.toPersistedChatMessage()), updateActivityTimestamp = false)
+                            persistMessages(context, listOf(welcome.recordForChat()), updateActivityTimestamp = false)
                         } else {
                             messages = updatedList
-                            BubbleChatManager.saveMessages(context, updatedList.map { it.toPersistedChatMessage() }, updateActivityTimestamp = false)
+                            persistMessages(context, updatedList.map { it.recordForChat() }, updateActivityTimestamp = false)
                         }
                     },
                     onStartStreakDrill = {
@@ -1948,7 +1912,7 @@ fun ChatInterface() {
                             )
                             val updated = filtered + angryMsg
                             messages = updated
-                            BubbleChatManager.saveMessages(context, updated.map { it.toPersistedChatMessage() }, updateActivityTimestamp = true)
+                            persistMessages(context, updated.map { it.recordForChat() }, updateActivityTimestamp = true)
                             currentCatActionAsset = "cat_angry.lottie"
                             isCatActionPlaying = true
                             android.widget.Toast.makeText(context, "🧊 Streak Freeze applied! 1,000 Gold spent.", android.widget.Toast.LENGTH_SHORT).show()
@@ -2000,7 +1964,7 @@ fun ChatInterface() {
                                     )
                                     val updatedList = newMessages + ackMsg
                                     messages = updatedList
-                                    BubbleChatManager.saveMessages(context, updatedList.map { it.toPersistedChatMessage() }, updateActivityTimestamp = true)
+                                    persistMessages(context, updatedList.map { it.recordForChat() }, updateActivityTimestamp = true)
                                 }
                             }
                         }
@@ -2113,7 +2077,7 @@ fun ChatInterface() {
                         com.focusbyrj.app.util.AyvaTalkEngine.resetConversation()
                         val welcome = ChatMessage("welcome_${System.currentTimeMillis()}", com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context), false, isWelcome = true)
                         messages = listOf(welcome); replyToMessage = null; assistantChatState = AssistantChatState(); referenceRevision++
-                        BubbleChatManager.saveMessages(context, messages.map { it.toPersistedChatMessage() })
+                        persistMessages(context, messages.map { it.recordForChat() })
                         BubbleChatManager.clearUnread(context)
                     }
                 }

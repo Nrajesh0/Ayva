@@ -155,8 +155,7 @@ fun BubbleSettingsScreen(navController: NavController) {
                                     BubbleService.startIfEnabled(context, ignoreSnooze = true)
                                     isCurrentlySnoozed = false
                                 } else {
-                                    val intent = Intent(context, BubbleService::class.java)
-                                    context.stopService(intent)
+                                    BubbleService.disable(context)
                                 }
                             }
                         )

@@ -89,7 +89,6 @@ import com.focusbyrj.app.MainActivity
 import com.focusbyrj.app.data.AppRestriction
 import com.focusbyrj.app.ui.theme.*
 import com.focusbyrj.app.util.DeviceStatsHelper
-import com.focusbyrj.app.util.DndHelper
 import kotlinx.coroutines.launch
 
 @Composable
@@ -355,7 +354,6 @@ fun DeepWorkCard(
     onSetTime: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     var showDialog by remember { mutableStateOf(false) }
     var sliderValue by remember { mutableStateOf((timeRemaining / 60).toFloat()) }
@@ -517,12 +515,7 @@ fun DeepWorkCard(
             Surface(
                 onClick = {
                     haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                    if (!DndHelper.hasDndPermission(context)) {
-                        DndHelper.requestDndPermission(context)
-                    } else {
-                        DndHelper.setDndMode(context, true)
-                        onToggleSession()
-                    }
+                    onToggleSession()
                 },
                 shape = RoundedCornerShape(10.dp),
                 color = MaterialTheme.colorScheme.primary,
@@ -566,7 +559,6 @@ fun ActiveSessionScreen(timeRemaining: Long, initialTime: Long, onToggleSession:
     val minutes = timeRemaining / 60
     val seconds = timeRemaining % 60
     val timeString = String.format("%02d:%02d", minutes, seconds)
-    val context = LocalContext.current
     
     val infiniteTransition = rememberInfiniteTransition(label = "breathing")
     val scale by infiniteTransition.animateFloat(
@@ -663,7 +655,6 @@ fun ActiveSessionScreen(timeRemaining: Long, initialTime: Long, onToggleSession:
             
             Button(
                 onClick = {
-                    DndHelper.setDndMode(context, false)
                     onToggleSession()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f), contentColor = MaterialTheme.colorScheme.error),

@@ -142,7 +142,7 @@ object AssistantPreferences {
             "bubble_enabled" -> if (validated == "true") {
                 com.focusbyrj.app.service.BubbleService.clearSnooze(context)
                 com.focusbyrj.app.service.BubbleService.startIfEnabled(context, ignoreSnooze = true)
-            } else context.stopService(android.content.Intent(context, com.focusbyrj.app.service.BubbleService::class.java))
+            } else com.focusbyrj.app.service.BubbleService.disable(context)
             "streak_notification_time", "streak_notification_enabled" -> com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(context)
             "morning_brief_time", "evening_brief_time" -> com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(context)
         }

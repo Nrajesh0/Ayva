@@ -4,6 +4,15 @@ Audited revision: `0be9ca27e06ac4ada46fab22b6fd688acf4c0c88` — version **2.0.3
 
 The release is published at https://github.com/Nrajesh0/Ayva/releases/tag/v2.0.35. Both release and validation Actions succeeded. The release has one signed universal APK, `RUN-2.0.35.apk`, **62,823,244 bytes**, minimum Android 12 / API 31. The conversation archive and dictionary remain unchanged.
 
+## Follow-up implementation
+
+The ten accepted findings are implemented in version 2.0.36 / 136 after this audited release. Local validation passed: 1,434 full-suite tests, 21 focused follow-up checks after the final resume hook, and final debug/release builds. See [changes, consequences and verification](../implementation/RUNTIME_RELIABILITY_FIXES.md). A03 remains deferred so intentional landscape hiding is preserved. The numbered findings below describe the original release and retain its source-line references.
+
+## Product decisions after review
+
+- The bubble intentionally hides in landscape for video viewing. Preserve that behavior. A03 is deferred, optional coordinate recovery only when visibility is enabled or a window is resized; it is not a request to show the bubble over landscape video. The ten other findings were accepted for repair; see the follow-up above.
+- Automatic Do Not Disturb integration is removed from focus mode in the working changes after this audit: starting, stopping, timer expiry and blocker-service cleanup no longer change the phone's DND setting. Focus no longer requests notification-policy access. This is separate from the findings in the published 2.0.35 build.
+
 ## Scope and evidence
 
 A repository-wide scan covered all **391 production Kotlin files**, the manifest and scheduling configuration. Follow-up source review traced startup, services, notification identities and actions, alarm scheduling, bubble visibility and lifecycle, chat persistence, UI collectors, widgets, media decoding, animations, backups and maintenance coordination. This is a broad static audit with focused executable checks, rather than a claim that every possible device interaction has been exercised.
@@ -21,7 +30,7 @@ Diagnostic source and results are retained in `/workspace/artifacts/runtime-audi
 |---|---|---|---|
 | A01 | P1 | Completed drill statistics are not persisted | Executable reproduction |
 | A02 | P1 | Task notifications collide with service notification IDs | Executable reproduction |
-| A03 | P2 | Bubble can stay outside the screen after rotation/resizing | Executable reproduction |
+| A03 | Deferred | Optional position recovery when landscape hiding is disabled | Executable reproduction; intentional hiding preserved |
 | A04 | P2 | Recreated snoozed bubble loses its local expiry callback | Executable reproduction |
 | A05 | P2 | Stale starts keep a disabled bubble service running | Executable reproduction |
 | A06 | P2 | Bubble verification overrides an explicit fullscreen hide | Executable reproduction |
@@ -53,7 +62,7 @@ The diagnostic posted a protection notification at 1001, delivered the actual ta
 
 Fix direction: use a separate notification tag namespace with the full Long task ID; update every post, cancel, grouping and legacy-cleanup path together. Do not cancel a legacy task ID if it is currently a service notification. Keep existing alarm/PendingIntent identities stable unless deliberately migrated.
 
-### A03 — Bubble position is not clamped after dimensions change
+### A03 — Deferred: position recovery when visibility is enabled
 
 Locations: `service/BubbleService.kt:523` (`updateLandscapeVisibility`), `:649` (`FLAG_LAYOUT_NO_LIMITS`), `:1194` (`snapToEdge`).
 
@@ -61,7 +70,7 @@ Dragging clamps Y to the current screen, but configuration recovery only snaps X
 
 The diagnostic changed actual Robolectric display qualifiers from portrait to landscape with hiding disabled. The new screen was shorter, but the bubble's Y remained below its height.
 
-Fix direction: normalize both coordinates against current window bounds/insets on dimension changes and reattachment, preserving the chosen edge and a reachable portion of the bubble. Test rotation in both directions, split-screen, display resizing and peek mode. Intentional landscape hiding should remain intact.
+Optional hardening only: normalize both coordinates against current window bounds/insets on dimension changes and reattachment when visibility is allowed, preserving the chosen edge and a reachable portion of the bubble. Test rotation in both directions, split-screen, display resizing and peek mode. Intentional landscape hiding should remain intact.
 
 ### A04 — Snooze expiry is not restored with the service
 
@@ -164,7 +173,7 @@ Lint's receiver-flag errors were checked against the actual SDK guards and are n
 ## Suggested implementation order
 
 1. **Persistence and notification identities:** fix A01/A02 with reload and cross-feature post/cancel regression coverage.
-2. **Bubble state and recovery:** address A03–A06 together with one explicit visibility-state model; validate screen lock/unlock, rotation, permission dialogs, snooze/process recreation, fullscreen views and disabling.
+2. **Bubble state and recovery:** address A04–A06 together with one explicit visibility-state model; validate screen lock/unlock, rotation, permission dialogs, snooze/process recreation, fullscreen views and disabling.
 3. **Background/lifecycle work:** fix A07/A11 while retaining real deadline accounting and maintenance durability.
 4. **Recovery and concurrency:** fix A08–A10 with controlled concurrent-delivery and alarm-reconciliation tests. Profile the optional scaling candidates separately.
 
