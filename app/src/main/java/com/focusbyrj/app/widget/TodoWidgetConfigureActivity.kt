@@ -1,43 +1,26 @@
 package com.focusbyrj.app.widget
 
-import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ColorLens
-import androidx.compose.material.icons.outlined.FormatPaint
-import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Opacity
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.RoundedCorner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,424 +88,30 @@ class TodoWidgetConfigureActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WidgetConfigScreen(
     initialConfig: WidgetConfig,
     onSave: (WidgetConfig) -> Unit,
     onCancel: () -> Unit
 ) {
-    var selectedTheme by remember { mutableStateOf(initialConfig.theme) }
-    var selectedAccent by remember { mutableStateOf(initialConfig.accent) }
-    var opacity by remember { mutableStateOf(initialConfig.opacityPercent.toFloat()) }
-    var cornerRadius by remember { mutableStateOf(initialConfig.cornerRadiusDp.toFloat()) }
-    var textSize by remember { mutableStateOf(initialConfig.textSize) }
-    var fontSizeDropdownExpanded by remember { mutableStateOf(false) }
-
-    val currentConfig = remember(selectedTheme, selectedAccent, opacity, cornerRadius, textSize) {
-        WidgetConfig(
-            theme = selectedTheme,
-            accent = selectedAccent,
-            opacityPercent = opacity.toInt(),
-            cornerRadiusDp = cornerRadius.toInt(),
-            textSize = textSize
-        )
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Customize Widget",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground
-                )
-            )
-        },
-        bottomBar = {
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp,
-                shadowElevation = 8.dp
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onCancel,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel")
-                    }
-
-                    Button(
-                        onClick = { onSave(currentConfig) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(currentConfig.accentColorInt)
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            text = "Apply",
-                            color = if (selectedAccent == WidgetAccent.MONOCHROME && !selectedTheme.isDark) Color.White else Color(0xFF121516),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+    var theme by rememberSaveable { mutableStateOf(initialConfig.theme) }
+    var accent by rememberSaveable { mutableStateOf(initialConfig.accent) }
+    var opacity by rememberSaveable { mutableIntStateOf(initialConfig.opacityPercent) }
+    var radius by rememberSaveable { mutableIntStateOf(initialConfig.cornerRadiusDp) }
+    var textSize by rememberSaveable { mutableStateOf(initialConfig.textSize) }
+    val draft = WidgetConfig(theme, accent, opacity, radius, textSize)
+    WidgetEditor("Tasks widget", listOf("Style"), "${theme.displayName} · ${textSize.spValue.toInt()} sp",
+        onSave = { onSave(draft) }, onCancel = onCancel, preview = { WidgetLivePreview(draft) }) { section ->
+        when (section) {
+            0 -> {
+                WidgetChoiceRow("Theme", theme, WidgetTheme.entries, { it.displayName }, { theme = it },
+                    swatch = { Color(android.graphics.Color.parseColor(it.baseColorHex)) })
+                WidgetChoiceRow("Accent", accent, WidgetAccent.entries, { it.displayName }, { accent = it },
+                    swatch = { Color(android.graphics.Color.parseColor(it.hex)) })
+                WidgetChoiceRow("Font size", textSize, WidgetTextSize.entries, { "${it.spValue.toInt()} sp" }, { textSize = it })
+                WidgetSliderRow("Opacity", opacity, "%", 20..100) { opacity = it }
+                WidgetSliderRow("Corner radius", radius, " dp", 0..32) { radius = it }
             }
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(22.dp)
-        ) {
-            // Live Preview Card
-            Text(
-                text = "LIVE PREVIEW",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.2.sp
-                ),
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            WidgetLivePreview(config = currentConfig)
-
-            // Theme Options
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Palette,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "Theme Palette",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    WidgetTheme.values().forEach { theme ->
-                        val isSelected = theme == selectedTheme
-                        val baseColor = Color(android.graphics.Color.parseColor(theme.baseColorHex))
-                        val borderColor by animateColorAsState(
-                            if (isSelected) Color(currentConfig.accentColorInt) else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
-                            label = "border"
-                        )
-
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = baseColor,
-                            border = androidx.compose.foundation.BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor),
-                            modifier = Modifier
-                                .width(110.dp)
-                                .clickable { selectedTheme = theme }
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(24.dp)
-                                        .clip(CircleShape)
-                                        .background(baseColor)
-                                        .border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = if (theme.isDark) Color.White else Color.Black,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = theme.displayName,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    ),
-                                    color = if (theme.isDark) Color.White else Color(0xFF121516),
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Accent Color Options
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.FormatPaint,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "Accent Highlight",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    WidgetAccent.values().forEach { accent ->
-                        val isSelected = accent == selectedAccent
-                        val color = Color(android.graphics.Color.parseColor(accent.hex))
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .clickable { selectedAccent = accent }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                                    .border(
-                                        width = if (isSelected) 3.dp else 1.dp,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onBackground else Color.Transparent,
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = if (accent == WidgetAccent.MONOCHROME) Color.Black else Color.Black,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = accent.displayName.split(" ").first(),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                ),
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = if (isSelected) 1f else 0.7f)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Opacity Slider
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Opacity,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "Background Opacity",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(currentConfig.accentColorInt).copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = "${opacity.toInt()}%",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color(currentConfig.accentColorInt),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                MinimalProfessionalSlider(
-                    value = opacity,
-                    onValueChange = { opacity = it },
-                    valueRange = 20f..100f,
-                    accentColor = Color(currentConfig.accentColorInt)
-                )
-            }
-
-            // Font Size Selector
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.FormatSize,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Column {
-                        Text(
-                            text = "Font Size",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                        Text(
-                            text = "Task title & item text scale",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Box {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                        modifier = Modifier.clickable { fontSizeDropdownExpanded = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = textSize.displayName,
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Icon(
-                                imageVector = Icons.Default.ArrowDropDown,
-                                contentDescription = "Select Font Size",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    DropdownMenu(
-                        expanded = fontSizeDropdownExpanded,
-                        onDismissRequest = { fontSizeDropdownExpanded = false }
-                    ) {
-                        WidgetTextSize.values().forEach { size ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = size.displayName,
-                                        fontWeight = if (size == textSize) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (size == textSize) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
-                                },
-                                onClick = {
-                                    textSize = size
-                                    fontSizeDropdownExpanded = false
-                                },
-                                leadingIcon = if (size == textSize) {
-                                    {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                } else null
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Corner Radius Slider
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.RoundedCorner,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "Corner Curvature",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(currentConfig.accentColorInt).copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = "${cornerRadius.toInt()} dp",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            color = Color(currentConfig.accentColorInt),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                MinimalProfessionalSlider(
-                    value = cornerRadius,
-                    onValueChange = { cornerRadius = it },
-                    valueRange = 0f..32f,
-                    accentColor = Color(currentConfig.accentColorInt)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 }
@@ -681,91 +270,6 @@ fun WidgetLivePreview(config: WidgetConfig) {
                     showDivider = false
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun MinimalProfessionalSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    accentColor: Color,
-    modifier: Modifier = Modifier
-) {
-    var isDragging by remember { mutableStateOf(false) }
-
-    BoxWithConstraints(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(34.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        val widthPx = constraints.maxWidth.toFloat()
-        val normalized = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
-        val density = LocalDensity.current
-        val thumbRadiusDp = 9.dp
-        val thumbRadiusPx = with(density) { thumbRadiusDp.toPx() }
-        val usableWidth = (widthPx - thumbRadiusPx * 2).coerceAtLeast(1f)
-        val thumbOffsetPx = thumbRadiusPx + normalized * usableWidth
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(34.dp)
-                .pointerInput(valueRange) {
-                    detectTapGestures { offset ->
-                        val ratio = ((offset.x - thumbRadiusPx) / usableWidth).coerceIn(0f, 1f)
-                        val newValue = valueRange.start + ratio * (valueRange.endInclusive - valueRange.start)
-                        onValueChange(newValue)
-                    }
-                }
-                .pointerInput(valueRange) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { isDragging = true },
-                        onDragEnd = { isDragging = false },
-                        onDragCancel = { isDragging = false },
-                        onHorizontalDrag = { change, _ ->
-                            change.consume()
-                            val ratio = ((change.position.x - thumbRadiusPx) / usableWidth).coerceIn(0f, 1f)
-                            val newValue = valueRange.start + ratio * (valueRange.endInclusive - valueRange.start)
-                            onValueChange(newValue)
-                        }
-                    )
-                },
-            contentAlignment = Alignment.CenterStart
-        ) {
-            // Inactive subtle background track
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            )
-
-            // Active accent colored track
-            Box(
-                modifier = Modifier
-                    .width(with(density) { thumbOffsetPx.toDp() })
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(accentColor)
-            )
-
-            // Sleek circular thumb
-            Box(
-                modifier = Modifier
-                    .offset(x = with(density) { (thumbOffsetPx - thumbRadiusPx).toDp() })
-                    .size(18.dp)
-                    .shadow(elevation = if (isDragging) 6.dp else 2.dp, shape = CircleShape)
-                    .background(Color.White, CircleShape)
-                    .border(
-                        width = 3.dp,
-                        color = accentColor,
-                        shape = CircleShape
-                    )
-            )
         }
     }
 }

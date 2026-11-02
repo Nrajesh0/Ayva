@@ -1,4 +1,6 @@
-# Battery health widget
+# Battery health widget (removed)
+
+Removed in version **2.0.37 / 137** because reliable capacity data is not available on the target HyperOS phone. The provider, settings entry, resources, unused battery helper and feature-specific checks were removed. The following describes the historical 2.0.36 implementation.
 
 Home-screen snapshot widget, also available through **Settings → Widgets → Battery health**. A tap refreshes all battery-widget instances. Android schedules periodic updates at a requested 30-minute interval; power-saving and launcher policies can delay them. The displayed time identifies the last refresh. No monitoring service, wake lock, exact alarm, network permission or charging-history collection is added.
 

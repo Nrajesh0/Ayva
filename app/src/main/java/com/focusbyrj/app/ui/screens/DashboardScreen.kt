@@ -88,7 +88,6 @@ import kotlin.math.roundToInt
 import com.focusbyrj.app.MainActivity
 import com.focusbyrj.app.data.AppRestriction
 import com.focusbyrj.app.ui.theme.*
-import com.focusbyrj.app.util.DeviceStatsHelper
 import kotlinx.coroutines.launch
 
 @Composable

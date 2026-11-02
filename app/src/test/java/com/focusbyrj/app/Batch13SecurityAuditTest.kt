@@ -10,8 +10,6 @@ package com.focusbyrj.app
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.Intent
-import android.os.BatteryManager
 import androidx.test.core.app.ApplicationProvider
 import com.focusbyrj.app.data.Habit
 import com.focusbyrj.app.data.HabitLog
@@ -24,7 +22,6 @@ import com.focusbyrj.app.ui.screens.ArithmeticCardHelper
 import com.focusbyrj.app.ui.screens.InstalledApp
 import com.focusbyrj.app.ui.theme.findActivity
 import com.focusbyrj.app.util.CustomCategoryManager
-import com.focusbyrj.app.util.DeviceStatsHelper
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -39,7 +36,6 @@ import org.robolectric.RobolectricTestRunner
  * - BATCH-13-002: ArithmeticCard rigid JSON parsing and NaN / 0 division in progress calculation
  * - BATCH-13-003: CustomCategoryManager brittle monolithic JSON parsing and repeated disk I/O
  * - BATCH-13-004: HabitsChatCard and HabitWithProgress progress fraction bounds and zero handling
- * - BATCH-13-005: DeviceStatsHelper negative battery level, scale division by zero, and clamping
  * - BATCH-13-006: Theme.kt ContextWrapper ClassCastException in findActivity
  * - BATCH-13-007: CustomRestrictionSection time limit slider range alignment up to 180 min
  * - BATCH-13-008: VocabRetentionHubChatCard mastery progress overflow and duplicate key prevention
@@ -146,28 +142,6 @@ class Batch13SecurityAuditTest {
             todayLog = HabitLog(habitId = 1L, date = "2026-09-29", completedCount = 10, targetCount = 5)
         )
         assertEquals(1.0f, hwpOvercompleted.progressFraction, 0.001f)
-    }
-
-    @Test
-    fun test_batch13_005_deviceStatsHelperBatteryInfoMathGuards() {
-        // Negative battery level
-        val intentNegativeLevel = Intent(Intent.ACTION_BATTERY_CHANGED).apply {
-            putExtra(BatteryManager.EXTRA_LEVEL, -1)
-            putExtra(BatteryManager.EXTRA_SCALE, 100)
-            putExtra(BatteryManager.EXTRA_VOLTAGE, 3800)
-        }
-        val info1 = DeviceStatsHelper.parseBatteryInfo(context, intentNegativeLevel)
-        assertNull("Invalid battery level is unavailable, not a guessed charge", info1.rawChargePercentage)
-
-        // Scale is 0 (division by zero guard)
-        val intentZeroScale = Intent(Intent.ACTION_BATTERY_CHANGED).apply {
-            putExtra(BatteryManager.EXTRA_LEVEL, 50)
-            putExtra(BatteryManager.EXTRA_SCALE, 0)
-            putExtra(BatteryManager.EXTRA_VOLTAGE, 3900)
-        }
-        val info2 = DeviceStatsHelper.parseBatteryInfo(context, intentZeroScale)
-        assertNull("Zero scale must yield unavailable charge", info2.rawChargePercentage)
-        assertNull("Cannot calculate capacity without measured health", info2.realRemainingCapacityPercent)
     }
 
     @Test
