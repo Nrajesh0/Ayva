@@ -39,7 +39,10 @@ jobs:
       - name: Run unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --max-workers=2
       - name: Assemble unsigned builds
-        run: ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace --max-workers=2
+        run: |
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace --max-workers=2
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2
+          python3 tools/package_release_apks.py
       - name: Summarize unit test results
         if: always()
         run: python3 tools/summarize_unit_tests.py
@@ -52,5 +55,6 @@ jobs:
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
+            build/release-apks/manifest.json
           if-no-files-found: ignore
           retention-days: 14

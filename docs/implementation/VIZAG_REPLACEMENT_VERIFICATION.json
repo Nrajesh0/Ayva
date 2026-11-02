@@ -1,0 +1,30 @@
+{
+  "retained_assets_sha256": {
+    "app/src/main/res/raw/vizag_fishing_harbour.webp": "bc7ef84fe8f3a31ee61beb52c7cf9d2f5c0ee1c11fcbd35200a1a97675ea6470",
+    "app/src/main/res/drawable-nodpi/vizag_fishing_harbour_poster.webp": "cc36c62f706dfeefebdf65f45baede10853ff87755ee0a86aded79096848a6f0",
+    "app/src/main/res/raw/vizag_ins_kursura.webp": "908dbf8d7130fcb34adab76c4700cb884a575800f6dfc2ebc26bf44cc1943e58",
+    "app/src/main/res/drawable-nodpi/vizag_ins_kursura_poster.webp": "2ca94f554d01be0d667e13aac8f20b90faff5d12b1a2322a6254857dfdcc6507",
+    "app/src/main/res/raw/vizag_vizag_port.webp": "eda82334e31679417936d79712614a50ea33b82836fb4cdf1c1753e838e5b6f3",
+    "app/src/main/res/drawable-nodpi/vizag_vizag_port_poster.webp": "5ff92c7d58f68f0ba23fbe22a8fa8ab92c39831544e74ec05dcd6d38758e6f76",
+    "app/src/main/res/raw/vizag_simhachalam.webp": "bd62c13248c0ef3e65c76b3603ef2ec207fbc99100ce7deafabbc23104ea6b77",
+    "app/src/main/res/drawable-nodpi/vizag_simhachalam_poster.webp": "41ef08587b5862a2afb166c97ced74fc2fb85c246868dcf5c88e57d46289b743"
+  },
+  "retained_manifest_entries_unchanged": true,
+  "old_replacement_bytes": 9622808,
+  "new_replacement_bytes": 1003171,
+  "reduction_percent": 89.6,
+  "validation": {
+    "SettingsVizagFooterTest": {
+      "tests": 11,
+      "failures": 0,
+      "errors": 0
+    },
+    "LosslessAnimationTest": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    "assembleDebug": "passed",
+    "apk_contains_five_layer_sets_and_excludes_old_five_animations": true
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "rk_beach": {
+    "bytes": 226972,
+    "atlas_size": [
+      576,
+      665
+    ],
+    "layers": 15,
+    "rendering": "native layered drawable; no stored animation frames"
+  },
+  "kailasagiri": {
+    "bytes": 130466,
+    "atlas_size": [
+      576,
+      540
+    ],
+    "layers": 7,
+    "rendering": "native layered drawable; no stored animation frames"
+  },
+  "dolphins_nose": {
+    "bytes": 135844,
+    "atlas_size": [
+      576,
+      578
+    ],
+    "layers": 11,
+    "rendering": "native layered drawable; no stored animation frames"
+  },
+  "tenneti_park": {
+    "bytes": 206358,
+    "atlas_size": [
+      576,
+      617
+    ],
+    "layers": 10,
+    "rendering": "native layered drawable; no stored animation frames"
+  },
+  "rushikonda": {
+    "bytes": 294660,
+    "atlas_size": [
+      576,
+      752
+    ],
+    "layers": 19,
+    "rendering": "native layered drawable; no stored animation frames"
+  },
+  "total_bytes": 1003171
+}

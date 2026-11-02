@@ -176,10 +176,10 @@ class AudioMemoManagerTest {
         assertEquals(0f, manager.recordingState.value.currentAmplitude)
     }
 
-    @Test @Config(sdk = [28]) fun olderAndroidUsesPhoneService() {
+    @Test @Config(sdk = [31]) fun android12UsesPhoneServiceWhenOnDeviceRecognitionIsUnavailable() {
         val speech = start()
-        speech.triggerOnPartialResults(words("works on older phones"))
-        assertEquals("works on older phones", manager.recordingState.value.liveTranscript)
+        speech.triggerOnPartialResults(words("works on Android 12"))
+        assertEquals("works on Android 12", manager.recordingState.value.liveTranscript)
     }
 
     @Test fun unresponsiveServiceTimesOutInsteadOfRecordingForever() {

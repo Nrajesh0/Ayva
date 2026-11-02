@@ -19,7 +19,7 @@ import java.time.ZoneId
 
 /** Release gates for real conversations and their native task writes, not phrase-by-phrase coverage. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class TripChecklistConversationTest {
     private lateinit var context: Context
     private lateinit var db: FocusDatabase

@@ -13,7 +13,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class ScreenCaptureProtectionTest {
     @Test fun protectionTracksPreferenceAndStopsObservingAfterDestroy() {
         val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()

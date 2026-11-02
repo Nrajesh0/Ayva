@@ -22,7 +22,7 @@ import java.util.Calendar
 import java.util.TimeZone
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class ConversationalPlannerTest {
     private lateinit var context: Context
     private lateinit var db: FocusDatabase

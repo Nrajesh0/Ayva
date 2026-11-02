@@ -12,7 +12,7 @@ import java.io.File
 import java.nio.file.Files
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class ProductivityStorageTest {
     @Test fun storageCountsFilesThroughParentAliasesButDoesNotFollowChildLinks() {
         val c = ApplicationProvider.getApplicationContext<Context>()

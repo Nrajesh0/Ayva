@@ -24,7 +24,7 @@ import org.robolectric.annotation.Config
 
 /** Exercise the action engine against a real Room database, not just intent classification. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class AyvaChatActionIntegrationTest {
     private lateinit var context: Context
     private lateinit var db: FocusDatabase

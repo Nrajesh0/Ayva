@@ -35,14 +35,6 @@ private val duolingoBlue = Color(0xFF1CB0F6)
 private val duolingoBlueBevel = Color(0xFF1899D6)
 private val cardDarkBg = Color(0xFF1B1E23)
 
-private data class Quintuple<A, B, C, D, E>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D,
-    val fifth: E
-)
-
 @Composable
 fun DrillTopBar(
     activeSession: DrillSession,

@@ -26,7 +26,7 @@ import java.util.TimeZone
 
 /** Essential invariants only: native writes, alarm identity, crash recovery and retained authority. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class PlanningCompletionEssentialsTest {
     private lateinit var context: Context
     private lateinit var db: FocusDatabase

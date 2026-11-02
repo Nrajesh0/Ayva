@@ -2,6 +2,20 @@
 
 The bottom of `PreferencesHubScreen` now shows one of nine approved animated Vizag scenes, its place name, “Made with ❤️ in Vizag”, and a handwritten “By Rj” signature. The signature opens https://github.com/Nrajesh0/Ayva. It uses the bundled Allura font; the font's OFL license is included in `assets/licenses/Allura-OFL.txt`.
 
+## Current five-scene replacement
+
+RK Beach, Kailasagiri, Dolphin’s Nose, Tenneti Park and Rushikonda now use the approved original-pixel artwork in a native `LayeredVizagDrawable`. Fishing Harbour, INS Kursura, Vizag Port and Simhachalam retain their exact animation files, posters, palette transform and playback backend. Their asset hashes and unchanged manifest entries are recorded in `VIZAG_REPLACEMENT_VERIFICATION.json`.
+
+The five old animations and posters occupied 9,622,808 bytes. Their replacement layers, both theme palettes, posters and metadata occupy 1,003,171 bytes, a **89.6% reduction**. Only one scene atlas is decoded at a time (largest: 576×752 pixels). Lossless compressed layers retain edge alpha and are reused on every frame; there are no stored frame sequences, videos, WebViews, runtime downloads or additional native libraries. Source art and export scripts under `tools/` are not bundled in the APK.
+
+The native renderer follows the approved compositor's independent motion clocks. Cable cars follow the complete measured route in opposite directions; birds articulate their wings; people walk; the glider and windsurfer travel; the lighthouse beam sweeps. Rushikonda keeps its accepted travelling crests and fixed coloured boats on sand. RK Beach uses two main bay wavefronts and a shortened distant yellow shore tail. The lighthouse and Tenneti use broad offshore swells. Animation remains continuous, avoiding finite exported-loop resets. Three-source-pixel strips bound offshore draw cost at less than one dp per strip at footer size.
+
+Light artwork has its own compressed colour palette so white ink becomes dark and the vehicle colours stay readable; the retained four continue using the existing colour matrix. The footer still provides a native text caption, rotation through all nine, offscreen/background pause and Android reduced-motion handling.
+
+`tools/export_vizag_replacements.py OUTPUT` reproduces the five atlases and posters from `tools/vizag_replacements/`; `--install` validates the complete staged set and installs only these five. `VIZAG_REPLACEMENT_ASSETS.json` records their layer counts, dimensions and sizes. The older frame-export sections below describe the retained four and historical implementations.
+
+Validation: debug APK assembly and 12 focused Android checks passed (`SettingsVizagFooterTest` and `LosslessAnimationTest`). These cover native drawing in both palettes, actual movement, fixed sand boats, paused clocks, rotation, reduced-motion controls, navigation, theme changes, and every original frame in the retained four's compatibility decoder. Native-rendered replacement previews are under `app/build/reports/vizag-footer/replacements/`.
+
 ## Visits and playback
 
 - Local `vizag_footer` preferences persist the next scene index. All nine cycle without an immediate repeat, including after app restarts.

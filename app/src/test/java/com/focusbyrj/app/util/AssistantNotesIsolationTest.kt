@@ -33,7 +33,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executor
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class AssistantNotesIsolationTest {
     private lateinit var context: Context
     private lateinit var database: FocusDatabase

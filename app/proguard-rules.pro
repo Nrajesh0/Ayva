@@ -114,7 +114,8 @@
 -keepclassmembers class kotlinx.coroutines.** {
     volatile <fields>;
 }
--keep class androidx.compose.material.icons.** { *; }
+# Icon choices use typed references; R8 retains those vectors and removes unused
+# icons. A package-wide keep rule ships the entire Material icon catalogue.
 -dontwarn androidx.compose.**
 
 -dontwarn javax.annotation.**

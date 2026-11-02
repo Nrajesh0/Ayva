@@ -33,7 +33,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class, qualifiers = "w393dp-h852dp-xhdpi")
+@Config(sdk = [31], application = Application::class, qualifiers = "w393dp-h852dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SettingsNavigationRecoveryTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()

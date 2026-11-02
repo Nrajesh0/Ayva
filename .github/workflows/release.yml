@@ -14,6 +14,7 @@ on:
       - 'app/proguard-rules.pro'
       - '.github/workflows/release.yml'
       - 'tools/release_intent.py'
+      - 'tools/package_release_apks.py'
   release:
     types: [published]   # Automatically triggers for any release published on GitHub Web UI
   workflow_dispatch:    # Enables manual trigger button in GitHub Actions
@@ -103,11 +104,14 @@ jobs:
         run: |
           ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2
 
+      - name: Validate and prepare single universal APK
+        run: python3 tools/package_release_apks.py
+
       - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
           name: focus-by-rj-v${{ env.VERSION_NAME }}-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: build/release-apks/
           retention-days: 14
 
       - name: Automatically Create / Update GitHub Release
@@ -116,7 +120,10 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || env.TAG_NAME }}
           name: ${{ github.event_name == 'release' && github.event.release.name || format('Release v{0} (Build {1})', env.VERSION_NAME, env.VERSION_CODE) }}
-          files: app/build/outputs/apk/release/*.apk
+          files: |
+            build/release-apks/*.apk
+            build/release-apks/SHA256SUMS.txt
+            build/release-apks/README.md
           generate_release_notes: true
           draft: false
           prerelease: false

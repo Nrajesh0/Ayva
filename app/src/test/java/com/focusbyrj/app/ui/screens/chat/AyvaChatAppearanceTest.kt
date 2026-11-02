@@ -27,7 +27,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AyvaChatAppearanceTest {
     @get:Rule val compose = createComposeRule()

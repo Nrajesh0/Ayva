@@ -31,7 +31,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class SecurityRemediationRegressionTest {
     private lateinit var context: Context
     private lateinit var noteDb: NoteDatabase

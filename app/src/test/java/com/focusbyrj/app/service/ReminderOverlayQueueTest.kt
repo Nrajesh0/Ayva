@@ -18,7 +18,7 @@ import org.robolectric.shadows.ShadowSettings
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28, 34, 35, 36], application = Application::class, qualifiers = "w393dp-h852dp-xhdpi")
+@Config(sdk = [31, 34, 35, 36], application = Application::class, qualifiers = "w393dp-h852dp-xhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class ReminderOverlayQueueTest {
     private lateinit var context: Context

@@ -22,7 +22,7 @@ import java.util.Calendar
 
 /** Complete conversations against Room, including interruptions and stale targets. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class AssistantConversationContinuityTest {
     private lateinit var context: Context
     private lateinit var db: FocusDatabase

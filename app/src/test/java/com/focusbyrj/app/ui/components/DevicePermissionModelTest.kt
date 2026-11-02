@@ -18,7 +18,7 @@ import org.robolectric.shadows.ShadowAlarmManager
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[28,34,35,36], application=Application::class)
+@Config(sdk=[31,34,35,36], application=Application::class)
 class DevicePermissionModelTest {
     @Test fun notificationReadinessMatchesTheRealNotificationManagerAndSharedModel() {
         val app = ApplicationProvider.getApplicationContext<Application>()

@@ -6,7 +6,9 @@ assets=json.loads((root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').read_tex
 regions=json.loads((root/'docs/implementation/VIZAG_MOTION_SAMPLES.json').read_text())
 results=[]
 for r in regions:
- i=r['scene']-1;name=list(assets)[i];info=assets[name];crop=info['crop_box'];x=i%3*640+crop[0];y=i//3*300+crop[1]
+ i=r['scene']-1;name=list(assets)[i];info=assets[name]
+ if 'crop_box' not in info:continue  # Layered replacements use native renderer checks.
+ crop=info['crop_box'];x=i%3*640+crop[0];y=i//3*300+crop[1]
  box=[r['box'][0]-x,r['box'][1]-y,r['box'][2]-x,r['box'][3]-y]
  with Image.open(root/'app/src/main/res/raw'/f'vizag_{name}.webp') as im:
   im.seek(0);a=np.array(im.convert('RGBA').crop(box)).astype(int);im.seek(36);b=np.array(im.convert('RGBA').crop(box)).astype(int)
@@ -14,6 +16,7 @@ for r in regions:
  assert changed>5,(name,r['part'],changed)
  results.append(dict(scene=r['scene'],part=r['part'],changed_pixels=changed))
  print(name,r['part'],changed)
-for i in range(1,10):assert len(set(r['part'] for r in results if r['scene']==i))>=2
+for i,info in enumerate(assets.values(),1):
+ if 'crop_box' in info:assert len(set(r['part'] for r in results if r['scene']==i))>=2
 (root/'docs/implementation/VIZAG_MOTION_REGIONS.json').write_text(json.dumps(results,indent=2)+'\n')
-print('Verified at least two independent environmental movements in every exported native animation')
+print('Verified at least two independent environmental movements in every retained exported native animation; replacements use SettingsVizagFooterTest')

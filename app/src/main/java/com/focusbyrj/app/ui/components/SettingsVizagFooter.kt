@@ -63,23 +63,42 @@ import kotlinx.coroutines.withContext
 internal data class VizagArtwork(val drawable: Drawable? = null)
 
 @Suppress("DEPRECATION")
-internal fun decodeVizagArtwork(context: Context, scene: VizagScene): VizagArtwork =
-    if (Build.VERSION.SDK_INT >= 28) {
-        VizagArtwork(drawable = ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.resources, scene.animation)))
-    } else {
-        VizagArtwork(drawable = LegacyWebpDrawable(context.resources.openRawResource(scene.animation).use { it.readBytes() }))
+internal fun decodeVizagArtwork(context: Context, scene: VizagScene, lightArtwork: Boolean = false): VizagArtwork {
+    if (scene.layeredKey != null) {
+        return VizagArtwork(LayeredVizagDrawable(context, scene.layeredKey,
+            if (lightArtwork) scene.lightAtlas else scene.atlas))
     }
+    val resource = scene.animation
+    return if (Build.VERSION.SDK_INT >= 28) {
+        VizagArtwork(drawable = ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.resources, resource)))
+    } else {
+        VizagArtwork(drawable = LegacyWebpDrawable(context.resources.openRawResource(resource).use { it.readBytes() }))
+    }
+}
 
 internal const val VIZAG_GITHUB_URL = "https://github.com/Nrajesh0/Ayva"
 
-internal enum class VizagScene(val placeName: String, @RawRes val animation: Int, @DrawableRes val poster: Int) {
-    RK_BEACH("RK Beach", R.raw.vizag_rk_beach, R.drawable.vizag_rk_beach_poster),
-    KAILASAGIRI("Kailasagiri", R.raw.vizag_kailasagiri, R.drawable.vizag_kailasagiri_poster),
-    DOLPHINS_NOSE("Dolphin’s Nose", R.raw.vizag_dolphins_nose, R.drawable.vizag_dolphins_nose_poster),
+internal enum class VizagScene(
+    val placeName: String,
+    @RawRes val animation: Int,
+    @DrawableRes val poster: Int,
+    @DrawableRes val lightPoster: Int = poster,
+    val layeredKey: String? = null,
+    @DrawableRes val atlas: Int = 0,
+    @DrawableRes val lightAtlas: Int = atlas
+) {
+    RK_BEACH("RK Beach", R.raw.vizag_replacement_layers, R.drawable.vizag_rk_beach_poster,
+        R.drawable.vizag_rk_beach_light_poster, "rk_beach", R.drawable.vizag_rk_beach_layers_dark, R.drawable.vizag_rk_beach_layers_light),
+    KAILASAGIRI("Kailasagiri", R.raw.vizag_replacement_layers, R.drawable.vizag_kailasagiri_poster,
+        R.drawable.vizag_kailasagiri_light_poster, "kailasagiri", R.drawable.vizag_kailasagiri_layers_dark, R.drawable.vizag_kailasagiri_layers_light),
+    DOLPHINS_NOSE("Dolphin’s Nose", R.raw.vizag_replacement_layers, R.drawable.vizag_dolphins_nose_poster,
+        R.drawable.vizag_dolphins_nose_light_poster, "dolphins_nose", R.drawable.vizag_dolphins_nose_layers_dark, R.drawable.vizag_dolphins_nose_layers_light),
     FISHING_HARBOUR("Fishing Harbour", R.raw.vizag_fishing_harbour, R.drawable.vizag_fishing_harbour_poster),
     INS_KURSURA("INS Kursura", R.raw.vizag_ins_kursura, R.drawable.vizag_ins_kursura_poster),
-    TENNETI_PARK("Tenneti Park", R.raw.vizag_tenneti_park, R.drawable.vizag_tenneti_park_poster),
-    RUSHIKONDA("Rushikonda", R.raw.vizag_rushikonda, R.drawable.vizag_rushikonda_poster),
+    TENNETI_PARK("Tenneti Park", R.raw.vizag_replacement_layers, R.drawable.vizag_tenneti_park_poster,
+        R.drawable.vizag_tenneti_park_light_poster, "tenneti_park", R.drawable.vizag_tenneti_park_layers_dark, R.drawable.vizag_tenneti_park_layers_light),
+    RUSHIKONDA("Rushikonda", R.raw.vizag_replacement_layers, R.drawable.vizag_rushikonda_poster,
+        R.drawable.vizag_rushikonda_light_poster, "rushikonda", R.drawable.vizag_rushikonda_layers_dark, R.drawable.vizag_rushikonda_layers_light),
     VIZAG_PORT("Vizag Port", R.raw.vizag_vizag_port, R.drawable.vizag_vizag_port_poster),
     SIMHACHALAM("Simhachalam", R.raw.vizag_simhachalam, R.drawable.vizag_simhachalam_poster)
 }
@@ -138,10 +157,13 @@ internal fun SettingsVizagFooter(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lightSurface = MaterialTheme.colorScheme.background.luminance() > .5f
+    // Only the five replacements have baked light palettes. The four retained
+    // scenes continue using their original assets and contrast transform.
+    val dedicatedLightArtwork = lightSurface && scene.layeredKey != null
     var foreground by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
     var visible by remember { mutableStateOf(false) }
     var motionAllowed by remember { mutableStateOf(Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f) }
-    var playDespiteReducedMotion by remember(scene.animation) { mutableStateOf(false) }
+    var playDespiteReducedMotion by remember(scene) { mutableStateOf(false) }
     DisposableEffect(context) {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
@@ -159,10 +181,10 @@ internal fun SettingsVizagFooter(
         onDispose { lifecycle.removeObserver(observer) }
     }
     @Suppress("DEPRECATION")
-    val artwork by produceState<VizagArtwork?>(null, scene.animation) {
+    val artwork by produceState<VizagArtwork?>(null, scene, dedicatedLightArtwork) {
         value = null
         value = withContext(Dispatchers.IO) {
-            decodeVizagArtwork(context, scene)
+            decodeVizagArtwork(context, scene, dedicatedLightArtwork)
         }
     }
     Column(
@@ -180,9 +202,9 @@ internal fun SettingsVizagFooter(
         ) {
             if (artwork?.drawable == null) {
                 Image(
-                    painterResource(scene.poster), contentDescription = null,
+                    painterResource(if (dedicatedLightArtwork) scene.lightPoster else scene.poster), contentDescription = null,
                     modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
-                    colorFilter = if (lightSurface) ColorFilter.colorMatrix(ColorMatrix(VizagLightMatrix)) else null
+                    colorFilter = if (lightSurface && !dedicatedLightArtwork) ColorFilter.colorMatrix(ColorMatrix(VizagLightMatrix)) else null
                 )
             } else {
                 AndroidView(
@@ -190,7 +212,7 @@ internal fun SettingsVizagFooter(
                     modifier = Modifier.fillMaxSize(),
                     update = {
                         it.setArtwork(artwork)
-                        it.setLightSurface(lightSurface)
+                        it.setLightSurface(lightSurface && !dedicatedLightArtwork)
                         it.setPlaybackEnabled(foreground && visible, playDespiteReducedMotion)
                     },
                     onRelease = { it.release() }

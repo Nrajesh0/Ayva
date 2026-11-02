@@ -20,7 +20,7 @@ import org.robolectric.annotation.Config
 
 /** Complete turns through the real coordinator: context, authority and planning isolation. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class GeneralDialogueIntegrationTest {
     private lateinit var context: Context
     private lateinit var db: FocusDatabase

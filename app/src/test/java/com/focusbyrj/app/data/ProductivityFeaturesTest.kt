@@ -17,7 +17,7 @@ import com.focusbyrj.app.widget.ExamCountdown
 import java.time.Instant
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class ProductivityFeaturesTest {
     @Test fun monthlyRecurrenceClamps31stAndResetsSubtasks() {
         val base = java.util.Calendar.getInstance().apply {

@@ -24,7 +24,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28, 36], application = Application::class)
+@Config(sdk = [31, 36], application = Application::class)
 class NoteWidgetTypographyTest {
     private lateinit var context: Context
     private lateinit var db: NoteDatabase

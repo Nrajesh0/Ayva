@@ -19,7 +19,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class BackupVerificationTest {
     private fun archive(context: Context, missingMedia: Boolean = false): File {
         val f = File.createTempFile("verification", ".runbackup", context.cacheDir)

@@ -10,7 +10,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class FocusedChatIntegrationTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
     @org.junit.Before fun clearRotation() { context.getSharedPreferences("ayva_content_rotation", 0).edit().clear().commit() }

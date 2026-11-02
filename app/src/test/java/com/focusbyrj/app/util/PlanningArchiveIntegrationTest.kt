@@ -28,7 +28,7 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class PlanningArchiveIntegrationTest {
     private lateinit var context: Context
     private lateinit var db: FocusDatabase

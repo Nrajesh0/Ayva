@@ -19,7 +19,7 @@ import org.robolectric.shadows.ShadowSettings
 import org.robolectric.util.ReflectionHelpers
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class BubbleChatVisibilityTest {
     private lateinit var controller: ServiceController<BubbleService>
     private lateinit var service: BubbleService

@@ -9,7 +9,9 @@ root=Path(__file__).resolve().parents[1]
 assets=json.loads((root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').read_text())
 regions=json.loads(Path(sys.argv[1]).read_text());result=[]
 for r in regions:
- i=r['scene']-1;name=list(assets)[i];meta=assets[name];crop=meta['crop_box'];ox=i%3*640+crop[0];oy=i//3*300+crop[1]
+ i=r['scene']-1;name=list(assets)[i];meta=assets[name]
+ if 'crop_box' not in meta:continue  # Layered replacements are checked by native renderer tests.
+ crop=meta['crop_box'];ox=i%3*640+crop[0];oy=i//3*300+crop[1]
  with Image.open(root/'app/src/main/res/raw'/f'vizag_{name}.webp') as im:
   assert im.n_frames==192
   im.seek(0);baseline=np.array(im.convert('RGBA')).astype(int)
@@ -25,8 +27,12 @@ for r in regions:
    positions.append(float(xx.mean()+x0))
   assert all(b>a+20 for a,b in zip(positions,positions[1:])),(name,positions)
   result.append(dict(scene=name,sampled_frames=[36,72,144],bird_x=positions))
-print('Verified rightward bird displacement in exported native WebPs for all nine scenes')
+print('Verified rightward bird displacement in the retained native WebPs')
 (root/'docs/implementation/VIZAG_BIRD_FRAME_CHECKS.json').write_text(json.dumps(result,indent=2)+'\n')
+
+if not (root/'app/src/main/res/raw/vizag_rk_beach.webp').exists():
+ print('Replacement vehicle/paraglider checks use SettingsVizagFooterTest native layer rendering.')
+ sys.exit(0)
 
 vehicle_checks=[]
 with Image.open(root/'app/src/main/res/raw/vizag_rk_beach.webp') as im:

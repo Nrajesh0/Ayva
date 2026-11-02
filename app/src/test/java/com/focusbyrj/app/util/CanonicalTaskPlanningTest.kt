@@ -24,7 +24,7 @@ import java.io.File
 import java.util.TimeZone
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class CanonicalTaskPlanningTest {
     private lateinit var context: Context
     private lateinit var db: FocusDatabase

@@ -35,15 +35,21 @@ You can download the latest official APK directly from GitHub Releases:
 - 📦 **[Download Latest APK](https://github.com/Nrajesh0/Ayva/releases/latest)**
 - 🌐 **[Official Website](https://Nrajesh0.github.io/Ayva/)**
 
+There is **one universal APK** for Android 12 and newer, including POCO X6 Pro.
+It includes all supported CPU architectures, features and offline content.
+
 ## Building from Source
 
 To compile the application locally using the Gradle wrapper:
 
 ```bash
-./gradlew assembleRelease
+./gradlew :app:assembleRelease
+python3 tools/package_release_apks.py
 ```
 
-The signed or release APK will be generated under `app/build/outputs/apk/release/`.
+A single verified APK and its checksum are generated under `build/release-apks/`.
+Signing uses the existing release keystore configuration. The minimum supported
+version is Android 12 (API 31); the target SDK remains Android 15 (API 35).
 
 ---
 

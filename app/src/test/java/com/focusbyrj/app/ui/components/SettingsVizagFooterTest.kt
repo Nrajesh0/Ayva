@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.AnimatedImageDrawable
+import android.graphics.drawable.Animatable
 import android.provider.Settings
 import android.view.View
 import androidx.activity.ComponentActivity
@@ -43,10 +44,12 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowSystemClock
 import java.io.File
+import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class, qualifiers = "w393dp-h852dp-xhdpi")
+@Config(sdk = [31], application = Application::class, qualifiers = "w393dp-h852dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SettingsVizagFooterTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -91,9 +94,8 @@ class SettingsVizagFooterTest {
 
     @Test fun allBundledAnimationsDecodeNativelyWithTransparentArtwork() {
         for (scene in VizagScene.entries) {
-            val drawable = decodeVizagArtwork(app, scene).drawable
-            assertTrue("${scene.placeName} decodes as an animation", drawable is AnimatedImageDrawable)
-            drawable as AnimatedImageDrawable
+            val drawable = requireNotNull(decodeVizagArtwork(app, scene).drawable)
+            assertTrue("${scene.placeName} decodes as an animation", drawable is Animatable)
             assertTrue(drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0)
             val bitmap = Bitmap.createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
             drawable.setBounds(0, 0, bitmap.width, bitmap.height)
@@ -102,12 +104,48 @@ class SettingsVizagFooterTest {
             bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
             assertTrue("${scene.placeName} paints artwork", pixels.count { it ushr 24 > 0 } > 100)
             assertTrue("${scene.placeName} has a transparent background", pixels.any { it ushr 24 == 0 })
-            drawable.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
-            drawable.start()
-            assertTrue(drawable.isRunning)
-            drawable.stop()
-            assertFalse(drawable.isRunning)
+            if (drawable is AnimatedImageDrawable) drawable.repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
+            val animation = drawable as Animatable
+            animation.start()
+            assertTrue(animation.isRunning)
+            animation.stop()
+            assertFalse(animation.isRunning)
             bitmap.recycle()
+        }
+    }
+
+    @Test fun replacementLayersAnimateInBothPalettesAndKeepSandBoatsFixed() {
+        val report = File("build/reports/vizag-footer/replacements").apply { mkdirs() }
+        for (scene in VizagScene.entries.filter { it.layeredKey != null }) {
+            for (light in listOf(false, true)) {
+                val drawable = decodeVizagArtwork(app, scene, light).drawable as LayeredVizagDrawable
+                drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
+                val bitmap = Bitmap.createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight, Bitmap.Config.ARGB_8888)
+                fun frame(): IntArray {
+                    bitmap.eraseColor(0); drawable.draw(Canvas(bitmap))
+                    return IntArray(bitmap.width * bitmap.height).also {
+                        bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                    }
+                }
+                val first = frame()
+                drawable.start()
+                ShadowSystemClock.advanceBy(Duration.ofSeconds(3))
+                val later = frame()
+                assertTrue("${scene.placeName} must move in ${if (light) "light" else "dark"}",
+                    first.indices.count { first[it] != later[it] } > 100)
+                if (scene == VizagScene.RUSHIKONDA) {
+                    for (y in 1515 - 1255 until 1548 - 1255) for (x in 267 until 421) {
+                        assertEquals("Sand boat pixel at $x,$y", first[y * bitmap.width + x], later[y * bitmap.width + x])
+                    }
+                }
+                File(report, "${scene.layeredKey}-${if (light) "light" else "dark"}.png").outputStream().use {
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+                drawable.stop(); val stopped = frame()
+                ShadowSystemClock.advanceBy(Duration.ofSeconds(1))
+                assertArrayEquals("Stopped layer clock must stay fixed", stopped, frame())
+                bitmap.recycle()
+            }
         }
     }
 
@@ -189,7 +227,7 @@ class SettingsVizagFooterTest {
         }
         compose.runOnIdle {
             val field = VizagAnimationView::class.java.getDeclaredField("drawable").apply { isAccessible = true }
-            val drawable = field.get(animation) as AnimatedImageDrawable
+            val drawable = field.get(animation) as Animatable
             assertTrue("Visible Settings animation must be running; view shown=${animation!!.isShown}", drawable.isRunning)
         }
     }
@@ -210,7 +248,7 @@ class SettingsVizagFooterTest {
         }
         compose.runOnIdle {
             val field = VizagAnimationView::class.java.getDeclaredField("drawable").apply { isAccessible = true }
-            assertTrue((field.get(view) as AnimatedImageDrawable).isRunning)
+            assertTrue((field.get(view) as Animatable).isRunning)
         }
     }
 

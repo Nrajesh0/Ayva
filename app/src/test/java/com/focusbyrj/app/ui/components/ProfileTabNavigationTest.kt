@@ -22,7 +22,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class ProfileTabNavigationTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private lateinit var nav: NavHostController

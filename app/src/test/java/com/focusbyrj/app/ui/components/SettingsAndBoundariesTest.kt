@@ -30,7 +30,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[28],application=Application::class,qualifiers="w393dp-h852dp-xhdpi")
+@Config(sdk=[31],application=Application::class,qualifiers="w393dp-h852dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SettingsAndBoundariesTest {
     @get:Rule val compose=createAndroidComposeRule<ComponentActivity>()

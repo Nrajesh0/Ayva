@@ -18,7 +18,7 @@ import org.robolectric.annotation.Config
 
 /** Only the new data/authority boundaries and the reported entry-path failure are exercised here. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28], application = Application::class)
+@Config(sdk = [31], application = Application::class)
 class ConversationQualitySafetyTest {
     private lateinit var context: Context
     private lateinit var db: FocusDatabase

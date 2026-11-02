@@ -13,10 +13,10 @@ android {
   defaultConfig {
     applicationId = "com.focusbyrj.app"
     multiDexEnabled = true
-    minSdk = 24
+    minSdk = 31 // Android 12 and newer.
     targetSdk = 35
-    versionCode = 134
-    versionName = "2.0.34"
+    versionCode = 135
+    versionName = "2.0.35"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -98,6 +98,9 @@ android {
   }
 
   packaging {
+    // Preserve the existing compressed code payload when raising minSdk; AGP
+    // otherwise stores DEX uncompressed on Android 12+, enlarging the download.
+    dex.useLegacyPackaging = true
     // The isolated dialogue worker executes from the installed, read-only native directory.
     jniLibs.useLegacyPackaging = true
     resources {
