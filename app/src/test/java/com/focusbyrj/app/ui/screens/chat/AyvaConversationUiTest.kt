@@ -52,7 +52,7 @@ class AyvaConversationUiTest {
     }
     @Test fun headerKeepsExistingControlsAndSeparateSearch() {
         var searched = false; var textSize = false
-        compose.setContent { MaterialTheme { AyvaCompactHeader({}, { searched = true }, {}, { textSize = true }, {}, {}) } }
+        compose.setContent { MaterialTheme { AyvaCompactHeader({}, { searched = true }, {}, { textSize = true }, {}, {}, {}) } }
         compose.onNodeWithContentDescription("Search conversation").performClick()
         compose.runOnIdle { assertTrue(searched) }
         compose.onNodeWithContentDescription("Chat controls").performClick()

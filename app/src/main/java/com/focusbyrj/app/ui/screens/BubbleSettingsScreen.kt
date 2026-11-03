@@ -38,6 +38,7 @@ import androidx.navigation.NavController
 import com.focusbyrj.app.R
 import com.focusbyrj.app.service.BubbleService
 import com.focusbyrj.app.ui.components.ProfessionalSlider
+import com.focusbyrj.app.util.BubbleIconManager
 import java.util.*
 
 data class BubbleAccentColor(val name: String, val hex: String)
@@ -658,6 +659,13 @@ private fun LiveBubblePreviewCard(
     glowIntensity: Int,
     accentColorHex: String
 ) {
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences(BubbleIconManager.PREFS_NAME, Context.MODE_PRIVATE)
+    }
+    val iconId by com.focusbyrj.app.ui.components.rememberSetting(
+        prefs, BubbleIconManager.KEY_ICON, BubbleIconManager.DEFAULT_ID
+    )
     val accentColor = try {
         Color(android.graphics.Color.parseColor(accentColorHex))
     } catch (_: Exception) {
@@ -744,9 +752,9 @@ private fun LiveBubblePreviewCard(
                         .alpha(hiddenOpacity / 100f),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Base bubble circle with app icon
+                    // Match the floating bubble's independently selected artwork.
                     Image(
-                        painter = painterResource(id = R.drawable.app_icon),
+                        painter = painterResource(id = BubbleIconManager.option(iconId).previewRes),
                         contentDescription = "Hidden Bubble Preview",
                         modifier = Modifier
                             .size(bubbleDiameter)

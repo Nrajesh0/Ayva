@@ -41,7 +41,7 @@ class AyvaChatAppearanceTest {
                 // Reproduce an Activity without a parent Surface: content defaults
                 // to black even though the Material color scheme is dark.
                 Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
-                    AyvaCompactHeader({}, {}, {}, {}, {}, {})
+                    AyvaCompactHeader({}, {}, {}, {}, {}, {}, {})
                     AyvaActiveContext(AssistantItemReference("task", 1, "Buy milk"), {}, {})
                 }
             }

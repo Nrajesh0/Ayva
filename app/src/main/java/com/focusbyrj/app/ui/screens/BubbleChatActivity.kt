@@ -20,6 +20,8 @@ import com.focusbyrj.app.util.ChatConversationContext
 import com.focusbyrj.app.util.command.AyvaChatCommands
 
 import com.focusbyrj.app.ui.screens.chat.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.focusbyrj.app.ui.components.BubbleIconPicker
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -492,6 +494,7 @@ fun ChatInterface() {
     }
     var showFontSizeDialog by remember { mutableStateOf(false) }
     var showNotificationColorsDialog by remember { mutableStateOf(false) }
+    var showBubbleIconPicker by rememberSaveable { mutableStateOf(false) }
     var chatFontSizeSp by remember { mutableStateOf(prefs.getFloat("chat_font_size_sp", 15f)) }
     var activeDrillSession by remember { mutableStateOf<DrillSession?>(null) }
     var showDrillSummaryMessage by remember { mutableStateOf<ChatMessage?>(null) }
@@ -1820,6 +1823,7 @@ fun ChatInterface() {
                 onSearch = { showSearch = true },
                 onColors = { showNotificationColorsDialog = true },
                 onTextSize = { showFontSizeDialog = true },
+                onBubbleIcon = { showBubbleIconPicker = true },
                 onClear = { showClearHistory = true },
                 onSettings = {
                     context.startActivity(Intent(context, com.focusbyrj.app.MainActivity::class.java).apply {
@@ -2087,6 +2091,10 @@ fun ChatInterface() {
             com.focusbyrj.app.ui.components.AyvaNotificationColorsDialog(
                 onDismiss = { showNotificationColorsDialog = false }
             )
+        }
+
+        if (showBubbleIconPicker) {
+            BubbleIconPicker(onDismiss = { showBubbleIconPicker = false })
         }
 
         if (showFontSizeDialog) {

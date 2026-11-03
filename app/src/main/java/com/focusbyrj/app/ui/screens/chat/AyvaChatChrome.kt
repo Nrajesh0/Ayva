@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,7 +33,8 @@ import java.util.Date
 
 @Composable
 fun AyvaCompactHeader(onClose: () -> Unit, onSearch: () -> Unit, onColors: () -> Unit,
-                      onTextSize: () -> Unit, onClear: () -> Unit, onSettings: () -> Unit) {
+                      onTextSize: () -> Unit, onClear: () -> Unit, onSettings: () -> Unit,
+                      onBubbleIcon: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close chat", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface) }
@@ -42,6 +44,7 @@ fun AyvaCompactHeader(onClose: () -> Unit, onSearch: () -> Unit, onColors: () ->
         Box {
             IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreHoriz, "Chat controls", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text("Bubble icon") }, leadingIcon = { Icon(Icons.Default.Face, null) }, onClick = { menu = false; onBubbleIcon() })
                 DropdownMenuItem(text = { Text("Notification Colors") }, leadingIcon = { Icon(Icons.Default.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { menu = false; onColors() })
                 DropdownMenuItem(text = { Text("Text Size") }, leadingIcon = { Icon(Icons.Default.FormatSize, null) }, onClick = { menu = false; onTextSize() })
                 DropdownMenuItem(text = { Text("Clear History", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onClear() })

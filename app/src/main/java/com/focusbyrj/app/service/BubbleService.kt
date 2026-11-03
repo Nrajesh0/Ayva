@@ -36,6 +36,7 @@ import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.R
 import com.focusbyrj.app.ui.screens.BubbleChatActivity
 import com.focusbyrj.app.util.BubbleChatManager
+import com.focusbyrj.app.util.BubbleIconManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,6 +51,7 @@ class BubbleService : Service() {
     private lateinit var windowManager: WindowManager
     private lateinit var displayManager: DisplayManager
     private var bubbleView: View? = null
+    private var bubbleIconView: ImageView? = null
     private var badgeView: TextView? = null
     private var glowRingView: View? = null
     private var closeView: View? = null
@@ -140,6 +142,7 @@ class BubbleService : Service() {
             context.sendBroadcast(Intent("com.focusbyrj.app.SHOW_BUBBLE").setPackage(context.packageName).putExtra(EXTRA_HIDE_REASON, reason))
         }
         const val ACTION_SETTINGS_CHANGED = "com.focusbyrj.app.BUBBLE_SETTINGS_CHANGED"
+        const val ACTION_ICON_CHANGED = "com.focusbyrj.app.BUBBLE_ICON_CHANGED"
         const val ACTION_HIDE_FOR_PERMISSION = "com.focusbyrj.app.HIDE_FOR_PERMISSION"
         const val ACTION_RESTORE_FROM_PERMISSION = "com.focusbyrj.app.RESTORE_FROM_PERMISSION"
         const val ACTION_SNOOZE_BUBBLE = "com.focusbyrj.app.SNOOZE_BUBBLE"
@@ -308,6 +311,9 @@ class BubbleService : Service() {
                 ACTION_SETTINGS_CHANGED -> {
                     applyBubbleStyleSettings()
                 }
+                ACTION_ICON_CHANGED -> {
+                    bubbleIconView?.setImageResource(BubbleIconManager.currentIconRes(this@BubbleService))
+                }
                 ACTION_SHOW_ALERT_PREVIEW -> showAlertPreview(intent.getStringExtra(EXTRA_ALERT_TEXT))
             }
         }
@@ -365,6 +371,7 @@ class BubbleService : Service() {
             addAction(ACTION_SHOW_ALERT_PREVIEW)
             addAction(BubbleChatManager.ACTION_UNREAD_COUNT_CHANGED)
             addAction(ACTION_SETTINGS_CHANGED)
+            addAction(ACTION_ICON_CHANGED)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -641,11 +648,18 @@ class BubbleService : Service() {
         val size = (60 * resources.displayMetrics.density).toInt()
         
         val imageView = ImageView(this).apply {
-            setImageResource(R.drawable.ic_bubble_launcher_icon)
+            setImageResource(BubbleIconManager.currentIconRes(this@BubbleService))
             scaleType = ImageView.ScaleType.FIT_CENTER
             layoutParams = FrameLayout.LayoutParams(size, size)
             elevation = 10f
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    outline.setOval(0, 0, view.width, view.height)
+                }
+            }
+            clipToOutline = true
         }
+        bubbleIconView = imageView
 
         // Subtle accent edge ring for peek & hide state
         val glowRing = View(this).apply {
@@ -1424,6 +1438,7 @@ class BubbleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        bubbleIconView = null
         isRunning = false
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         taskObserverJob?.cancel()
