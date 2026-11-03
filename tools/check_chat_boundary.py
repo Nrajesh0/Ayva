@@ -20,13 +20,10 @@ violations = []
 preview_only = {JAVA / 'util/TalkAction.kt', JAVA / 'ui/components/TalkActionChips.kt',
                 JAVA / 'ui/screens/chat/AyvaResponseControls.kt'}
 direct_write = re.compile(r'\b(?:AssistantPreferences\.apply|AssistantActionExecutor\.execute(?:Async)?)\s*\(')
-dialogue_only = {JAVA / 'util/assistant/GeneralDialogue.kt', JAVA / 'util/assistant/GeneralDialoguePacks.kt', JAVA / 'util/assistant/ExperienceContent.kt', JAVA / 'util/assistant/EntertainmentPack.kt', JAVA / 'util/assistant/ChatExperiences.kt'}
+dialogue_only = {JAVA / 'util/assistant/GeneralDialogue.kt', JAVA / 'util/assistant/GeneralDialoguePhrases.kt', JAVA / 'util/assistant/GeneralDialoguePacks.kt', JAVA / 'util/assistant/ExperienceContent.kt', JAVA / 'util/assistant/EntertainmentPack.kt', JAVA / 'util/assistant/ChatExperiences.kt'}
 dialogue_capability = re.compile(r'^import (?:android\.|java\.(?:io|net)\.)|\b(?:AssistantSession|AssistantAction|AssistantActionExecutor|PlanningLibrary|ConversationPlanStore|ChatModeStore|FocusDatabase|FocusApplication)\b')
-native_authority = re.compile(r'\b(?:AssistantSession|AssistantAction|AssistantActionExecutor|PlanningLibrary|ConversationPlanStore|ChatModeStore|FocusDatabase|FocusApplication)\b')
 for path in paths:
     for line_number, line in enumerate(path.read_text().splitlines(), 1):
-        if path.name == 'NativeGeneralDialogue.kt' and native_authority.search(line):
-            violations.append(f'{path.relative_to(ROOT)}:{line_number}: native language worker must not access app actions or sessions')
         if forbidden.search(line):
             violations.append(f'{path.relative_to(ROOT)}:{line_number}: forbidden Notes/all-data capability')
         if path in preview_only and direct_write.search(line):

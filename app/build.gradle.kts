@@ -15,8 +15,8 @@ android {
     multiDexEnabled = true
     minSdk = 31 // Android 12 and newer.
     targetSdk = 35
-    versionCode = 138
-    versionName = "2.0.38"
+    versionCode = 139
+    versionName = "2.0.39"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -101,7 +101,7 @@ android {
     // Preserve the existing compressed code payload when raising minSdk; AGP
     // otherwise stores DEX uncompressed on Android 12+, enlarging the download.
     dex.useLegacyPackaging = true
-    // The isolated dialogue worker executes from the installed, read-only native directory.
+    // Preserve packaging of remaining native dependencies.
     jniLibs.useLegacyPackaging = true
     resources {
       excludes += listOf(

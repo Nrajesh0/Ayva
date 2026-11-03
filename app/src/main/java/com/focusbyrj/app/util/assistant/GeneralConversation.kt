@@ -174,7 +174,7 @@ internal object GeneralConversation {
             prior?.optString("stance") == "listen", AyvaPersonality.tone(context, state) == "playful")
         val direct = GeneralDialogue.answer(text, prior, style)
         val interpreted = if (direct == null || direct.rule == "unknown") {
-            NativeGeneralDialogue.interpret(context, text)?.let { meaning ->
+            GeneralDialoguePhrases.interpret(text)?.let { meaning ->
                 GeneralDialogue.answer(meaning, prior, style, sourceText = text)
             }
         } else null

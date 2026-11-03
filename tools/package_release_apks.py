@@ -1,8 +1,7 @@
 """Validate and name the single universal release APK for GitHub distribution.
 
 Only files listed in AGP's current output metadata are selected, so stale APKs in
-the build directory cannot be published. Conversation assets must match source
-bytes in the APK. All supported native architectures remain in the one download.
+the build directory cannot be published. Retired native dialogue files must not be packaged. All supported native architectures remain in the one download.
 """
 import argparse
 import hashlib
@@ -15,7 +14,6 @@ from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 ABIS = {"arm64-v8a", "armeabi-v7a", "x86", "x86_64"}
-CONVERSATION = ("native-v1.zip", "native-v1.sha256", "native-v1.json")
 
 
 def package(source, destination):
@@ -30,15 +28,12 @@ def package(source, destination):
     apk = (source / item["outputFile"]).resolve()
     if apk.parent != source.resolve() or not apk.is_file():
         raise ValueError("Missing APK or output path outside the build directory")
-    original_conversation = {name: (ROOT / "app/src/main/assets/conversation" / name).read_bytes()
-                             for name in CONVERSATION}
     with ZipFile(apk) as archive:
         packaged_abis = {n.split("/")[1] for n in archive.namelist() if n.startswith("lib/")}
         if packaged_abis != ABIS:
             raise ValueError(f"Wrong native libraries in {apk.name}: {packaged_abis}")
-        for name, expected in original_conversation.items():
-            if archive.read("assets/conversation/" + name) != expected:
-                raise ValueError(f"Conversation asset changed in {apk.name}: {name}")
+        if any(n.startswith("assets/conversation/") or n.endswith("/librun_dialogue.so") for n in archive.namelist()):
+            raise ValueError("Retired native dialogue files found in APK")
     version, code = item["versionName"], item["versionCode"]
     if not re.fullmatch(r"[A-Za-z0-9._-]+", version):
         raise ValueError("Unsafe version filename")
@@ -51,7 +46,7 @@ def package(source, destination):
         staged.mkdir()
         report = {"application_id": metadata["applicationId"], "version": version,
                   "version_code": code, "min_sdk": 31,
-                  "conversation_assets_unchanged": True, "apks": {}}
+                  "native_dialogue_removed": True, "apks": {}}
         target = staged / f"RUN-{version}.apk"
         shutil.copy2(apk, target)
         digest = hashlib.sha256(target.read_bytes()).hexdigest()
@@ -63,7 +58,7 @@ def package(source, destination):
 
 Install **RUN-{version}.apk** on Android 12 or newer, including POCO X6 Pro.
 This single universal APK includes all supported CPU architectures, features,
-artwork, dictionary and the unchanged conversation archive.
+artwork, dictionary and Kotlin conversation features.
 SHA-256 checksums are in SHA256SUMS.txt.
 """)
         (staged / marker).touch()

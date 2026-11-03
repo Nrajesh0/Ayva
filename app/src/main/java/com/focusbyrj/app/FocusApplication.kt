@@ -79,6 +79,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
         // Warm up Ayva knowledge base and schedule daily rolling auto-backup (7-day retention, internal storage).
         val ioScope = CoroutineScope(Dispatchers.IO)
         ioScope.launch {
+            com.focusbyrj.app.util.LegacyDialogueCleanup.remove(this@FocusApplication)
             com.focusbyrj.app.util.AyvaTalkEngine.warmUp(this@FocusApplication)
             try {
                 habitRepository.cleanPlaceholderData(this@FocusApplication)
