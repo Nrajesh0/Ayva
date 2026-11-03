@@ -1,0 +1,40 @@
+{
+  "source_snapshot": "cce930915554c64c4884b134c238daed93e78155",
+  "source_version": "2.0.37",
+  "snapshot_tracked_files": 1109,
+  "production_code_files": 396,
+  "catalog_covers_every_production_file": true,
+  "inventory_complete_and_unique": true,
+  "file_hashes_verified": true,
+  "method_line_bounds_verified": true,
+  "static_source_edges": 1878,
+  "diagram_count": 21,
+  "pdf_pages": 69,
+  "pdf_bytes": 2013054,
+  "pdf_catalog_filenames_complete": true,
+  "pdf_has_searchable_text_and_links": true,
+  "pdf_spans_within_horizontal_page_bounds": true,
+  "no_blank_pdf_pages": true,
+  "html": {
+    "html_standalone_no_network_requests": true,
+    "initial_file_count": "1,109 matches \u00b7 showing 1\u201350",
+    "html_unique_ids": true,
+    "broken_internal_anchors": [],
+    "search_note_database": "5 matches \u00b7 showing 1\u20135",
+    "file_inspector": true,
+    "inspector_reverse_references": true,
+    "unknown_rights_filter": "28 matches \u00b7 showing 1\u201328",
+    "feature_search_restore": "54 matches \u00b7 showing 1\u201350",
+    "diagram_click_opens_inspector": true,
+    "mobile_no_horizontal_overflow": true,
+    "js_errors": []
+  },
+  "app_validation": {
+    "compileDebugKotlin": "passed",
+    "compileDebugUnitTestKotlin": "passed",
+    "device_tests": "not run",
+    "full_suite": "not run for this low-impact feature",
+    "official_fdroid_build": "not run"
+  },
+  "limits": "Static source edges are extracted hints, not observed execution. Long-tail roles are inferred and labelled. Legal rights are not certified. Current primary-source pages do not establish historical item download terms."
+}
