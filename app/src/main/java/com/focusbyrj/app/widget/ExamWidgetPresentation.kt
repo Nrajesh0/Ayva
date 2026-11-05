@@ -27,10 +27,12 @@ internal object ExamWidgetPresentation {
                 (if (config.showVenue && height >= 320 && all.any { it.venue.isNotBlank() }) detailHeight else 0f) +
                 (if (config.showMessage && height >= 360 && all.any { it.message.isNotBlank() }) detailHeight else 0f) +
                 (if (config.showProgress && height >= 280) 10 else 0) +
-                (if (config.showProgress && config.showPercent && height >= 280) detailHeight else 0f) +
-                (if (config.design in setOf("HERO", "TIMELINE", "TICKET")) (config.listTextSize + 1) * 1.4f * fontScale else 0f) +
-                (if (config.design == "DASHBOARD") 10 else 0)).toInt().coerceAtLeast(40)
-            ((height - minOf(config.padding, if (height < 150) 10 else 28) * 2 - 36 - if (height >= 150) 36 else 0) / row)
+                (if (config.showProgress && config.showPercent && height >= 280) detailHeight else 0f)).toInt().coerceAtLeast(40)
+            val padding = minOf(config.padding, if (height < 150) 10 else 14)
+            val toolbar = if (height < 150) 0 else if (config.showEdit) 36 else if (config.showBadge) (18 * fontScale).toInt() else 0
+            val available = height - padding * 2 - toolbar
+            val withoutNavigation = (available / row).coerceAtLeast(1).coerceAtMost(config.maxRows)
+            (if (all.size > withoutNavigation) (available - 36) / row else withoutNavigation)
                 .coerceAtLeast(1).coerceAtMost(config.maxRows)
         } else 1
         val start = (all.indexOfFirst { it.id == activeId }.coerceAtLeast(0) / capacity) * capacity
@@ -47,10 +49,24 @@ internal object ExamWidgetPresentation {
         if (config.showZone) add(config.zone)
     }.joinToString(" · ")
     fun progress(config: ExamCountdown, now: Instant = Instant.now()) = config.progress(now).let { if (config.remainingProgress) 100 - it else it }
+    /** Separate the value from its unit so the widget has one clear focal point. */
+    fun counter(config: ExamCountdown, now: Instant): Pair<String, String> {
+        val headline = config.headline(now)
+        // A custom finished message may itself end in "left"; it is still a message.
+        if (!now.isBefore(config.target().toInstant()) && !config.countUp) return headline to ""
+        val match = Regex("^(.*) (left|since)$").matchEntire(headline) ?: return headline to ""
+        val prefix = match.groupValues[1]
+        val suffix = if (match.groupValues[2] == "since") "since exam" else "to go"
+        val days = Regex("^(\\d+) (day|days|weekdays)$").matchEntire(prefix)
+        return if (days != null) days.groupValues[1] to "${days.groupValues[2]} $suffix" else prefix to suffix
+    }
     fun label(value: String) = when (value) {
         "SINGLE" -> "Primary exam"; "NEXT" -> "Next upcoming exam"; "LIST" -> "Exam list"; "PAGED" -> "One exam per page"
-        "HERO" -> "Big countdown"; "CLASSIC" -> "Classic"; "TICKET" -> "Exam ticket"; "TIMELINE" -> "Progress timeline"
-        "DASHBOARD" -> "Study dashboard"; "MINIMAL" -> "Minimal"; "THEME" -> "Follow app"
+        "HERO" -> "Focus"; "CLASSIC" -> "Balance"; "TICKET" -> "Split"; "TIMELINE" -> "Timeline"
+        "DASHBOARD" -> "Planner"; "MINIMAL" -> "Quiet"; "THEME" -> "Follow app"
+        "POSTER" -> "Poster"; "ORBITAL" -> "Orbit"; "COLORBLOCK" -> "Colorblock"
+        "AURORA" -> "Aurora"; "BENTO" -> "Bento"; "SIGNAL" -> "Signal"
+        "FROST" -> "Frost"; "PRISM" -> "Prism"; "LAYERS" -> "Layers"
         "HOURS" -> "Days + hours"; "WEEKS" -> "Weeks + days"; "MONTHS" -> "Months + days"; "WEEKDAYS" -> "Weekdays"
         "CUSTOM" -> "Custom"; "DATE" -> "Exam date"; "SANS" -> "Sans serif"; "SERIF" -> "Serif"; "MONO" -> "Monospace"
         "ISO" -> "Year-month-day"; "SHORT" -> "Weekday & date"; "LONG" -> "Full date"; "SYSTEM" -> "Device format"

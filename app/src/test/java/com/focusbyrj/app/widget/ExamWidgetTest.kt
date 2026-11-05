@@ -82,7 +82,7 @@ class ExamWidgetTest {
         assertTrue(ExamWidgetPresentation.page(value,"primary",360,now,2f).capacity<=ExamWidgetPresentation.page(value,"primary",360,now,1f).capacity)
     }
     @Test fun listPagingWrapsBetweenWholePagesInBothDirections() {
-        val value=multiple().copy(displayMode="LIST",maxRows=2)
+        val value=multiple().copy(displayMode="LIST",maxRows=2,design="CLASSIC",showProgress=true,showTime=true,showZone=true)
         val first=ExamWidgetPresentation.page(value,"primary",420,now)
         assertEquals(2,first.capacity)
         assertEquals("third",first.adjacentId(true))
@@ -155,12 +155,136 @@ class ExamWidgetTest {
         assertEquals("3 weekdays left",value.headline(now))
         assertEquals("1mo 2d left",base().copy(format="MONTHS").headline(now))
         assertEquals(100-value.progress(now),ExamWidgetPresentation.progress(value.copy(remainingProgress=true),now))
-        assertEquals("2026-11-09 · 9:00 AM",ExamWidgetPresentation.date(value.copy(showZone=false,clockStyle="12"),false))
+        assertEquals("2026-11-09 · 9:00 AM",ExamWidgetPresentation.date(value.copy(showZone=false,showTime=true,dateStyle="ISO",clockStyle="12"),false))
+    }
+    @Test fun cleanDefaultsAndLegacyDocumentsKeepTheirOwnPreferences() {
+        val clean=ExamCountdown()
+        assertEquals("HERO",clean.design);assertEquals("CENTER",clean.align)
+        assertFalse(clean.showTime);assertFalse(clean.showZone);assertFalse(clean.showEdit)
+        val old=base().copy(design="TICKET",font="SERIF",showTime=true,showZone=true,showProgress=true,showEdit=true,dateStyle="ISO",align="END")
+        assertEquals(old,ExamCountdown.read(old.json()))
+        val legacy=JSONObject(old.json()).apply {
+            listOf("design","font","showTime","showZone","showEdit","dateStyle").forEach {remove(it)}
+        }
+        val restored=ExamCountdown.read(legacy.toString())
+        assertEquals("CLASSIC",restored.design);assertEquals("ISO",restored.dateStyle)
+        assertTrue(restored.showTime);assertTrue(restored.showZone);assertFalse(restored.showEdit)
+    }
+    @Test fun newWideListsShowTwoExamsAndPageAllThreeWithoutLosingAny() {
+        val two=multiple().copy(displayMode="LIST",extraExams=multiple().extraExams.take(1))
+        val page=ExamWidgetPresentation.page(two,"",180,now)
+        assertEquals(2,page.entries.size);assertFalse(page.canPage)
+        val three=multiple().copy(displayMode="LIST")
+        val first=ExamWidgetPresentation.page(three,"",180,now)
+        assertEquals(2,first.entries.size);assertTrue(first.canPage)
+        val second=ExamWidgetPresentation.page(three,first.adjacentId(true),180,now)
+        assertEquals(listOf("third"),second.entries.map{it.id})
+        assertEquals("primary",second.adjacentId(true))
+    }
+    @Test fun typographyKeepsFinishedMessagesAndAccessibleCountdownMeaning() {
+        assertEquals("32" to "days to go",ExamWidgetPresentation.counter(base(),now))
+        val after=Instant.parse("2026-12-08T09:00:00Z")
+        assertEquals("2" to "days since exam",ExamWidgetPresentation.counter(base().copy(countUp=true),after))
+        assertEquals("Nothing left" to "",ExamWidgetPresentation.counter(base().copy(endedText="Nothing left"),after))
+        val view=apply(base(),height=180)
+        assertEquals("32 days left",view.findViewById<TextView>(R.id.exam_number).contentDescription)
+        assertEquals("days to go",view.findViewById<TextView>(R.id.exam_unit).text.toString())
+    }
+    @Test fun presetChangesAreVisualAndDoNotOverwriteTheExamSchedule() {
+        val original=multiple().copy(font="SERIF",decoration="ORBIT",venue="Hall 4",showTime=true,showZone=true,transparent=true)
+        val changed=original.withDesign("TIMELINE")
+        assertEquals(original.exams(),changed.exams());assertEquals(original.palette,changed.palette)
+        assertTrue(changed.showTime);assertTrue(changed.showZone);assertTrue(changed.transparent)
+        assertEquals("SANS",changed.font);assertEquals("NONE",changed.decoration);assertTrue(changed.showProgress)
+    }
+    @Test fun captureModernLayoutsWithoutDecorativeExtras() {
+        for(design in listOf("HERO","CLASSIC","TIMELINE","MINIMAL")) {
+            val config=ExamCountdown(name="Civil services",date="2026-12-06",time="09:00",zone="UTC",startDate="2026-10-01",palette="DARK").withDesign(design)
+            capture(apply(config,width=340,height=180),"modern-${design.lowercase()}")
+        }
+        capture(apply(multiple().copy(displayMode="LIST",palette="LIGHT",badge="",venue="",widgetName="Exam season"),height=180),"modern-agenda")
+    }
+    @Test fun boldPresetsRemainPortableAndKeepEveryExam() {
+        for(design in ExamCountdown.BOLD_DESIGNS) {
+            val value=multiple().withDesign(design)
+            assertEquals(multiple().exams(),value.exams())
+            assertEquals(value,ExamCountdown.read(value.json()))
+            capture(apply(value.copy(badge="",venue=""),height=240),"bold-${design.lowercase()}")
+            capture(apply(value.copy(displayMode="LIST",widgetName="Exam season"),height=240),"bold-list-${design.lowercase()}")
+            capture(apply(value.copy(badge="",venue=""),height=180),"bold-wide-${design.lowercase()}")
+        }
+    }
+    @Test fun posterAndPanelInkStayReadableAndCustomColorsStillWork() {
+        for(palette in ExamCountdown.PALETTES.filter { it!="CUSTOM" }) {
+            val value=base().withDesign("POSTER").copy(palette=palette)
+            val colors=ExamCountdownProvider.surfaceColors(value,ExamCountdownProvider.colors(app,value))
+            assertTrue("Poster $palette",androidx.core.graphics.ColorUtils.calculateContrast(colors[1],colors[0])>=4.5)
+            val panel=ExamCountdownProvider.contrastInk(colors[2])
+            assertTrue("Panel $palette",androidx.core.graphics.ColorUtils.calculateContrast(panel,colors[2])>=4.5)
+        }
+        val custom=base().withDesign("POSTER").copy(palette="CUSTOM",background="#112233",foreground="#FAFAFA",accent="#AABBCC")
+        val colors=ExamCountdownProvider.surfaceColors(custom,ExamCountdownProvider.colors(app,custom))
+        assertEquals(android.graphics.Color.parseColor("#112233"),colors[0]);assertEquals(android.graphics.Color.parseColor("#FAFAFA"),colors[1])
+    }
+    @Test fun transparentOrbitKeepsItsRingAndUsesTheVisibleExamsTimeline() {
+        val config=multiple().withDesign("ORBITAL").copy(transparent=true,displayMode="PAGED")
+        val visible=config.withEvent(config.extraExams.first())
+        val view=ExamCountdownProvider.render(app,101,config,340,240,"second",now).apply(app,FrameLayout(app))
+        assertTrue(view.findViewById<TextView>(R.id.exam_number).contentDescription.toString().contains("${visible.progress(now)}%"))
+        val c=ExamCountdownProvider.colors(app,config)
+        val track=ExamCountdownProvider.background(config,c,340,240,0)
+        val filled=ExamCountdownProvider.background(config,c,340,240,50)
+        val x=(filled.width*.255f+filled.width*.195f).toInt();val y=filled.height/2
+        assertTrue(android.graphics.Color.alpha(filled.getPixel(x,y))>android.graphics.Color.alpha(track.getPixel(x,y)))
+        assertEquals(0,android.graphics.Color.alpha(filled.getPixel(filled.width-20,filled.height/2)))
+        track.recycle();filled.recycle()
+    }
+    @Test fun glassPresetsStayTranslucentPortableAndReadableOnLightBackdrops() {
+        for (design in ExamCountdown.GLASS_DESIGNS) {
+            val config=base().withDesign(design).copy(badge="",venue="")
+            assertEquals(config,ExamCountdown.read(config.json()))
+            assertEquals(base().copy(badge="",venue="").exams(),config.exams())
+            val colors=ExamCountdownProvider.colors(app,config)
+            val bitmap=ExamCountdownProvider.background(config,colors,340,180)
+            val pixel=bitmap.getPixel(bitmap.width/2,bitmap.height/2)
+            assertTrue("$design alpha",android.graphics.Color.alpha(pixel) in 1..254)
+            val onWhite=androidx.core.graphics.ColorUtils.compositeColors(pixel,android.graphics.Color.WHITE)
+            assertTrue("$design text on white",androidx.core.graphics.ColorUtils.calculateContrast(colors[1],onWhite)>=4.5)
+            bitmap.recycle()
+            val clear=ExamCountdownProvider.background(config.copy(transparent=true,border=false),colors,340,180)
+            assertEquals(0,android.graphics.Color.alpha(clear.getPixel(clear.width/2,clear.height/2)));clear.recycle()
+            val dark=apply(config,height=180);capture(dark,"glass-${design.lowercase()}-dark")
+            val light=apply(config,height=180);light.background=ExamPreviewWallpaper(true);capture(light,"glass-${design.lowercase()}-light")
+            capture(apply(config.copy(displayMode="LIST",extraExams=multiple().extraExams,widgetName="Exam season"),height=280),"glass-list-${design.lowercase()}")
+        }
+    }
+    @Test fun auroraDetailsRemainReadableAcrossItsGlow() {
+        val config=base().withDesign("AURORA").copy(badge="",venue="")
+        val view=apply(config,height=180)
+        val foreground=view.findViewById<TextView>(R.id.exam_date).currentTextColor
+        val colors=ExamCountdownProvider.colors(app,config)
+        val bitmap=ExamCountdownProvider.background(config,colors,340,180)
+        for(x in listOf(.38f,.5f,.62f)) {
+            val pixel=bitmap.getPixel((bitmap.width*x).toInt(),(bitmap.height*.84f).toInt())
+            assertTrue("Glow date contrast at $x",androidx.core.graphics.ColorUtils.calculateContrast(foreground,pixel)>=4.5)
+        }
+        bitmap.recycle()
+    }
+    @Test fun streamlinedCatalogAndNewWidgetDefaultsKeepLegacyBackupsReadable() {
+        assertEquals(setOf("POSTER","ORBITAL","AURORA","BENTO","SIGNAL","FROST","PRISM","LAYERS"),ExamCountdown.ACTIVE_DESIGNS.toSet())
+        assertEquals("AURORA",ExamCountdown.newWidget().design)
+        ExamCountdown.newWidget().validate()
+        for(design in ExamCountdown.LEGACY_DESIGNS) {
+            val old=multiple().copy(design=design,font="SERIF",showTime=true,align="END")
+            assertFalse(design in ExamCountdown.ACTIVE_DESIGNS)
+            assertEquals(old,ExamCountdown.read(old.json()))
+        }
     }
     private fun apply(value: ExamCountdown,width:Int=340,height:Int=300):View {
         val host=FrameLayout(app)
         val view=ExamCountdownProvider.render(app,101,value,width,height,now=now).apply(app,host)
         host.addView(view)
+        if(value.design in ExamCountdown.GLASS_DESIGNS) view.background=ExamPreviewWallpaper()
         view.measure(View.MeasureSpec.makeMeasureSpec(width*2,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height*2,View.MeasureSpec.EXACTLY))
         view.layout(0,0,width*2,height*2)
         return view

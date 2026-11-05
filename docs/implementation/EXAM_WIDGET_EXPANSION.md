@@ -1,5 +1,7 @@
 # Exam widget expansion
 
+The current editor and selectable design catalogue are described in [Exam widget revamp — 2.0.41](EXAM_WIDGET_REVAMP.md). The following records the original expansion.
+
 Scope: manage multiple independent launcher widgets and display multiple exams within one widget, retaining the shared minimal widget-editor style.
 
 ## Delivered features

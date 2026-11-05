@@ -9,25 +9,25 @@ import java.util.UUID
 
 /** Event identity is portable; launcher widget IDs are deliberately device-local. */
 data class ExamCountdown(
-    val name: String = "My exam", val subtitle: String = "One step at a time",
+    val name: String = "My exam", val subtitle: String = "",
     val date: String = LocalDate.now().plusDays(30).toString(), val time: String = "09:00",
     val zone: String = ZoneId.systemDefault().id, val startDate: String = LocalDate.now().toString(),
     val format: String = "DAYS", val palette: String = "THEME", val background: String = "#101615",
     val foreground: String = "#E8F4EE", val accent: String = "#8DC6B1",
-    val opacity: Int = 100, val radius: Int = 24, val textSize: Int = 38,
-    val align: String = "START", val showDate: Boolean = true, val showProgress: Boolean = true,
+    val opacity: Int = 100, val radius: Int = 24, val textSize: Int = 52,
+    val align: String = "CENTER", val showDate: Boolean = true, val showProgress: Boolean = false,
     val countUp: Boolean = false, val endedText: String = "Exam day is here",
     val venue: String = "", val badge: String = "", val extraExams: List<ExamEvent> = emptyList(),
-    val design: String = "CLASSIC", val displayMode: String = "SINGLE", val sortOrder: String = "CUSTOM",
+    val design: String = "HERO", val displayMode: String = "SINGLE", val sortOrder: String = "CUSTOM",
     val hidePastExams: Boolean = false, val maxRows: Int = 3,
-    val font: String = "SANS", val titleSize: Int = 16, val padding: Int = 18,
-    val showTitle: Boolean = true, val showMessage: Boolean = true, val showTime: Boolean = true,
-    val showZone: Boolean = true, val showVenue: Boolean = true, val showBadge: Boolean = true,
+    val font: String = "SANS", val titleSize: Int = 14, val padding: Int = 20,
+    val showTitle: Boolean = true, val showMessage: Boolean = false, val showTime: Boolean = false,
+    val showZone: Boolean = false, val showVenue: Boolean = true, val showBadge: Boolean = true,
     val showPercent: Boolean = false, val remainingProgress: Boolean = false,
-    val dateStyle: String = "ISO", val clockStyle: String = "SYSTEM",
+    val dateStyle: String = "SHORT", val clockStyle: String = "SYSTEM",
     val transparent: Boolean = false, val border: Boolean = false, val decoration: String = "NONE",
     val urgency: Boolean = false, val urgentDays: Int = 7, val warningDays: Int = 30,
-    val showEdit: Boolean = true, val tapAction: String = "EDIT", val widgetName: String = "", val listTextSize: Int = 14
+    val showEdit: Boolean = false, val tapAction: String = "EDIT", val widgetName: String = "", val listTextSize: Int = 14
 ) {
     fun target(): ZonedDateTime = LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time)).atZone(ZoneId.of(zone))
     fun validate() {
@@ -35,7 +35,7 @@ data class ExamCountdown(
         require(name.length <= 100 && subtitle.length <= 200 && endedText.length <= 100) { "An exam name or message is too long." }
         require(format in FORMATS && palette in PALETTES)
         require(align in setOf("START", "CENTER", "END"))
-        require(opacity in 20..100 && radius in 0..40 && textSize in 24..64)
+        require(opacity in 20..100 && radius in 0..40 && textSize in 24..96)
         listOf(background, foreground, accent).forEach { require(it.matches(Regex("#[0-9a-fA-F]{6}"))) }
         require(design in DESIGNS && displayMode in DISPLAY_MODES && sortOrder in setOf("CUSTOM", "DATE"))
         require(font in setOf("SANS", "SERIF", "MONO") && titleSize in 12..22 && listTextSize in 11..20 && padding in 8..28 && maxRows in 1..6)
@@ -86,6 +86,23 @@ data class ExamCountdown(
         time = event.time, zone = event.zone, startDate = event.startDate, venue = event.venue, badge = event.badge)
     fun updateExam(event: ExamEvent): ExamCountdown = if (event.id == "primary") withEvent(event)
         else copy(extraExams = extraExams.map { if (it.id == event.id) event else it })
+    /** Visual presets keep the schedule intact; bold presets include a starting palette. */
+    fun withDesign(value: String): ExamCountdown = copy(design = value, font = "SANS", textSize = 52,
+        titleSize = 14, padding = 20, radius = 24, align = if (value == "HERO") "CENTER" else "START",
+        decoration = "NONE", border = false, showProgress = showProgress || value in setOf("TIMELINE", "ORBITAL")).let {
+            when (value) {
+                "POSTER" -> it.copy(palette = "CITRUS", textSize = 88, radius = 20)
+                "ORBITAL" -> it.copy(palette = "IRIS", textSize = 48, padding = 16)
+                "COLORBLOCK" -> it.copy(palette = "CORAL", textSize = 76, padding = 18)
+                "AURORA" -> it.copy(palette = "IRIS", textSize = 72, radius = 28, align = "CENTER")
+                "BENTO" -> it.copy(palette = "CITRUS", textSize = 72, padding = 18, radius = 24)
+                "SIGNAL" -> it.copy(palette = "FOREST", font = "MONO", textSize = 64, radius = 14, border = true)
+                "FROST" -> it.copy(palette = "SLATE", opacity = 80, radius = 28, border = true, transparent = false, textSize = 64)
+                "PRISM" -> it.copy(palette = "IRIS", opacity = 76, radius = 30, border = true, transparent = false, align = "CENTER", textSize = 64)
+                "LAYERS" -> it.copy(palette = "OCEAN", opacity = 78, radius = 24, border = false, transparent = false, textSize = 64, padding = 20)
+                else -> it
+            }
+        }
     fun makePrimary(id: String): ExamCountdown {
         val selected = extraExams.firstOrNull { it.id == id } ?: return this
         return withEvent(selected).copy(extraExams = extraExams.map { if (it.id == id) event().copy(id = id) else it })
@@ -113,8 +130,15 @@ data class ExamCountdown(
     }.toString()
     companion object {
         val FORMATS = listOf("DAYS", "WEEKS", "HOURS", "MONTHS", "WEEKDAYS")
-        val PALETTES = listOf("THEME", "DARK", "LIGHT", "OCEAN", "FOREST", "ROSE", "AMBER", "LAVENDER", "SLATE", "CUSTOM")
-        val DESIGNS = listOf("CLASSIC", "HERO", "TICKET", "MINIMAL", "TIMELINE", "DASHBOARD")
+        val PALETTES = listOf("THEME", "DARK", "LIGHT", "OCEAN", "FOREST", "ROSE", "AMBER", "LAVENDER", "SLATE", "CITRUS", "IRIS", "CORAL", "CUSTOM")
+        val BOLD_DESIGNS = listOf("POSTER", "ORBITAL", "AURORA", "BENTO", "SIGNAL")
+        val GLASS_DESIGNS = listOf("FROST", "PRISM", "LAYERS")
+        val ACTIVE_DESIGNS = BOLD_DESIGNS + GLASS_DESIGNS
+        // Retain these IDs for installed widgets, saved layouts and portable backups.
+        val LEGACY_DESIGNS = listOf("CLASSIC", "HERO", "TICKET", "MINIMAL", "TIMELINE", "DASHBOARD", "COLORBLOCK")
+        fun designCategory(design: String) = if (design in GLASS_DESIGNS) "Glass" else "Bold"
+        val DESIGNS = LEGACY_DESIGNS + ACTIVE_DESIGNS
+        fun newWidget() = ExamCountdown().withDesign("AURORA")
         val DISPLAY_MODES = listOf("SINGLE", "NEXT", "LIST", "PAGED")
         fun read(raw: String): ExamCountdown {
             return readDraft(raw).also { it.validate() }

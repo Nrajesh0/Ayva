@@ -45,22 +45,25 @@ class ExamWidgetEditorTest {
         compose.onNodeWithText("Add exam").performScrollTo().performClick()
         compose.onNodeWithText("Exam name").performScrollTo().performTextClearance()
         compose.onNodeWithText("Exam name").performTextInput("Banking prelims")
-        compose.onNodeWithText("Style").performClick()
-        compose.onNodeWithText("Design").performClick();compose.onNodeWithText("Exam ticket").performClick()
-        compose.onNodeWithText("Theme").performClick();compose.onNodeWithText("Ocean").performClick()
-        compose.onNodeWithText("Background detail").performClick();compose.onNodeWithText("Orbit").performClick()
-        compose.onNodeWithText("Layout").performClick()
-        compose.onNodeWithText("Typeface").performClick();compose.onNodeWithText("Serif").performClick()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithText("Design").performClick()
+        compose.onNodeWithText("Bento").performScrollTo().performClick()
+        compose.onNodeWithText("Fine-tune appearance").performScrollTo().performClick()
+        compose.onNodeWithText("All colors").performScrollTo().performClick();compose.onNodeWithText("Ocean").performClick()
+        compose.onNodeWithText("Background detail").performScrollTo().performClick()
+        compose.onNode(hasText("Orbit") and hasAnyAncestor(hasTestTag("widget_editor_choices"))).performClick()
+        compose.onNodeWithText("Typeface").performScrollTo().performClick();compose.onNodeWithText("Serif").performClick()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("Apply").performClick()
         assertEquals(2,saved!!.exams().size);assertEquals("Banking prelims",saved!!.extraExams.single().name)
-        assertEquals("LIST",saved!!.displayMode);assertEquals("TICKET",saved!!.design)
+        assertEquals("LIST",saved!!.displayMode);assertEquals("BENTO",saved!!.design)
         assertEquals("OCEAN",saved!!.palette);assertEquals("ORBIT",saved!!.decoration);assertEquals("SERIF",saved!!.font)
     }
     @Test fun cancellingChangesDoesNotWriteWidgetOrPresetData() {
         var saved=false;var cancelled=false
         compose.setContent { FocusByRjTheme { ExamCountdownConfigScreen(initial(),emptyList(),{saved=true},{cancelled=true}) } }
         compose.onNodeWithText("Add exam").performScrollTo().performClick()
+        compose.onNodeWithText("Done").performClick()
         compose.onNodeWithContentDescription("Cancel").performClick()
         assertTrue(cancelled);assertFalse(saved);assertTrue(ExamCountdownStore(app).all().isEmpty())
     }
@@ -70,7 +73,9 @@ class ExamWidgetEditorTest {
         compose.onNodeWithText("Add exam").performScrollTo().performClick()
         compose.onNodeWithText("Remove exam").performScrollTo().performClick()
         compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Done").performClick()
         compose.onNodeWithText("Apply").performClick();assertEquals(2,saved!!.exams().size)
+        compose.onNodeWithTag("exam_entry_${saved!!.extraExams.single().id}").performScrollTo().performClick()
         compose.onNodeWithText("Remove exam").performScrollTo().performClick()
         compose.onNodeWithText("Remove",substring=false).performClick()
         compose.onNodeWithText("Apply").performClick();assertEquals(1,saved!!.exams().size)
@@ -88,7 +93,8 @@ class ExamWidgetEditorTest {
             ExamWidgetManagerDialog({}, {}, {duplicated=it})
         } } }
         compose.onNodeWithText("Civil services").assertExists();compose.onNodeWithText("Banking exam").assertExists()
-        compose.onAllNodesWithText("Duplicate")[1].performClick()
+        compose.onNodeWithContentDescription("Options for Banking exam").performClick()
+        compose.onNodeWithText("Duplicate").performClick()
         assertEquals("Banking exam",duplicated!!.name)
     }
     @Test fun capturesEditorWithRealLauncherPreviewAndGroupedControls() {
@@ -96,11 +102,63 @@ class ExamWidgetEditorTest {
             ExamEvent("second","Banking prelims","Bring admit card","2027-05-14","10:30","Asia/Kolkata","2026-11-01","City examination centre","PRELIMS")),palette="OCEAN")
         compose.setContent { view=LocalView.current;FocusByRjTheme { ExamCountdownConfigScreen(config,emptyList(),{}, {}) } }
         capture("editor-exams")
-        compose.onNodeWithText("Preview",substring=false).performClick()
         compose.onNodeWithTag("exam_preview").assertExists();capture("editor-preview")
-        compose.onNodeWithText("Style").performClick();compose.onNodeWithText("Design").performScrollTo().assertIsDisplayed();capture("editor-style")
-        compose.onNodeWithText("Layout").performClick();capture("editor-layout")
-        compose.onNodeWithText("Behavior").performClick();capture("editor-behavior")
+        compose.onNodeWithText("Design").performClick();capture("editor-design")
+        compose.onNodeWithText("Fine-tune appearance").performScrollTo().assertIsDisplayed();capture("editor-colors")
+        compose.onNodeWithText("Details").performClick();capture("editor-details")
+
+    }
+    @Test fun simplifiedControlsStayOutOfTheWayAndDesignChangesPreserveExams() {
+        var saved:ExamCountdown?=null
+        compose.setContent { FocusByRjTheme { ExamCountdownConfigScreen(initial(),emptyList(),{saved=it},{}) } }
+        compose.onNodeWithText("Exam name").assertDoesNotExist()
+        compose.onNodeWithText("Design").performClick()
+        compose.onNodeWithText("Typeface").assertDoesNotExist()
+        compose.onNodeWithText("Orbit",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Coral").performScrollTo().performClick()
+        compose.onNodeWithText("Apply").performClick()
+        assertEquals(initial().withDesign("ORBITAL").copy(palette="CORAL"),saved)
+    }
+    @Test fun boldCategoryAppliesAndRestoresAnIndependentDesign() {
+        var saved:ExamCountdown?=null
+        val restoration=StateRestorationTester(compose)
+        restoration.setContent { view=LocalView.current;FocusByRjTheme { ExamCountdownConfigScreen(initial(),emptyList(),{saved=it},{}) } }
+        compose.onNodeWithText("Design").performClick()
+        compose.onNodeWithText("Bold").performScrollTo().performClick()
+        compose.onNodeWithText("Poster").performScrollTo().performClick()
+        capture("editor-bold")
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("Poster").assertExists()
+        compose.onNodeWithText("Apply").performClick()
+        assertEquals(initial().withDesign("POSTER"),saved)
+    }
+    @Test fun glassCategoryKeepsBackdropChoicesOutOfTheSavedWidget() {
+        var saved:ExamCountdown?=null
+        val restoration=StateRestorationTester(compose)
+        restoration.setContent { view=LocalView.current;FocusByRjTheme { ExamCountdownConfigScreen(initial(),emptyList(),{saved=it},{}) } }
+        compose.onNodeWithText("Design").performClick()
+        compose.onNodeWithText("Glass").performScrollTo().performClick()
+        compose.onNodeWithText("Frost").performScrollTo().performClick()
+        compose.onNodeWithText("Sample wallpaper").performScrollTo().assertExists()
+        compose.onNodeWithText("Light",substring=false).performScrollTo().performClick()
+        capture("editor-glass")
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("Light",substring=false).performScrollTo().assertIsSelected()
+        compose.onNodeWithText("Apply").performClick()
+        assertEquals(initial().withDesign("FROST"),saved)
+    }
+    @Test fun retiredLayoutsStayReadableWithoutReappearingInThePicker() {
+        var saved:ExamCountdown?=null
+        val legacy=initial().copy(design="TICKET",palette="CUSTOM",font="SERIF",align="END")
+        compose.setContent { view=LocalView.current;FocusByRjTheme { ExamCountdownConfigScreen(legacy,emptyList(),{saved=it},{}) } }
+        compose.onNodeWithText("Design").performClick()
+        compose.onNodeWithText("Calm",substring=false).assertDoesNotExist()
+        compose.onNodeWithText("Colorblock",substring=false).assertDoesNotExist()
+        compose.onNodeWithText("Focus",substring=false).assertDoesNotExist()
+        compose.onNodeWithText("Fine-tune appearance").performScrollTo().performClick()
+        compose.onNodeWithText("All layouts",substring=false).assertDoesNotExist()
+        compose.onNodeWithText("Apply").performClick()
+        assertEquals(legacy,saved)
     }
     private fun capture(name:String) {
         compose.mainClock.advanceTimeBy(500);compose.waitForIdle()
