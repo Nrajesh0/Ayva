@@ -87,6 +87,9 @@ android {
       isIncludeAndroidResources = true
       all {
         it.maxHeapSize = "2048m"
+        // Robolectric resets Android queues between tests, but application IO jobs can
+        // outlive a sandbox. Keep their locks and native graphics state within a class.
+        it.forkEvery = 1
         it.testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
       }
     }
