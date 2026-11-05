@@ -25,7 +25,7 @@
         <LinearLayout android:id="@+id/exam_list" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone" />
         <LinearLayout android:id="@+id/exam_navigation" android:layout_width="match_parent" android:layout_height="32dp" android:layout_marginTop="4dp" android:orientation="horizontal" android:gravity="center_vertical" android:visibility="gone">
             <TextView android:id="@+id/exam_previous" android:layout_width="44dp" android:layout_height="match_parent" android:gravity="center" android:text="‹" android:textSize="24sp" android:contentDescription="Previous exam page" android:includeFontPadding="false" />
-            <TextView android:id="@+id/exam_page" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:gravity="center" android:textSize="11sp" android:includeFontPadding="false" />
+            <TextView android:id="@+id/exam_page" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:gravity="center" android:textSize="11sp" android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" />
             <TextView android:id="@+id/exam_next" android:layout_width="44dp" android:layout_height="match_parent" android:gravity="center" android:text="›" android:textSize="24sp" android:contentDescription="Next exam page" android:includeFontPadding="false" />
         </LinearLayout>
     </LinearLayout>

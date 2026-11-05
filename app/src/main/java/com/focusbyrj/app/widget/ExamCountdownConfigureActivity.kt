@@ -8,14 +8,12 @@ import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,11 +21,9 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.focusbyrj.app.ui.theme.FocusByRjTheme
 import com.focusbyrj.app.ui.security.installScreenCaptureProtection
 import java.time.LocalDate
@@ -51,6 +47,8 @@ class ExamCountdownConfigureActivity : ComponentActivity() {
         setContent { FocusByRjTheme {
             ExamCountdownConfigScreen(initial, store.all().filterNot { store.inUse(it.first) }.map { it.second },
                 saveLabel = if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) "Add widget" else "Apply",
+                widgetSize = if(widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) ExamWidgetSizes.current(this,manager.getAppWidgetOptions(widgetId)).let{it.width.toInt() to it.height.toInt()} else null,
+                initialActive = store.activeExam(widgetId),
                 onCancel = { finish() }, onSave = { final ->
                     if (widgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                         store.save(widgetId, final)
@@ -85,10 +83,16 @@ internal fun ExamCountdownConfigScreen(
     savedCountdowns: List<ExamCountdown>,
     onSave: (ExamCountdown) -> Unit,
     onCancel: () -> Unit,
-    saveLabel: String = "Apply"
+    saveLabel: String = "Apply",
+    widgetSize: Pair<Int,Int>? = null,
+    initialActive: String = ""
 ) {
     val context = LocalContext.current
     var draft by rememberSaveable(stateSaver = CountdownDraftSaver) { mutableStateOf(initialConfig) }
+    var previewMode by rememberSaveable { mutableStateOf(if(widgetSize!=null) "Actual" else "Wide") }
+    var previewActive by rememberSaveable { mutableStateOf(initialActive) }
+    var lightWallpaper by rememberSaveable { mutableStateOf(false) }
+    val previewSize = when(previewMode) { "Actual" -> widgetSize ?: (340 to 180); "Square" -> 280 to 280; "Tall" -> 280 to 360; else -> 340 to 180 }
     var selectedId by rememberSaveable { mutableStateOf("primary") }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
     val zones = remember { listOf(ZoneId.systemDefault().id, "Asia/Kolkata", "UTC", "Asia/Dubai", "Asia/Singapore", "Asia/Tokyo", "Europe/London", "Europe/Paris", "America/New_York", "America/Los_Angeles", "Australia/Sydney").distinct() }
@@ -97,7 +101,10 @@ internal fun ExamCountdownConfigScreen(
     var removing by remember { mutableStateOf(false) }
     var replacing by remember { mutableStateOf<ExamCountdown?>(null) }
     val exam = draft.exams().firstOrNull { it.id == selectedId } ?: draft.event()
-    fun change(next: ExamCountdown) { draft = next; error = null }
+    fun change(next: ExamCountdown) {
+        if(next.exams()!=draft.exams() || next.displayMode!=draft.displayMode || next.sortOrder!=draft.sortOrder || next.hidePastExams!=draft.hidePastExams) previewActive=""
+        draft = next; error = null
+    }
     fun edit(next: ExamEvent) { change(draft.updateExam(next)) }
     fun pickDate(start: Boolean) {
         val date = runCatching { LocalDate.parse(if (start) exam.startDate else exam.date) }.getOrDefault(LocalDate.now())
@@ -113,7 +120,7 @@ internal fun ExamCountdownConfigScreen(
     }
     val label: (String) -> String = ExamWidgetPresentation::label
     ExamEditor(onCancel, onSave = { runCatching { onSave(prepared()) }.onFailure { error = it.message ?: "Check your settings." } },
-        saveLabel = saveLabel, error = error, preview = { CountdownEditorPreview(draft) }) { section ->
+        saveLabel = saveLabel, error = error, preview = { CountdownEditorPreview(draft,previewSize.first,previewSize.second,previewMode,widgetSize!=null,{previewMode=it},previewActive,{previewActive=it},lightWallpaper,{lightWallpaper=it}) }) { section ->
         when (section) {
             0 -> {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -162,7 +169,7 @@ internal fun ExamCountdownConfigScreen(
                 }
             }
             1 -> {
-                ExamDesignPicker(draft, ::change)
+                ExamDesignPicker(draft, ::change,previewSize.first,previewSize.second,previewActive,lightWallpaper)
                 ExamPalettePicker(draft, ::change)
                 ExamGroup("Surface") {
                     WidgetToggleRow("Transparent background", draft.transparent) { change(draft.copy(transparent = it)) }
@@ -175,42 +182,20 @@ internal fun ExamCountdownConfigScreen(
                         OutlinedTextField(draft.foreground, { change(draft.copy(foreground = it)) }, label = { Text("Text · #RRGGBB") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(draft.accent, { change(draft.copy(accent = it)) }, label = { Text("Accent · #RRGGBB") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     }
-                    WidgetChoiceRow("Typeface", draft.font, listOf("SANS", "SERIF", "MONO"), label, { change(draft.copy(font = it)) })
-                    if (draft.displayMode == "LIST") WidgetSliderRow("List text size", draft.listTextSize, " sp", 11..20) { change(draft.copy(listTextSize = it)) }
-                    else {
-                        WidgetSliderRow("Countdown size", draft.textSize, " sp", 24..96) { change(draft.copy(textSize = it)) }
-                        WidgetSliderRow("Exam name size", draft.titleSize, " sp", 12..22) { change(draft.copy(titleSize = it)) }
-                        WidgetChoiceRow("Alignment", draft.align, listOf("START", "CENTER", "END"), label, { change(draft.copy(align = it)) })
-                    }
-                    WidgetSliderRow("Spacing", draft.padding, " dp", 8..28) { change(draft.copy(padding = it)) }
                     WidgetSliderRow("Corners", draft.radius, " dp", 0..40) { change(draft.copy(radius = it)) }
                     WidgetToggleRow("Outline", draft.border) { change(draft.copy(border = it)) }
                     WidgetChoiceRow("Background detail", draft.decoration, listOf("NONE", "GRADIENT", "ORBIT", "STRIPES"), label, { change(draft.copy(decoration = it)) })
                 }
             }
             2 -> {
-                ExamGroup("Countdown") {
-                    WidgetChoiceRow("Count in", draft.format, ExamCountdown.FORMATS, label, { change(draft.copy(format = it)) })
-                    if (draft.format == "WEEKDAYS") Text("Monday–Friday only. Public holidays are included.", style = MaterialTheme.typography.bodySmall)
-                    WidgetToggleRow("Preparation timeline", draft.showProgress) { change(draft.copy(showProgress = it)) }
-                    if (draft.showProgress) {
-                        Text("Time elapsed since each exam's preparation start date; this does not track study completion.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        WidgetToggleRow("Show percentage", draft.showPercent) { change(draft.copy(showPercent = it)) }
-                        WidgetToggleRow("Show time remaining", draft.remainingProgress) { change(draft.copy(remainingProgress = it)) }
-                    }
-                }
-                ExamGroup("Visible details") {
-                    WidgetToggleRow("Exam name", draft.showTitle) { change(draft.copy(showTitle = it)) }
-                    WidgetToggleRow("Exam date", draft.showDate) { change(draft.copy(showDate = it)) }
-                    WidgetToggleRow("Exam time", draft.showTime) { change(draft.copy(showTime = it)) }
-                    ExamMore("Additional details") {
-                        WidgetToggleRow("Time zone", draft.showZone) { change(draft.copy(showZone = it)) }
-                        WidgetToggleRow("Venue", draft.showVenue) { change(draft.copy(showVenue = it)) }
-                        WidgetToggleRow("Personal message", draft.showMessage) { change(draft.copy(showMessage = it)) }
-                        WidgetToggleRow("Exam label", draft.showBadge) { change(draft.copy(showBadge = it)) }
-                        WidgetChoiceRow("Date format", draft.dateStyle, listOf("SHORT", "LONG", "ISO"), label, { change(draft.copy(dateStyle = it)) })
-                        WidgetChoiceRow("Clock format", draft.clockStyle, listOf("SYSTEM", "12", "24"), label, { change(draft.copy(clockStyle = it)) })
-                        if (draft.displayMode == "LIST") WidgetSliderRow("Visible exams", draft.maxRows, "", 1..6) { change(draft.copy(maxRows = it)) }
+                ExamTextControls(draft,::change)
+                ExamVisibleDetails(draft,::change)
+                ExamMore("Preparation timeline") {
+                    WidgetToggleRow("Show timeline",draft.showProgress){change(draft.copy(showProgress=it))}
+                    if(draft.showProgress) {
+                        Text("Measures time in your preparation window, not study completion.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        WidgetToggleRow("Show percentage",draft.showPercent){change(draft.copy(showPercent=it))}
+                        WidgetToggleRow("Show time remaining",draft.remainingProgress){change(draft.copy(remainingProgress=it))}
                     }
                 }
                 ExamMore("After the exam") {
@@ -269,55 +254,4 @@ internal fun ExamCountdownConfigScreen(
         text = { Text("This replaces the current draft with the saved exams and appearance. Apply to update this widget.") },
         confirmButton = { TextButton(onClick = { change(saved); selectedId = "primary"; replacing = null }) { Text("Load") } },
         dismissButton = { TextButton(onClick = { replacing = null }) { Text("Cancel") } }) }
-}
-
-/** Preview uses the same RemoteViews renderer as the home screen. */
-@Composable
-internal fun CountdownEditorPreview(draft: ExamCountdown) {
-    val context = LocalContext.current
-    var height by rememberSaveable { mutableIntStateOf(180) }
-    var active by rememberSaveable { mutableStateOf("") }
-    var lightWallpaper by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(draft.exams(), draft.displayMode, draft.sortOrder, draft.hidePastExams) { active = "" }
-    val safeZone = { zone: String -> runCatching { ZoneId.of(zone.trim()).id }.getOrDefault(ZoneId.systemDefault().id) }
-    val safeColor = { color: String, fallback: String -> color.trim().takeIf { it.matches(Regex("#[0-9a-fA-F]{6}")) } ?: fallback }
-    val safe = draft.copy(zone = safeZone(draft.zone), extraExams = draft.extraExams.map { it.copy(zone = safeZone(it.zone)) },
-        background = safeColor(draft.background, "#101615"), foreground = safeColor(draft.foreground, "#E8F4EE"), accent = safeColor(draft.accent, "#8DC6B1"))
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Live preview", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(140 to "Small", 180 to "Wide", 300 to "Tall").forEach { (size, title) ->
-                FilterChip(selected = height == size, onClick = { height = size }, label = { Text(title, style = MaterialTheme.typography.labelSmall) })
-            }
-        }
-    }
-    if (draft.design in ExamCountdown.GLASS_DESIGNS) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Sample wallpaper", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(!lightWallpaper, onClick = { lightWallpaper = false }, label = { Text("Dark", style = MaterialTheme.typography.labelSmall) })
-            FilterChip(lightWallpaper, onClick = { lightWallpaper = true }, label = { Text("Light", style = MaterialTheme.typography.labelSmall) })
-        }
-    }
-    BoxWithConstraints(Modifier.fillMaxWidth().height(height.dp).testTag("exam_preview")) {
-        val width = maxWidth.value.toInt().coerceIn(140, 600)
-        AndroidView(factory = { FrameLayout(it) }, modifier = Modifier.fillMaxSize(), update = { host ->
-            host.background = if (draft.design in ExamCountdown.GLASS_DESIGNS) ExamPreviewWallpaper(lightWallpaper) else null
-            host.removeAllViews()
-            runCatching {
-                val rendered = ExamCountdownProvider.render(context, -99, safe, width, height, active)
-                val view = rendered.apply(context, host)
-                host.addView(view, FrameLayout.LayoutParams(-1, -1))
-                // Preview navigation stays in the draft; it never sends a launcher broadcast.
-                val page = ExamWidgetPresentation.page(safe, active, height, fontScale = context.resources.configuration.fontScale)
-                view.findViewById<android.view.View>(com.focusbyrj.app.R.id.exam_next)?.setOnClickListener {
-                    active = page.adjacentId(true)
-                }
-                view.findViewById<android.view.View>(com.focusbyrj.app.R.id.exam_previous)?.setOnClickListener {
-                    active = page.adjacentId(false)
-                }
-                view.findViewById<android.view.View>(com.focusbyrj.app.R.id.exam_root)?.setOnClickListener(null)
-                view.findViewById<android.view.View>(com.focusbyrj.app.R.id.exam_edit)?.setOnClickListener(null)
-            }.onFailure { host.addView(android.widget.TextView(context).apply { text = "Complete the exam details to preview." }) }
-        })
-    }
 }

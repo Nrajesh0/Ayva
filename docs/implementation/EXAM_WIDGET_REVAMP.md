@@ -1,5 +1,7 @@
 # Exam widget revamp — 2.0.41
 
+Text/layout and renderer-preview improvements for 2.0.42 are described in [Exam widget text, layout and preview refinement](EXAM_WIDGET_TEXT_LAYOUT.md). The following records the 2.0.41 release.
+
 The exam editor groups setup into **Exams**, **Design** and **Details**, with a visible production-renderer preview and persistent Apply/Add widget action. Other widget editors retain their existing interface.
 
 ## Final design catalogue

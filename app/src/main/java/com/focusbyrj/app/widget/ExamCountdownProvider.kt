@@ -13,6 +13,7 @@ import android.text.Spanned
 import android.text.TextPaint
 import android.text.StaticLayout
 import android.text.style.TypefaceSpan
+import android.text.style.RelativeSizeSpan
 import android.view.View
 import android.view.Gravity
 import android.widget.RemoteViews
@@ -42,8 +43,8 @@ class ExamCountdownProvider : AppWidgetProvider() {
         if (intent.action in setOf(NEXT, PREVIOUS) && ours) {
             val store = ExamCountdownStore(context)
             store.get(id)?.let { value ->
-                val height = manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 180)
-                val page = ExamWidgetPresentation.page(value, store.activeExam(id), height, fontScale = context.resources.configuration.fontScale)
+                val size = ExamWidgetSizes.current(context, manager.getAppWidgetOptions(id))
+                val page = ExamWidgetPresentation.page(value, store.activeExam(id), size.height.toInt(), fontScale = context.resources.configuration.fontScale, width = size.width.toInt())
                 store.setActiveExam(id, page.adjacentId(intent.action == NEXT))
                 update(context, id)
             }
@@ -113,8 +114,10 @@ class ExamCountdownProvider : AppWidgetProvider() {
                 else -> base }
         }
         internal fun background(config: ExamCountdown, c: IntArray, width: Int, height: Int, progress: Int = 0, ringOffset: Float = 0f): Bitmap {
-            val bitmap = Bitmap.createBitmap(width.coerceIn(140, 600) * 2, height.coerceIn(110, 600) * 2, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap); val w = bitmap.width.toFloat(); val h = bitmap.height.toFloat()
+            val w = width.coerceIn(140,2000)*2f;val h = height.coerceIn(110,2000)*2f
+            val scale=minOf(1f,1200f/maxOf(w,h))
+            val bitmap = Bitmap.createBitmap(kotlin.math.round(w*scale).toInt().coerceAtLeast(1),kotlin.math.round(h*scale).toInt().coerceAtLeast(1),Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap);canvas.scale(scale,scale)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             val alpha = config.opacity * 255 / 100
             if (!config.transparent) {
@@ -130,7 +133,7 @@ class ExamCountdownProvider : AppWidgetProvider() {
                 // Procedural shapes keep the designs sharp at any launcher size.
                 paint.shader = null; paint.style = Paint.Style.FILL; paint.color = c[2]; paint.alpha = alpha
                 if (config.design == "POSTER") {
-                    val fold = minOf(w * .23f, h * .42f)
+                    val fold = if(config.displayMode=="LIST") minOf(w*.08f,h*.12f) else minOf(w * .23f, h * .42f)
                     canvas.drawPath(Path().apply { moveTo(w - fold, 0f); lineTo(w, 0f); lineTo(w, fold); close() }, paint)
                     paint.color = c[0]
                     canvas.drawCircle(w - fold * .32f, fold * .32f, 4f, paint)
@@ -166,11 +169,20 @@ class ExamCountdownProvider : AppWidgetProvider() {
             val family = displayFamily ?: when(font) { "SERIF" -> "serif"; "MONO" -> "monospace"; else -> if (bold) "sans-serif-medium" else "sans-serif" }
             setSpan(TypefaceSpan(Typeface.create(family, if (bold && (font != "SANS" || displayFamily != null)) Typeface.BOLD else Typeface.NORMAL)), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+        private fun counterText(value: String, config: ExamCountdown, now: Instant): CharSequence {
+            val result=SpannableString(text(value,config.font,config.design!="MINIMAL",if(config.design=="POSTER" && config.font=="SANS") "sans-serif-condensed" else null))
+            if(config.format in setOf("HOURS","WEEKS","MONTHS") && (now.isBefore(config.target().toInstant()) || config.countUp)) {
+                Regex("(?<=\\d)(?:mo|[dwh])\\b").findAll(value).forEach { result.setSpan(RelativeSizeSpan(.55f),it.range.first,it.range.last+1,Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+            }
+            return result
+        }
         internal fun render(context: Context, id: Int, value: ExamCountdown?, width: Int, height: Int,
                             activeId: String = "", now: Instant = Instant.now()): RemoteViews {
             val config = value ?: ExamCountdown.newWidget()
             val fontScale = context.resources.configuration.fontScale.coerceAtLeast(1f)
-            val listing = config.displayMode == "LIST" && value != null
+            val page = ExamWidgetPresentation.page(config, activeId, height, now, fontScale, width)
+            val listing = config.displayMode == "LIST" && value != null && page.all.size > 1
+            val surfaceConfig = if(config.displayMode == "LIST" && !listing) config.copy(displayMode = "SINGLE") else config
             val adaptiveDesign = if (config.design in setOf("ORBITAL", "COLORBLOCK", "BENTO", "LAYERS") && (width < 260 || height < 150 || fontScale >= 1.5f))
                 if (config.design == "LAYERS") "FROST" else "CLASSIC" else config.design
             val layout = when (adaptiveDesign) {
@@ -183,18 +195,17 @@ class ExamCountdownProvider : AppWidgetProvider() {
                 else -> R.layout.widget_exam_countdown
             }
             val views = RemoteViews(context.packageName, layout)
-            val page = ExamWidgetPresentation.page(config, activeId, height, now, context.resources.configuration.fontScale)
             val shown = config.withEvent(page.entries.first())
             val c = surfaceColors(config, colors(context, config)); val highlight = accent(shown, c[2], now, c[0])
             val progress = ExamWidgetPresentation.progress(shown, now)
-            val padding = minOf(config.padding, if (height < 150) 10 else if (config.displayMode == "LIST") 14 else 28)
+            val padding = minOf(config.padding, if (height < 150) 10 else if (listing) 14 else 28)
             val density = context.resources.displayMetrics.density
             views.setViewPadding(R.id.exam_content, (padding * density).toInt(), (padding * density).toInt(), (padding * density).toInt(), (padding * density).toInt())
             fun visible(view: Int, show: Boolean) = views.setViewVisibility(view, if (show) View.VISIBLE else View.GONE)
-            val toolbar = height >= 150 && (config.showEdit || config.showBadge && (shown.badge.isNotBlank() || listing))
+            val toolbar = height >= 150 && (config.showEdit || if (listing) config.widgetName.isNotBlank() else config.showBadge && shown.badge.isNotBlank())
             val headerSpace = if (!toolbar) 0 else if (config.showEdit) 36 else (18 * fontScale).toInt()
             val canPage = config.displayMode in setOf("LIST", "PAGED") && page.canPage
-            val dateVisible = value != null && height >= 150 * fontScale && (config.showDate || config.showTime || config.showZone)
+            val dateVisible = value != null && height >= 150 * fontScale && (config.showDate || config.showTime)
             val messageVisible = value != null && config.showMessage && height >= (170 + headerSpace) * fontScale && shown.subtitle.isNotBlank()
             val venueVisible = value != null && config.showVenue && height >= (190 + headerSpace) * fontScale && shown.venue.isNotBlank()
             val progressVisible = value != null && config.showProgress && height >= (140 + headerSpace) * fontScale
@@ -202,47 +213,50 @@ class ExamCountdownProvider : AppWidgetProvider() {
             val percentVisible = progressVisible && config.showPercent && height >= 240 * fontScale
             visible(R.id.exam_primary, !listing); visible(R.id.exam_list, listing)
             visible(R.id.exam_toolbar, toolbar)
-            views.setTextViewText(R.id.exam_badge, text(if (listing) config.widgetName.ifBlank { "${page.all.size} EXAMS" } else shown.badge, config.font, true))
-            views.setTextColor(R.id.exam_badge, highlight); visible(R.id.exam_badge, config.showBadge)
+            views.setTextViewText(R.id.exam_badge, text(if (listing) config.widgetName else shown.badge, config.font, true))
+            views.setTextColor(R.id.exam_badge, highlight); visible(R.id.exam_badge, if (listing) config.widgetName.isNotBlank() else config.showBadge)
             visible(R.id.exam_edit, config.showEdit); views.setTextColor(R.id.exam_edit, c[1])
             views.setTextViewText(R.id.exam_name, text(if (value == null) "Set up exam countdown" else shown.name, config.font, true))
             views.setTextViewText(R.id.exam_number, text(if (value == null) "Tap to configure" else shown.headline(now), config.font, true))
             val innerHeight = height - padding * 2 - headerSpace - if (canPage) 36 else 0
             val titleSize = minOf(config.titleSize, (innerHeight / (4 * fontScale)).toInt().coerceAtLeast(10))
             val family = when(config.font) { "SERIF" -> "serif"; "MONO" -> "monospace"; else -> "sans-serif" }
-            fun textHeight(value: String, size: Int, lines: Int, widthDp: Float, bold: Boolean = false): Float {
+            fun textHeight(value: String, size: Int, lines: Int, widthDp: Float, bold: Boolean = false, countdown: Boolean = false): Float {
                 val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = size * context.resources.displayMetrics.scaledDensity; typeface = Typeface.create(family, if (bold) Typeface.BOLD else Typeface.NORMAL) }
-                return StaticLayout.Builder.obtain(value, 0, value.length, paint, (widthDp * density).toInt().coerceAtLeast(1))
+                val content=if(countdown) counterText(value,shown,now) else value
+                return StaticLayout.Builder.obtain(content, 0, content.length, paint, (widthDp * density).toInt().coerceAtLeast(1))
                     .setMaxLines(lines).setIncludePad(true).build().height / density
             }
             val contentWidth = (width - padding * 2).toFloat()
             val dateText = ExamWidgetPresentation.date(shown, android.text.format.DateFormat.is24HourFormat(context))
+            val detailSize = (config.titleSize - 2).coerceIn(11, 16)
             val outside = (if (messageVisible) textHeight(shown.subtitle, 12, 2, contentWidth) + 4 else 0f) +
                 (if (barVisible) 14 else 0) + (if (percentVisible) textHeight("100% of preparation window elapsed", 11, 2, contentWidth) else 0f)
-            views.setImageViewBitmap(R.id.exam_background, background(config.copy(design = adaptiveDesign), c, width, height, progress, (headerSpace - outside) / 2f))
+            views.setImageViewBitmap(R.id.exam_background, background(surfaceConfig.copy(design = adaptiveDesign), c, width, height, progress, (headerSpace - outside) / 2f))
             val counter = if (value == null) "Tap to configure" to "" else ExamWidgetPresentation.counter(shown, now)
             val unitVisible = counter.second.isNotBlank() && height >= 150 * fontScale
             views.setTextViewText(R.id.exam_unit, text(counter.second, config.font))
             visible(R.id.exam_unit, unitVisible)
             val unitHeight = if (unitVisible) textHeight(counter.second, 11, 1, contentWidth) + 8 else 0f
             val labels = (if (config.showTitle || value == null) textHeight(shown.name, titleSize, 1, contentWidth, true) + 6 else 0f) +
-                (if (dateVisible) textHeight(dateText, 12, 2, contentWidth) + 4 else 0f) +
+                (if (dateVisible) textHeight(dateText, detailSize, 2, contentWidth) + 4 else 0f) +
                 (if (venueVisible) textHeight(shown.venue, 12, 2, contentWidth) else 0f)
             val columns = adaptiveDesign in setOf("TICKET", "ORBITAL", "COLORBLOCK", "BENTO", "LAYERS")
             val counterSpace = minOf((innerHeight - outside - unitHeight - if (columns) 0f else labels),
                 if (adaptiveDesign == "ORBITAL") minOf(width * .39f, height * .68f) - unitHeight - 16 else Float.MAX_VALUE).coerceAtLeast(24f)
             val fullHeadline = if (value == null) "Tap to configure" else shown.headline(now)
             val headline = if (unitVisible) counter.first else if (width < 240) fullHeadline.replace(Regex("(\\d+) days?"), "$1d") else fullHeadline
-            views.setTextViewText(R.id.exam_number, text(headline, config.font, config.design != "MINIMAL", if (config.design == "POSTER" && config.font == "SANS") "sans-serif-condensed" else null))
+            views.setTextViewText(R.id.exam_number, counterText(headline,shown,now))
             views.setContentDescription(R.id.exam_number, fullHeadline + if (adaptiveDesign == "ORBITAL" && config.showProgress && !listing) ", $progress% of preparation window ${if (config.remainingProgress) "remaining" else "elapsed"}" else "")
             val counterWidth = if (adaptiveDesign == "ORBITAL") minOf(contentWidth * .45f, width * .39f - 16) else contentWidth * if (columns) .45f else 1f
-            val numberLines = if (textHeight(headline, 12, 2, counterWidth, true) > counterSpace) 1 else 2
+            val numberLines = if (textHeight(headline, 12, 2, counterWidth, true, true) > counterSpace) 1 else 2
             var size = minOf(config.textSize, if (width < 200 || height < 150) 28 else if (adaptiveDesign == "TICKET") 34 else 96)
-            if (!listing) while (size > 12 && textHeight(headline, size, numberLines, counterWidth, true) > counterSpace) size--
+            if (!listing) while (size > 12 && textHeight(headline, size, numberLines, counterWidth, true, true) > counterSpace) size--
             views.setInt(R.id.exam_number, "setMaxLines", numberLines)
             views.setInt(R.id.exam_name, "setMaxLines", 1)
             views.setTextViewTextSize(R.id.exam_number, android.util.TypedValue.COMPLEX_UNIT_SP, size.toFloat())
             views.setTextViewTextSize(R.id.exam_name, android.util.TypedValue.COMPLEX_UNIT_SP, titleSize.toFloat())
+            views.setTextViewTextSize(R.id.exam_date, android.util.TypedValue.COMPLEX_UNIT_SP, detailSize.toFloat())
             views.setTextViewText(R.id.exam_date, text(ExamWidgetPresentation.date(shown, android.text.format.DateFormat.is24HourFormat(context)), config.font))
             views.setTextViewText(R.id.exam_subtitle, text(shown.subtitle, config.font))
             views.setTextViewText(R.id.exam_venue, text(shown.venue, config.font))
@@ -268,42 +282,50 @@ class ExamCountdownProvider : AppWidgetProvider() {
             visible(R.id.exam_percent, percentVisible)
             setProgress(views, progress, highlight)
             views.removeAllViews(R.id.exam_list)
-            if (listing) page.entries.forEach { event ->
-                val rowLayout = when(config.design) {
-                    "HERO" -> R.layout.widget_exam_list_hero; "TICKET" -> R.layout.widget_exam_list_ticket
-                    "MINIMAL" -> R.layout.widget_exam_list_minimal; "TIMELINE" -> R.layout.widget_exam_list_timeline
-                    "DASHBOARD", "BENTO", "LAYERS" -> R.layout.widget_exam_list_dashboard; else -> R.layout.widget_exam_list_row
+            if (listing) {
+                val rowBudget = (innerHeight / page.entries.size).coerceAtLeast(24)
+                val metrics = ExamListTypography.forWidget(config,height,width,fontScale,page.all).fit(rowBudget,fontScale)
+                page.entries.forEach { event ->
+                    val rowLayout = if(metrics.compact) R.layout.widget_exam_list_compact else when(config.design) {
+                        "HERO" -> R.layout.widget_exam_list_hero; "TICKET" -> R.layout.widget_exam_list_ticket
+                        "MINIMAL" -> R.layout.widget_exam_list_minimal; "TIMELINE" -> R.layout.widget_exam_list_timeline
+                        "DASHBOARD", "BENTO", "LAYERS" -> R.layout.widget_exam_list_dashboard; else -> R.layout.widget_exam_list_row
+                    }
+                    val row = RemoteViews(context.packageName, rowLayout)
+                    val rowConfig = config.withEvent(event)
+                    val color = accent(rowConfig,c[2],now,c[0])
+                    val count = ExamWidgetPresentation.counter(rowConfig,now)
+                    fun rowVisible(id: Int, show: Boolean) = row.setViewVisibility(id,if(show) View.VISIBLE else View.GONE)
+                    fun rowText(id: Int, value: String, size: Int, ink: Int, bold: Boolean = false) {
+                        row.setTextViewText(id,text(value,config.font,bold));row.setTextViewTextSize(id,android.util.TypedValue.COMPLEX_UNIT_SP,size.toFloat());row.setTextColor(id,ink)
+                    }
+                    row.setViewLayoutHeight(R.id.exam_row,rowBudget.toFloat(),android.util.TypedValue.COMPLEX_UNIT_DIP)
+                    row.setViewPadding(R.id.exam_row,0,(metrics.padding*density).toInt(),0,(metrics.padding*density).toInt())
+                    rowText(R.id.exam_badge,event.badge,metrics.unit,color,true);rowVisible(R.id.exam_badge,metrics.badge && event.badge.isNotBlank())
+                    rowText(R.id.exam_name,event.name,metrics.name,c[1],true);rowVisible(R.id.exam_name,metrics.title)
+                    row.setInt(R.id.exam_name,"setMaxLines",metrics.titleLines)
+                    rowText(R.id.exam_number,if(metrics.caption) count.first else rowConfig.headline(now),metrics.count,if(config.design == "MINIMAL" && !config.urgency) c[1] else color,true)
+                    row.setTextViewText(R.id.exam_number,counterText(if(metrics.caption) count.first else rowConfig.headline(now),rowConfig,now))
+                    rowText(R.id.exam_unit,count.second,metrics.unit,secondary);rowVisible(R.id.exam_unit,metrics.caption && count.second.isNotBlank())
+                    val countWidth = if(metrics.compact) contentWidth else contentWidth*.45f
+                    row.setInt(R.id.exam_number,"setMaxWidth",(countWidth*density).toInt());row.setInt(R.id.exam_unit,"setMaxWidth",(countWidth*density).toInt())
+                    rowText(R.id.exam_date,ExamWidgetPresentation.date(rowConfig,android.text.format.DateFormat.is24HourFormat(context)),metrics.detail,secondary)
+                    row.setInt(R.id.exam_date,"setMaxLines",metrics.dateLines);rowVisible(R.id.exam_date,metrics.date)
+                    rowText(R.id.exam_venue,event.venue,metrics.detail,secondary);rowVisible(R.id.exam_venue,metrics.venue && event.venue.isNotBlank())
+                    rowText(R.id.exam_subtitle,event.message,metrics.detail,secondary);rowVisible(R.id.exam_subtitle,metrics.message && event.message.isNotBlank())
+                    val rowProgress=ExamWidgetPresentation.progress(rowConfig,now)
+                    rowText(R.id.exam_percent,"$rowProgress% ${if(config.remainingProgress) "remaining" else "elapsed"}",metrics.unit,secondary)
+                    rowVisible(R.id.exam_percent,metrics.percent);rowVisible(R.id.exam_progress,metrics.progress)
+                    setProgress(row,rowProgress,color)
+                    row.setContentDescription(R.id.exam_row,"${event.name}, ${rowConfig.headline(now)}, ${ExamWidgetPresentation.date(rowConfig,true)}")
+                    views.addView(R.id.exam_list,row)
                 }
-                val row = RemoteViews(context.packageName, rowLayout)
-                val rowConfig = config.withEvent(event); val color = accent(rowConfig, c[2], now, c[0])
-                val rowTitle = listOfNotNull(event.badge.takeIf { config.showBadge && it.isNotBlank() }, event.name.takeIf { config.showTitle }).joinToString(" · ")
-                row.setTextViewText(R.id.exam_name, text(rowTitle, config.font, config.design != "MINIMAL"))
-                row.setViewVisibility(R.id.exam_name, if (rowTitle.isNotBlank()) View.VISIBLE else View.GONE)
-                row.setTextViewText(R.id.exam_subtitle, text(event.message, config.font))
-                row.setViewVisibility(R.id.exam_subtitle, if (config.showMessage && height >= 360 && event.message.isNotBlank()) View.VISIBLE else View.GONE)
-                row.setTextColor(R.id.exam_subtitle, c[1])
-                val rowHeadline = rowConfig.headline(now)
-                row.setTextViewText(R.id.exam_number, text(if (width < 240) rowHeadline.replace(Regex("(\\d+) days?"), "$1d") else rowHeadline, config.font, config.design != "MINIMAL"))
-                row.setContentDescription(R.id.exam_number, rowHeadline)
-                row.setTextViewTextSize(R.id.exam_name, android.util.TypedValue.COMPLEX_UNIT_SP, config.listTextSize.toFloat())
-                row.setTextViewTextSize(R.id.exam_number, android.util.TypedValue.COMPLEX_UNIT_SP, (config.listTextSize + 1).toFloat())
-                listOf(R.id.exam_date, R.id.exam_subtitle, R.id.exam_venue, R.id.exam_percent).forEach { row.setTextViewTextSize(it, android.util.TypedValue.COMPLEX_UNIT_SP, (config.listTextSize - 3).coerceAtLeast(10).toFloat()) }
-                val rowProgress = ExamWidgetPresentation.progress(rowConfig, now)
-                row.setTextViewText(R.id.exam_percent, text("$rowProgress% ${if (config.remainingProgress) "remaining" else "elapsed"}", config.font))
-                row.setTextColor(R.id.exam_percent, c[1])
-                row.setViewVisibility(R.id.exam_percent, if (config.showProgress && config.showPercent && height >= 280) View.VISIBLE else View.GONE)
-                row.setTextViewText(R.id.exam_date, text(ExamWidgetPresentation.date(rowConfig, android.text.format.DateFormat.is24HourFormat(context)), config.font))
-                row.setTextViewText(R.id.exam_venue, text(event.venue, config.font))
-                row.setTextColor(R.id.exam_name, c[1]); row.setTextColor(R.id.exam_date, secondary); row.setTextColor(R.id.exam_venue, secondary); row.setTextColor(R.id.exam_number, if (config.design == "MINIMAL" && !config.urgency) c[1] else color)
-                row.setViewVisibility(R.id.exam_date, if (config.showDate || config.showTime || config.showZone) View.VISIBLE else View.GONE)
-                row.setViewVisibility(R.id.exam_venue, if (config.showVenue && height >= 320 && event.venue.isNotBlank()) View.VISIBLE else View.GONE)
-                row.setViewVisibility(R.id.exam_progress, if (config.showProgress && height >= 280) View.VISIBLE else View.GONE)
-                setProgress(row, ExamWidgetPresentation.progress(rowConfig, now), color)
-                row.setContentDescription(R.id.exam_row, "${event.name}, ${rowConfig.headline(now)}, ${ExamWidgetPresentation.date(rowConfig, true)}")
-                views.addView(R.id.exam_list, row)
             }
             visible(R.id.exam_navigation, canPage)
             views.setTextViewText(R.id.exam_page, page.label)
+            views.setInt(R.id.exam_page,"setMaxLines",1)
+            views.setTextViewTextSize(R.id.exam_page,android.util.TypedValue.COMPLEX_UNIT_SP,minOf(11f,16f/fontScale))
+            listOf(R.id.exam_previous,R.id.exam_next).forEach { views.setTextViewTextSize(it,android.util.TypedValue.COMPLEX_UNIT_DIP,24f) }
             listOf(R.id.exam_previous, R.id.exam_next, R.id.exam_page).forEach { views.setTextColor(it, c[1]) }
             fun navigation(action: String) = PendingIntent.getBroadcast(context, id, Intent(context, ExamCountdownProvider::class.java)
                 .setAction(action).setData(android.net.Uri.parse("ayva://exam-widget/$id/$action"))
@@ -326,9 +348,13 @@ class ExamCountdownProvider : AppWidgetProvider() {
         fun configurationChanged(context: Context, id: Int) { update(context, id); schedule(context) }
         fun update(context: Context, id: Int) {
             val manager = AppWidgetManager.getInstance(context); val options = manager.getAppWidgetOptions(id)
-            manager.updateAppWidget(id, render(context, id, ExamCountdownStore(context).get(id),
-                options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 240).coerceIn(140, 600),
-                options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 180).coerceIn(110, 600), ExamCountdownStore(context).activeExam(id)))
+            val store=ExamCountdownStore(context)
+            val value=store.get(id);val active=store.activeExam(id);val now=Instant.now()
+            val sizes=ExamWidgetSizes.provided(options)
+            val rendered=if(sizes.isNotEmpty()) RemoteViews(sizes.associateWith { size ->
+                render(context,id,value,size.width.toInt().coerceIn(140,2000),size.height.toInt().coerceIn(110,2000),active,now)
+            }) else ExamWidgetSizes.current(context,options).let { size -> render(context,id,value,size.width.toInt(),size.height.toInt(),active,now) }
+            manager.updateAppWidget(id,rendered)
         }
     }
 }

@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/exam_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingVertical="6dp">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-        <TextView android:id="@+id/exam_name" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" android:fontFamily="sans-serif-medium" />
-        <TextView android:id="@+id/exam_number" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="140dp" android:paddingStart="8dp" android:textSize="15sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" android:background="@drawable/exam_list_card" android:paddingHorizontal="6dp" />
-    </LinearLayout>
-    <TextView android:id="@+id/exam_date" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" />
-    <TextView android:id="@+id/exam_venue" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" />
-    <TextView android:id="@+id/exam_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" />
-    <ProgressBar android:id="@+id/exam_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="3dp" android:layout_marginTop="4dp" android:max="100" />
-    <TextView android:id="@+id/exam_percent" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="10sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" />
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/exam_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center_vertical" android:paddingVertical="8dp">
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+<LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginEnd="12dp" android:orientation="vertical">
+<TextView android:id="@+id/exam_badge" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" />
+<TextView android:id="@+id/exam_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="16sp" android:maxLines="2" android:ellipsize="end" android:includeFontPadding="false" />
+<TextView android:id="@+id/exam_date" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:textSize="12sp" android:maxLines="2" android:ellipsize="end" android:includeFontPadding="false" />
+<TextView android:id="@+id/exam_venue" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" />
+<TextView android:id="@+id/exam_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" />
+</LinearLayout>
+<LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="end">
+<TextView android:id="@+id/exam_number" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="128dp" android:textSize="22sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" />
+<TextView android:id="@+id/exam_unit" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="128dp" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" android:importantForAccessibility="no" />
+</LinearLayout>
+</LinearLayout>
+<ProgressBar android:id="@+id/exam_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="3dp" android:layout_marginTop="6dp" android:max="100" />
+<TextView android:id="@+id/exam_percent" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" />
 </LinearLayout>

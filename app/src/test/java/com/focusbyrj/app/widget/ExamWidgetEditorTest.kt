@@ -52,7 +52,8 @@ class ExamWidgetEditorTest {
         compose.onNodeWithText("All colors").performScrollTo().performClick();compose.onNodeWithText("Ocean").performClick()
         compose.onNodeWithText("Background detail").performScrollTo().performClick()
         compose.onNode(hasText("Orbit") and hasAnyAncestor(hasTestTag("widget_editor_choices"))).performClick()
-        compose.onNodeWithText("Typeface").performScrollTo().performClick();compose.onNodeWithText("Serif").performClick()
+        compose.onNodeWithText("Text",substring=false).performClick()
+        compose.onNodeWithText("Serif",substring=false).performScrollTo().performClick()
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("Apply").performClick()
         assertEquals(2,saved!!.exams().size);assertEquals("Banking prelims",saved!!.extraExams.single().name)
@@ -105,7 +106,7 @@ class ExamWidgetEditorTest {
         compose.onNodeWithTag("exam_preview").assertExists();capture("editor-preview")
         compose.onNodeWithText("Design").performClick();capture("editor-design")
         compose.onNodeWithText("Fine-tune appearance").performScrollTo().assertIsDisplayed();capture("editor-colors")
-        compose.onNodeWithText("Details").performClick();capture("editor-details")
+        compose.onNodeWithText("Text",substring=false).performClick();capture("editor-text")
 
     }
     @Test fun simplifiedControlsStayOutOfTheWayAndDesignChangesPreserveExams() {
@@ -159,6 +160,38 @@ class ExamWidgetEditorTest {
         compose.onNodeWithText("All layouts",substring=false).assertDoesNotExist()
         compose.onNodeWithText("Apply").performClick()
         assertEquals(legacy,saved)
+    }
+    @Test fun textPresetsAndEssentialDetailsRestoreWithoutChangingExams() {
+        val original=initial().withDesign("AURORA").copy(showTime=true,showZone=true,showMessage=true,showVenue=true)
+        var saved:ExamCountdown?=null
+        val restoration=StateRestorationTester(compose)
+        restoration.setContent { view=LocalView.current;FocusByRjTheme { ExamCountdownConfigScreen(original,emptyList(),{saved=it},{},widgetSize=340 to 260) } }
+        compose.onNodeWithText("Text",substring=false).performClick()
+        compose.onNodeWithText("Large",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Mono",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Right",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Visible details",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Time zone",substring=false).assertDoesNotExist()
+        compose.onNodeWithText("Essentials",substring=false).performClick()
+        compose.onNodeWithText("Done",substring=false).performClick()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("Design",substring=false).performClick()
+        compose.onNodeWithText("Aurora",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Text",substring=false).performClick()
+        compose.onNodeWithText("Apply",substring=false).performClick()
+        assertEquals(original.withTextScale("LARGE").copy(font="MONO",align="END").withEssentialDetails(),saved)
+        assertEquals(original.exams(),saved!!.exams())
+        capture("editor-focused-text")
+    }
+    @Test fun textControlsFollowTheFullLayoutWhenOnlyOneUnfinishedExamRemains() {
+        val old=ExamEvent("old","Finished exam","","2020-12-01","09:00","UTC","2020-01-01")
+        val config=initial().copy(displayMode="LIST",hidePastExams=true,extraExams=listOf(old))
+        compose.setContent { FocusByRjTheme { ExamCountdownConfigScreen(config,emptyList(),{}, {}) } }
+        compose.onNodeWithText("Text",substring=false).performClick()
+        compose.onNodeWithText("Alignment",substring=false).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Fine-tune text",substring=false).performScrollTo().performClick()
+        compose.onNodeWithText("Countdown size",substring=false).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("List text size",substring=false).assertDoesNotExist()
     }
     private fun capture(name:String) {
         compose.mainClock.advanceTimeBy(500);compose.waitForIdle()

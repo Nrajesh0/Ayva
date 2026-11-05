@@ -165,8 +165,10 @@ class WidgetEditorTest {
         compose.onNodeWithText("Design").performClick()
         compose.onNodeWithText("Fine-tune appearance").performScrollTo().performClick()
         compose.onNodeWithText("Background · #RRGGBB").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Details").performClick()
+        compose.onNodeWithText("Text",substring=false).performClick()
+        compose.onNodeWithText("Visible details",substring=false).performScrollTo().performClick()
         compose.onNodeWithText("Exam date").performScrollTo().performClick()
+        compose.onNodeWithText("Done",substring=false).performClick()
         compose.onNodeWithText("Apply").performClick()
         assertEquals(initial.copy(name = "IBPS exam", showDate = true), saved)
     }

@@ -86,9 +86,17 @@ data class ExamCountdown(
         time = event.time, zone = event.zone, startDate = event.startDate, venue = event.venue, badge = event.badge)
     fun updateExam(event: ExamEvent): ExamCountdown = if (event.id == "primary") withEvent(event)
         else copy(extraExams = extraExams.map { if (it.id == event.id) event else it })
+    fun withTextScale(scale: String): ExamCountdown = when(scale) {
+        "COMPACT" -> copy(textSize=48,titleSize=14,listTextSize=14,padding=16)
+        "BALANCED" -> copy(textSize=64,titleSize=16,listTextSize=16,padding=20)
+        "LARGE" -> copy(textSize=80,titleSize=18,listTextSize=18,padding=22)
+        else -> this
+    }
+    fun withEssentialDetails(time: Boolean = false): ExamCountdown = copy(showTitle=true,showDate=true,showTime=time,
+        showZone=false,showVenue=false,showBadge=false,showMessage=false,dateStyle="SHORT")
     /** Visual presets keep the schedule intact; bold presets include a starting palette. */
     fun withDesign(value: String): ExamCountdown = copy(design = value, font = "SANS", textSize = 52,
-        titleSize = 14, padding = 20, radius = 24, align = if (value == "HERO") "CENTER" else "START",
+        titleSize = 16, listTextSize = 16, padding = 20, radius = 24, align = if (value == "HERO") "CENTER" else "START",
         decoration = "NONE", border = false, showProgress = showProgress || value in setOf("TIMELINE", "ORBITAL")).let {
             when (value) {
                 "POSTER" -> it.copy(palette = "CITRUS", textSize = 88, radius = 20)

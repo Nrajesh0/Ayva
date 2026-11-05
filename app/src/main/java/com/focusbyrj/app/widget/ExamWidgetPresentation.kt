@@ -16,20 +16,15 @@ internal object ExamWidgetPresentation {
         }
         val label get() = if (entries.size == 1) "${start + 1} of ${all.size}" else "${start + 1}–${start + entries.size} of ${all.size}"
     }
-    fun page(config: ExamCountdown, activeId: String, height: Int, now: Instant = Instant.now(), fontScale: Float = 1f): Page {
+    fun page(config: ExamCountdown, activeId: String, height: Int, now: Instant = Instant.now(), fontScale: Float = 1f, width: Int = 340): Page {
+        val scale=fontScale.coerceAtLeast(1f)
         if (config.displayMode == "SINGLE") return Page(listOf(config.event()), listOf(config.event()), 0, 1)
         val all = config.visibleExams(now)
         if (config.displayMode == "NEXT") return Page(listOf(all.first()), all, 0, 1)
         val capacity = if (config.displayMode == "LIST") {
-            val detailHeight = (config.listTextSize - 3).coerceAtLeast(10) * 1.4f * fontScale
-            val row = (12 + (config.listTextSize + 1) * 1.4f * fontScale +
-                (if (config.showDate || config.showTime || config.showZone) detailHeight else 0f) +
-                (if (config.showVenue && height >= 320 && all.any { it.venue.isNotBlank() }) detailHeight else 0f) +
-                (if (config.showMessage && height >= 360 && all.any { it.message.isNotBlank() }) detailHeight else 0f) +
-                (if (config.showProgress && height >= 280) 10 else 0) +
-                (if (config.showProgress && config.showPercent && height >= 280) detailHeight else 0f)).toInt().coerceAtLeast(40)
+            val row = ExamListTypography.forWidget(config,height,width,scale,all).height(scale)
             val padding = minOf(config.padding, if (height < 150) 10 else 14)
-            val toolbar = if (height < 150) 0 else if (config.showEdit) 36 else if (config.showBadge) (18 * fontScale).toInt() else 0
+            val toolbar = if (height < 150) 0 else if (config.showEdit) 36 else if (config.widgetName.isNotBlank()) (18 * scale).toInt() else 0
             val available = height - padding * 2 - toolbar
             val withoutNavigation = (available / row).coerceAtLeast(1).coerceAtMost(config.maxRows)
             (if (all.size > withoutNavigation) (available - 36) / row else withoutNavigation)
@@ -46,7 +41,6 @@ internal object ExamWidgetPresentation {
         })
         if (config.showTime) add(LocalTime.parse(config.time).format(DateTimeFormatter.ofPattern(
             if (config.clockStyle == "24" || config.clockStyle == "SYSTEM" && is24Hour) "HH:mm" else "h:mm a", Locale.getDefault())))
-        if (config.showZone) add(config.zone)
     }.joinToString(" · ")
     fun progress(config: ExamCountdown, now: Instant = Instant.now()) = config.progress(now).let { if (config.remainingProgress) 100 - it else it }
     /** Separate the value from its unit so the widget has one clear focal point. */

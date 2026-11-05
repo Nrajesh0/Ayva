@@ -67,7 +67,7 @@ class ExamWidgetTest {
         assertThrows(IllegalArgumentException::class.java) { base().copy(design="UNKNOWN").json() }
     }
     @Test fun selectionSortingFilteringAndAllFinishedFallbackStayUseful() {
-        val value=multiple().copy(displayMode="LIST",sortOrder="DATE")
+        val value=multiple().copy(displayMode="LIST",sortOrder="DATE",maxRows=1)
         assertEquals("second",value.visibleExams(now).first().id)
         assertEquals("second",ExamWidgetPresentation.page(value.copy(displayMode="NEXT"),"third",240,now).entries.single().id)
         val after=Instant.parse("2026-12-25T09:00:00Z")
@@ -92,7 +92,7 @@ class ExamWidgetTest {
         assertEquals("primary",ExamWidgetPresentation.page(value,"second",420,now).entries.first().id)
     }
     @Test fun newSortedListStartsAtTheSoonestExamWithoutLosingExplicitNavigation() {
-        val value=multiple().copy(displayMode="LIST",sortOrder="DATE")
+        val value=multiple().copy(displayMode="LIST",sortOrder="DATE",maxRows=1)
         val store=ExamCountdownStore(app);store.save(101,value)
         assertEquals("second",ExamWidgetPresentation.page(value,store.activeExam(101),140,now).entries.single().id)
         store.setActiveExam(101,"primary")
@@ -171,10 +171,10 @@ class ExamWidgetTest {
         assertTrue(restored.showTime);assertTrue(restored.showZone);assertFalse(restored.showEdit)
     }
     @Test fun newWideListsShowTwoExamsAndPageAllThreeWithoutLosingAny() {
-        val two=multiple().copy(displayMode="LIST",extraExams=multiple().extraExams.take(1))
+        val two=multiple().copy(displayMode="LIST",widgetName="",extraExams=multiple().extraExams.take(1))
         val page=ExamWidgetPresentation.page(two,"",180,now)
         assertEquals(2,page.entries.size);assertFalse(page.canPage)
-        val three=multiple().copy(displayMode="LIST")
+        val three=multiple().copy(displayMode="LIST",widgetName="")
         val first=ExamWidgetPresentation.page(three,"",180,now)
         assertEquals(2,first.entries.size);assertTrue(first.canPage)
         val second=ExamWidgetPresentation.page(three,first.adjacentId(true),180,now)
@@ -279,6 +279,69 @@ class ExamWidgetTest {
             assertFalse(design in ExamCountdown.ACTIVE_DESIGNS)
             assertEquals(old,ExamCountdown.read(old.json()))
         }
+    }
+    @Test fun oneExamListUsesTheFullDesignAndNeverPrintsTimezoneText() {
+        val event=ExamCountdown(name="My exam",date="2026-11-21",time="23:00",zone="Asia/Kolkata",startDate="2026-11-01",
+            design="LAYERS",displayMode="LIST",format="HOURS",showTime=true,showZone=true,dateStyle="ISO").withDesign("LAYERS")
+        for(design in ExamCountdown.ACTIVE_DESIGNS) {
+            val view=apply(event.copy(design=design),height=260)
+            assertEquals(View.GONE,view.findViewById<View>(R.id.exam_list).visibility)
+            assertEquals(View.VISIBLE,view.findViewById<View>(R.id.exam_primary).visibility)
+            assertEquals(View.GONE,view.findViewById<View>(R.id.exam_toolbar).visibility)
+            assertTrue(view.findViewById<TextView>(R.id.exam_number).textSize>=28*app.resources.displayMetrics.scaledDensity)
+            assertFalse(view.findViewById<TextView>(R.id.exam_date).text.toString().contains("Kolkata"))
+            assertFalse(ExamWidgetPresentation.date(event,true).contains("Asia"))
+        }
+        capture(apply(event,height=260),"single-list-fixed")
+        capture(apply(event.withEssentialDetails(),height=260),"single-list-essentials")
+        assertEquals("Asia/Kolkata",ExamCountdown.read(event.json()).zone)
+    }
+    @Test fun actualWidgetSizesUsePairsAndKeepNavigationOnTheVisiblePage() {
+        val options=android.os.Bundle().apply {
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH,240);putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH,400)
+            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,110);putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT,300)
+            putParcelableArrayList(AppWidgetManager.OPTION_APPWIDGET_SIZES,arrayListOf(android.util.SizeF(240f,300f),android.util.SizeF(400f,110f)))
+        }
+        val portrait=app.createConfigurationContext(android.content.res.Configuration(app.resources.configuration).apply{orientation=android.content.res.Configuration.ORIENTATION_PORTRAIT})
+        val landscape=app.createConfigurationContext(android.content.res.Configuration(app.resources.configuration).apply{orientation=android.content.res.Configuration.ORIENTATION_LANDSCAPE})
+        assertEquals(android.util.SizeF(240f,300f),ExamWidgetSizes.current(portrait,options))
+        assertEquals(android.util.SizeF(400f,110f),ExamWidgetSizes.current(landscape,options))
+        val manager=AppWidgetManager.getInstance(portrait);val provider=ComponentName(app,ExamCountdownProvider::class.java)
+        shadowOf(manager).addInstalledProvider(AppWidgetProviderInfo().apply{this.provider=provider});shadowOf(manager).bindAppWidgetId(101,provider)
+        manager.updateAppWidgetOptions(101,options)
+        val value=multiple().copy(displayMode="LIST",maxRows=2,showBadge=false)
+        ExamCountdownStore(app).save(101,value)
+        ExamCountdownProvider().onReceive(portrait,Intent(app,ExamCountdownProvider::class.java).setAction(ExamCountdownProvider.NEXT).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,101))
+        assertEquals("third",ExamCountdownStore(app).activeExam(101))
+    }
+    @Test fun compactListsAndLargeFontsKeepEveryVisibleTextInsideTheWidget() {
+        for(scale in listOf(1f,1.6f,2f)) {
+            val context=app.createConfigurationContext(android.content.res.Configuration(app.resources.configuration).apply{fontScale=scale})
+            val view=ExamCountdownProvider.render(context,101,multiple().copy(displayMode="LIST",showZone=true),140,110,now=now).apply(context,FrameLayout(context))
+            view.measure(View.MeasureSpec.makeMeasureSpec(280,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(220,View.MeasureSpec.EXACTLY));view.layout(0,0,280,220)
+            capture(view,"compact-list-${scale}")
+        }
+    }
+    @Test fun previewImagesAreProductionRendersForTheSameDataAndSize() {
+        val value=multiple().withDesign("FROST").copy(displayMode="LIST",showZone=true)
+        val bitmap=examPreviewBitmap(app,value,340,300,"",false,now)
+        val view=apply(value,width=340,height=300)
+        val expected=Bitmap.createBitmap(bitmap.width,bitmap.height,Bitmap.Config.ARGB_8888)
+        val canvas=Canvas(expected);canvas.scale(bitmap.width/view.width.toFloat(),bitmap.width/view.width.toFloat());view.draw(canvas)
+        assertTrue("Thumbnail must match the live RemoteViews render",bitmap.sameAs(expected))
+        bitmap.recycle();expected.recycle()
+    }
+    @Test fun paginationUsesTheSameScaleAsTheRendererWithSmallSystemFonts() {
+        val config=multiple().copy(displayMode="LIST")
+        assertEquals(ExamWidgetPresentation.page(config,"",180,now,1f),ExamWidgetPresentation.page(config,"",180,now,.85f))
+    }
+    @Test fun largeWidgetSurfacesKeepTheirAspectRatioWithoutAllocatingHugeBitmaps() {
+        val config=base().withDesign("BENTO");val colors=ExamCountdownProvider.colors(app,config)
+        val wide=ExamCountdownProvider.background(config,colors,900,300)
+        assertEquals(wide.width*300,wide.height*900)
+        assertTrue(wide.width<=1200 && wide.height<=1200);wide.recycle()
+        val large=ExamCountdownProvider.background(config,colors,2000,2000)
+        assertTrue(large.width*large.height<=1200*1200);large.recycle()
     }
     private fun apply(value: ExamCountdown,width:Int=340,height:Int=300):View {
         val host=FrameLayout(app)
