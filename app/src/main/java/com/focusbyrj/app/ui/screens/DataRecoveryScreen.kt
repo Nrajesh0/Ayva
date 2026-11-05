@@ -10,12 +10,20 @@ import com.focusbyrj.app.ui.components.*
 
 @Composable
 fun DataRecoveryScreen(nav: NavController, onRestored: () -> Unit = {}) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val revision by com.focusbyrj.app.util.backup.AutomaticBackupStore.revision.collectAsState()
+    val automaticStatus = remember(revision) { runCatching {
+        val c = com.focusbyrj.app.util.backup.AutomaticBackupStore(context).config()
+        when { c.problem.isNotBlank() -> "Needs attention"; c.keyId.isBlank() -> "Set up"; !c.enabled -> "Paused"; c.lastSuccess == 0L -> "No backup yet"
+            c.nextDue > 0 && System.currentTimeMillis() > c.nextDue + 3_600_000L -> "Overdue"; else -> "Scheduled" }
+    }.getOrDefault("Needs attention") }
     var snapshots by remember { mutableStateOf(false) }
     val target = SettingsSearchCatalog.id(LocalSettingsSearchTarget.current)
     LaunchedEffect(target) { if (target == "data.snapshots") snapshots = true }
     SettingsMenuPage("Data & recovery", nav) {
         BackupFlow(onRestored) { actions ->
             SettingsMenuSectionHeader("ENCRYPTED BACKUPS")
+            SettingsMenuLink(Icons.Default.Update, "Automatic backups", "data.automatic", nav, automaticStatus)
             SettingsMenuRow(Icons.Default.CloudUpload, "Create encrypted backup", Modifier.settingsSearchTarget("data.export")) {
                 GrantButton("Create", enabled = !actions.busy, onClick = actions.export)
             }

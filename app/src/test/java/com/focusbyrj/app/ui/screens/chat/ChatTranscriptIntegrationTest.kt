@@ -118,4 +118,23 @@ class ChatTranscriptIntegrationTest {
             assertTrue(rows.map { it.id }.containsAll(listOf("stored-user", "stored-reply", "during-load")))
         }
     }
+
+    @Test @Config(sdk = [36]) fun typingUnsentTextInTalkAndChatModesKeepsTheDraftWithoutChangingHistory() {
+        com.focusbyrj.app.util.assistant.ChatModeStore.set(context, com.focusbyrj.app.util.assistant.ChatMode.TALK)
+        compose.setContent { if (render) CompositionLocalProvider(LocalContext provides context) { MaterialTheme { ChatInterface() } } }
+        compose.waitUntil(10_000) { BubbleChatManager.loaded.value }
+        val draft = com.focusbyrj.app.ui.components.EditorDraftStore(context, "chat-composer")
+        val talkText = "Typing an unsent message 🙂 about tomorrow"
+        compose.onNode(hasSetTextAction()).performTextReplacement(talkText)
+        compose.mainClock.advanceTimeBy(350); compose.waitForIdle()
+        assertEquals(talkText, draft.read().getString("text"))
+        assertFalse(BubbleChatManager.messagesFlow.value.any { it.isUser && it.text == talkText })
+        compose.onNodeWithContentDescription("Exit Talk mode").performClick()
+        val ordinaryText = "Ordinary chat typing\nwith another line"
+        compose.onNode(hasSetTextAction()).performTextReplacement(ordinaryText)
+        compose.mainClock.advanceTimeBy(350); compose.waitForIdle()
+        assertEquals(ordinaryText, draft.read().getString("text"))
+        assertEquals(com.focusbyrj.app.util.assistant.ChatMode.CHAT, com.focusbyrj.app.util.assistant.ChatModeStore.get(context))
+        assertFalse(BubbleChatManager.messagesFlow.value.any { it.isUser && it.text == ordinaryText })
+    }
 }

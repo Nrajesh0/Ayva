@@ -28,6 +28,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import com.focusbyrj.app.util.backup.BackupRecoveryDocuments
+import com.focusbyrj.app.util.backup.BackupRecoveryKey
+import kotlinx.coroutines.*
 
 @Composable
 fun ExportBackupPasswordDialog(
@@ -177,6 +183,24 @@ fun RestoreBackupPasswordDialog(
     var cleanRestore by remember { mutableStateOf(false) }
     var confirmReplacement by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var recoveryKeyMode by remember { mutableStateOf(false) }
+    var importingKey by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val keyImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            importingKey = true
+            scope.launch {
+                try {
+                    password = withContext(Dispatchers.IO) { BackupRecoveryDocuments.read(context, uri).use { it.credential() } }
+                    recoveryKeyMode = true; errorMessage = null
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { errorMessage = e.message ?: "Could not read recovery key." }
+                finally { importingKey = false }
+            }
+        }
+    }
+    fun credential() = if (recoveryKeyMode) BackupRecoveryKey.parse(password).use { it.credential() } else password
 
     if (!confirmReplacement) AlertDialog(
         modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
@@ -200,7 +224,7 @@ fun RestoreBackupPasswordDialog(
         text = {
             Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Text(
-                    "Enter the password that was set when this backup archive was created.",
+                    "Use the password for a manual backup, or the exported backup recovery key for an automatic backup.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -212,7 +236,7 @@ fun RestoreBackupPasswordDialog(
                         password = it
                         errorMessage = null
                     },
-                    label = { Text("Backup Password") },
+                    label = { Text(if (recoveryKeyMode) "Backup recovery key" else "Backup Password") },
                     singleLine = true,
                     enabled = !isRestoring,
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -229,6 +253,14 @@ fun RestoreBackupPasswordDialog(
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(recoveryKeyMode, enabled = !isRestoring && !importingKey, onCheckedChange = { recoveryKeyMode = it; errorMessage = null })
+                    Text("Use recovery key", style = MaterialTheme.typography.bodySmall)
+                    TextButton(enabled = !isRestoring && !importingKey, onClick = {
+                        runCatching { keyImport.launch(arrayOf("*/*")) }.onFailure { errorMessage = "No file picker is available." }
+                    }) { Text(if (importingKey) "Reading…" else "Import PDF/key") }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth().testTag("restore_replace_mode")
@@ -275,13 +307,14 @@ fun RestoreBackupPasswordDialog(
                 onClick = {
                     if (password.isEmpty()) {
                         errorMessage = "Please enter the password."
-                    } else if (cleanRestore) {
-                        confirmReplacement = true
                     } else {
-                        onConfirm(password, false)
+                        try {
+                            val secret = credential()
+                            if (cleanRestore) confirmReplacement = true else onConfirm(secret, false)
+                        } catch (e: Exception) { errorMessage = e.message ?: "Check the recovery key." }
                     }
                 },
-                enabled = !isRestoring,
+                enabled = !isRestoring && !importingKey,
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text("Decrypt & Restore")
@@ -301,7 +334,7 @@ fun RestoreBackupPasswordDialog(
         text = { Text("This restores the backup's records and settings and can remove current records that are not in it, including changes made after the backup. Check that you chose the correct backup before continuing. A vault recovery phrase cannot replace this backup's password.") },
         confirmButton = { TextButton(enabled = !isRestoring, onClick = {
             confirmReplacement = false
-            onConfirm(password, true)
+            try { onConfirm(credential(), true) } catch (e: Exception) { errorMessage = e.message ?: "Check the recovery key." }
         }) { Text("Replace data & restore") } },
         dismissButton = { TextButton(onClick = { confirmReplacement = false }) { Text("Go back") } }
     )

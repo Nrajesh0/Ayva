@@ -29,10 +29,18 @@ import java.io.File
     var result by remember { mutableStateOf<String?>(null) }
     var source by remember { mutableStateOf<Uri?>(null) }
     var password by remember { mutableStateOf("") }
+    var recoveryKeyMode by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var showDrafts by remember { mutableStateOf(false) }
     var cleanup by remember { mutableStateOf(false) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { source = it; password = "" }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { source = it; password = ""; recoveryKeyMode = false }
+    val keyPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) { busy = true; scope.launch {
+            try { password = withContext(Dispatchers.IO) { BackupRecoveryDocuments.read(context, uri).use { it.credential() } }; recoveryKeyMode = true }
+            catch(e: Exception) { if (e is kotlinx.coroutines.CancellationException) throw e; result = e.message ?: "Could not read recovery key." }
+            finally { busy = false }
+        } }
+    }
     fun inventory() { scope.launch {
         storage = withContext(Dispatchers.IO) { StorageInventory.read(context) }
     } }
@@ -74,7 +82,7 @@ import java.io.File
             }
             "backup" -> {
                 FeatureGroup("Check an archive") {
-                    FeatureRow("Choose encrypted backup", "You’ll need the password used when it was created", Icons.Default.FolderOpen, enabled = !busy, onClick = { chooseBackup() })
+                    FeatureRow("Choose encrypted backup", "Use its password or exported backup recovery key", Icons.Default.FolderOpen, enabled = !busy, onClick = { chooseBackup() })
                 }
                 Text("Verification checks the authenticated contents, structure and attachment hashes. It does not restore data or replace anything in the app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -96,10 +104,17 @@ import java.io.File
     }
     if (showDrafts) DraftRecoveryDialog { showDrafts = false }
     source?.let { uri -> AlertDialog(onDismissRequest = { if (!busy) { source = null; password = "" } }, title = { Text("Verify backup") }, text = {
-        Column { OutlinedTextField(password, { password = it }, enabled = !busy, label = { Text("Backup password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+        Column { OutlinedTextField(password, { password = it }, enabled = !busy, label = { Text(if (recoveryKeyMode) "Backup recovery key" else "Backup password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Checkbox(recoveryKeyMode, { recoveryKeyMode = it }, enabled = !busy)
+                Text("Recovery key", style = MaterialTheme.typography.bodySmall)
+                TextButton(enabled = !busy, onClick = { runCatching { keyPicker.launch(arrayOf("*/*")) }.onFailure { result = "No file picker is available." } }) { Text("Import") }
+            }
             Text("The file is read only. No data is restored.", style = MaterialTheme.typography.bodySmall) }
     }, confirmButton = { TextButton(enabled = !busy && password.isNotBlank(), onClick = {
-        val secret = password; password = ""; busy = true
+        val parsed = runCatching { if (recoveryKeyMode) BackupRecoveryKey.parse(password).use { it.credential() } else password }
+        if (parsed.isFailure) { result = parsed.exceptionOrNull()?.message; return@TextButton }
+        val secret = parsed.getOrThrow(); password = ""; busy = true
         scope.launch {
             try { val report = BackupRestoreManager.verifyEncryptedBackup(context, uri, secret)
                 result = report.fold({ it }, { "Verification failed: ${it.message}. No saved data changed." })

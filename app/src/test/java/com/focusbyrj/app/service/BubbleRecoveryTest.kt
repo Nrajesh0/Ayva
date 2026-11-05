@@ -24,7 +24,7 @@ import org.robolectric.util.ReflectionHelpers
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [31, 34], application = Application::class, qualifiers = "w393dp-h852dp-xhdpi")
+@Config(sdk = [31, 34, 36], application = Application::class, qualifiers = "w393dp-h852dp-xhdpi")
 class BubbleRecoveryTest {
     private val context get() = RuntimeEnvironment.getApplication()
     private val controllers = mutableListOf<ServiceController<BubbleService>>()

@@ -861,7 +861,7 @@ fun HabitActivityRings(
     habits: List<com.focusbyrj.app.data.HabitWithProgress>,
     modifier: Modifier = Modifier
 ) {
-    val topHabits = remember(habits) { habits.take(3) }
+    val topHabits = remember(habits) { habits.take(5) }
     val ringCount = topHabits.size
 
     val progress0 by androidx.compose.animation.core.animateFloatAsState(
@@ -879,6 +879,16 @@ fun HabitActivityRings(
         animationSpec = androidx.compose.animation.core.tween(800),
         label = "ring2"
     )
+    val progress3 by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (topHabits.size > 3) (topHabits[3].completedToday.toFloat() / topHabits[3].targetToday.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f) else 0f,
+        animationSpec = androidx.compose.animation.core.tween(800),
+        label = "ring3"
+    )
+    val progress4 by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (topHabits.size > 4) (topHabits[4].completedToday.toFloat() / topHabits[4].targetToday.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f) else 0f,
+        animationSpec = androidx.compose.animation.core.tween(800),
+        label = "ring4"
+    )
 
     val centerEmoji = remember(habits) {
         habits.firstOrNull { !it.isCompletedToday }?.habit?.iconEmoji
@@ -891,8 +901,18 @@ fun HabitActivityRings(
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val strokeWidth = if (ringCount <= 1) 4.5.dp.toPx() else if (ringCount == 2) 3.5.dp.toPx() else 2.8.dp.toPx()
-            val spacing = if (ringCount == 2) 4.5.dp.toPx() else 3.8.dp.toPx()
+            val strokeWidth = when (ringCount) {
+                0, 1 -> 4.5.dp.toPx()
+                2 -> 3.5.dp.toPx()
+                3 -> 2.8.dp.toPx()
+                4 -> 2.5.dp.toPx()
+                else -> 2.2.dp.toPx()
+            }
+            val spacing = when (ringCount) {
+                2 -> 4.5.dp.toPx()
+                5 -> 3.4.dp.toPx()
+                else -> 3.8.dp.toPx()
+            }
             val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
 
             if (ringCount == 0) {
@@ -904,7 +924,7 @@ fun HabitActivityRings(
                     style = Stroke(width = strokeWidth)
                 )
             } else {
-                val progressList = listOf(progress0, progress1, progress2)
+                val progressList = listOf(progress0, progress1, progress2, progress3, progress4)
                 for (i in 0 until ringCount) {
                     val item = topHabits[i]
                     val ringColor = try {
@@ -913,7 +933,9 @@ fun HabitActivityRings(
                         when (i) {
                             0 -> Color(0xFF38BDF8)
                             1 -> Color(0xFFA855F7)
-                            else -> Color(0xFF10B981)
+                            2 -> Color(0xFF10B981)
+                            3 -> Color(0xFFF59E0B)
+                            else -> Color(0xFFF472B6)
                         }
                     }
                     val currentProgress = progressList[i]
@@ -947,7 +969,11 @@ fun HabitActivityRings(
         // Center emoji or status symbol
         Text(
             text = centerEmoji,
-            fontSize = if (ringCount <= 1) 14.sp else 11.sp,
+            fontSize = when {
+                ringCount <= 1 -> 14.sp
+                ringCount <= 3 -> 11.sp
+                else -> 10.sp
+            },
             textAlign = TextAlign.Center
         )
     }

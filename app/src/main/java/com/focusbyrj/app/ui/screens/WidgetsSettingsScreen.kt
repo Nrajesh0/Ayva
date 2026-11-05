@@ -49,7 +49,19 @@ fun WidgetsSettingsScreen(nav: NavController) {
             }
         }
     }
-    choosing?.let { kind ->
+    if (choosing == WidgetKind.EXAM) ExamWidgetManagerDialog(
+        onDismiss = { choosing = null },
+        onEdit = { id ->
+            choosing = null
+            context.startActivity(Intent(context, ExamCountdownConfigureActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id))
+        },
+        onCreate = { template ->
+            choosing = null
+            context.startActivity(Intent(context, ExamCountdownConfigureActivity::class.java).apply {
+                template?.let { putExtra(ExamCountdownConfigureActivity.INITIAL_CONFIG, it.json()) }
+            })
+        })
+    choosing?.takeIf { it != WidgetKind.EXAM }?.let { kind ->
         val instances = remember(kind) { manager.getAppWidgetIds(ComponentName(context, kind.provider)).toList() }
         fun configure(id: Int?) {
             choosing = null

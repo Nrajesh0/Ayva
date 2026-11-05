@@ -77,14 +77,27 @@ internal fun PersistEditorDraft(store: EditorDraftStore, value: JSONObject) {
     }
     val snapshot = value.toString()
     val latest by rememberUpdatedState(snapshot)
+    val saveFailureShown = remember(store) { java.util.concurrent.atomic.AtomicBoolean(false) }
+    fun saveDraft(content: String) {
+        try {
+            store.save(JSONObject(content))
+            saveFailureShown.set(false)
+        } catch (error: Exception) {
+            // A recoverable autosave error must not terminate an editor or its host app.
+            // The atomic store keeps the last saved draft; current text stays in memory.
+            android.util.Log.e("EditorDraft", "Could not save encrypted editor draft", error)
+            if (saveFailureShown.compareAndSet(false, true)) android.widget.Toast.makeText(context,
+                "Couldn't save your draft. Keep this editor open and try again.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(store, snapshot) { delay(200); store.save(JSONObject(snapshot)) }
+    LaunchedEffect(store, snapshot) { delay(200); saveDraft(snapshot) }
     DisposableEffect(store, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) store.save(JSONObject(latest))
+            if (event == Lifecycle.Event.ON_STOP) saveDraft(latest)
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer); store.save(JSONObject(latest)) }
+        onDispose { lifecycle.removeObserver(observer); saveDraft(latest) }
     }
 }
 

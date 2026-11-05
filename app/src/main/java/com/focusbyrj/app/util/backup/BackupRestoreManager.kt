@@ -156,7 +156,9 @@ object BackupRestoreManager {
             val noteDb = NoteDatabase.getInstance(app)
             val notes = noteDb.noteDao().getAllNotesList()
             val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
-            val hasLockedVaultNotes = notes.any { VaultPayloadEncryptor.isVaultEncrypted(it) } && subKey == null
+            val vaultEnabled = ArchiveVaultSecurity.getVaultStatus(app) == ArchiveVaultSecurity.VaultStatus.ENABLED
+            val hasLockedVaultNotes = notes.any { VaultPayloadEncryptor.isVaultEncrypted(it) || vaultEnabled && it.isArchived } && subKey == null
+            subKey?.fill(0)
             if (hasLockedVaultNotes) {
                 Pair(false, "Your Secret Archive Vault is locked. Please unlock your Secret Archive Vault with your PIN or biometrics before creating a backup, so all notes can be secured.")
             } else {
@@ -174,17 +176,33 @@ object BackupRestoreManager {
         context: Context,
         destinationUri: Uri,
         password: String
-    ): Result<BackupMetadata> = AssistantStateLock.mutex.withLock {
-        try { RestoreJournal.consistent(context) { createEncryptedBackupLocked(context, destinationUri, password) } }
-        catch (error: Exception) {
-            if (error is kotlinx.coroutines.CancellationException) throw error
-            Result.failure(error)
+    ): Result<BackupMetadata> = createVerifiedEncryptedBackup(context, destinationUri, password, null)
+
+    /** Only the opted-in automatic-backup path can supply a protected backup authorization for a locked vault. */
+    internal suspend fun createAutomaticEncryptedBackup(context: Context, destinationUri: Uri, password: String, authorizedVaultKey: ByteArray?): Result<BackupMetadata> =
+        createVerifiedEncryptedBackup(context, destinationUri, password, authorizedVaultKey)
+
+    private suspend fun createVerifiedEncryptedBackup(context: Context, destinationUri: Uri, password: String, authorizedVaultKey: ByteArray?): Result<BackupMetadata> =
+        AssistantStateLock.mutex.withLock {
+            try {
+                val result = RestoreJournal.consistent(context) { createEncryptedBackupLocked(context, destinationUri, password, authorizedVaultKey) }
+                // Encryption authentication alone does not prove the restore reader accepts
+                // the manifest and attachments. Never rotate archives on that assumption.
+                if (result.isSuccess) {
+                    verifyEncryptedBackup(context, destinationUri, password).getOrThrow()
+                    context.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
+                        .putLong("last_verified_export_ms", System.currentTimeMillis()).apply()
+                }
+                result
+            }
+            catch (error: Exception) { if (error is kotlinx.coroutines.CancellationException) throw error; Result.failure(error) }
         }
-    }
 
     private suspend fun createEncryptedBackupLocked(
-        context: Context, destinationUri: Uri, password: String
+        context: Context, destinationUri: Uri, password: String, authorizedVaultKey: ByteArray? = null
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
+        var backupVaultKey: ByteArray? = null
+        var manifestBytes: ByteArray? = null
         try {
             if (password.isBlank()) {
                 throw IllegalArgumentException("Backup password cannot be empty or blank.")
@@ -203,18 +221,21 @@ object BackupRestoreManager {
             val habits = focusDb.habitDao().getAllHabitsSync()
             val habitLogs = focusDb.habitDao().getAllLogsSync()
             val notes = noteDb.noteDao().getAllNotesList()
-            val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
-            val hasLockedVaultNotes = notes.any { VaultPayloadEncryptor.isVaultEncrypted(it) } && subKey == null
+            backupVaultKey = authorizedVaultKey?.copyOf() ?: ArchiveVaultSecurity.getActiveVaultSubKey()
+            val subKey = backupVaultKey
+            val vaultEnabled = ArchiveVaultSecurity.getVaultStatus(app) == ArchiveVaultSecurity.VaultStatus.ENABLED
+            val hasLockedVaultNotes = notes.any { VaultPayloadEncryptor.isVaultEncrypted(it) || vaultEnabled && it.isArchived } && subKey == null
             if (hasLockedVaultNotes) {
                 throw IllegalStateException("Cannot create backup: Secret Archive Vault is locked. Please unlock your secret vault first.")
             }
             val processedNotes = notes.map { rawNote ->
-                if (rawNote.isArchived || VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
+                if (vaultEnabled && rawNote.isArchived || VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
                     val key = subKey ?: throw IllegalStateException(
                         "Cannot create backup: Secret Archive Vault is locked."
                     )
                     when (val result = VaultPayloadEncryptor.tryDecryptNotePayload(rawNote, key)) {
                         is VaultPayloadEncryptor.DecryptionResult.Success -> result.note
+                        is VaultPayloadEncryptor.DecryptionResult.NotEncrypted -> result.note
                         else -> throw SecurityException(
                             "Cannot create a complete backup because private note ${rawNote.id} could not be decrypted ($result)."
                         )
@@ -528,6 +549,13 @@ object BackupRestoreManager {
                 put("mediaManifest", mediaArray)
             }
 
+            val manifestText = rootJson.toString()
+            BackupArchiveLimits.checkJsonNesting(manifestText)
+            val manifest = manifestText.toByteArray(Charsets.UTF_8)
+            manifestBytes = manifest
+            BackupArchiveLimits.checkExport(manifest.size.toLong(), mediaManifest.map { it.plaintextSize })
+            validateRestoreManifest(rootJson)
+
             // 3. Stream unencrypted entries directly into encrypted output stream
             withContext(NonCancellable) {
                 app.contentResolver.openOutputStream(destinationUri)?.use { outStream ->
@@ -535,7 +563,7 @@ object BackupRestoreManager {
                         ZipOutputStream(BufferedOutputStream(encryptingStream)).use { zipOut ->
                             // Write data.json
                             zipOut.putNextEntry(ZipEntry("data.json"))
-                            zipOut.write(rootJson.toString().toByteArray(Charsets.UTF_8))
+                            zipOut.write(manifest)
                             zipOut.closeEntry()
 
                             // Package media files: stream decrypted bytes from EncryptedMediaStorage
@@ -621,8 +649,6 @@ object BackupRestoreManager {
                 }
             } ?: throw IOException("Could not open destination backup stream for post-creation verification.")
 
-            context.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
-                .putLong("last_verified_export_ms", System.currentTimeMillis()).apply()
             Log.i(TAG, "Encrypted backup created and verified successfully: ${metadata.noteCount} notes, ${metadata.taskCount} tasks.")
             Result.success(metadata)
         } catch (e: Exception) {
@@ -631,7 +657,7 @@ object BackupRestoreManager {
                 android.provider.DocumentsContract.deleteDocument(context.contentResolver, destinationUri)
             } catch (_: Exception) {}
             Result.failure(e)
-        }
+        } finally { backupVaultKey?.fill(0); manifestBytes?.fill(0) }
     }
 
     /**
@@ -648,8 +674,8 @@ object BackupRestoreManager {
 
             // 1 & 2. Decrypt & Unpack ZIP into staging directory on-the-fly
             var totalDecompressedMediaBytes = 0L
-            val maxSingleEntrySize = 250L * 1024L * 1024L // streamed; bounded against decompression abuse
-            val maxTotalMediaSize = 500L * 1024L * 1024L // 500MB total media archive decompression limit
+            val maxSingleEntrySize = BackupArchiveLimits.MEDIA_ENTRY_BYTES // streamed; bounded against decompression abuse
+            val maxTotalMediaSize = BackupArchiveLimits.TOTAL_MEDIA_BYTES // 500MB total media archive decompression limit
 
             val inStream = app.contentResolver.openInputStream(sourceUri) ?: throw IOException("Could not read backup")
             inStream.use { rawInStream ->
@@ -662,13 +688,13 @@ object BackupRestoreManager {
                         var entry = zipIn.nextEntry
                         while (entry != null) {
                             require(entryNames.add(entry.name)) { "Duplicate backup entry: ${entry.name}" }
-                            require(entryNames.size <= 20_000) { "Backup contains too many entries" }
+                            require(entryNames.size <= BackupArchiveLimits.ENTRIES) { "Backup contains too many entries" }
                             require(entry.name == "data.json" || entry.name.startsWith("media/")) {
                                 "Unsupported backup entry: ${entry.name}"
                             }
                             if (!entry.isDirectory) {
                                 if (entry.name == "data.json") {
-                                    val maxManifestSize = 50L * 1024L * 1024L
+                                    val maxManifestSize = BackupArchiveLimits.MANIFEST_BYTES
                                     var totalManifestBytes = 0L
                                     val baos = ByteArrayOutputStream()
                                     var read = zipIn.read(buffer)
@@ -727,7 +753,7 @@ object BackupRestoreManager {
                 throw IllegalArgumentException("Backup archive does not contain data.json manifest.")
             }
 
-            val rootJson = JSONObject(jsonDataStr!!)
+            val rootJson = BackupArchiveLimits.parseManifest(jsonDataStr!!)
             val version = rootJson.optInt("version", BACKUP_VERSION)
             val createdAt = rootJson.optLong("createdAt", System.currentTimeMillis())
             val appVersion = rootJson.optString("appVersion", "1.0.0")
@@ -784,8 +810,8 @@ object BackupRestoreManager {
 
             // 1 & 2. Decrypt & Unpack ZIP into staging directory on-the-fly
             var totalDecompressedMediaBytes = 0L
-            val maxSingleEntrySize = 250L * 1024L * 1024L // streamed; bounded against decompression abuse
-            val maxTotalMediaSize = 500L * 1024L * 1024L // 500MB total media archive decompression limit
+            val maxSingleEntrySize = BackupArchiveLimits.MEDIA_ENTRY_BYTES // streamed; bounded against decompression abuse
+            val maxTotalMediaSize = BackupArchiveLimits.TOTAL_MEDIA_BYTES // 500MB total media archive decompression limit
 
             inStream.use { rawInStream ->
                 CryptoBackupEngine.openDecryptingStream(rawInStream, password.toCharArray()).use { decryptedStream ->
@@ -797,13 +823,13 @@ object BackupRestoreManager {
                         var entry = zipIn.nextEntry
                         while (entry != null) {
                             require(entryNames.add(entry.name)) { "Duplicate backup entry: ${entry.name}" }
-                            require(entryNames.size <= 20_000) { "Backup contains too many entries" }
+                            require(entryNames.size <= BackupArchiveLimits.ENTRIES) { "Backup contains too many entries" }
                             require(entry.name == "data.json" || entry.name.startsWith("media/")) {
                                 "Unsupported backup entry: ${entry.name}"
                             }
                             if (!entry.isDirectory) {
                                 if (entry.name == "data.json") {
-                                    val maxManifestSize = 50L * 1024L * 1024L
+                                    val maxManifestSize = BackupArchiveLimits.MANIFEST_BYTES
                                     var totalManifestBytes = 0L
                                     val baos = ByteArrayOutputStream()
                                     var read = zipIn.read(buffer)
@@ -862,7 +888,7 @@ object BackupRestoreManager {
                 throw IllegalArgumentException("Backup archive does not contain data.json manifest.")
             }
 
-            val rootJson = JSONObject(jsonDataStr!!)
+            val rootJson = BackupArchiveLimits.parseManifest(jsonDataStr!!)
             val version = rootJson.optInt("version", BACKUP_VERSION)
             val createdAt = rootJson.optLong("createdAt", System.currentTimeMillis())
             val appVersion = rootJson.optString("appVersion", "1.0.0")
@@ -1430,6 +1456,15 @@ object BackupRestoreManager {
             "drillSessions", "learnedIdioms", "learnedOws", "chatMessages")
         arrays.forEach { name ->
             require(!root.has(name) || root.optJSONArray(name) != null) { "$name must be an array" }
+            root.optJSONArray(name)?.let { array ->
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    item.keys().forEach { field ->
+                        if (field.endsWith("Json") && item.opt(field) is String) BackupArchiveLimits.checkEmbeddedJson(item.getString(field))
+                    }
+                    if (name == "notes") BackupArchiveLimits.checkNoteContent(item.optString("content", ""))
+                }
+            }
         }
         listOf("notes", "habits", "schedules").forEach { name ->
             val array = root.optJSONArray(name) ?: return@forEach
@@ -1508,9 +1543,11 @@ object BackupRestoreManager {
         }
 
         val prefs = root.optJSONObject("preferences")
-        prefs?.optJSONObject("exam_countdowns")?.let { events -> events.keys().forEach { com.focusbyrj.app.widget.ExamCountdown.read(events.getString(it)) } }
+        prefs?.optJSONObject("exam_countdowns")?.let { events -> events.keys().forEach {
+            val raw = events.getString(it); BackupArchiveLimits.checkEmbeddedJson(raw); com.focusbyrj.app.widget.ExamCountdown.read(raw)
+        } }
         prefs?.optJSONObject("productivity_library")?.let { library -> library.keys().forEach { key ->
-            val j = JSONObject(library.getString(key)); com.focusbyrj.app.data.ProductivityLibrary.validate(j)
+            val j = BackupArchiveLimits.parseManifest(library.getString(key)); com.focusbyrj.app.data.ProductivityLibrary.validate(j)
             require(key.startsWith(j.getString("kind") + "_"))
         } }
         prefs?.keys()?.forEach { name ->
@@ -1700,6 +1737,9 @@ object BackupRestoreManager {
     }
 
     private fun collectNoteMediaPaths(note: NoteEntity): List<String> {
+        BackupArchiveLimits.checkEmbeddedJson(note.imageUrisJson)
+        BackupArchiveLimits.checkEmbeddedJson(note.audioUrisJson)
+        BackupArchiveLimits.checkNoteContent(note.content)
         val result = mutableListOf<String>()
         result += note.getImageUris()
         result += note.getAudioUris()

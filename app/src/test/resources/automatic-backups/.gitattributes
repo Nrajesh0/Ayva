@@ -1,0 +1,2 @@
+# Preserve the PDF fixture byte-for-byte, including its fixed-width xref entries.
+container.pdf binary

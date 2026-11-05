@@ -89,6 +89,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
         }
         runCatching { com.focusbyrj.app.util.backup.ExportCleanupWorker.schedule(this) }
         AutoBackupScheduler.schedule(this, ioScope)
+        runCatching { com.focusbyrj.app.util.backup.AutomaticBackups.schedule(this) }
         runCatching { com.focusbyrj.app.util.WorkSessionReminders.retry(this) }
     }
 
