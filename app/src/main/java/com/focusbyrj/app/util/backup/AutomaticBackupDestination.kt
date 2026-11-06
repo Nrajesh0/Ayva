@@ -55,9 +55,10 @@ internal class SafBackupDestination(context: Context, tree: String) : BackupDest
 }
 
 internal data class EncryptedFileDigest(val size: Long, val sha256: String)
-internal fun digestBackup(input: InputStream, maxBytes: Long = BackupArchiveLimits.ENCRYPTED_BYTES): EncryptedFileDigest {
+internal fun digestBackup(input: InputStream, maxBytes: Long = BackupArchiveLimits.ENCRYPTED_BYTES, checkpoint: () -> Unit = {}): EncryptedFileDigest {
     val digest = MessageDigest.getInstance("SHA-256"); val buffer = ByteArray(64 * 1024); var size = 0L
     while (true) {
+        checkpoint()
         val count = input.read(buffer); if (count < 0) break
         if (count == 0) {
             val next = input.read(); if (next < 0) break

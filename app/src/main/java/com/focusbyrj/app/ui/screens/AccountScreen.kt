@@ -12,8 +12,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -40,7 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -68,7 +65,6 @@ import coil.compose.AsyncImage
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.R
 import com.focusbyrj.app.data.AppRestriction
-import com.focusbyrj.app.data.HabitWithProgress
 import com.focusbyrj.app.data.HabitDaySummary
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.data.note.NoteDatabase
@@ -894,165 +890,6 @@ private fun EnclaveStatCard(
                 ),
                 color = colors.textMuted
             )
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 3.5. ACHIEVEMENTS PREVIEW ROW COMPONENT BELOW PROFILE
-// ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun EnclaveAchievementsPreviewRow(
-    colors: EnclaveColors,
-    profile: UserProfile,
-    stats: FocusStats,
-    onViewAllClick: () -> Unit
-) {
-    val context = LocalContext.current
-    val achievements = remember(profile, stats) { getAchievements(profile, stats) }
-    val unlockedCount = remember(achievements) { achievements.count { it.isUnlocked } }
-    val totalCount = achievements.size
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-    ) {
-        // Section Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.EmojiEvents,
-                    contentDescription = "Achievements",
-                    tint = colors.accentGold,
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = "ACHIEVEMENTS",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        letterSpacing = 1.sp,
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    color = colors.textPrimary
-                )
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = colors.subCardBg,
-                    border = BorderStroke(1.dp, colors.subCardBorder)
-                ) {
-                    Text(
-                        text = "$unlockedCount/$totalCount",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = colors.accentCyan,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            Text(
-                text = "VIEW ALL >",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                color = colors.accentCyan,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable { onViewAllClick() }
-                    .padding(vertical = 2.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Horizontal scrolling row of milestone cards
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            achievements.forEach { item ->
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = colors.cardBg,
-                    border = BorderStroke(
-                        1.dp,
-                        if (item.isUnlocked) item.color.copy(alpha = 0.5f) else colors.cardBorder
-                    ),
-                    modifier = Modifier
-                        .width(118.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable {
-                            val st = if (item.isUnlocked) "UNLOCKED" else "LOCKED"
-                            Toast.makeText(context, "${item.title} ($st): ${item.description}", Toast.LENGTH_SHORT).show()
-                        }
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        MedievalMedal(
-                            iconRes = item.iconRes,
-                            color = item.color,
-                            isUnlocked = item.isUnlocked,
-                            modifier = Modifier.size(46.dp)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = item.title,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.5.sp
-                            ),
-                            color = if (item.isUnlocked) colors.textPrimary else colors.textMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = item.description,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                            color = colors.textMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = if (item.isUnlocked) item.color.copy(alpha = 0.15f) else colors.subCardBg,
-                            border = BorderStroke(1.dp, if (item.isUnlocked) item.color.copy(alpha = 0.35f) else colors.subCardBorder)
-                        ) {
-                            Text(
-                                text = if (item.isUnlocked) "UNLOCKED" else "LOCKED",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 8.5.sp,
-                                    fontFamily = FontFamily.Monospace
-                                ),
-                                color = if (item.isUnlocked) item.color else colors.textMuted,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }

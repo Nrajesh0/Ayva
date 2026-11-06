@@ -153,7 +153,7 @@ fun CatActionLottieView(
     val targetSize = when (assetName) {
         "cat_error.lottie" -> 250.dp
         "cat_angry.lottie" -> 195.dp
-        "cat_dance.lottie", "cat_dancing.lottie" -> 185.dp
+        "cat_dance.lottie" -> 185.dp
         else -> 175.dp
     }
     val contentScale = if (assetName == "cat_error.lottie") 1.3f else 1.0f

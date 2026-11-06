@@ -178,19 +178,23 @@ object BackupRestoreManager {
         password: String
     ): Result<BackupMetadata> = createVerifiedEncryptedBackup(context, destinationUri, password, null)
 
-    /** Only the opted-in automatic-backup path can supply a protected backup authorization for a locked vault. */
+    /** Scheduled jobs use only their saved explicit authorization, never the UI's active vault key. */
     internal suspend fun createAutomaticEncryptedBackup(context: Context, destinationUri: Uri, password: String, authorizedVaultKey: ByteArray?): Result<BackupMetadata> =
-        createVerifiedEncryptedBackup(context, destinationUri, password, authorizedVaultKey)
+        createVerifiedEncryptedBackup(context, destinationUri, password, authorizedVaultKey, allowActiveVaultKey = false, recordExport = false)
 
-    private suspend fun createVerifiedEncryptedBackup(context: Context, destinationUri: Uri, password: String, authorizedVaultKey: ByteArray?): Result<BackupMetadata> =
+    /** A foreground manual session supplies a short-lived key; it is never saved as automatic authorization. */
+    internal suspend fun createOneTimeEncryptedBackup(context: Context, destinationUri: Uri, password: String, vaultKey: ByteArray?): Result<BackupMetadata> =
+        createVerifiedEncryptedBackup(context, destinationUri, password, vaultKey, allowActiveVaultKey = false, recordExport = false)
+
+    private suspend fun createVerifiedEncryptedBackup(context: Context, destinationUri: Uri, password: String, authorizedVaultKey: ByteArray?, allowActiveVaultKey: Boolean = true, recordExport: Boolean = true): Result<BackupMetadata> =
         AssistantStateLock.mutex.withLock {
             try {
-                val result = RestoreJournal.consistent(context) { createEncryptedBackupLocked(context, destinationUri, password, authorizedVaultKey) }
+                val result = RestoreJournal.consistent(context) { createEncryptedBackupLocked(context, destinationUri, password, authorizedVaultKey, allowActiveVaultKey) }
                 // Encryption authentication alone does not prove the restore reader accepts
                 // the manifest and attachments. Never rotate archives on that assumption.
                 if (result.isSuccess) {
                     verifyEncryptedBackup(context, destinationUri, password).getOrThrow()
-                    context.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
+                    if (recordExport) context.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
                         .putLong("last_verified_export_ms", System.currentTimeMillis()).apply()
                 }
                 result
@@ -199,7 +203,7 @@ object BackupRestoreManager {
         }
 
     private suspend fun createEncryptedBackupLocked(
-        context: Context, destinationUri: Uri, password: String, authorizedVaultKey: ByteArray? = null
+        context: Context, destinationUri: Uri, password: String, authorizedVaultKey: ByteArray? = null, allowActiveVaultKey: Boolean = true
     ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
         var backupVaultKey: ByteArray? = null
         var manifestBytes: ByteArray? = null
@@ -221,7 +225,7 @@ object BackupRestoreManager {
             val habits = focusDb.habitDao().getAllHabitsSync()
             val habitLogs = focusDb.habitDao().getAllLogsSync()
             val notes = noteDb.noteDao().getAllNotesList()
-            backupVaultKey = authorizedVaultKey?.copyOf() ?: ArchiveVaultSecurity.getActiveVaultSubKey()
+            backupVaultKey = authorizedVaultKey?.copyOf() ?: if (allowActiveVaultKey) ArchiveVaultSecurity.getActiveVaultSubKey() else null
             val subKey = backupVaultKey
             val vaultEnabled = ArchiveVaultSecurity.getVaultStatus(app) == ArchiveVaultSecurity.VaultStatus.ENABLED
             val hasLockedVaultNotes = notes.any { VaultPayloadEncryptor.isVaultEncrypted(it) || vaultEnabled && it.isArchived } && subKey == null

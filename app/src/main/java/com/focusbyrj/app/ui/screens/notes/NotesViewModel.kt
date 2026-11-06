@@ -1140,10 +1140,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             val localPath = processAndSaveImage(context, contentUri) ?: return@launch
             kotlinx.coroutines.withContext(Dispatchers.Main) {
                 val current = _editingState.value
-                    if (current == null || current.sessionId != ownerSession) {
-                        java.io.File(localPath).delete()
-                        return@withContext
-                    }
+                if (current == null || current.sessionId != ownerSession) {
+                    java.io.File(localPath).delete()
+                    return@withContext
+                }
                 val updated = current.imageUris + localPath
                 _editingState.value = current.copy(imageUris = updated, updatedAt = System.currentTimeMillis())
                 persistCurrentEditorState()

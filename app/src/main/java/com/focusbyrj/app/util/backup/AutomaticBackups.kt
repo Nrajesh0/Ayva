@@ -123,6 +123,13 @@ internal object AutomaticBackups {
         try { AutomaticBackupStore(context).authorizeVault(key) } finally { key.fill(0) }
     }
 
+    suspend fun revokeVault(context: Context, store: AutomaticBackupStore = AutomaticBackupStore(context)): Int = edit {
+        val remaining = store.revokeVault()
+        // The durable epoch rejects queued requests even if WorkManager cancellation is delayed.
+        WorkManager.getInstance(context).cancelUniqueWork(IMMEDIATE)
+        remaining
+    }
+
     /** All job/configuration mutations serialize; foreground manual restore still uses its existing maintenance barrier. */
     suspend fun run(context: Context, force: Boolean = false,
         store: AutomaticBackupStore = AutomaticBackupStore(context),
@@ -198,6 +205,8 @@ internal object AutomaticBackups {
                 store.save(store.config().copy(lastSuccess = stage.created, nextDue = nextDue, lastFile = published.name,
                     problem = if (failures > 0) "RETENTION" else "",
                     detail = if (failures > 0) "New backup verified. $failures older files were kept because safe deletion could not be confirmed." else ""))
+                app.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
+                    .putLong("last_verified_export_ms", System.currentTimeMillis()).apply()
                 store.staged(null); file.delete()
                 // Clean uncommitted local stages only after a fresh external copy is protected.
                 folder.listFiles()?.filter { it.isFile && it.name.matches(Regex("[a-f0-9-]{36}\\.enc")) }

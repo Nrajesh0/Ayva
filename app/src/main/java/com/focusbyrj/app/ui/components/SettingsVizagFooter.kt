@@ -180,7 +180,9 @@ internal fun SettingsVizagFooter(
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    @Suppress("DEPRECATION")
+    // Lint's produceState detector misses these assignments with the current Kotlin frontend.
+    // Keep the reset and IO decode: switching scenes must clear the previous artwork first.
+    @Suppress("DEPRECATION", "ProduceStateDoesNotAssignValue")
     val artwork by produceState<VizagArtwork?>(null, scene, dedicatedLightArtwork) {
         value = null
         value = withContext(Dispatchers.IO) {

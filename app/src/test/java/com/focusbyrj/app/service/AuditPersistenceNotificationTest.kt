@@ -61,7 +61,11 @@ class AuditPersistenceNotificationTest {
         val receiver = TaskReminderReceiver()
         val filter = android.content.IntentFilter("run.test.TASK_REMINDER")
         if (android.os.Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        else context.registerReceiver(receiver, filter)
+        else {
+            // This test runs on API 31; API 33+ receives the explicit private flag above.
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(receiver, filter)
+        }
         try {
             for (id in ids) {
                 context.sendBroadcast(Intent("run.test.TASK_REMINDER").setPackage(context.packageName)

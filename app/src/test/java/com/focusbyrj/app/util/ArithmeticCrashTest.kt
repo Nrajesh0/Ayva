@@ -61,7 +61,7 @@ class ArithmeticCrashTest {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         val assets = listOf(
             "cat_morning.lottie", "cat_evening.lottie", "cat_error.lottie",
-            "cat_angry.lottie", "cat_action.lottie", "cat_dance.lottie", "cat_dancing.lottie"
+            "cat_angry.lottie", "cat_action.lottie", "cat_dance.lottie"
         ) + com.focusbyrj.app.service.HabitFloatingOverlayManager.HABIT_LOTTIE_ASSETS
         for (asset in assets) {
             val res = com.airbnb.lottie.LottieCompositionFactory.fromAssetSync(context, asset)

@@ -50,7 +50,7 @@ class AutomaticBackupUiTest {
         page();compose.waitForIdle()
         compose.onNodeWithText("Not configured").assertExists()
         compose.onNodeWithText("Create recovery key").assertExists()
-        compose.onNodeWithText("Last protected data: None yet").assertExists()
+        compose.onNodeWithText("Last verified full backup: None yet").assertExists()
         capture("automatic-backup-setup")
         compose.onAllNodesWithText("Automatic backups",substring=false).onFirst().assertExists()
         assertFalse(AutomaticBackupStore(app).config().enabled)
@@ -149,4 +149,21 @@ class AutomaticBackupUiTest {
         compose.onNodeWithText("Decrypt & Restore").performClick();compose.waitForIdle()
         assertEquals(password,supplied)
     }
+    @Test fun revocationNeedsConfirmationAndExplainsExistingArchiveAccess() {
+        val store = AutomaticBackupStore(app, TestBackupWrapper())
+        BackupRecoveryKey.generate().use { store.install(it) }
+        store.authorizeVault(ByteArray(32) { it.toByte() })
+        page()
+        compose.onNodeWithText("Revoke").performScrollTo().performClick()
+        compose.onNodeWithText("Revoke private-note backup access?").assertExists()
+        compose.onNodeWithText("Existing backup files will be kept", substring = true).assertExists()
+        assertTrue(store.hasVaultAuthorization())
+        compose.onNodeWithText("Keep access").performClick()
+        assertTrue(store.hasVaultAuthorization())
+        compose.onNodeWithText("Revoke").performScrollTo().performClick()
+        compose.onNodeWithText("Revoke access").performClick()
+        compose.waitUntil(5000) { !store.hasVaultAuthorization() }
+        assertNull(store.staged())
+    }
+
 }

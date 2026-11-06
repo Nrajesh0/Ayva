@@ -77,6 +77,8 @@ class BlockActivity : ComponentActivity() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(closeReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
         } else {
+            // Export flags are enforced above on API 33+; preserve legacy registration below it.
+            @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(closeReceiver, filter)
         }
         

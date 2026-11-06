@@ -12,6 +12,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,7 +36,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
@@ -48,7 +49,6 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -361,7 +361,9 @@ fun ArchiveVaultUnlockDialog(
     onVerify: (String) -> ArchiveVaultSecurity.VerifyResult,
     onSuccess: () -> Unit,
     initialLockoutSeconds: Long = 0L,
-    onEmergencyRecoveryClick: (() -> Unit)? = null
+    onEmergencyRecoveryClick: (() -> Unit)? = null,
+    title: String = "Archive Vault",
+    description: String = "Enter 6-digit passcode to unlock"
 ) {
     val haptic = LocalHapticFeedback.current
     var pin by remember { mutableStateOf("") }
@@ -394,6 +396,7 @@ fun ArchiveVaultUnlockDialog(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .navigationBarsPadding()
                 .padding(bottom = 24.dp)
@@ -416,7 +419,7 @@ fun ArchiveVaultUnlockDialog(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Archive Vault",
+                text = title,
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 19.sp,
@@ -431,7 +434,7 @@ fun ArchiveVaultUnlockDialog(
                 text = if (lockoutSeconds > 0L) {
                     "Too many incorrect attempts"
                 } else {
-                    "Enter 6-digit passcode to unlock"
+                    description
                 },
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
                 color = if (lockoutSeconds > 0L) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
@@ -1542,200 +1545,6 @@ fun ArchiveVaultMnemonicRecoveryDialog(
                         }
                     )
                 }
-            }
-        }
-    }
-}
-
-/**
- * 2026 Modern M3 Bottom Sheet: Vault Options (Lock, Change PIN, Disable).
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ArchiveVaultSettingsDialog(
-    vaultStatus: ArchiveVaultSecurity.VaultStatus,
-    onDismiss: () -> Unit,
-    onLockVault: () -> Unit,
-    onChangePasscode: () -> Unit,
-    onDisablePasscode: () -> Unit,
-    onSetPasscode: () -> Unit,
-    onEmergencyRecoveryClick: (() -> Unit)? = null,
-    isRecoveryPhraseBackedUp: Boolean = true,
-    onExportRecoveryPhrase: (() -> Unit)? = null
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 24.dp)
-        ) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Vault Options",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 19.sp,
-                        letterSpacing = (-0.3).sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Vault Status Card
-            val isEnabled = vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED
-            Surface(
-                color = if (isEnabled) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                },
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(
-                    1.dp,
-                    if (isEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(14.dp)
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (isEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)
-                            )
-                    ) {
-                        Icon(
-                            imageVector = if (isEnabled) Icons.Outlined.Shield else Icons.Outlined.LockOpen,
-                            contentDescription = null,
-                            tint = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column {
-                        Text(
-                            text = if (isEnabled) "Passcode Active" else "Passcode Disabled",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = if (isEnabled) "Encrypted with 6-digit PIN" else "Vault is open without PIN",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (isEnabled) {
-                // Option 1: Lock Vault Now
-                CalmVaultActionRow(
-                    icon = Icons.Outlined.Lock,
-                    title = "Lock Vault",
-                    subtitle = "Immediately lock and return to Notes",
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    onClick = onLockVault
-                )
-
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                    modifier = Modifier.padding(vertical = 2.dp)
-                )
-
-                // Option 2: Change Passcode
-                CalmVaultActionRow(
-                    icon = Icons.Outlined.Key,
-                    title = "Change Passcode",
-                    subtitle = "Update your 6-digit vault passcode",
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    onClick = onChangePasscode
-                )
-
-                if (onExportRecoveryPhrase != null) {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    )
-
-                    // Option 3: Export Recovery Phrase
-                    CalmVaultActionRow(
-                        icon = Icons.Outlined.Key,
-                        title = "Export Recovery Phrase",
-                        subtitle = if (isRecoveryPhraseBackedUp) {
-                            "View and export your 12-word recovery phrase"
-                        } else {
-                            "Action needed: View & back up your 12 words"
-                        },
-                        iconTint = if (isRecoveryPhraseBackedUp) MaterialTheme.colorScheme.primary else Color(0xFFE5A93C),
-                        onClick = onExportRecoveryPhrase
-                    )
-                }
-
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                    modifier = Modifier.padding(vertical = 2.dp)
-                )
-
-                // Option 4: Turn Off Passcode
-                CalmVaultActionRow(
-                    icon = Icons.Outlined.LockOpen,
-                    title = "Turn Off Passcode",
-                    subtitle = "Remove passcode protection from Archive",
-                    iconTint = MaterialTheme.colorScheme.error,
-                    onClick = onDisablePasscode
-                )
-
-                if (onEmergencyRecoveryClick != null) {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    )
-
-                    // Option 5: Emergency Phrase Recovery
-                    CalmVaultActionRow(
-                        icon = Icons.Outlined.Key,
-                        title = "Emergency Phrase Recovery",
-                        subtitle = "Recover vault using your 12-word phrase",
-                        iconTint = MaterialTheme.colorScheme.secondary,
-                        onClick = onEmergencyRecoveryClick
-                    )
-                }
-            } else {
-                // Option 1: Set Passcode
-                CalmVaultActionRow(
-                    icon = Icons.Outlined.Shield,
-                    title = "Set 6-Digit Passcode",
-                    subtitle = "Protect Archive with encrypted PIN",
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    onClick = onSetPasscode
-                )
             }
         }
     }

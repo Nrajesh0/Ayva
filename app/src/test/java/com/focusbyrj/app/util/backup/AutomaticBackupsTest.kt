@@ -387,6 +387,6 @@ class AutomaticBackupsTest {
         assertFalse(AutomaticBackups.run(app,true,store,{destination},creator));val before=store.staged()!!
         store.revokeVault();destination.corruptWrites=false
         assertFalse(AutomaticBackups.run(app,true,store,{destination},creator));assertEquals(1,created)
-        assertTrue(destination.files.isEmpty());assertEquals(before,store.staged());assertTrue(File(Uri.parse(before.uri).path!!).exists())
+        assertTrue(destination.files.isEmpty());assertNull(store.staged());assertFalse(File(Uri.parse(before.uri).path!!).exists())
     }
 }

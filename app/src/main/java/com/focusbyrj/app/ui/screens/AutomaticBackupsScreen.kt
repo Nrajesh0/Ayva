@@ -7,6 +7,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -52,6 +54,7 @@ fun AutomaticBackupsScreen(nav: NavController) {
     var importedKeyConfirmation by remember { mutableStateOf<String?>(null) }
     var vaultConsent by remember { mutableStateOf(false) }
     var showVaultPin by remember { mutableStateOf(false) }
+    var confirmRevoke by remember { mutableStateOf(false) }
     var pendingPdfKeyId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingFileKeyId by rememberSaveable { mutableStateOf<String?>(null) }
     var createdKeyId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -135,7 +138,9 @@ fun AutomaticBackupsScreen(nav: NavController) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(if (backgroundBusy) "Creating and verifying backup" else status, style = MaterialTheme.typography.titleMedium)
                 Text("Saved records and media · full encrypted backup", style = MaterialTheme.typography.bodySmall)
-                Text("Last protected data: ${backupTime(config.lastSuccess)}", style = MaterialTheme.typography.bodySmall)
+                Text("Last verified full backup: ${backupTime(config.lastSuccess)}", style = MaterialTheme.typography.bodySmall)
+                if (config.lastAttempt > 0) Text("Last attempt: ${backupTime(config.lastAttempt)}", style = MaterialTheme.typography.bodySmall)
+                Text(if (vaultAuthorized) "Private-note backup access: Authorized" else "Private-note backup access: Not authorized", style = MaterialTheme.typography.bodySmall)
                 if (config.enabled) Text("Next due: ${backupTime(config.nextDue)}", style = MaterialTheme.typography.bodySmall)
                 if (config.detail.isNotBlank()) Text(config.detail, style = MaterialTheme.typography.bodySmall)
                 if (config.lastFile.isNotBlank()) Text(config.lastFile, style = MaterialTheme.typography.labelSmall)
@@ -174,16 +179,16 @@ fun AutomaticBackupsScreen(nav: NavController) {
             Switch(config.enabled, enabled = !busy && !backgroundBusy && hasKey && config.keyExported && config.keyAcknowledged && config.tree.isNotBlank(), onCheckedChange = { value -> perform { AutomaticBackups.enable(context, value) } })
         }
         SettingsMenuRow(Icons.Default.Backup, "Back up now") {
-            TextButton(enabled = !busy && !backgroundBusy && config.keyAcknowledged && config.tree.isNotBlank(), onClick = { perform { AutomaticBackups.requestNow(context); info = "Backup requested. Check Last protected data to confirm completion." } }) { Text("Run") }
+            TextButton(enabled = !busy && !backgroundBusy && config.keyAcknowledged && config.tree.isNotBlank(), onClick = { perform { AutomaticBackups.requestNow(context); info = "Backup requested. Check Last verified full backup to confirm completion." } }) { Text("Run") }
         }
         Text("Enabling schedules the first backup as soon as battery, storage and charging requirements allow. Later jobs follow your schedule.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("$count verified backups managed for this setup. Older copies are removed only after a new archive verifies. Manual backups, other folders and other installations are kept. Failed deletions can leave more than the chosen limit.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 10.dp))
         if (ownershipLimit) Text("Some older files are no longer automatically managed and were kept in their original folder. Review them manually if you need to free space.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         SettingsMenuSectionHeader("PRIVATE VAULT")
-        Text("To include locked private notes unattended, authorize a protected backup-only copy of the vault key. It does not unlock the vault for normal app use. Your exported backup key can access private notes in these archives.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("To include locked private notes unattended, authorize a protected backup-only copy of the vault key. It does not unlock the vault for normal app use. Your exported backup recovery key can read private notes in these archives without the original vault PIN. Without authorization, a full backup containing private notes fails rather than skipping them.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SettingsMenuRow(Icons.Default.Lock, if (vaultAuthorized) "Private vault authorized" else "Authorize private vault") {
             Row { TextButton(enabled = !busy && !backgroundBusy && hasKey, onClick = { vaultConsent = true }) { Text(if (vaultAuthorized) "Renew" else "Authorize") }
-                if (vaultAuthorized) TextButton(enabled = !busy && !backgroundBusy, onClick = { perform { AutomaticBackups.edit { store.revokeVault() } } }) { Text("Revoke") } }
+                if (vaultAuthorized) TextButton(enabled = !busy && !backgroundBusy, onClick = { confirmRevoke = true }) { Text("Revoke") } }
         }
         SettingsMenuSectionHeader("BACKUP HEALTH")
         Text("Android may delay jobs for battery, storage, force-stop or device restrictions. After reboot, unlock the phone once. Cloud folders depend on their provider, account and sync availability. Uninstalling stops future jobs; files already saved outside the app remain.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -192,6 +197,22 @@ fun AutomaticBackupsScreen(nav: NavController) {
             runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)) }
         }) { Text("System") } }
     }
+    if (confirmRevoke) AlertDialog(
+        modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        onDismissRequest = { confirmRevoke = false },
+        title = { Text("Revoke private-note backup access?") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text("The saved vault authorization and pending encrypted copies on this phone will be removed. Future full backups containing private notes will need authorization again. Existing backup files will be kept and can still be opened with their backup recovery key. Revoking access cannot revoke those exported files.") } },
+        confirmButton = { TextButton(onClick = {
+            confirmRevoke = false
+            perform {
+                val remaining = AutomaticBackups.revokeVault(context)
+                info = if (remaining == 0) "Private-note backup access revoked. Pending copies were discarded; existing saved backups were kept."
+                    else "Access revoked and pending requests invalidated. $remaining encrypted temporary copies could not be removed yet; cleanup will retry. Existing saved backups were kept."
+            }
+        }) { Text("Revoke access") } },
+        dismissButton = { TextButton(onClick = { confirmRevoke = false }) { Text("Keep access") } }
+    )
     if (showSchedule) BackupScheduleDialog(config.frequency, onDismiss = { showSchedule = false }) { frequency ->
         showSchedule = false; perform { AutomaticBackups.configure(context, frequency = frequency) }
     }
@@ -255,7 +276,9 @@ fun AutomaticBackupsScreen(nav: NavController) {
         }) { Text("Continue") } }, dismissButton = { TextButton(onClick = { vaultConsent = false }) { Text("Cancel") } })
     if (showVaultPin) com.focusbyrj.app.ui.screens.notes.ArchiveVaultUnlockDialog(
         onDismiss = { showVaultPin = false }, onVerify = { ArchiveVaultSecurity.verifyPasscode(context, it) },
-        onSuccess = { showVaultPin = false; perform { try { AutomaticBackups.authorizeVault(context) } finally { ArchiveVaultSecurity.lockVault() } } })
+        onSuccess = { showVaultPin = false; perform { try { AutomaticBackups.authorizeVault(context); info = "Private-note backup access authorized on this phone. The vault is locked again. Keep the backup recovery key separate from your backup files." } finally { ArchiveVaultSecurity.lockVault() } } },
+        title = "Authorize automatic backups",
+        description = "Enter your vault PIN to allow scheduled private-note backups while the vault stays locked. Your backup recovery key will unlock these archives.")
 }
 
 @Composable

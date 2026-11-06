@@ -43,7 +43,7 @@ internal object SettingsSearchCatalog {
         SettingsSearchEntry("Vault PIN", "", "Private notes vault", "settings_vault", "vault.pin", listOf("Secret Vault Passcode")),
         SettingsSearchEntry("Back up recovery phrase", "Requires a configured vault PIN.", "Private notes vault", "settings_vault", "vault.phrase", listOf("Export Recovery Phrase")),
         SettingsSearchEntry("Recover vault access", "", "Private notes vault", "settings_vault", "vault.recover", listOf("Emergency Phrase Recovery")),
-        SettingsSearchEntry("Create encrypted backup", "", "Data & recovery", "settings_data", "data.export", listOf("Export Encrypted Backup")),
+        SettingsSearchEntry("Create manual backup", "", "Data & recovery", "settings_data", "data.export", listOf("Create encrypted backup", "Export Encrypted Backup")),
         SettingsSearchEntry("Automatic backups", "Full encrypted archives, schedule, destination, retention and exported recovery key", "Data & recovery", "settings_automatic_backups", "data.automatic", listOf("Scheduled backups", "Backup recovery key", "Backup PDF", "Weekly backups", "Monthly backups")),
         SettingsSearchEntry("Restore encrypted backup", "", "Data & recovery", "settings_data", "data.restore", listOf("Restore from Backup")),
         SettingsSearchEntry("Safety snapshots", "", "Data & recovery", "settings_data", "data.snapshots", listOf("Safety Snapshots (Auto-Recovery)")),

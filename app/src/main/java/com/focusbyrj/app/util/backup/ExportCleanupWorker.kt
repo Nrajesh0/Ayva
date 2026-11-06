@@ -10,11 +10,14 @@ import java.util.concurrent.TimeUnit
 class ExportCleanupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         ArticleExporterHelper.pruneStaleExportFiles(File(applicationContext.cacheDir, "exports"))
+        ManualBackupFiles.prune(applicationContext)
+        AutomaticBackups.edit { AutomaticBackupStore(applicationContext).discardUnownedStages() }
         return Result.success()
     }
     companion object {
         fun schedule(context: Context) {
             ArticleExporterHelper.pruneStaleExportFiles(File(context.cacheDir, "exports"))
+            ManualBackupFiles.prune(context)
             WorkManager.getInstance(context).enqueueUniquePeriodicWork("run_export_cleanup",
                 ExistingPeriodicWorkPolicy.KEEP,
                 PeriodicWorkRequestBuilder<ExportCleanupWorker>(15, TimeUnit.MINUTES).build())

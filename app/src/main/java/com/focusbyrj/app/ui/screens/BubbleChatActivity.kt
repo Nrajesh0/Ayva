@@ -2002,8 +2002,7 @@ fun ChatInterface() {
                             catActionInvocationCount += 1
                             val isRare = kotlin.random.Random.nextInt(100) == 0
                             currentCatActionAsset = if (isRare) {
-                                val rareActionPool = listOf("cat_dance.lottie", "cat_dancing.lottie")
-                                rareActionPool.random()
+                                "cat_dance.lottie"
                             } else {
                                 "cat_action.lottie"
                             }
@@ -2106,7 +2105,7 @@ fun ChatInterface() {
         }
 
         if (showMysteryChestDialog) {
-            val qState = com.focusbyrj.app.util.DailyQuestManager.stateFlow.value
+            val qState by com.focusbyrj.app.util.DailyQuestManager.stateFlow.collectAsStateWithLifecycle()
             val baseRarity = if (qState.isNightOwlAvailable) {
                 com.focusbyrj.app.ui.components.ChestRarity.RARE
             } else {

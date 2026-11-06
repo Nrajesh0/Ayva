@@ -62,6 +62,7 @@ internal class AndroidBackupKeyWrapper : BackupKeyWrapper {
 /** Device-local configuration/ledger and wrapped secrets are deliberately excluded from portable backup preferences. */
 internal class AutomaticBackupStore(context: Context, private val wrapper: BackupKeyWrapper = AndroidBackupKeyWrapper()) {
     private val prefs = context.applicationContext.getSharedPreferences("automatic_full_backups_v1", Context.MODE_PRIVATE)
+    private val stagingFolder = java.io.File(context.applicationContext.noBackupFilesDir, "automatic_backup_staging")
     fun config(): AutomaticBackupConfig = prefs.getString("config", null)?.let(AutomaticBackupConfig::read) ?: AutomaticBackupConfig()
     fun save(config: AutomaticBackupConfig) { config.validate(); check(prefs.edit().putString("config", config.json().toString()).commit()); changed() }
     fun hasKey() = prefs.contains("wrapped_key")
@@ -79,7 +80,7 @@ internal class AutomaticBackupStore(context: Context, private val wrapper: Backu
                 stream = UUID.randomUUID().toString(), keyExported = false, keyAcknowledged = false, nextDue = 0,
                 lastSuccess = 0, lastAttempt = 0, problem = "", detail = "", lastFile = "")
             next.validate()
-            val editor = prefs.edit().remove("wrapped_vault").putString("vault_auth_generation", UUID.randomUUID().toString())
+            val editor = prefs.edit().remove("wrapped_vault").remove("stage").putString("vault_auth_generation", UUID.randomUUID().toString())
                 .putString("request_epoch", UUID.randomUUID().toString())
             if (priorOrigin != null) editor.putString(originName(priorId), priorOrigin)
             // A stored-key repair proves no knowledge of the recovery credential. Only
@@ -91,6 +92,7 @@ internal class AutomaticBackupStore(context: Context, private val wrapper: Backu
                 .putString("records", "[]").putBoolean("ownership_limit_reached", true)
             check(editor.putString("wrapped_key", Base64.encodeToString(wrapped, Base64.NO_WRAP))
                 .putString("config", next.json().toString()).commit())
+            discardUnownedStages()
             changed()
         } finally { plain.fill(0) }
     }
@@ -157,10 +159,22 @@ internal class AutomaticBackupStore(context: Context, private val wrapper: Backu
     fun vaultAuthorizationToken() = prefs.getString("vault_auth_generation", "none") ?: "none"
     fun requestEpoch() = (prefs.all["request_epoch"] as? String)?.takeIf { it.matches(Regex("[a-f0-9-]{36}")) } ?: "invalid"
     fun invalidateRequests() { check(prefs.edit().putString("request_epoch", UUID.randomUUID().toString()).commit()); changed() }
-    fun revokeVault() {
+    fun revokeVault(): Int {
         val id = config().keyId; val origin = vaultOrigin(id)
         check(prefs.edit().apply { if (origin != null) putString(originName(id), origin) }
-            .remove("wrapped_vault").putString("vault_auth_generation", UUID.randomUUID().toString()).commit()); changed()
+            .remove("wrapped_vault").remove("stage")
+            .putString("request_epoch", UUID.randomUUID().toString())
+            .putString("vault_auth_generation", UUID.randomUUID().toString()).commit()); changed()
+        return discardUnownedStages()
+    }
+    /** Only app-owned, uncommitted encrypted stages are eligible. External backups are never touched. */
+    fun discardUnownedStages(): Int {
+        // Do not guess ownership if the saved stage metadata is damaged.
+        val owned = runCatching { staged()?.uri?.let { android.net.Uri.parse(it).path } }.getOrElse { return 0 }
+        return stagingFolder.listFiles()?.count { file ->
+            file.isFile && file.name.matches(Regex("[a-f0-9-]{36}\\.enc")) && file.absolutePath != owned &&
+                !file.delete() && file.exists()
+        } ?: 0
     }
     fun records(): List<ManagedBackup> {
         val raw = prefs.getString("records", "[]")!!; require(raw.length <= 8_000_000)

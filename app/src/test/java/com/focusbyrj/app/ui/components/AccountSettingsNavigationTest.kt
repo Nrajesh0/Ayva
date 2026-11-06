@@ -64,7 +64,7 @@ class AccountSettingsNavigationTest {
         compose.onNodeWithText("Manual Export (Encrypted Backup)").performScrollTo().performClick()
         compose.mainClock.advanceTimeBy(500)
         compose.runOnIdle { assertEquals("settings_data", nav.currentDestination?.route) }
-        compose.onNodeWithText("Create encrypted backup").assertIsDisplayed()
+        compose.onNodeWithText("Create manual backup").assertIsDisplayed()
         compose.onNodeWithContentDescription("Back").performClick()
         compose.mainClock.advanceTimeBy(500)
         compose.onNodeWithText("Restore from Encrypted Backup").performScrollTo().performClick()

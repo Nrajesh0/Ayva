@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keep design resource names while sharing byte-identical RemoteViews structures. -->
+    <item name="widget_exam_aurora" type="layout">@layout/widget_exam_hero</item>
+    <item name="widget_exam_poster" type="layout">@layout/widget_exam_hero</item>
+    <item name="widget_exam_prism" type="layout">@layout/widget_exam_hero</item>
+    <item name="widget_exam_layers" type="layout">@layout/widget_exam_colorblock</item>
+    <item name="widget_exam_orbital" type="layout">@layout/widget_exam_colorblock</item>
+    <item name="widget_exam_ticket" type="layout">@layout/widget_exam_colorblock</item>
+    <item name="widget_exam_frost" type="layout">@layout/widget_exam_countdown</item>
+    <item name="widget_exam_signal" type="layout">@layout/widget_exam_countdown</item>
+    <item name="widget_exam_list_dashboard" type="layout">@layout/widget_exam_list_row</item>
+    <item name="widget_exam_list_hero" type="layout">@layout/widget_exam_list_row</item>
+    <item name="widget_exam_list_minimal" type="layout">@layout/widget_exam_list_row</item>
+    <item name="widget_exam_list_ticket" type="layout">@layout/widget_exam_list_row</item>
+    <item name="widget_exam_list_timeline" type="layout">@layout/widget_exam_list_row</item>
+</resources>

@@ -47,6 +47,8 @@ fun ExportBackupPasswordDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
+        modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         onDismissRequest = { if (!isExporting) onDismiss() },
         shape = RoundedCornerShape(24.dp),
         icon = {
@@ -59,14 +61,14 @@ fun ExportBackupPasswordDialog(
         },
         title = {
             Text(
-                "Create Encrypted Backup",
+                "Set manual backup password",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
             )
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Text(
-                    "Your backup will be encrypted using AES-256-GCM. You will need this exact password to restore your data.",
+                    "This password protects this manual backup, including private notes. It is separate from your vault PIN and automatic backup recovery key. Use a long, unique password and keep it safe. The encrypted backup is prepared before you choose a save location; you never need to disable vault protection.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -159,7 +161,7 @@ fun ExportBackupPasswordDialog(
                 enabled = !isExporting,
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Export Backup")
+                Text("Prepare encrypted backup")
             }
         },
         dismissButton = {

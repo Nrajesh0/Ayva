@@ -4,18 +4,29 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.focusbyrj.app.data.note.ArchiveVaultSecurity
+import com.focusbyrj.app.ui.screens.notes.ArchiveVaultUnlockDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.focusbyrj.app.ui.screens.security.ConfigureRestoredVaultPinDialog
 import com.focusbyrj.app.ui.screens.security.ExportBackupPasswordDialog
 import com.focusbyrj.app.ui.screens.security.RestoreBackupPasswordDialog
@@ -31,38 +42,60 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, content: @Composable (Backu
     // Backup & Restore State
     var showExportPasswordDialog by remember { mutableStateOf(false) }
     var showRestorePasswordDialog by remember { mutableStateOf(false) }
-    var isPreparing by remember { mutableStateOf(false) }
-    var isExporting by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
-    var pendingExportPassword by remember { mutableStateOf<String?>(null) }
+    var showExportVaultPin by remember { mutableStateOf(false) }
+    var pendingPickerId by rememberSaveable { mutableStateOf<String?>(null) }
+    val manual: ManualBackupViewModel = viewModel()
+    val exportState by manual.state.collectAsStateWithLifecycle()
+    val isPreparing = exportState.phase == ManualBackupPhase.PREPARING
+    val isExporting = exportState.phase == ManualBackupPhase.SAVING
     var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var pendingRestorePassword by remember { mutableStateOf<String?>(null) }
     var pendingRestoreCleanRestore by remember { mutableStateOf(false) }
     var showConfigureVaultPinDialog by remember { mutableStateOf(false) }
-    var exportErrorAlert by remember { mutableStateOf<String?>(null) }
-    var exportSuccessMetadata by remember { mutableStateOf<BackupRestoreManager.BackupMetadata?>(null) }
+    val exportSuccessMetadata = exportState.takeIf { it.phase == ManualBackupPhase.SAVED }?.metadata
     val coroutineScope = rememberCoroutineScope()
 
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val password = pendingExportPassword
-        if (uri != null && password != null) {
-            isExporting = true
-            coroutineScope.launch {
-                val result = try {
-                    BackupRestoreManager.createEncryptedBackup(context, uri, password)
-                } finally {
-                    isExporting = false
-                    pendingExportPassword = null
+    fun finishExport() { pendingPickerId = null; manual.cancel() }
+
+    // Each prepared archive owns a separate ActivityResult registration. Reading
+    // the latest pending ID in a shared callback could misattribute an older result
+    // to a newer archive. The restored marker only identifies a lost session.
+    val registeredSessionId = exportState.id ?: pendingPickerId
+    val exportLauncher = key(registeredSessionId) {
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+            // Retain this non-secret marker through copying to report process loss.
+            if (uri == null && pendingPickerId == registeredSessionId) pendingPickerId = null
+            manual.save(registeredSessionId, uri)
+        }
+    }
+
+    // No credential or vault key enters SavedState. A restored picker can only use a
+    // still-live verified ciphertext session; process death requires starting again.
+    LaunchedEffect(exportState.phase) {
+        if (exportState.phase in setOf(ManualBackupPhase.READY, ManualBackupPhase.SAVED, ManualBackupPhase.MESSAGE)) pendingPickerId = null
+        if (exportState.phase == ManualBackupPhase.IDLE && pendingPickerId != null) {
+            pendingPickerId = null
+            manual.interruptedPicker()
+        }
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, manual) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                if (showExportVaultPin || showExportPasswordDialog) {
+                    showExportVaultPin = false; showExportPasswordDialog = false
+                    ArchiveVaultSecurity.lockVault()
+                    manual.cancel("Backup entry was interrupted. Start again; your vault is locked and no backup was saved.")
                 }
-                if (result.isSuccess) {
-                    exportSuccessMetadata = result.getOrNull()
-                } else {
-                    exportErrorAlert = result.exceptionOrNull()?.message ?: "Backup export failed."
-                }
+                manual.onBackground()
             }
-        } else {
-            pendingExportPassword = null
-            isExporting = false
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            manual.onBackground()
+            if (showExportVaultPin || showExportPasswordDialog) ArchiveVaultSecurity.lockVault()
         }
     }
 
@@ -75,18 +108,15 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, content: @Composable (Backu
 
 
     val busy = isPreparing || isExporting || isRestoring || showConfigureVaultPinDialog ||
-        showExportPasswordDialog || showRestorePasswordDialog || pendingExportPassword != null
+        showExportVaultPin || showExportPasswordDialog || showRestorePasswordDialog ||
+        exportState.phase in setOf(ManualBackupPhase.READY, ManualBackupPhase.PICKER)
     content(BackupActions(
         export = {
             if (!busy) {
-                isPreparing = true
-                coroutineScope.launch {
-                    try {
-                        val (allowed, reason) = BackupRestoreManager.canCreateBackup(context)
-                        if (allowed) showExportPasswordDialog = true
-                        else exportErrorAlert = reason ?: "Unlock your private notes vault before creating a backup."
-                    } finally { isPreparing = false }
-                }
+                finishExport()
+                if (ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED)
+                    showExportVaultPin = true
+                else showExportPasswordDialog = true
             }
         },
         restore = {
@@ -97,83 +127,105 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, content: @Composable (Backu
         busy = busy
     ))
 
+    if (showExportVaultPin) {
+        ArchiveVaultUnlockDialog(
+            onDismiss = { showExportVaultPin = false; ArchiveVaultSecurity.lockVault() },
+            onVerify = { ArchiveVaultSecurity.verifyPasscode(context, it) },
+            onSuccess = { showExportVaultPin = false; showExportPasswordDialog = true },
+            title = "Unlock for this backup",
+            description = "Enter your vault PIN here to include private notes. You do not need to leave this screen or disable the vault. This does not authorize automatic backups."
+        )
+    }
     if (showExportPasswordDialog) {
         ExportBackupPasswordDialog(
-            isExporting = isExporting,
-            onDismiss = {
-                showExportPasswordDialog = false
-                pendingExportPassword = null
-            },
+            isExporting = false,
+            onDismiss = { showExportPasswordDialog = false; ArchiveVaultSecurity.lockVault() },
             onConfirm = { password ->
-                showExportPasswordDialog = false
-                pendingExportPassword = password
-                val suggestedName = BackupRestoreManager.generateBackupFileName()
-                runCatching { exportLauncher.launch(suggestedName) }.onFailure {
-                    pendingExportPassword = null
-                    exportErrorAlert = "No file picker is available to save the backup."
+                // A second queued click can arrive before the dialog recomposes.
+                if (showExportPasswordDialog) {
+                    showExportPasswordDialog = false
+                    manual.prepare(password)
                 }
             }
         )
     }
-
-    if (isExporting) {
-        androidx.compose.ui.window.Dialog(onDismissRequest = { /* Modal: cannot dismiss while writing */ }) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
-                    Spacer(modifier = Modifier.width(20.dp))
-                    Column {
-                        Text(
-                            "Exporting Backup...",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Encrypting databases and media. Please wait...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+    if (isPreparing || isExporting) {
+        AlertDialog(
+            modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            onDismissRequest = {},
+            title = { Text(if (isPreparing) "Preparing encrypted backup" else "Saving encrypted backup") },
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(if (isPreparing) "If you use the vault, it remains locked. Saved records and attachments are being encrypted and verified before you choose a location."
+                    else "Only the encrypted archive is being copied. The saved file will be read back and checked before success is confirmed.")
+            } },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = {
+                pendingPickerId = null
+                manual.cancel(if (isExporting) "Saving stopped. The destination may contain an incomplete file. No saved app data was changed."
+                    else "Preparation cancelled. No saved app data was changed; the vault remains locked.")
+            }) { Text("Cancel") } }
+        )
+    }
+    if (exportState.phase == ManualBackupPhase.READY) {
+        AlertDialog(
+            modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            onDismissRequest = { finishExport() },
+            title = { Text("Encrypted backup ready") },
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                exportState.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Text("If you use the vault, it remains locked. Choose where to save the verified encrypted archive. You will need your manual backup password to restore it.")
+                Text("This temporary encrypted copy expires after 10 minutes. Cancelling discards it without changing your saved data.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { Button(onClick = {
+                val request = manual.chooseLocation()
+                if (request != null) {
+                    pendingPickerId = request
+                    runCatching { exportLauncher.launch(BackupRestoreManager.generateBackupFileName()) }.onFailure {
+                        pendingPickerId = null; manual.pickerUnavailable()
                     }
                 }
-            }
-        }
+            }) { Text("Choose save location") } },
+            dismissButton = { TextButton(onClick = { finishExport() }) { Text("Discard") } }
+        )
     }
 
     if (exportSuccessMetadata != null) {
         val meta = exportSuccessMetadata!!
         AlertDialog(
-            onDismissRequest = { exportSuccessMetadata = null },
+            modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            onDismissRequest = { finishExport() },
             icon = { Icon(Icons.Filled.Security, contentDescription = null, tint = Color(0xFF10B981)) },
             title = { Text("Backup Saved Successfully") },
             text = {
-                Text("Your encrypted backup has been saved and its authenticated archive read back successfully.\n\n• Notes: ${meta.noteCount}\n• Tasks: ${meta.taskCount}\n• Plans: ${meta.planCount}\n• Habits: ${meta.habitCount}\n• Drill Sessions: ${meta.drillCount}\n• App Restrictions: ${meta.restrictionCount}")
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text("Your backup was saved and read back successfully, matching the verified encrypted archive. Restore it with your manual backup password, not your vault PIN. Keep that password safe.\n\n• Notes: ${meta.noteCount}\n• Tasks: ${meta.taskCount}\n• Plans: ${meta.planCount}\n• Habits: ${meta.habitCount}\n• Drill Sessions: ${meta.drillCount}\n• App Restrictions: ${meta.restrictionCount}")
+                }
             },
             confirmButton = {
-                Button(onClick = { exportSuccessMetadata = null }) {
+                Button(onClick = { finishExport() }) {
                     Text("Done")
                 }
             }
         )
     }
 
-    if (exportErrorAlert != null) {
+    val manualError = exportState.takeIf { it.phase == ManualBackupPhase.MESSAGE }?.message
+    if (manualError != null) {
         AlertDialog(
-            onDismissRequest = { exportErrorAlert = null },
+            modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            onDismissRequest = { finishExport() },
             icon = { Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Backup Not Created") },
             text = {
-                Text(exportErrorAlert ?: "Unknown backup error.")
+                Column(Modifier.verticalScroll(rememberScrollState())) { Text(manualError.orEmpty()) }
             },
             confirmButton = {
-                Button(onClick = { exportErrorAlert = null }) {
+                Button(onClick = { finishExport() }) {
                     Text("OK")
                 }
             }
