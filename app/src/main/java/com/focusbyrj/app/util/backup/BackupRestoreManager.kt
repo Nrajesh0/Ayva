@@ -74,6 +74,7 @@ object BackupRestoreManager {
     private const val BACKUP_VERSION = 2
 
     private val PREF_FILES = listOf(
+        "focus_completed_tasks_history",
         "focus_prefs",
         "bubble_prefs",
         "focus_economy_prefs",
@@ -121,21 +122,6 @@ object BackupRestoreManager {
         val relativePath: String,
         val plaintextSize: Long,
         val sha256: String
-    )
-
-    private data class RestoreRollbackState(
-        val notes: List<NoteEntity>,
-        val restrictions: List<AppRestriction>,
-        val schedules: List<FocusSchedule>,
-        val tasks: List<Task>,
-        val habits: List<Habit>,
-        val habitLogs: List<HabitLog>,
-        val drillSessions: List<DrillSessionEntity>,
-        val idioms: List<Idiom>,
-        val ows: List<Ows>,
-        val chatMessages: List<AyvaChatMessageEntity>,
-        val preferences: Map<String, Map<String, *>>,
-        val assistantRecovery: AssistantPlanningArchive.Recovery
     )
 
     /**
@@ -501,6 +487,10 @@ object BackupRestoreManager {
                 val prefsObj = JSONObject()
                 val prefTypesObj = JSONObject()
                 PREF_FILES.forEach { prefName ->
+                    if (prefName == com.focusbyrj.app.util.CompletedTaskHistoryManager.PREFS_NAME) {
+                        prefsObj.put(prefName, com.focusbyrj.app.util.CompletedTaskHistoryManager.portable(app))
+                        return@forEach
+                    }
                     val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                     val map = sp.all
                     val pObj = JSONObject()
@@ -778,37 +768,66 @@ object BackupRestoreManager {
         } finally { stagingDir.deleteRecursively() }
     }
 
-    suspend fun restoreEncryptedBackup(
-        context: Context,
-        sourceUri: Uri,
-        password: String,
-        cleanRestore: Boolean = false,
-        vaultPin: String? = null
-    ): Result<BackupMetadata> = AssistantStateLock.mutex.withLock {
-        RestoreJournal.mutate(context) { restoreEncryptedBackupLocked(context, sourceUri, password, cleanRestore, vaultPin) }
+    class BackupSourceUnavailableException(cause: Exception) : IOException(
+        "The backup file could not be opened. Choose it again or reconnect its folder.", cause
+    )
+
+    /** In-memory capability owned by one restore. Its controller clears it on backgrounding. */
+    internal class RestoreAuthorization internal constructor(
+        private val owner: Context, private var key: ByteArray?,
+        internal val credentials: Map<String, *>
+    ) : AutoCloseable {
+        @Synchronized fun copyKey(context: Context): ByteArray {
+            require(owner === context.applicationContext)
+            return synchronized(ArchiveVaultSecurity) {
+                check(context.getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE).all == credentials) {
+                    "Vault settings changed. Confirm your PIN again."
+                }
+                checkNotNull(key) { "Vault confirmation ended. Start restore again." }.copyOf()
+            }
+        }
+        @Synchronized override fun close() { key?.fill(0); key = null }
     }
 
-    private suspend fun restoreEncryptedBackupLocked(
-        context: Context, sourceUri: Uri, password: String, cleanRestore: Boolean, vaultPin: String?
-    ): Result<BackupMetadata> = withContext(Dispatchers.IO) {
-        val app = context.applicationContext as FocusApplication
-        val stagingDir = File(app.cacheDir, "restore_media_stage_${System.currentTimeMillis()}").apply { mkdirs() }
-        val restoredHabitIds = mutableMapOf<Long, Long>()
-        val mediaDestinations = linkedMapOf<String, File>()
-        var preparedMedia: List<Pair<File, File>> = emptyList()
-        var rollbackState: RestoreRollbackState? = null
-        var mutationStarted = false
+    internal fun captureRestoreAuthorization(context: Context): RestoreAuthorization = synchronized(ArchiveVaultSecurity) {
+        check(ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED) { "Vault protection changed. Start restore again." }
+        val key = ArchiveVaultSecurity.getActiveVaultSubKey() ?: error("Confirm your vault PIN first.")
         try {
-            if (password.isBlank()) {
-                throw IllegalArgumentException("Backup password cannot be empty or blank.")
-            }
-            val focusDb = app.database
-            val noteDb = NoteDatabase.getInstance(app)
-            val drillDb = DrillDatabase.getDatabase(app)
-            val vocabDb = app.vocabDatabase
-            val chatDb = AyvaChatDatabase.getDatabase(app)
-            val inStream = app.contentResolver.openInputStream(sourceUri)
-                ?: throw IOException("Could not open backup source stream.")
+            RestoreAuthorization(context.applicationContext, key,
+                HashMap(context.getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE).all))
+        } catch (error: Throwable) { key.fill(0); throw error }
+        finally { ArchiveVaultSecurity.lockVault() }
+    }
+
+    /** Authenticated manifest stays in memory; staged attachments are device-key encrypted. */
+    internal class PreparedRestore internal constructor(
+        internal val owner: Context,
+        internal var manifest: JSONObject?,
+        internal val stagingDir: File,
+        internal val destinations: Map<String, File>,
+        internal val preparedAt: Long = android.os.SystemClock.elapsedRealtime()
+    ) : AutoCloseable {
+        internal val use = kotlinx.coroutines.sync.Mutex()
+        val hasPrivateNotes: Boolean get() = manifest?.optJSONArray("notes")?.let { notes ->
+            (0 until notes.length()).any { notes.getJSONObject(it).optBoolean("isArchived", false) }
+        } ?: false
+        val noteCount: Int get() = manifest?.optJSONArray("notes")?.length() ?: 0
+        val taskCount: Int get() = manifest?.optJSONArray("tasks")?.length() ?: 0
+        override fun close() { manifest = null; stagingDir.deleteRecursively() }
+    }
+
+    internal suspend fun prepareRestore(context: Context, sourceUri: Uri, password: String): Result<PreparedRestore> {
+      var completed: PreparedRestore? = null
+      try { return withContext(Dispatchers.IO) {
+        val app = context.applicationContext
+        val stagingDir = File(app.cacheDir, "restore_media_stage_${UUID.randomUUID()}").apply { check(mkdirs()) }
+        val mediaDestinations = linkedMapOf<String, File>()
+        try {
+            require(password.isNotBlank()) { "Enter the backup password or recovery key." }
+            val inStream = try {
+                app.contentResolver.openInputStream(sourceUri) ?: throw IOException("No backup source stream")
+            } catch (error: Exception) { throw BackupSourceUnavailableException(error) }
+
 
             var jsonDataStr: String? = null
 
@@ -893,21 +912,95 @@ object BackupRestoreManager {
             }
 
             val rootJson = BackupArchiveLimits.parseManifest(jsonDataStr!!)
+            validateRestoreManifest(rootJson)
+            validateStagedMedia(rootJson, stagingDir)
+            val result = PreparedRestore(app, rootJson, stagingDir, mediaDestinations)
+            completed = result
+            return@withContext Result.success(result)
+        } catch (error: Exception) {
+            stagingDir.deleteRecursively()
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            Result.failure(error)
+        }
+      } } catch (error: Throwable) { completed?.close(); throw error }
+    }
+
+    suspend fun restoreEncryptedBackup(
+        context: Context, sourceUri: Uri, password: String,
+        cleanRestore: Boolean = false, vaultPin: String? = null
+    ): Result<BackupMetadata> {
+        val prepared = prepareRestore(context, sourceUri, password).getOrElse { return Result.failure(it) }
+        return try { applyPreparedRestore(context, prepared, cleanRestore, vaultPin) } finally { prepared.close() }
+    }
+
+    internal suspend fun applyPreparedRestore(context: Context, prepared: PreparedRestore,
+        cleanRestore: Boolean = true, vaultPin: String? = null, authorization: RestoreAuthorization? = null): Result<BackupMetadata> = withContext(Dispatchers.IO) {
+      var vaultKey: ByteArray? = null
+      var ownedAuthorization: RestoreAuthorization? = null
+      try { prepared.use.withLock {
+        AssistantStateLock.mutex.withLock locked@ {
+            require(prepared.owner === context.applicationContext) { "This restore belongs to another app session." }
+            require(android.os.SystemClock.elapsedRealtime() - prepared.preparedAt in 0..600_000) { "Restore preparation expired. Choose the backup again." }
+            checkNotNull(prepared.manifest) { "This restore session has ended." }
+            val enabled = ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED
+            if (authorization == null && enabled) {
+                if (ArchiveVaultSecurity.isVaultLocked(context)) {
+                    if (vaultPin == null) return@locked Result.failure(RequiresVaultUnlockException())
+                    if (ArchiveVaultSecurity.verifyPasscode(context, vaultPin) !is ArchiveVaultSecurity.VerifyResult.Success)
+                        return@locked Result.failure(SecurityException("Vault PIN was not accepted. Your data was not changed."))
+                }
+                ownedAuthorization = captureRestoreAuthorization(context)
+            }
+            val capability = authorization ?: ownedAuthorization
+            if (capability != null) {
+                check(enabled) { "Vault protection changed. Start restore again." }
+                vaultKey = capability.copyKey(context)
+            }
+            if (prepared.hasPrivateNotes && !enabled && vaultPin == null)
+                return@locked Result.failure(RequiresVaultSetupException("Create a vault PIN to protect the restored private notes."))
+            val vaultBefore = capability?.credentials ?: synchronized(ArchiveVaultSecurity) {
+                check(ArchiveVaultSecurity.getVaultStatus(context) != ArchiveVaultSecurity.VaultStatus.ENABLED) { "Vault protection changed. Start restore again." }
+                HashMap(context.getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE).all)
+            }
+            // One-use authorization: the vault UI remains locked throughout the write.
+            ArchiveVaultSecurity.lockVault()
+            RestoreJournal.mutate(context) {
+                if (context.getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE).all != vaultBefore)
+                    Result.failure(SecurityException("Vault settings changed. Start restore again; your data was not changed."))
+                else restorePreparedLocked(context, prepared, cleanRestore, vaultPin, vaultKey)
+            }
+        }
+      } } catch (error: Exception) {
+        if (error is kotlinx.coroutines.CancellationException) throw error
+        Result.failure(error)
+      } finally { vaultKey?.fill(0); ownedAuthorization?.close(); ArchiveVaultSecurity.lockVault() }
+    }
+
+    class RequiresVaultUnlockException : IllegalStateException("Your vault is locked. Enter its PIN here to restore; keep protection on.")
+
+    private suspend fun restorePreparedLocked(context: Context, prepared: PreparedRestore,
+        cleanRestore: Boolean, vaultPin: String?, authorizedVaultKey: ByteArray?): Result<BackupMetadata> = withContext(Dispatchers.IO) {
+        val app = context.applicationContext as FocusApplication
+        val stagingDir = prepared.stagingDir
+        val mediaDestinations = prepared.destinations
+        var preparedMedia: List<Pair<File, File>> = emptyList()
+        val restoredHabitIds = mutableMapOf<Long, Long>()
+        var restoreVaultKey = authorizedVaultKey?.copyOf()
+        try {
+            val focusDb = app.database
+            val noteDb = NoteDatabase.getInstance(app)
+            val drillDb = DrillDatabase.getDatabase(app)
+            val vocabDb = app.vocabDatabase
+            val chatDb = AyvaChatDatabase.getDatabase(app)
+            val rootJson = checkNotNull(prepared.manifest)
             val version = rootJson.optInt("version", BACKUP_VERSION)
             val createdAt = rootJson.optLong("createdAt", System.currentTimeMillis())
             val appVersion = rootJson.optString("appVersion", "1.0.0")
-
-            // Parse and validate the entire manifest before changing vault settings, databases,
-            // preferences, or live media. This prevents a late malformed entity from producing
-            // a successful partial restore.
-            validateRestoreManifest(rootJson)
-            val assistantPlanning = if (rootJson.has("assistantPlanning")) rootJson.getJSONObject("assistantPlanning") else null
+            val assistantPlanning = rootJson.optJSONObject("assistantPlanning")
             AssistantPlanningArchive.preflight(app, assistantPlanning, cleanRestore)
-            validateStagedMedia(rootJson, stagingDir)
             checkNotNull(DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "pre_encrypted_restore", focusDb)) {
                 "Could not create the required pre-restore safety snapshot. No data was changed."
             }
-            rollbackState = captureRollbackState(app, noteDb, focusDb, drillDb, vocabDb, chatDb)
 
             // 4. Validate Secret Vault State and Build NoteEntities
             val notesArray = rootJson.optJSONArray("notes") ?: JSONArray()
@@ -917,24 +1010,16 @@ object BackupRestoreManager {
             if (hasArchivedNotes) {
                 val vaultStatus = ArchiveVaultSecurity.getVaultStatus(app)
                 if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED) {
-                    if (ArchiveVaultSecurity.isVaultLocked(app)) {
-                        if (vaultPin != null && vaultPin.length == 6) {
-                            val verifyRes = ArchiveVaultSecurity.verifyPasscode(app, vaultPin)
-                            if (verifyRes !is ArchiveVaultSecurity.VerifyResult.Success) {
-                                throw SecurityException("Incorrect Vault PIN provided for private notes.")
-                            }
-                        } else {
-                            throw IllegalStateException("Cannot restore backup: Secret Archive Vault is locked. Please unlock your secret vault first so private notes can be restored securely.")
-                        }
-                    }
+                    checkNotNull(restoreVaultKey) { "Vault authorization changed. Start restore again." }
                 } else {
                     // Vault is NOT configured or disabled on this device!
                     if (vaultPin != null && vaultPin.length == 6) {
-                        mutationStarted = true // setPasscode persists credentials.
                         val setSuccess = ArchiveVaultSecurity.setPasscode(app, vaultPin)
                         if (!setSuccess) {
                             throw IllegalStateException("Failed to configure Secret Archive Vault with provided PIN.")
                         }
+                        restoreVaultKey = ArchiveVaultSecurity.getActiveVaultSubKey()
+                        ArchiveVaultSecurity.lockVault()
                     } else {
                         throw RequiresVaultSetupException("This backup contains private Secret Archive Vault notes. Please set a 6-digit Vault PIN to encrypt and restore them securely on this device.")
                     }
@@ -942,7 +1027,7 @@ object BackupRestoreManager {
             }
 
             val noteEntities = mutableListOf<NoteEntity>()
-            val subKey = ArchiveVaultSecurity.getActiveVaultSubKey()
+            val subKey = restoreVaultKey
             for (i in 0 until notesArray.length()) {
                 val obj = notesArray.getJSONObject(i)
                 var note = NoteEntity(
@@ -986,7 +1071,6 @@ object BackupRestoreManager {
             // Safe transactional swap:
             // Insert all restored notes FIRST, then prune rows not in the backup — all in one transaction.
             // If anything throws, Room rolls back and existing data is completely untouched.
-            mutationStarted = true
             if (cleanRestore) {
                 noteDb.withTransaction {
                     // Include IDs assigned to legacy records that did not carry an ID.
@@ -1244,6 +1328,12 @@ object BackupRestoreManager {
             // 12. Restore SharedPreferences
             val prefsObj = rootJson.optJSONObject("preferences")
             val prefTypesObj = rootJson.optJSONObject("preferenceTypes")
+            // Completed history was absent from earlier current-format archives.
+            // A clean restore must not retain unrelated local history; a merge may.
+            if (cleanRestore && prefsObj?.has(com.focusbyrj.app.util.CompletedTaskHistoryManager.PREFS_NAME) != true) {
+                check(app.getSharedPreferences(com.focusbyrj.app.util.CompletedTaskHistoryManager.PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit().clear().commit()) { "Completed task history could not be cleared for restore" }
+            }
             if (prefsObj != null) {
                 val keys = prefsObj.keys()
                 while (keys.hasNext()) {
@@ -1253,6 +1343,10 @@ object BackupRestoreManager {
                         continue
                     }
                     val pObj = prefsObj.getJSONObject(prefName)
+                    if (prefName == com.focusbyrj.app.util.CompletedTaskHistoryManager.PREFS_NAME) {
+                        com.focusbyrj.app.util.CompletedTaskHistoryManager.restorePortable(app, pObj, cleanRestore, taskIdMapping)
+                        continue
+                    }
                     if (prefName == "exam_countdowns") {
                         val sp = app.getSharedPreferences(prefName, Context.MODE_PRIVATE)
                         val edit = sp.edit(); if (cleanRestore) edit.clear()
@@ -1349,6 +1443,8 @@ object BackupRestoreManager {
             try { AptitudeManager.init(app) } catch (_: Exception) {}
             try { DailyQuestManager.init(app) } catch (_: Exception) {}
 
+            com.focusbyrj.app.util.ReminderPrivacy.refreshActive(app)
+
             // 14. Reschedule Alarms & Update Widgets
             try {
                 HabitAlarmScheduler.rescheduleAllHabits(app)
@@ -1398,22 +1494,6 @@ object BackupRestoreManager {
             Result.success(metadata)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to restore encrypted backup", e)
-            if (mutationStarted && rollbackState != null) {
-                try {
-                    withContext(kotlinx.coroutines.NonCancellable) {
-                        restoreRollbackState(app, rollbackState!!)
-                    }
-                    Log.w(TAG, "Restore failed after mutation; all captured stores were rolled back")
-                } catch (rollbackError: Exception) {
-                    Log.e(TAG, "CRITICAL: automatic restore rollback failed", rollbackError)
-                    return@withContext Result.failure(
-                        IllegalStateException(
-                            "Restore failed and automatic rollback could not be completed. Use the pre-restore safety snapshot before continuing.",
-                            rollbackError
-                        )
-                    )
-                }
-            }
             val friendlyException = when {
                 e is RequiresVaultSetupException -> e
                 e is SecurityException -> e
@@ -1423,9 +1503,10 @@ object BackupRestoreManager {
             }
             Result.failure(friendlyException)
         } finally {
+            restoreVaultKey?.fill(0)
             preparedMedia.forEach { it.second.delete() }
             try {
-                stagingDir.deleteRecursively()
+                prepared.close()
             } catch (_: Exception) {}
             if (ArchiveVaultSecurity.getVaultStatus(app) == ArchiveVaultSecurity.VaultStatus.ENABLED) {
                 ArchiveVaultSecurity.lockVault()
@@ -1559,87 +1640,6 @@ object BackupRestoreManager {
         }
     }
 
-    private suspend fun captureRollbackState(
-        context: Context,
-        noteDb: NoteDatabase,
-        focusDb: FocusDatabase,
-        drillDb: DrillDatabase,
-        vocabDb: VocabDatabase,
-        chatDb: AyvaChatDatabase
-    ): RestoreRollbackState {
-        val preferenceNames = (PREF_FILES + ArchiveVaultSecurity.PREFS_NAME + "ayva_composer").distinct()
-        return RestoreRollbackState(
-            notes = noteDb.noteDao().getAllNotesList(),
-            restrictions = focusDb.appRestrictionDao().getAllRestrictionsSync(),
-            schedules = focusDb.scheduleDao().getAllSchedulesSync(),
-            tasks = focusDb.taskDao().getAllTasksList(),
-            habits = focusDb.habitDao().getAllHabitsSync(),
-            habitLogs = focusDb.habitDao().getAllLogsSync(),
-            drillSessions = drillDb.drillSessionDao().getAllSessionsSync(),
-            idioms = vocabDb.vocabDao().getAllIdioms(),
-            ows = vocabDb.vocabDao().getAllOws(),
-            chatMessages = chatDb.chatDao().getAllMessagesSync(),
-            assistantRecovery = AssistantPlanningArchive.captureRecovery(context),
-            preferences = preferenceNames.associateWith { name ->
-                HashMap(context.getSharedPreferences(name, Context.MODE_PRIVATE).all)
-            }
-        )
-    }
-
-    private suspend fun restoreRollbackState(context: Context, state: RestoreRollbackState) {
-        val app = context.applicationContext as FocusApplication
-        val noteDb = NoteDatabase.getInstance(app)
-        noteDb.withTransaction {
-            noteDb.noteDao().deleteAllNotes()
-            if (state.notes.isNotEmpty()) noteDb.noteDao().insertNotes(state.notes)
-        }
-
-        val focusDb = app.database
-        focusDb.withTransaction {
-            focusDb.habitDao().deleteAllLogs()
-            focusDb.habitDao().deleteAllHabits()
-            focusDb.taskDao().deleteAllTasks()
-            focusDb.scheduleDao().deleteAllSchedules()
-            focusDb.appRestrictionDao().deleteAllRestrictions()
-            if (state.restrictions.isNotEmpty()) focusDb.appRestrictionDao().insertRestrictions(state.restrictions)
-            if (state.schedules.isNotEmpty()) focusDb.scheduleDao().insertSchedules(state.schedules)
-            if (state.tasks.isNotEmpty()) focusDb.taskDao().insertTasks(state.tasks)
-            if (state.habits.isNotEmpty()) focusDb.habitDao().insertHabits(state.habits)
-            state.habitLogs.forEach { focusDb.habitDao().insertOrUpdateLog(it) }
-        }
-
-        val drillDb = DrillDatabase.getDatabase(app)
-        drillDb.withTransaction {
-            drillDb.drillSessionDao().deleteAllSessions()
-            state.drillSessions.forEach { drillDb.drillSessionDao().insertSession(it) }
-        }
-
-        val vocabDb = app.vocabDatabase
-        vocabDb.withTransaction {
-            state.idioms.forEach { vocabDb.vocabDao().updateIdiom(it) }
-            state.ows.forEach { vocabDb.vocabDao().updateOws(it) }
-        }
-
-        AyvaChatDatabase.getDatabase(app).chatDao().syncAllMessages(state.chatMessages)
-        state.preferences.forEach { (name, values) ->
-            val editor = app.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear()
-            values.forEach { (key, value) ->
-                when (value) {
-                    is Boolean -> editor.putBoolean(key, value)
-                    is Int -> editor.putInt(key, value)
-                    is Long -> editor.putLong(key, value)
-                    is Float -> editor.putFloat(key, value)
-                    is String -> editor.putString(key, value)
-                    is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
-                }
-            }
-            check(editor.commit()) { "Could not roll back preferences '$name'" }
-        }
-        AssistantPlanningArchive.recover(app, state.assistantRecovery)
-        ArchiveVaultSecurity.lockVault()
-        NotesViewModel.latestNotesCache.clear()
-    }
-
     private fun validateStagedMedia(root: JSONObject, stagingDir: File) {
         val manifest = root.optJSONArray("mediaManifest")
         if (manifest == null) {
@@ -1744,19 +1744,7 @@ object BackupRestoreManager {
         BackupArchiveLimits.checkEmbeddedJson(note.imageUrisJson)
         BackupArchiveLimits.checkEmbeddedJson(note.audioUrisJson)
         BackupArchiveLimits.checkNoteContent(note.content)
-        val result = mutableListOf<String>()
-        result += note.getImageUris()
-        result += note.getAudioUris()
-        if (note.content.contains(NotesnookBlockManager.BLOCKS_PREFIX)) {
-            NotesnookBlockManager.parse(note.content).forEach { block ->
-                when (block) {
-                    is NotesnookBlock.Image -> if (block.uri.isNotBlank()) result += block.uri
-                    is NotesnookBlock.Attachment -> if (block.uri.isNotBlank()) result += block.uri
-                    else -> Unit
-                }
-            }
-        }
-        return result
+        return com.focusbyrj.app.data.note.NoteMediaInventory.paths(note).toList()
     }
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
@@ -1779,38 +1767,14 @@ object BackupRestoreManager {
         return output.toString()
     }
 
-    private fun remapBlockMedia(content: String, destinations: Map<String, File>): String {
-        if (!content.contains(NotesnookBlockManager.BLOCKS_PREFIX)) return content
-        val blocks = NotesnookBlockManager.parse(content)
-        var changed = false
-        blocks.forEach { block ->
-            when (block) {
-                is NotesnookBlock.Image -> {
-                    val remapped = remapMediaPath(block.uri, destinations)
-                    if (remapped != block.uri) { block.uri = remapped; changed = true }
-                }
-                is NotesnookBlock.Attachment -> {
-                    val remapped = remapMediaPath(block.uri, destinations)
-                    if (remapped != block.uri) { block.uri = remapped; changed = true }
-                }
-                else -> Unit
-            }
-        }
-        return if (changed) {
-            NotesnookBlockManager.serialize(
-                blocks,
-                isArticle = NotesnookBlockManager.isArticleMode(content),
-                subtitle = NotesnookBlockManager.getSubtitle(content)
-            )
-        } else content
-    }
+    private fun remapBlockMedia(content: String, destinations: Map<String, File>): String =
+        com.focusbyrj.app.data.note.NoteMediaInventory.remapContent(content) { remapMediaPath(it, destinations) }
 
     private fun prepareRestoredMedia(
         stagingDir: File,
         destinations: Map<String, File>
     ): List<Pair<File, File>> {
         val prepared = mutableListOf<Pair<File, File>>()
-        val buffer = ByteArray(32 * 1024)
         try {
             MEDIA_FOLDERS.forEach { folder ->
                 File(stagingDir, folder).listFiles()?.filter { it.isFile }?.forEach { staged ->
@@ -1821,15 +1785,13 @@ object BackupRestoreManager {
                     destination.parentFile?.mkdirs()
                     val temp = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.restore")
                     prepared += destination to temp
+                    // This authenticates the complete GCM tag before any database change.
                     (EncryptedMediaStorage.openDecryptedInputStream(staged)
-                        ?: throw IOException("Staged attachment cannot be decrypted")).use { input ->
-                        EncryptedMediaStorage.openEncryptedOutputStream(temp).use { output ->
-                            var read = input.read(buffer)
-                            while (read != -1) {
-                                output.write(buffer, 0, read)
-                                read = input.read(buffer)
-                            }
-                        }
+                        ?: throw IOException("Staged attachment cannot be decrypted")).close()
+                    if (!staged.renameTo(temp)) {
+                        val expected = staged.inputStream().use { digestBackup(it) }
+                        staged.inputStream().use { input -> temp.outputStream().use { input.copyTo(it) } }
+                        check(temp.inputStream().use { digestBackup(it) } == expected) { "Staged media copy did not verify" }
                     }
                     java.io.RandomAccessFile(temp, "rw").use { it.fd.sync() }
                 }

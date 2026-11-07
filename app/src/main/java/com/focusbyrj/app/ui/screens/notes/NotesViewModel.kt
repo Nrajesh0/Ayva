@@ -1027,6 +1027,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             resolvedNote
         }
 
+        com.focusbyrj.app.data.note.MediaRetirement.protect(decryptedNote)
         val state = EditingNoteState(
             originalId = decryptedNote.id,
             storageRevision = decryptedNote.updatedAt,
@@ -1066,6 +1067,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         fresh
                     }
+                    com.focusbyrj.app.data.note.MediaRetirement.protect(freshDecrypted)
                     latestNotesCache[freshDecrypted.id] = freshDecrypted
                     withContext(Dispatchers.Main) {
                         val curr = _editingState.value

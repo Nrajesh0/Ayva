@@ -185,7 +185,7 @@ fun SetupPermissionsDialog(
                         .navigationBarsPadding()
                         .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 48.dp)
                 ) {
-                    val allGranted = hasUsageStats && hasOverlay && isBatteryUnrestricted && hasNotifications && exactAlarmsGranted
+                    val allGranted = hasUsageStats && hasOverlay && hasNotifications
                     Button(
                         onClick = onDismiss,
                         modifier = Modifier
@@ -199,7 +199,7 @@ fun SetupPermissionsDialog(
                         shape = RoundedCornerShape(100.dp)
                     ) {
                         Text(
-                            text = if (allGranted) "Enter Focus Mode" else "Skip Configuration",
+                            text = if (allGranted) "Continue" else "Continue with limited access",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal)
                         )
                     }

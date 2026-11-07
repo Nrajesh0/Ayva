@@ -37,7 +37,7 @@ import java.util.Calendar
  *
  * Adversarial TDD tests covering:
  * - BATCH-9-001: SafePrefsExtensions getSafeInt prevents 64-bit Long truncation/corruption and getSafeBoolean self-heals stored Ints
- * - BATCH-9-002: HabitRepository.cleanPlaceholderData guards against unintended deletion of user-created habits via migration flag
+ * - BATCH-9-002: HabitRepository.retired placeholder cleanup guards against unintended deletion of user-created habits via migration flag
  * - BATCH-9-003: HabitRepository.recordHabitProgressForDate sanitizes and clamps negative completed counts
  * - BATCH-9-004: AyvaChatDao.deleteOldestMessages with zero or negative limit prevents SQLite whole-table deletion
  * - BATCH-9-005: AyvaIntentRouter /create slash command strips task creation trigger verbs from explicit input
@@ -103,11 +103,8 @@ class Batch9SecurityAuditTest {
     }
 
     @Test
-    fun batch9_002_cleanPlaceholderDataGuardedByPreferenceFlagDoesNotDeleteUserHabits() = runBlocking {
-        // Clean placeholder once to mark migration as completed
-        habitRepo.cleanPlaceholderData(context)
-
-        // Now user creates a habit titled "Deep Reading"
+    fun batch9_002_authoredHabitTitlesRemainOrdinaryUserDataWithoutCleanupFlags() = runBlocking {
+        context.getSharedPreferences("habit_prefs", Context.MODE_PRIVATE).edit().clear().commit()
         val userHabit = Habit(
             title = "Deep Reading",
             description = "My daily reading routine",
@@ -119,12 +116,8 @@ class Batch9SecurityAuditTest {
         val habitId = habitRepo.insertHabit(userHabit)
         assertTrue(habitId > 0)
 
-        // Subsequent cleanPlaceholderData execution (e.g. on next app start or AccountScreen visit)
-        // MUST NOT delete the user's habit!
-        habitRepo.cleanPlaceholderData(context)
-
-        val retrievedHabit = habitRepo.getHabitById(habitId)
-        assertNotNull("User-created habit 'Deep Reading' must NOT be deleted after migration", retrievedHabit)
+        val retrievedHabit = HabitRepository(focusDb.habitDao()).getHabitById(habitId)
+        assertNotNull("A title must never identify a habit as disposable demo data", retrievedHabit)
         assertEquals("Deep Reading", retrievedHabit?.title)
     }
 

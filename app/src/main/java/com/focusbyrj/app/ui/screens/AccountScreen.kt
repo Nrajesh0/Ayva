@@ -1922,12 +1922,6 @@ private fun EnclaveAppBlockingSection(
     val habitsProgress by app.habitRepository.activeHabitsWithProgress.collectAsState(initial = emptyList())
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        try {
-            app.habitRepository.cleanPlaceholderData(context)
-        } catch (_: Exception) {}
-    }
-
     val hardApps = restrictions.filter { it.isRestricted && it.mode.equals("HARD", ignoreCase = true) }
     val softApps = restrictions.filter { it.isRestricted && !it.mode.equals("HARD", ignoreCase = true) }
     val totalRestricted = restrictions.count { it.isRestricted }

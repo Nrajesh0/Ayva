@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
+import kotlinx.coroutines.launch
+
 import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -48,12 +50,23 @@ fun FullscreenDrillSummaryView(
     val isDark = isSystemInDarkTheme()
     val bgColor = if (isDark) Color(0xFF131F24) else Color(0xFF131F24) // Authentic Duolingo dark slate canvas
     val context = LocalContext.current
+    val saveScope = rememberCoroutineScope()
+    var savingClaim by remember { mutableStateOf(false) }
     
     val initiallyClaimed = remember(message.drillSummaryJson) {
         try { JSONObject(message.drillSummaryJson ?: "{}").optBoolean("isClaimed", false) } catch (e: Exception) { false }
     }
     
     var isClaimedState by remember(initiallyClaimed) { mutableStateOf(initiallyClaimed) }
+    LaunchedEffect(message.id, message.drillSummaryJson) {
+        try {
+            val id = JSONObject(message.drillSummaryJson ?: "{}").optString("sessionId", message.id)
+            if (com.focusbyrj.app.data.drill.DrillSessionRepository.getSummary(id)?.isClaimed == true) isClaimedState = true
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            android.util.Log.w("DrillSummary", "Stored completion state unavailable; retaining message state")
+        }
+    }
     
     val jsonObj = remember(message.drillSummaryJson) { JSONObject(message.drillSummaryJson ?: "{}") }
     val title = jsonObj.optString("title", "XP Olympian")
@@ -72,14 +85,23 @@ fun FullscreenDrillSummaryView(
 
     val shareText = "⚡ Solved $total questions with $accPct% accuracy in $time! Earned +$xp XP on Focus App!"
 
-    val markAsClaimed = {
-        try {
-            val obj = JSONObject(message.drillSummaryJson ?: "{}")
-            obj.put("isClaimed", true)
-            val updatedJson = obj.toString()
-            onMessageUpdate?.invoke(message.copy(drillSummaryJson = updatedJson))
-        } catch (_: Exception) {}
-        isClaimedState = true
+    val markAsClaimed: () -> Unit = {
+        if (!savingClaim) {
+            savingClaim = true
+            saveScope.launch {
+                try {
+                    val obj = JSONObject(message.drillSummaryJson ?: "{}")
+                    val id = obj.optString("sessionId", message.id)
+                    com.focusbyrj.app.data.drill.DrillSessionRepository.markClaimed(id).getOrThrow()
+                    obj.put("isClaimed", true)
+                    onMessageUpdate?.invoke(message.copy(drillSummaryJson = obj.toString()))
+                    isClaimedState = true
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    android.widget.Toast.makeText(context, "Could not save completion. Please try again.", android.widget.Toast.LENGTH_LONG).show()
+                } finally { savingClaim = false }
+            }
+        }
     }
 
     Box(

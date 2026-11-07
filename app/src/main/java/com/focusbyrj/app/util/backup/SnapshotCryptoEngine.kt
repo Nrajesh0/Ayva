@@ -14,12 +14,10 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
 import java.security.KeyStore
-import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * Hardware-backed AES-256-GCM encryption engine for internal data safety snapshots (F05).
@@ -51,14 +49,7 @@ object SnapshotCryptoEngine {
         'N'.code.toByte()
     )
 
-    private val isUnitTestEnvironment: Boolean by lazy {
-        try {
-            android.os.Build.FINGERPRINT.startsWith("robolectric") ||
-            Class.forName("org.robolectric.Robolectric") != null
-        } catch (_: Throwable) {
-            false
-        }
-    }
+    private val isUnitTestEnvironment: Boolean get() = com.focusbyrj.app.util.crypto.TestRuntimeKeys.available
 
     private fun getMasterKeyForEncryption(): SecretKey {
         return try {
@@ -88,7 +79,7 @@ object SnapshotCryptoEngine {
             if (e is SecurityException) throw e
             if (isUnitTestEnvironment) {
                 Log.w(TAG, "AndroidKeyStore is unavailable in unit test environment; using test software key.")
-                return getLegacyFallbackKey()
+                return getTestKey()
             }
             Log.e(TAG, "AndroidKeyStore is unavailable for snapshot master key generation. Refusing to use static software key for new writes.", e)
             throw SecurityException("Failed to generate hardware-backed snapshot master key in AndroidKeyStore", e)
@@ -108,11 +99,7 @@ object SnapshotCryptoEngine {
         }
     }
 
-    internal fun getLegacyFallbackKey(): SecretKey {
-        val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("focus_snapshot_software_seed_v1".toByteArray(Charsets.UTF_8))
-        return SecretKeySpec(fallbackSeed, "AES")
-    }
+    internal fun getTestKey(): SecretKey = com.focusbyrj.app.util.crypto.TestRuntimeKeys.key("snapshot")
 
     /**
      * Checks if the given byte array represents an encrypted snapshot container.
@@ -198,7 +185,7 @@ object SnapshotCryptoEngine {
 
         // Decrypt using KeyStore hardware key, or unit test fallback
         val masterKey = getMasterKeyForDecryption() ?: if (isUnitTestEnvironment) {
-            getLegacyFallbackKey()
+            getTestKey()
         } else {
             throw SecurityException("Snapshot master key could not be loaded from AndroidKeyStore.")
         }

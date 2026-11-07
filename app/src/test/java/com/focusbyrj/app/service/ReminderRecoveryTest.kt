@@ -28,14 +28,18 @@ class ReminderRecoveryTest {
     private val context get() = RuntimeEnvironment.getApplication()
     private lateinit var work: WorkManager
     @Before fun prepare() {
-        runCatching { WorkManager.initialize(context, Configuration.Builder().setMinimumLoggingLevel(android.util.Log.ERROR).build()) }
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(context,
+            Configuration.Builder().setExecutor(androidx.work.testing.SynchronousExecutor())
+                .setMinimumLoggingLevel(android.util.Log.ERROR).build())
         work = WorkManager.getInstance(context)
         work.cancelUniqueWork("run_boot_reminders").result.get(5, TimeUnit.SECONDS)
         work.cancelUniqueWork("run_calendar_reminders").result.get(5, TimeUnit.SECONDS)
     }
     @After fun cleanup() {
-        work.cancelUniqueWork("run_boot_reminders").result.get(5, TimeUnit.SECONDS)
-        work.cancelUniqueWork("run_calendar_reminders").result.get(5, TimeUnit.SECONDS)
+        if (::work.isInitialized) {
+            work.cancelUniqueWork("run_boot_reminders").result.get(5, TimeUnit.SECONDS)
+            work.cancelUniqueWork("run_calendar_reminders").result.get(5, TimeUnit.SECONDS)
+        }
     }
 
     @Test fun rejectedBubbleStartCannotPreventBootAlarmRecoveryOrClearSnooze() = runBlocking {

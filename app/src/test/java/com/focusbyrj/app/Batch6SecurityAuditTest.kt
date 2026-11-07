@@ -172,7 +172,7 @@ class Batch6SecurityAuditTest {
         assertTrue("Embedded block attachment must be preserved by cleanOrphanedMedia", embeddedAttachmentFile.exists())
 
         // The true orphan must be cleaned up
-        assertFalse("Unreferenced orphan file should be cleaned up", orphanFile.exists())
+        assertTrue("An unknown old file has no proven retirement and must be retained", orphanFile.exists())
     }
 
     /**
@@ -196,8 +196,8 @@ class Batch6SecurityAuditTest {
 
         NoteMediaManager.deleteNoteMediaFiles(note, listOf(note))
 
-        assertFalse("Block image should be deleted when note media is purged", blockImg.exists())
-        assertFalse("Block attachment should be deleted when note media is purged", blockAtt.exists())
+        assertTrue("Caller snapshots cannot authorize permanent image deletion", blockImg.exists())
+        assertTrue("Caller snapshots cannot authorize permanent attachment deletion", blockAtt.exists())
     }
 
     /**
@@ -303,7 +303,7 @@ class Batch6SecurityAuditTest {
     fun testCopyImageFileAlwaysProducesEncryptedFile() {
         val imagesDir = File(context.filesDir, "keep_images").apply { mkdirs() }
         val srcFile = File(imagesDir, "src_test_img.jpg").apply {
-            writeBytes("DUMMY_IMAGE_JPEG_PAYLOAD_BYTES".toByteArray())
+            EncryptedMediaStorage.writeEncryptedBytes(this, "DUMMY_IMAGE_JPEG_PAYLOAD_BYTES".toByteArray())
         }
 
         val copiedPath = NoteImageHelper.copyImageFile(context, srcFile.absolutePath)
@@ -489,10 +489,10 @@ class Batch6SecurityAuditTest {
     fun testDuplicateNoteIsolatesBlockMedia() {
         val imagesDir = File(context.filesDir, "keep_images").apply { mkdirs() }
         val origImg = File(imagesDir, "img_orig_test.jpg").apply {
-            writeBytes("IMAGE_BYTES".toByteArray())
+            EncryptedMediaStorage.writeEncryptedBytes(this, "IMAGE_BYTES".toByteArray())
         }
         val origAtt = File(imagesDir, "att_orig_test.pdf").apply {
-            writeBytes("PDF_BYTES".toByteArray())
+            EncryptedMediaStorage.writeEncryptedBytes(this, "PDF_BYTES".toByteArray())
         }
 
         val origBlocks = listOf(
@@ -533,8 +533,8 @@ class Batch6SecurityAuditTest {
         )
         NoteMediaManager.deleteNoteMediaFiles(origNote, listOf(origNote))
 
-        assertFalse("Original image file was deleted", origImg.exists())
-        assertFalse("Original attachment file was deleted", origAtt.exists())
+        assertTrue("Original media is retained until verified transactional cleanup", origImg.exists())
+        assertTrue("Original media is retained until verified transactional cleanup", origAtt.exists())
         assertTrue("Duplicated image file must remain intact", File(dupImg.uri).exists())
         assertTrue("Duplicated attachment file must remain intact", File(dupAtt.uri).exists())
     }
@@ -641,10 +641,10 @@ class Batch6SecurityAuditTest {
     fun testDuplicateSelectedNotesIsolatesBlockMedia() {
         val imagesDir = File(context.filesDir, "keep_images").apply { mkdirs() }
         val origImg = File(imagesDir, "batch_dup_img.jpg").apply {
-            writeBytes("BATCH_IMAGE_BYTES".toByteArray())
+            EncryptedMediaStorage.writeEncryptedBytes(this, "BATCH_IMAGE_BYTES".toByteArray())
         }
         val origAtt = File(imagesDir, "batch_dup_att.pdf").apply {
-            writeBytes("BATCH_PDF_BYTES".toByteArray())
+            EncryptedMediaStorage.writeEncryptedBytes(this, "BATCH_PDF_BYTES".toByteArray())
         }
 
         val origBlocks = listOf(
@@ -693,8 +693,8 @@ class Batch6SecurityAuditTest {
 
         // Purging original note media must NOT delete or zero duplicated note files
         NoteMediaManager.deleteNoteMediaFiles(origNote, listOf(origNote))
-        assertFalse("Original image file must be deleted", origImg.exists())
-        assertFalse("Original attachment file must be deleted", origAtt.exists())
+        assertTrue("Original media is retained until verified transactional cleanup", origImg.exists())
+        assertTrue("Original media is retained until verified transactional cleanup", origAtt.exists())
 
         assertTrue("Duplicated image file must still exist after original is purged", File(dupImg.uri).exists())
         assertTrue("Duplicated attachment file must still exist after original is purged", File(dupAtt.uri).exists())

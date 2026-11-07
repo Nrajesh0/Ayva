@@ -4,7 +4,7 @@
     <LinearLayout android:id="@+id/exam_content" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center_vertical" android:padding="18dp">
         <LinearLayout android:id="@+id/exam_toolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingBottom="4dp">
             <TextView android:id="@+id/exam_badge" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end" android:textSize="11sp" android:textStyle="bold" android:includeFontPadding="false" />
-            <TextView android:id="@+id/exam_edit" android:layout_width="wrap_content" android:layout_height="32dp" android:gravity="center" android:paddingHorizontal="8dp" android:text="Edit" android:textSize="11sp" android:contentDescription="Edit exam widget" android:includeFontPadding="false" />
+            <TextView android:id="@+id/exam_edit" android:layout_width="wrap_content" android:layout_height="32dp" android:gravity="center" android:paddingHorizontal="8dp" android:text="@string/a11y_widget_exam_minimal_text_1" android:textSize="11sp" android:contentDescription="@string/a11y_widget_exam_minimal_contentDescription_2" android:includeFontPadding="false" />
         </LinearLayout>
         <LinearLayout android:id="@+id/exam_primary" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
             <TextView android:id="@+id/exam_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="16sp" android:maxLines="2" android:ellipsize="end" android:textStyle="bold" android:includeFontPadding="false" android:layout_marginBottom="6dp" android:fontFamily="sans-serif-medium" />
@@ -18,9 +18,9 @@
         </LinearLayout>
         <LinearLayout android:id="@+id/exam_list" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone" />
         <LinearLayout android:id="@+id/exam_navigation" android:layout_width="match_parent" android:layout_height="32dp" android:layout_marginTop="4dp" android:orientation="horizontal" android:gravity="center_vertical" android:visibility="gone">
-            <TextView android:id="@+id/exam_previous" android:layout_width="44dp" android:layout_height="match_parent" android:gravity="center" android:text="‹" android:textSize="24sp" android:contentDescription="Previous exam page" android:includeFontPadding="false" />
+            <TextView android:id="@+id/exam_previous" android:layout_width="44dp" android:layout_height="match_parent" android:gravity="center" android:text="@string/a11y_widget_exam_minimal_text_3" android:textSize="24sp" android:contentDescription="@string/a11y_widget_exam_minimal_contentDescription_4" android:includeFontPadding="false" />
             <TextView android:id="@+id/exam_page" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:gravity="center" android:textSize="11sp" android:includeFontPadding="false" android:maxLines="1" android:ellipsize="end" />
-            <TextView android:id="@+id/exam_next" android:layout_width="44dp" android:layout_height="match_parent" android:gravity="center" android:text="›" android:textSize="24sp" android:contentDescription="Next exam page" android:includeFontPadding="false" />
+            <TextView android:id="@+id/exam_next" android:layout_width="44dp" android:layout_height="match_parent" android:gravity="center" android:text="@string/a11y_widget_exam_minimal_text_5" android:textSize="24sp" android:contentDescription="@string/a11y_widget_exam_minimal_contentDescription_6" android:includeFontPadding="false" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

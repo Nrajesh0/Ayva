@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -30,8 +31,9 @@ import kotlinx.coroutines.*
 import java.time.*
 import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AutomaticBackupsScreen(nav: NavController) {
+fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { AutomaticBackupStore(context) }
@@ -39,12 +41,21 @@ fun AutomaticBackupsScreen(nav: NavController) {
     var config by remember { mutableStateOf(AutomaticBackupConfig()) }
     var hasKey by remember { mutableStateOf(false) }
     var vaultAuthorized by remember { mutableStateOf(false) }
+    var vaultConfigured by remember { mutableStateOf(false) }
+    var advanced by remember { mutableStateOf(false) }
+    var keyExportConsent by remember { mutableStateOf(false) }
+    var authorizeWithExport by remember { mutableStateOf(false) }
     var count by remember { mutableIntStateOf(0) }
+    var recentBackups by remember { mutableStateOf<List<ManagedBackup>>(emptyList()) }
+    var showBackups by remember { mutableStateOf(false) }
     var ownershipLimit by remember { mutableStateOf(false) }
     var configurationDamaged by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val backgroundBusy by AutomaticBackups.running.collectAsStateWithLifecycle()
+    val backupProgress by AutomaticBackups.progress.collectAsStateWithLifecycle()
+    val pendingBackup by remember(context) { AutomaticBackups.pendingNow(context) }.collectAsStateWithLifecycle(initialValue = false)
     var error by remember { mutableStateOf<String?>(null) }
+    var reconnectRecovery by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<String?>(null) }
     var showSchedule by remember { mutableStateOf(false) }
     var showRetention by remember { mutableStateOf(false) }
@@ -65,19 +76,22 @@ fun AutomaticBackupsScreen(nav: NavController) {
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(60_000) } }
     LaunchedEffect(revision) {
         hasKey = store.hasKey()
+        vaultConfigured = ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED
         try {
             val loaded = withContext(Dispatchers.IO) { store.config() }
-            val ownership = withContext(Dispatchers.IO) { store.records().count { it.stream == loaded.stream && it.keyId == loaded.keyId } }
+            val records = withContext(Dispatchers.IO) { store.records().filter { it.stream == loaded.stream && it.keyId == loaded.keyId } }
+            val ownership = records.size
+            recentBackups = records.asReversed().take(30)
             config = loaded; count = ownership; vaultAuthorized = store.hasVaultAuthorization(); ownershipLimit = store.ownershipLimitReached(); configurationDamaged = false
-        } catch (_: Exception) { configurationDamaged = true; error = "Automatic backup settings could not be read. Existing backup files were not changed. Repair setup using the protected key, or import your exported key." }
+        } catch (_: Exception) { configurationDamaged = true; error = "Backup setup needs repair. Existing backup files are kept." }
     }
     fun perform(action: suspend () -> Unit) {
         if (busy) return
-        busy = true; error = null; info = null
+        busy = true; error = null; info = null; reconnectRecovery = false
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try { action() }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { error = e.message ?: "The operation could not be completed. Existing backups were kept." }
+            catch (e: Exception) { reconnectRecovery = e is BackupVaultChangedException; info = null; error = e.message ?: "The operation could not be completed. Existing backups were kept." }
             finally { busy = false }
         }
     }
@@ -95,27 +109,34 @@ fun AutomaticBackupsScreen(nav: NavController) {
         AutomaticBackups.installKey(context, credential)
         info = "Recovery key imported. Export a copy and confirm it before enabling automatic backups. Private vault authorization must be renewed."
     }
-    fun saveKeyExport(uri: Uri, keyId: String, asPdf: Boolean, relockVault: Boolean = false) {
+    fun saveKeyExport(uri: Uri, keyId: String, asPdf: Boolean, relockVault: Boolean = false, authorize: Boolean = false) {
         if (busy) {
             if (relockVault) ArchiveVaultSecurity.lockVault()
             return
         }
         perform {
             try {
+                if (authorize) AutomaticBackups.authorizeVault(context)
                 AutomaticBackups.exportKey(context, uri, asPdf, keyId)
                 if (createdKeyId == keyId) createdKeyId = null
-                info = if (asPdf) "Recovery PDF saved and read back successfully. Keep it separate from backups."
-                    else "Recovery key file saved and read back successfully."
+                info = "Recovery file saved and checked. Keep it somewhere safe."
             } finally { if (relockVault) ArchiveVaultSecurity.lockVault() }
         }
     }
     fun requestKeyExport(uri: Uri, keyId: String, asPdf: Boolean) {
-        if (ArchiveVaultSecurity.isVaultLocked(context)) {
+        if (ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED) {
             pendingExportUri = uri.toString(); pendingExportKeyId = keyId; pendingExportAsPdf = asPdf
+            authorizeWithExport = !store.hasVaultAuthorization()
+            keyExportConsent = authorizeWithExport
         } else saveKeyExport(uri, keyId, asPdf)
     }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) perform { AutomaticBackups.destination(context, uri); info = "Folder checked. Enable the schedule when setup is complete." }
+        if (uri != null) perform {
+            info = "Checking folder…"
+            AutomaticBackups.destination(context, uri)
+            if (!store.hasKey()) AutomaticBackups.installKey(context)
+            info = "Folder ready. Save your recovery file next."
+        }
     }
     val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val expected = pendingPdfKeyId; pendingPdfKeyId = null
@@ -132,71 +153,170 @@ fun AutomaticBackupsScreen(nav: NavController) {
         }
     }
 
-    SettingsMenuPage("Automatic backups", nav) {
-        val status = backupHealth(config, now)
-        Surface(shape = MaterialTheme.shapes.large, color = if (config.problem.isNotBlank()) MaterialTheme.colorScheme.errorContainer.copy(alpha = .4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (backgroundBusy) "Creating and verifying backup" else status, style = MaterialTheme.typography.titleMedium)
-                Text("Saved records and media · full encrypted backup", style = MaterialTheme.typography.bodySmall)
-                Text("Last verified full backup: ${backupTime(config.lastSuccess)}", style = MaterialTheme.typography.bodySmall)
-                if (config.lastAttempt > 0) Text("Last attempt: ${backupTime(config.lastAttempt)}", style = MaterialTheme.typography.bodySmall)
-                Text(if (vaultAuthorized) "Private-note backup access: Authorized" else "Private-note backup access: Not authorized", style = MaterialTheme.typography.bodySmall)
-                if (config.enabled) Text("Next due: ${backupTime(config.nextDue)}", style = MaterialTheme.typography.bodySmall)
-                if (config.detail.isNotBlank()) Text(config.detail, style = MaterialTheme.typography.bodySmall)
-                if (config.lastFile.isNotBlank()) Text(config.lastFile, style = MaterialTheme.typography.labelSmall)
+    BackupFlow(onRestored, automaticRestore = true) { backupActions ->
+      SettingsMenuPage("Automatic backups", nav) {
+        val controlsEnabled = !busy && !backgroundBusy && !backupActions.busy
+        val ready = hasKey && config.tree.isNotBlank() && config.keyExported && config.keyAcknowledged && (!vaultConfigured || vaultAuthorized)
+        val step = when { config.tree.isBlank() -> 1; !hasKey || !config.keyExported -> 2; else -> 3 }
+        Surface(shape = MaterialTheme.shapes.large,
+            color = if (config.problem.isNotBlank()) MaterialTheme.colorScheme.errorContainer.copy(alpha = .4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (backgroundBusy) backupProgress else if (config.problem.isNotBlank()) "Needs attention" else if (pendingBackup) "Backup queued" else if (!ready) "Set up automatic backups" else backupHealth(config, now), style = MaterialTheme.typography.titleMedium)
+                Text("Encrypted · Saved data and attachments", style = MaterialTheme.typography.bodySmall)
+                Text("Last backup: ${backupTime(config.lastSuccess)}", style = MaterialTheme.typography.bodySmall)
+                if (config.tree.isNotBlank()) Text("Folder: ${Uri.parse(config.tree).lastPathSegment.orEmpty().substringAfterLast('/').substringAfter(':')}", style = MaterialTheme.typography.bodySmall)
+                if (config.enabled) Text("Next backup: ${backupTime(config.nextDue)}", style = MaterialTheme.typography.bodySmall)
             }
         }
-        if (busy || backgroundBusy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 10.dp)) }
-        if (configurationDamaged && hasKey) TextButton(enabled = !busy && !backgroundBusy, onClick = { perform { AutomaticBackups.repairConfiguration(context); info = "Setup repaired using the same recovery key. Choose a folder and confirm your exported key before enabling backups." } }) { Text("Repair automatic backup setup") }
-        info?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 10.dp)) }
-        SettingsMenuSectionHeader("RECOVERY KEY")
-        Text("A recovery key unlocks these backups after reinstalling or changing phones. No password is needed for each scheduled run. Anyone with the key and backup can read the data.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
-        SettingsMenuRow(Icons.Default.Key, if (hasKey && configurationDamaged) "Protected key retained" else if (hasKey) "Key · ${config.keyId.take(16)}…" else "Create recovery key") {
-            TextButton(enabled = !busy && !backgroundBusy, onClick = { if (hasKey) newKeyConfirmation = true else createKey() }) { Text(if (hasKey) "New key" else "Create") }
-        }
-        SettingsMenuRow(Icons.Default.FileOpen, "Use an existing key") {
-            Row { TextButton(enabled = !busy && !backgroundBusy, onClick = { launchPicker { importPicker.launch(arrayOf("*/*")) } }) { Text("Import") }
-                TextButton(enabled = !busy && !backgroundBusy, onClick = { showKeyInput = true }) { Text("Enter") } }
-        }
-        if (hasKey) {
-            SettingsMenuRow(Icons.Default.PictureAsPdf, "Export recovery PDF") { TextButton(enabled = !busy && !backgroundBusy, onClick = { pendingPdfKeyId = config.keyId; launchPicker { pdfPicker.launch("RUN-Recovery-Key-${config.keyId}.pdf") } }) { Text("Export") } }
-            SettingsMenuRow(Icons.Default.Description, "Export recovery key file") { TextButton(enabled = !busy && !backgroundBusy, onClick = { pendingFileKeyId = config.keyId; launchPicker { keyPicker.launch("RUN-Recovery-Key-${config.keyId}.runkey") } }) { Text("Export") } }
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Checkbox(config.keyAcknowledged, enabled = config.keyExported && !busy && !backgroundBusy, onCheckedChange = { checked -> perform { AutomaticBackups.acknowledgeKey(context, checked, config.keyId) } })
-                Text("I have saved the exported key somewhere I can access after uninstalling. I will keep it separate from the backup folder.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        if (busy || backgroundBusy || pendingBackup) LinearProgressIndicator(Modifier.fillMaxWidth())
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp)) }
+        if (reconnectRecovery) TextButton(enabled = controlsEnabled, onClick = { launchPicker { importPicker.launch(arrayOf("*/*")) } }) { Text("Reconnect recovery file") }
+        info?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp)) }
+        if (configurationDamaged) {
+            Text("Backup setup needs repair. Existing backup files are kept.")
+            if (hasKey) Button(enabled = controlsEnabled, onClick = { perform { AutomaticBackups.repairConfiguration(context) } }) { Text("Repair setup") }
+        } else if (!ready) {
+            SettingsMenuSectionHeader("STEP $step OF 3")
+            when (step) {
+                1 -> {
+                    Text("Choose where backups go", style = MaterialTheme.typography.titleMedium)
+                    Text("Use a folder you can access outside the app.", style = MaterialTheme.typography.bodySmall)
+                    Button(enabled = controlsEnabled, onClick = { launchPicker { folderPicker.launch(null) } }) { Text("Choose folder") }
+                }
+                2 -> {
+                    Text("Save your recovery file", style = MaterialTheme.typography.titleMedium)
+                    Text("It opens your backups after reinstalling or changing phones. Keep it safe and separate from backups.", style = MaterialTheme.typography.bodySmall)
+                    Button(enabled = controlsEnabled, onClick = {
+                        if (hasKey) {
+                            pendingFileKeyId = config.keyId
+                            launchPicker { keyPicker.launch("RUN-Recovery-Key-${config.keyId}.runkey") }
+                        } else perform {
+                            val id = AutomaticBackups.installKey(context)
+                            pendingFileKeyId = id
+                            launchPicker { keyPicker.launch("RUN-Recovery-Key-$id.runkey") }
+                        }
+                    }) { Text("Save recovery file") }
+                }
+                else -> {
+                    Text("Ready to turn on", style = MaterialTheme.typography.titleMedium)
+                    Text("${backupFrequencyLabel(config.frequency)} · Keep the latest ${config.keep} copies", style = MaterialTheme.typography.bodySmall)
+                    Text("Your recovery file was saved and checked. Keep it safe.", style = MaterialTheme.typography.bodySmall)
+                    if (vaultConfigured && !vaultAuthorized) {
+                        Text("Include private notes with a one-time PIN confirmation.", style = MaterialTheme.typography.bodySmall)
+                        FilledTonalButton(enabled = controlsEnabled, onClick = { vaultConsent = true }) { Text("Include private notes") }
+                    }
+                    Button(enabled = controlsEnabled && (!vaultConfigured || vaultAuthorized), onClick = { perform {
+                        AutomaticBackups.acknowledgeKey(context, true, config.keyId)
+                        AutomaticBackups.enable(context, true)
+                        info = "Automatic backups are on. The first backup will run when Android allows it."
+                    } }) { Text("Turn on automatic backups") }
+                }
             }
+        } else {
+            SettingsMenuRow(Icons.Default.CloudUpload, "Automatic backups") {
+                Switch(config.enabled, enabled = controlsEnabled, onCheckedChange = { enabled -> perform { AutomaticBackups.enable(context, enabled) } })
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 12.dp)) {
+                Button(enabled = controlsEnabled && (!pendingBackup || config.problem.isNotBlank()), onClick = { perform {
+                    AutomaticBackups.requestNow(context)
+                    info = "Backup requested. Android will start it when storage is available."
+                } }) { Text(if (config.problem.isNotBlank()) "Retry now" else if (pendingBackup) "Waiting to start" else "Back up now") }
+                OutlinedButton(enabled = controlsEnabled, onClick = { if (recentBackups.isNotEmpty()) showBackups = true else backupActions.restore() }) { Text("Restore backup") }
+            }
+            Text(if (vaultConfigured) "Private notes included · Vault stays locked" else "All saved notes included", style = MaterialTheme.typography.bodySmall)
+            SettingsMenuSectionHeader("HOW OFTEN")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(config.frequency.unit == "DAYS" && config.frequency.every == 1,
+                    onClick = { perform { AutomaticBackups.configure(context, frequency = config.frequency.copy(unit = "DAYS", every = 1)) } },
+                    enabled = controlsEnabled, label = { Text("Daily") })
+                FilterChip(config.frequency.unit == "WEEKS" && config.frequency.every == 1,
+                    onClick = { perform { AutomaticBackups.configure(context, frequency = config.frequency.copy(unit = "WEEKS", every = 1)) } },
+                    enabled = controlsEnabled, label = { Text("Weekly") })
+                TextButton(enabled = controlsEnabled, onClick = { showSchedule = true }) { Text("Custom") }
+            }
+            if (!(config.frequency.every == 1 && config.frequency.unit in setOf("DAYS", "WEEKS")))
+                Text(backupFrequencyLabel(config.frequency), style = MaterialTheme.typography.bodySmall)
+            Text("Android may delay a scheduled backup for battery or storage.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        SettingsMenuSectionHeader("DESTINATION & SCHEDULE")
-        SettingsMenuRow(Icons.Default.Folder, if (config.tree.isBlank()) "Choose backup folder" else "Backup folder selected") {
-            TextButton(enabled = !busy && !backgroundBusy, onClick = { launchPicker { folderPicker.launch(config.tree.takeIf(String::isNotBlank)?.let(Uri::parse)) } }) { Text(if (config.tree.isBlank()) "Choose" else "Change") }
+        if (!ready) OutlinedButton(enabled = controlsEnabled, onClick = backupActions.restore, modifier = Modifier.padding(top = 16.dp)) { Text("Restore a backup instead") }
+        TextButton(onClick = { advanced = !advanced }, modifier = Modifier.padding(vertical = 12.dp)) { Text(if (advanced) "Hide advanced options" else "Advanced options") }
+        if (advanced) {
+            SettingsMenuSectionHeader("BACKUP OPTIONS")
+            SettingsMenuRow(Icons.Default.Folder, "Backup folder") {
+                TextButton(enabled = controlsEnabled, onClick = { launchPicker { folderPicker.launch(config.tree.takeIf(String::isNotBlank)?.let(Uri::parse)) } }) { Text("Change") }
+            }
+            if (config.tree.isNotBlank()) Text(Uri.parse(config.tree).lastPathSegment.orEmpty().substringAfterLast('/'), style = MaterialTheme.typography.bodySmall)
+            SettingsMenuRow(Icons.Default.History, "Keep ${config.keep} backups") { TextButton(modifier = Modifier.testTag("automatic_retention"), enabled = controlsEnabled, onClick = { showRetention = true }) { Text("Change") } }
+            SettingsMenuRow(Icons.Default.BatteryChargingFull, "Only while charging") { Switch(config.chargingOnly, enabled = controlsEnabled, onCheckedChange = { perform { AutomaticBackups.configure(context, charging = it) } }) }
+            SettingsMenuRow(Icons.Default.Schedule, "Custom schedule") { TextButton(enabled = controlsEnabled, onClick = { showSchedule = true }) { Text("Edit") } }
+            Text("Old backups are removed only after a new backup verifies. Manual backups are kept.", style = MaterialTheme.typography.bodySmall)
+            SettingsMenuSectionHeader("RECOVERY FILE")
+            SettingsMenuRow(Icons.Default.FileOpen, "Use an existing recovery key") {
+                Row {
+                    TextButton(enabled = controlsEnabled, onClick = { launchPicker { importPicker.launch(arrayOf("*/*")) } }) { Text("Choose file") }
+                    TextButton(enabled = controlsEnabled, onClick = { showKeyInput = true }) { Text("Enter key") }
+                }
+            }
+            if (hasKey) {
+                SettingsMenuRow(Icons.Default.PictureAsPdf, "Save recovery PDF") { TextButton(modifier = Modifier.testTag("automatic_recovery_pdf"), enabled = controlsEnabled, onClick = {
+                    pendingPdfKeyId = config.keyId; launchPicker { pdfPicker.launch("RUN-Recovery-Key-${config.keyId}.pdf") }
+                }) { Text("Save") } }
+                SettingsMenuRow(Icons.Default.Description, "Save recovery key file") { TextButton(enabled = controlsEnabled, onClick = {
+                    pendingFileKeyId = config.keyId; launchPicker { keyPicker.launch("RUN-Recovery-Key-${config.keyId}.runkey") }
+                }) { Text("Save") } }
+            }
+            SettingsMenuRow(Icons.Default.Key, if (hasKey) "Replace recovery key" else "Create recovery key") {
+                TextButton(enabled = controlsEnabled, onClick = { if (hasKey) newKeyConfirmation = true else createKey() }) { Text(if (hasKey) "Replace" else "Create") }
+            }
+            if (vaultConfigured || vaultAuthorized) {
+                SettingsMenuSectionHeader("PRIVATE NOTES")
+                Text("Your recovery file can open private notes in the backup. Keep it safe.", style = MaterialTheme.typography.bodySmall)
+                SettingsMenuRow(Icons.Default.Lock, if (vaultAuthorized) "Private notes included" else "Private notes need permission") {
+                    Row {
+                        TextButton(enabled = controlsEnabled && hasKey, onClick = { vaultConsent = true }) { Text(if (vaultAuthorized) "Renew" else "Include") }
+                        if (vaultAuthorized) TextButton(enabled = controlsEnabled, onClick = { confirmRevoke = true }) { Text("Revoke") }
+                    }
+                }
+            }
+            if (config.detail.isNotBlank()) Text(config.detail, style = MaterialTheme.typography.bodySmall)
+            Text("$count verified backups managed here.", style = MaterialTheme.typography.bodySmall)
+            if (ownershipLimit) Text("Some older copies were kept for manual review.", style = MaterialTheme.typography.bodySmall)
+            Text("Keep a second copy off this phone. Unsaved text and local recovery snapshots are separate.", style = MaterialTheme.typography.bodySmall)
+            SettingsMenuRow(Icons.Default.Notifications, "Failure notifications") { TextButton(onClick = {
+                runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)) }
+            }) { Text("System") } }
         }
-        if (config.tree.isNotBlank()) Text(Uri.parse(config.tree).lastPathSegment.orEmpty(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SettingsMenuRow(Icons.Default.Schedule, "Every ${config.frequency.every} ${config.frequency.unit.lowercase().let { if (config.frequency.every == 1) it.removeSuffix("s") else it }}") { TextButton(enabled = !busy && !backgroundBusy, onClick = { showSchedule = true }) { Text("Set") } }
-        SettingsMenuRow(Icons.Default.History, "Keep ${config.keep} verified backups") { TextButton(enabled = !busy && !backgroundBusy, onClick = { showRetention = true }) { Text("Set") } }
-        SettingsMenuRow(Icons.Default.BatteryChargingFull, "Wait for charging") { Switch(config.chargingOnly, enabled = !busy && !backgroundBusy, onCheckedChange = { value -> perform { AutomaticBackups.configure(context, charging = value) } }) }
-        SettingsMenuRow(Icons.Default.CloudUpload, "Automatic backups") {
-            Switch(config.enabled, enabled = !busy && !backgroundBusy && hasKey && config.keyExported && config.keyAcknowledged && config.tree.isNotBlank(), onCheckedChange = { value -> perform { AutomaticBackups.enable(context, value) } })
-        }
-        SettingsMenuRow(Icons.Default.Backup, "Back up now") {
-            TextButton(enabled = !busy && !backgroundBusy && config.keyAcknowledged && config.tree.isNotBlank(), onClick = { perform { AutomaticBackups.requestNow(context); info = "Backup requested. Check Last verified full backup to confirm completion." } }) { Text("Run") }
-        }
-        Text("Enabling schedules the first backup as soon as battery, storage and charging requirements allow. Later jobs follow your schedule.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("$count verified backups managed for this setup. Older copies are removed only after a new archive verifies. Manual backups, other folders and other installations are kept. Failed deletions can leave more than the chosen limit.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 10.dp))
-        if (ownershipLimit) Text("Some older files are no longer automatically managed and were kept in their original folder. Review them manually if you need to free space.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        SettingsMenuSectionHeader("PRIVATE VAULT")
-        Text("To include locked private notes unattended, authorize a protected backup-only copy of the vault key. It does not unlock the vault for normal app use. Your exported backup recovery key can read private notes in these archives without the original vault PIN. Without authorization, a full backup containing private notes fails rather than skipping them.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SettingsMenuRow(Icons.Default.Lock, if (vaultAuthorized) "Private vault authorized" else "Authorize private vault") {
-            Row { TextButton(enabled = !busy && !backgroundBusy && hasKey, onClick = { vaultConsent = true }) { Text(if (vaultAuthorized) "Renew" else "Authorize") }
-                if (vaultAuthorized) TextButton(enabled = !busy && !backgroundBusy, onClick = { confirmRevoke = true }) { Text("Revoke") } }
-        }
-        SettingsMenuSectionHeader("BACKUP HEALTH")
-        Text("Android may delay jobs for battery, storage, force-stop or device restrictions. After reboot, unlock the phone once. Cloud folders depend on their provider, account and sync availability. Uninstalling stops future jobs; files already saved outside the app remain.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("Saved records and attachments are included. Unsaved editor text and local safety snapshots are separate. Keep a second copy of important backups off this phone; a local folder does not survive device loss or a factory reset.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 10.dp))
-        SettingsMenuRow(Icons.Default.Notifications, "Failure notifications") { TextButton(onClick = {
-            runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)) }
-        }) { Text("System") } }
+      }
+      if (showBackups) AlertDialog(
+        onDismissRequest = { showBackups = false },
+        title = { Text("Choose backup") },
+        text = { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            recentBackups.forEachIndexed { index, backup ->
+                OutlinedButton(enabled = !busy && !backgroundBusy && !backupActions.busy,
+                    modifier = Modifier.fillMaxWidth().testTag("automatic_restore_${backup.created}"),
+                    onClick = { showBackups = false; backupActions.restoreFile(Uri.parse(backup.uri)) }) {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(backupTime(backup.created))
+                        Text((if (index == 0) "Latest · " else "") + android.text.format.Formatter.formatShortFileSize(context, backup.size), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        } },
+        confirmButton = { TextButton(enabled = !busy && !backgroundBusy && !backupActions.busy, onClick = { showBackups = false; backupActions.restore() }) { Text("Choose another file") } },
+        dismissButton = { TextButton(onClick = { showBackups = false }) { Text("Cancel") } }
+      )
     }
+    if (keyExportConsent) AlertDialog(
+        onDismissRequest = { keyExportConsent = false; pendingExportUri = null; pendingExportKeyId = null; authorizeWithExport = false },
+        title = { Text("Include private notes?") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Scheduled backups can include private notes while the vault stays locked.")
+            Text("The recovery file opens these notes. Keep it safe.", style = MaterialTheme.typography.bodySmall)
+        } },
+        confirmButton = { Button(onClick = { keyExportConsent = false }) { Text("Include and continue") } },
+        dismissButton = { TextButton(onClick = { keyExportConsent = false; pendingExportUri = null; pendingExportKeyId = null; authorizeWithExport = false }) { Text("Cancel") } }
+    )
     if (confirmRevoke) AlertDialog(
         modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -252,25 +372,29 @@ fun AutomaticBackupsScreen(nav: NavController) {
     }
     val exportUri = pendingExportUri
     val exportKeyId = pendingExportKeyId
-    if (exportUri != null && exportKeyId != null) com.focusbyrj.app.ui.screens.notes.ArchiveVaultUnlockDialog(
+    if (exportUri != null && exportKeyId != null && !keyExportConsent) com.focusbyrj.app.ui.screens.notes.ArchiveVaultUnlockDialog(
         onDismiss = {
             pendingExportUri = null; pendingExportKeyId = null
+            ArchiveVaultSecurity.lockVault()
             error = "Key export cancelled. No recovery key was written."
         },
+        title = "Confirm vault PIN", description = "Save the recovery file. Vault protection stays on.",
         onVerify = { ArchiveVaultSecurity.verifyPasscode(context, it) },
         onSuccess = {
             val asPdf = pendingExportAsPdf
             pendingExportUri = null; pendingExportKeyId = null
-            saveKeyExport(Uri.parse(exportUri), exportKeyId, asPdf, relockVault = true)
+            val includePrivate = authorizeWithExport
+            authorizeWithExport = false
+            saveKeyExport(Uri.parse(exportUri), exportKeyId, asPdf, relockVault = true, authorize = includePrivate)
         }
     )
     if (vaultConsent) AlertDialog(modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
         properties = DialogProperties(usePlatformDefaultWidth = false), onDismissRequest = { vaultConsent = false }, title = { Text("Authorize private-note backups?") },
-        text = { Text("RUN will keep an Android Keystore-protected backup copy of the vault key. Scheduled full backups can then include private notes while the vault is locked. Anyone with an archive and its exported backup recovery key can read those notes. Revoke this authorization here at any time.") },
+        text = { Text("Allow scheduled backups to include private notes while the vault stays locked. The recovery file opens these notes. You can revoke access here.") },
         confirmButton = { TextButton(onClick = {
             vaultConsent = false
             val active = ArchiveVaultSecurity.getActiveVaultSubKey()
-            if (active != null) { active.fill(0); perform { AutomaticBackups.authorizeVault(context) } }
+            if (active != null) { active.fill(0); perform { try { AutomaticBackups.authorizeVault(context) } finally { ArchiveVaultSecurity.lockVault() } } }
             else if (ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED) showVaultPin = true
             else error = "No private vault is configured. Ordinary saved notes are already included."
         }) { Text("Continue") } }, dismissButton = { TextButton(onClick = { vaultConsent = false }) { Text("Cancel") } })
@@ -278,7 +402,7 @@ fun AutomaticBackupsScreen(nav: NavController) {
         onDismiss = { showVaultPin = false }, onVerify = { ArchiveVaultSecurity.verifyPasscode(context, it) },
         onSuccess = { showVaultPin = false; perform { try { AutomaticBackups.authorizeVault(context); info = "Private-note backup access authorized on this phone. The vault is locked again. Keep the backup recovery key separate from your backup files." } finally { ArchiveVaultSecurity.lockVault() } } },
         title = "Authorize automatic backups",
-        description = "Enter your vault PIN to allow scheduled private-note backups while the vault stays locked. Your backup recovery key will unlock these archives.")
+        description = "One-time permission for private-note backups. Vault protection stays on.")
 }
 
 @Composable
@@ -307,6 +431,14 @@ internal fun RecoveryKeyExportDialog(
             }
         }
     )
+}
+
+internal fun backupFrequencyLabel(value: BackupFrequency): String = when {
+    value.every != 1 -> "Every ${value.every} ${value.unit.lowercase(java.util.Locale.ROOT)}"
+    value.unit == "DAYS" -> "Daily"
+    value.unit == "WEEKS" -> "Weekly"
+    value.unit == "HOURS" -> "Hourly"
+    else -> "Monthly"
 }
 
 internal fun backupTime(value: Long): String = if (value <= 0) "None yet" else Instant.ofEpochMilli(value).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM yyyy · HH:mm"))

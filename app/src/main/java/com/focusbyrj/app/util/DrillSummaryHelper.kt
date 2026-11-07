@@ -8,7 +8,26 @@ import java.util.UUID
 import kotlin.math.roundToInt
 
 object DrillSummaryHelper {
-    fun generateSummaryMessage(session: DrillSession): ChatMessage {
+    suspend fun generateSummaryMessage(session: DrillSession): ChatMessage {
+        // Capture on the caller thread before the journal suspends for disk I/O.
+        // Session copies used by the timer share mutable collections with the UI.
+        val submitted = session.copy(
+            questionRecords = session.questionRecords.map { it.copy(options = it.options.toList()) }.toMutableList(),
+            preGeneratedQuestions = session.preGeneratedQuestions.toMutableList(),
+            attemptedIndices = session.attemptedIndices.toMutableSet(),
+            markedForReview = session.markedForReview.toMutableSet()
+        )
+        return com.focusbyrj.app.data.drill.DrillSessionRepository.settleOnce(submitted.sessionId,
+            existing = { summary -> message(summary) }, create = { createSummaryMessage(submitted) })
+            .also { session.isSettled.set(true) }
+    }
+
+    private fun message(summary: com.focusbyrj.app.data.drill.DrillSummary) = ChatMessage(
+        id = summary.sessionId, text = "Drill Summary", isUser = false,
+        timestamp = System.currentTimeMillis(), firstViewedTimestamp = System.currentTimeMillis(),
+        isDrillSummary = true, drillSummaryJson = summary.toJson())
+
+    private suspend fun createSummaryMessage(session: DrillSession): ChatMessage {
         val baseMultiplier = when (session.difficulty) {
             "medium" -> 25
             "hard" -> 30
@@ -49,8 +68,7 @@ object DrillSummaryHelper {
         var xpEarned = xpEarnedL.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
 
         val profileBefore = AptitudeManager.profileFlow.value
-        val wasAlreadySettled = session.isSettled.getAndSet(true)
-        if (!wasAlreadySettled) {
+        run {
             // Sync gold directly to user wallet
             if (session.gold > 0) {
                 FocusEconomyManager.addDirectGold(session.gold)
@@ -76,7 +94,7 @@ object DrillSummaryHelper {
         val secs = elapsedSeconds % 60
         val timeFormatted = "$mins:${secs.toString().padStart(2, '0')}"
 
-        val sessionId = UUID.randomUUID().toString()
+        val sessionId = session.sessionId
         val questionsList = mutableListOf<com.focusbyrj.app.data.drill.DrillQuestionResult>()
         val recordedNums = mutableSetOf<Int>()
         session.questionRecords.forEachIndexed { idx, qRec ->

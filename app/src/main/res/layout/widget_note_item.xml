@@ -17,7 +17,7 @@
         android:layout_width="16dp"
         android:layout_height="16dp"
         android:src="@drawable/ic_widget_drag_handle"
-        android:contentDescription="Drag to Rearrange" />
+        android:contentDescription="@string/a11y_widget_note_item_contentDescription_1" />
 
     <!-- Interactive Square Checkbox -->
     <ImageView
@@ -27,7 +27,7 @@
         android:layout_marginStart="6dp"
         android:background="@android:color/transparent"
         android:src="@drawable/ic_widget_check_empty"
-        android:contentDescription="Toggle Item" />
+        android:contentDescription="@string/a11y_widget_note_item_contentDescription_2" />
 
     <!-- Checklist Item Text -->
     <TextView
@@ -38,7 +38,7 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:layout_marginStart="8dp"
-        android:text="Checklist item"
+        android:text="@string/a11y_widget_note_item_text_3"
         android:textColor="#E8EAED"
         android:maxLines="4"
         android:ellipsize="end" />
@@ -52,5 +52,5 @@
         android:background="@android:color/transparent"
         android:src="@drawable/ic_widget_remove_x"
         android:padding="2dp"
-        android:contentDescription="Remove Item" />
+        android:contentDescription="@string/a11y_widget_note_item_contentDescription_4" />
 </LinearLayout>

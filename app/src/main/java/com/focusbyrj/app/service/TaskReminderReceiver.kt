@@ -128,7 +128,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
                             description = "Pop up notifications and reminders for your tasks"
                             enableVibration(true)
                             setShowBadge(true)
-                            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                            lockscreenVisibility = com.focusbyrj.app.util.ReminderPrivacy.visibility(appContext)
                         }
                         notificationManager.createNotificationChannel(channel)
                     }
@@ -216,19 +216,20 @@ class TaskReminderReceiver : BroadcastReceiver() {
                     }
 
                     val builder = NotificationCompat.Builder(appContext, channelId)
+                        .also { com.focusbyrj.app.util.ReminderPrivacy.configure(it, appContext, channelId) }
                         .setSmallIcon(R.drawable.ic_app_logo)
                         .setContentTitle(title)
                         .setContentText(contentSubtitle)
                         .setStyle(NotificationCompat.BigTextStyle().bigText(if (details.isNotBlank()) "$details\nTap to view or manage task." else "Scheduled task reminder is due."))
                         .setPriority(NotificationCompat.PRIORITY_HIGH)
                         .setCategory(NotificationCompat.CATEGORY_REMINDER)
-                        .setContentIntent(popupPendingIntent)
+                        .setContentIntent(com.focusbyrj.app.util.TaskReminderTap.intent(appContext, taskId, popupActionIntent, popupPendingIntent))
                         .setDeleteIntent(deletePendingIntent)
                         .setAutoCancel(!isPersistent)
                         .setGroup(TASKS_GROUP_KEY)
                         .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
                         .addAction(0, "Ignore", ignorePendingIntent)
-                        .addAction(0, "Reschedule", reschedulePendingIntent)
+                        .addAction(0, "Reschedule", com.focusbyrj.app.util.TaskReminderTap.intent(appContext, taskId, rescheduleActionIntent, reschedulePendingIntent, reschedule = true))
                         .addAction(0, "Complete", completePendingIntent)
 
                     if (isPersistent) {
@@ -259,6 +260,7 @@ class TaskReminderReceiver : BroadcastReceiver() {
                                 lines.forEach { inboxStyle.addLine(it) }
 
                                 val summaryNotification = NotificationCompat.Builder(appContext, channelId)
+                                    .also { com.focusbyrj.app.util.ReminderPrivacy.configure(it, appContext, channelId) }
                                     .setSmallIcon(R.drawable.ic_app_logo)
                                     .setContentTitle("Tasks & To-Dos")
                                     .setContentText("${activeTasks.size} tasks pending")

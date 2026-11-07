@@ -20,6 +20,8 @@ internal object MaintenanceGate {
     @Volatile var recoveryRequired = false
         private set
 
+    internal val requiresDurableCommit: Boolean get() = owner.get() == true
+
     fun inheritedContext() = owner.asContextElement(owner.get() == true)
 
     fun enter() {

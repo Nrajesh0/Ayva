@@ -29,8 +29,10 @@ enum class DevicePermission(val settingId: String, val title: String, val explan
 }
 
 data class DevicePermissionState(val granted: Set<DevicePermission>) {
-    val blockingReady get() = setOf(DevicePermission.USAGE, DevicePermission.OVERLAY, DevicePermission.BATTERY).all { it in granted }
-    val remindersReady get() = setOf(DevicePermission.NOTIFICATIONS, DevicePermission.ALARMS).all { it in granted }
+    val blockingReady get() = setOf(DevicePermission.USAGE, DevicePermission.OVERLAY).all { it in granted }
+    val remindersReady get() = DevicePermission.NOTIFICATIONS in granted
+    val preciseRemindersReady get() = remindersReady && DevicePermission.ALARMS in granted
+    val backgroundReliabilityRecommended get() = DevicePermission.BATTERY !in granted
     val ready get() = blockingReady && remindersReady
     companion object {
         fun read(context: Context) = DevicePermissionState(DevicePermission.entries.filter { !it.applicable || it.granted(context) }.toSet())

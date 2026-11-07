@@ -155,7 +155,8 @@ data class DrillSession(
     val attemptedIndices: MutableSet<Int> = mutableSetOf(),
     val markedForReview: MutableSet<Int> = mutableSetOf(),
     var highestSeenIndex: Int = 0,
-    val isSettled: java.util.concurrent.atomic.AtomicBoolean = java.util.concurrent.atomic.AtomicBoolean(false)
+    val isSettled: java.util.concurrent.atomic.AtomicBoolean = java.util.concurrent.atomic.AtomicBoolean(false),
+    val sessionId: String = java.util.UUID.randomUUID().toString()
 )
 
 data class AppInfo(val name: String, val packageName: String, val category: AppCategory = AppCategory.OTHERS)
@@ -488,6 +489,23 @@ fun ChatInterface() {
     var showBubbleIconPicker by rememberSaveable { mutableStateOf(false) }
     var chatFontSizeSp by remember { mutableStateOf(prefs.getFloat("chat_font_size_sp", 15f)) }
     var activeDrillSession by remember { mutableStateOf<DrillSession?>(null) }
+    var drillSaveError by remember { mutableStateOf<String?>(null) }
+    var finishingDrill by remember { mutableStateOf(false) }
+    val vocabQuizWriter = remember(context) { com.focusbyrj.app.data.VocabQuizWriter(context) }
+    suspend fun saveDrill(session: DrillSession): ChatMessage? {
+        if (finishingDrill) return null
+        finishingDrill = true
+        return try {
+            vocabQuizWriter.flush().getOrThrow()
+            com.focusbyrj.app.util.DrillSummaryHelper.generateSummaryMessage(session).also { drillSaveError = null }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            drillSaveError = "Your result could not be saved. Keep this drill open, check available storage, then try again."
+            null
+        } finally {
+            finishingDrill = false
+        }
+    }
     var showDrillSummaryMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var showSolutionsJson by remember { mutableStateOf<String?>(null) }
     var showMysteryChestDialog by remember { mutableStateOf(false) }
@@ -497,12 +515,13 @@ fun ChatInterface() {
             while (activeDrillSession?.isBlitz == true) {
                 delay(1000L)
                 val session = activeDrillSession ?: break
+                if (finishingDrill) continue
                 if (session.blitzSecondsRemaining > 1) {
                     activeDrillSession = session.copy(blitzSecondsRemaining = session.blitzSecondsRemaining - 1)
                 } else {
                     session.blitzSecondsRemaining = 0
                     com.focusbyrj.app.util.GamificationHaptics.playCelebration(context)
-                    val summaryMsg = com.focusbyrj.app.util.DrillSummaryHelper.generateSummaryMessage(session)
+                    val summaryMsg = saveDrill(session) ?: break
                     val questState = com.focusbyrj.app.util.DailyQuestManager.stateFlow.value
                     val hasMysteryBox = questState.isEarlyBirdAvailable || questState.isNightOwlAvailable
                     val boxMsg = if (hasMysteryBox) {
@@ -1618,9 +1637,11 @@ fun ChatInterface() {
     val isFullscreenMode = activeDrillSession != null
 
     val generateNextQuestion: () -> Unit = {
+        coroutineScope.launch {
+        if (finishingDrill) return@launch
         activeDrillSession?.let { session ->
             if (!session.isBlitz && session.targetQuestions != -1 && session.total >= session.targetQuestions) {
-                val summaryMsg = com.focusbyrj.app.util.DrillSummaryHelper.generateSummaryMessage(session)
+                val summaryMsg = saveDrill(session) ?: return@let
                 val questState = com.focusbyrj.app.util.DailyQuestManager.stateFlow.value
                 val hasMysteryBox = questState.isEarlyBirdAvailable || questState.isNightOwlAvailable
                 val boxMsg = if (hasMysteryBox) {
@@ -1673,17 +1694,21 @@ fun ChatInterface() {
                 activeDrillSession = session.copy()
             }
         }
-    }
+
+        }
+}
 
     // Handlers for active drill / blitz session interactions
     val handleDrillAnswer: (Boolean, QuestionRecord) -> Unit = { isCorrect, qRecord ->
-        activeDrillSession?.let { session ->
+        activeDrillSession?.takeUnless { finishingDrill }?.let { session ->
             session.questionRecords.add(qRecord)
             session.total++
             if (session.difficulty == "vocab" && qRecord.vocabId != null && qRecord.vocabId > 0 && !qRecord.vocabType.isNullOrBlank()) {
-                coroutineScope.launch(Dispatchers.IO) {
-                    val vocabRepo = (context.applicationContext as com.focusbyrj.app.FocusApplication).vocabRepository
-                    vocabRepo.recordQuizResult(qRecord.vocabType, qRecord.vocabId, isCorrect)
+                vocabQuizWriter.enqueue(qRecord.vocabType, qRecord.vocabId, isCorrect)
+                coroutineScope.launch {
+                    if (vocabQuizWriter.flush().isFailure) {
+                        drillSaveError = "Your vocabulary progress could not be saved. Keep this drill open, check available storage, then try again."
+                    }
                 }
             }
             if (isCorrect) {
@@ -1709,7 +1734,7 @@ fun ChatInterface() {
             coroutineScope.launch {
                 delay(if (session.isBlitz) 450 else 700) // Fast next question with feedback time
                 // Check if session hasn't been ended during delay
-                if (activeDrillSession != null) {
+                if (activeDrillSession?.sessionId == session.sessionId && !finishingDrill) {
                     if (session.targetQuestions <= 0) {
                         generateNextQuestion()
                     }
@@ -1720,8 +1745,9 @@ fun ChatInterface() {
     }
 
     val handleDrillEnd: () -> Unit = {
+        coroutineScope.launch {
         activeDrillSession?.let { session ->
-            val summaryMsg = com.focusbyrj.app.util.DrillSummaryHelper.generateSummaryMessage(session)
+            val summaryMsg = saveDrill(session) ?: return@let
             val questState = com.focusbyrj.app.util.DailyQuestManager.stateFlow.value
             val hasMysteryBox = questState.isEarlyBirdAvailable || questState.isNightOwlAvailable
             val boxMsg = if (hasMysteryBox) {
@@ -1746,6 +1772,20 @@ fun ChatInterface() {
             activeDrillSession = null
         }
         Unit
+
+        }
+}
+
+    if (finishingDrill) {
+        AlertDialog(onDismissRequest = {}, title = { Text("Saving drill…") },
+            text = { CircularProgressIndicator() }, confirmButton = {})
+    }
+
+    drillSaveError?.let { message ->
+        AlertDialog(onDismissRequest = { drillSaveError = null },
+            title = { Text("Drill not saved") }, text = { Text(message) },
+            confirmButton = { TextButton(onClick = { drillSaveError = null; handleDrillEnd() }) { Text("Retry") } },
+            dismissButton = { TextButton(onClick = { drillSaveError = null }) { Text("Keep open") } })
     }
 
     val currentDrillSession = activeDrillSession

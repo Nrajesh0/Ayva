@@ -557,7 +557,7 @@ fun ActiveSessionScreen(timeRemaining: Long, initialTime: Long, onToggleSession:
     val progress = if (initialTime > 0) (timeRemaining.toFloat() / initialTime.toFloat()) else 0f
     val minutes = timeRemaining / 60
     val seconds = timeRemaining % 60
-    val timeString = String.format("%02d:%02d", minutes, seconds)
+    val timeString = String.format(java.util.Locale.ROOT, "%02d:%02d", minutes, seconds)
     
     val infiniteTransition = rememberInfiniteTransition(label = "breathing")
     val scale by infiniteTransition.animateFloat(

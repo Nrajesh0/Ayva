@@ -159,36 +159,43 @@ class SettingsNavigationRecoveryTest {
         assertEquals(0, shadowOf(compose.activity).nextStartedActivity.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1))
     }
 
-    @Test @Config(sdk=[34]) fun replacementRestoreRequiresAnExplicitSecondConfirmation() {
-        val calls = mutableListOf<Pair<String,Boolean>>()
-        // Match the laid-out host on the production recovery page.
-        compose.setContent { FocusByRjTheme { Surface(androidx.compose.ui.Modifier.fillMaxSize()) {
-            RestoreBackupPasswordDialog(false, {}, { p, replace -> calls += p to replace })
-        } } }
-        compose.onNodeWithText("Backup Password").performTextInput("password123")
-        compose.onNodeWithTag("restore_replace_mode").performClick()
-        compose.onNodeWithText("Decrypt & Restore").performClick()
-        compose.runOnIdle { assertTrue(calls.isEmpty()) }
-        compose.onNodeWithText("Replace current app data?").assertIsDisplayed()
-        compose.onNodeWithText("Go back").performClick()
-        compose.runOnIdle { assertTrue(calls.isEmpty()) }
-        compose.onNodeWithText("Decrypt & Restore").performClick()
-        compose.onNodeWithText("Replace data & restore").performClick()
-        compose.runOnIdle { assertEquals(listOf("password123" to true), calls) }
+    @Test @Config(sdk=[34]) fun replacementRestoreRequiresAnExplicitConfirmationAfterChecking() {
+        var checked by mutableStateOf(false)
+        var applies = 0
+        compose.setContent { FocusByRjTheme {
+            if (!checked) RestoreBackupPasswordDialog(false, {}, onConfirm = { _, replace ->
+                assertTrue(replace); checked = true
+            }) else RestoreReviewDialog(RestoreState(RestorePhase.REVIEW, notes = 2, tasks = 3),
+                onConfirm = { applies++ }, onDismiss = { checked = false })
+        } }
+        compose.onNodeWithText("Backup password").performTextInput("password123")
+        compose.onNodeWithText("Check backup").performClick()
+        compose.runOnIdle { assertEquals(0, applies) }
+        compose.onNodeWithText("Restore this snapshot?").assertIsDisplayed()
+        compose.onNodeWithText("2 notes · 3 tasks").assertExists()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.runOnIdle { assertEquals(0, applies) }
+        compose.onNodeWithText("Backup password").performTextInput("password123")
+        compose.onNodeWithText("Check backup").performClick()
+        compose.onNodeWithText("Restore backup").performClick()
+        compose.runOnIdle { assertEquals(1, applies) }
     }
 
-    @Test @Config(sdk=[34]) fun defaultRestoreModeStaysNonReplacementAndMissingPasswordCannotProceed() {
+    @Test @Config(sdk=[34]) fun missingPasswordCannotProceedAndImportingCopiesNeedsAnExplicitModeChange() {
         val calls = mutableListOf<Pair<String,Boolean>>()
-        // Match the laid-out host on the production recovery page.
-        compose.setContent { FocusByRjTheme { Surface(androidx.compose.ui.Modifier.fillMaxSize()) {
-            RestoreBackupPasswordDialog(false, {}, { p, replace -> calls += p to replace })
-        } } }
-        compose.onNodeWithText("Decrypt & Restore").performClick()
+        compose.setContent { FocusByRjTheme {
+            RestoreBackupPasswordDialog(false, {}, onConfirm = { p, replace -> calls += p to replace })
+        } }
+        compose.onNodeWithText("Check backup").performClick()
         compose.runOnIdle { assertTrue(calls.isEmpty()) }
-        compose.onNodeWithText("Backup Password").performTextInput("password123")
-        compose.onNodeWithText("Decrypt & Restore").performClick()
-        compose.runOnIdle { assertEquals(listOf("password123" to false), calls) }
-        compose.onNodeWithText("Replace current app data?").assertDoesNotExist()
+        compose.onNodeWithText("Backup password").performTextInput("password123")
+        compose.onNodeWithText("Check backup").performClick()
+        compose.runOnIdle { assertEquals(listOf("password123" to true), calls) }
+        compose.onNodeWithText("Other restore options").performClick()
+        compose.onNodeWithTag("restore_replace_mode").performClick()
+        compose.onNodeWithText("Adds extra records and applies backed-up settings.").assertExists()
+        compose.onNodeWithText("Check backup").performClick()
+        compose.runOnIdle { assertEquals("password123" to false, calls.last()) }
     }
 
     @Test fun aNonAlignedTemporaryUnlockValueStopsAtTheMaximum() {

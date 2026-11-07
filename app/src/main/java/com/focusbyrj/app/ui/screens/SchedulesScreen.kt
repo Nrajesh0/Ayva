@@ -249,7 +249,7 @@ fun RoutineCard(
                 }
             }
             Spacer(modifier = Modifier.height(10.dp))
-            val timeString = "${String.format("%02d:%02d", schedule.startHour, schedule.startMinute)} - ${String.format("%02d:%02d", schedule.endHour, schedule.endMinute)}"
+            val timeString = "${String.format(java.util.Locale.ROOT, "%02d:%02d", schedule.startHour, schedule.startMinute)} - ${String.format(java.util.Locale.ROOT, "%02d:%02d", schedule.endHour, schedule.endMinute)}"
             Text(
                 timeString, 
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), 
@@ -610,7 +610,7 @@ fun TimePickerBox(label: String, hour: Int, minute: Int, modifier: Modifier = Mo
             Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "${String.format("%02d:%02d", hour, minute)}", 
+                "${String.format(java.util.Locale.ROOT, "%02d:%02d", hour, minute)}",
                 color = MaterialTheme.colorScheme.onSurface, 
                 style = MaterialTheme.typography.titleLarge
             )

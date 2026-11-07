@@ -24,7 +24,8 @@ internal object RestoreJournal {
     private const val MARKER = "restore_committed"
     internal var checkpointHook: ((String) -> Unit)? = null
     fun checkpoint(phase: String) { checkpointHook?.invoke(phase) }
-    private fun databases(app: FocusApplication): List<RoomDatabase> = listOf(
+    private fun databases(app: FocusApplication, drillOnly: Boolean = false): List<RoomDatabase> = if (drillOnly)
+        listOf(com.focusbyrj.app.data.drill.DrillDatabase.getDatabase(app)) else listOf(
         NoteDatabase.getInstance(app), app.database,
         com.focusbyrj.app.data.drill.DrillDatabase.getDatabase(app), app.vocabDatabase,
         com.focusbyrj.app.data.chat.AyvaChatDatabase.getDatabase(app))
@@ -37,16 +38,24 @@ internal object RestoreJournal {
     }
 
     suspend fun <T> mutate(context: Context, block: suspend () -> Result<T>): Result<T> = try {
-        mutateLocked(context, block)
+        mutateLocked(context, block = block)
     } catch (error: Exception) {
         if (error is kotlinx.coroutines.CancellationException) throw error
         Result.failure(error)
     }
 
-    private suspend fun <T> mutateLocked(context: Context, block: suspend () -> Result<T>): Result<T> = MaintenanceGate.exclusively {
+    suspend fun <T> mutateDrill(context: Context, sessionId: String, block: suspend () -> Result<T>): Result<T> = try {
+        mutateLocked(context, true, sessionId, block)
+    } catch (error: Exception) {
+        if (error is kotlinx.coroutines.CancellationException) throw error
+        Result.failure(error)
+    }
+
+    private suspend fun <T> mutateLocked(context: Context, drillOnly: Boolean = false, drillSessionId: String? = null, block: suspend () -> Result<T>): Result<T> = MaintenanceGate.exclusively {
         val app = context.applicationContext as FocusApplication
         recoverLocked(app)
-        val before = capture(app)
+        if (drillOnly) requireNotNull(drillSessionId).also { java.util.UUID.fromString(it) }
+        val before = capture(app, drillOnly, drillSessionId)
         EncryptedSnapshotFile.write(journal(app), before.toString())
         check(EncryptedSnapshotFile.read(journal(app)) == before.toString()) { "Restore recovery journal verification failed" }
         try {
@@ -55,7 +64,10 @@ internal object RestoreJournal {
             if (result.isFailure) {
                 withContext(NonCancellable) { recoverLocked(app) }
             } else {
-                com.focusbyrj.app.data.note.NotesStorageVersion.replaced()
+                if (!drillOnly) {
+                    com.focusbyrj.app.data.note.NotesStorageVersion.replaced()
+                    com.focusbyrj.app.data.drill.DrillSessionRepository.invalidateCache()
+                }
                 checkpoint("before_commit")
                 val output = marker(app).startWrite()
                 try { output.write(before.getString("id").toByteArray()); output.fd.sync(); marker(app).finishWrite(output) }
@@ -104,9 +116,12 @@ internal object RestoreJournal {
         require(root.getInt("version") == 1)
         val committed = runCatching { marker(app).openRead().use { it.readBytes().decodeToString() } }.getOrNull()
         if (committed == root.getString("id")) { cleanup(app); return }
-        val dbs = databases(app)
-        val interruptedTasks = app.database.taskDao().getAllTasksList()
-        val interruptedHabits = app.database.habitDao().getAllHabitsSync()
+        val drillOnly = root.optBoolean("drillOnly", false)
+        val drillSessionId = if (drillOnly) root.optString("drillSessionId", "").takeIf { it.isNotBlank() } else null
+        drillSessionId?.let { java.util.UUID.fromString(it) }
+        val dbs = databases(app, drillOnly)
+        val interruptedTasks = if (drillOnly) emptyList() else app.database.taskDao().getAllTasksList()
+        val interruptedHabits = if (drillOnly) emptyList() else app.database.habitDao().getAllHabitsSync()
         val stored = root.getJSONArray("databases")
         require(stored.length() == dbs.size)
         // The journal is authenticated local data, never an imported SQL program.
@@ -121,7 +136,10 @@ internal object RestoreJournal {
                 for (i in 0 until tables.length()) {
                     val table = tables.getJSONObject(i).getString("name")
                     require(table in known)
-                    db.execSQL("DELETE FROM ${quote(table)}")
+                    if (drillSessionId != null) {
+                        require(table == "drill_sessions")
+                        db.execSQL("DELETE FROM ${quote(table)} WHERE sessionId = ?", arrayOf(drillSessionId))
+                    } else db.execSQL("DELETE FROM ${quote(table)}")
                 }
                 for (i in 0 until tables.length()) {
                     val table = tables.getJSONObject(i)
@@ -155,6 +173,7 @@ internal object RestoreJournal {
             }
             check(editor.commit()) { "Preference recovery failed" }
         }
+        if (!drillOnly) {
         val files = root.getJSONObject("assistant")
         val bytes = files.keys().asSequence().associateWith { name ->
             if (files.isNull(name)) null else Base64.decode(files.getString(name), Base64.NO_WRAP)
@@ -162,6 +181,7 @@ internal object RestoreJournal {
         AssistantPlanningArchive.recover(app, AssistantPlanningArchive.Recovery(bytes))
         ArchiveVaultSecurity.lockVault()
         NotesViewModel.latestNotesCache.clear()
+        com.focusbyrj.app.data.drill.DrillSessionRepository.invalidateCache()
         // Derived schedules and caches must agree with the recovered stores as well.
         runCatching {
             interruptedTasks.forEach { com.focusbyrj.app.util.TaskReminderHelper.cancelReminder(app, it) }
@@ -172,9 +192,12 @@ internal object RestoreJournal {
             app.database.habitDao().getAllHabitsSync().forEach { com.focusbyrj.app.util.HabitAlarmScheduler.scheduleHabitReminder(app, it) }
             com.focusbyrj.app.util.WorkSessionReminders.reconcileAll(app)
         }.onFailure { runCatching { com.focusbyrj.app.util.WorkSessionReminders.retry(app) } }
+        }
+        com.focusbyrj.app.data.drill.DrillSessionRepository.invalidateCache()
+        if (!drillOnly) com.focusbyrj.app.util.ReminderPrivacy.refreshActive(app)
         runCatching { com.focusbyrj.app.util.FocusEconomyManager.init(app) }
-        runCatching { com.focusbyrj.app.util.FocusStatsManager.init(app) }
-        runCatching { com.focusbyrj.app.util.BubbleChatManager.reloadAfterRestore(app) }
+        if (!drillOnly) runCatching { com.focusbyrj.app.util.FocusStatsManager.init(app) }
+        if (!drillOnly) runCatching { com.focusbyrj.app.util.BubbleChatManager.reloadAfterRestore(app) }
         runCatching { com.focusbyrj.app.util.AptitudeManager.init(app) }
         runCatching { com.focusbyrj.app.util.DailyQuestManager.init(app) }
         checkpoint("recovered")
@@ -186,13 +209,18 @@ internal object RestoreJournal {
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('android_metadata','room_master_table') ORDER BY name"
     ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
 
-    private suspend fun capture(app: FocusApplication): JSONObject {
+    private suspend fun capture(app: FocusApplication, drillOnly: Boolean, drillSessionId: String?): JSONObject {
         val data = JSONArray()
-        for (room in databases(app)) {
+        for (room in databases(app, drillOnly)) {
             room.withTransaction {
                 val tables = JSONArray()
                 tableNames(room).forEach { name ->
-                    room.openHelper.writableDatabase.query("SELECT * FROM ${quote(name)}").use { cursor ->
+                    val db = room.openHelper.writableDatabase
+                    val cursor = if (drillSessionId != null) {
+                        require(drillOnly && name == "drill_sessions")
+                        db.query("SELECT * FROM ${quote(name)} WHERE sessionId = ?", arrayOf(drillSessionId))
+                    } else db.query("SELECT * FROM ${quote(name)}")
+                    cursor.use { cursor ->
                         val rows = JSONArray()
                         while (cursor.moveToNext()) {
                             val row = JSONArray()
@@ -211,7 +239,7 @@ internal object RestoreJournal {
                 data.put(JSONObject().put("schema", room.openHelper.writableDatabase.version).put("tables", tables))
             }
         }
-        val names = (File(app.applicationInfo.dataDir, "shared_prefs").listFiles().orEmpty()
+        val names = if (drillOnly) listOf("focus_economy_prefs", "aptitude_economy_prefs", "daily_learning_quests_prefs") else (File(app.applicationInfo.dataDir, "shared_prefs").listFiles().orEmpty()
             .filter { it.name.endsWith(".xml") }.map { it.name.removeSuffix(".xml") } +
             BackupRestoreManager.recoveryPreferenceNames()).distinct()
         val prefs = JSONObject()
@@ -232,9 +260,10 @@ internal object RestoreJournal {
             prefs.put(name, values)
         }
         val assistant = JSONObject()
-        AssistantPlanningArchive.captureRecovery(app).bytes.forEach { (name, bytes) -> assistant.put(name, bytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: JSONObject.NULL) }
+        if (!drillOnly) AssistantPlanningArchive.captureRecovery(app).bytes.forEach { (name, bytes) -> assistant.put(name, bytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: JSONObject.NULL) }
         return JSONObject().put("version", 1).put("id", UUID.randomUUID().toString())
-            .put("databases", data).put("preferences", prefs).put("assistant", assistant)
+            .put("drillOnly", drillOnly).put("databases", data).put("preferences", prefs).put("assistant", assistant)
+            .apply { if (drillSessionId != null) put("drillSessionId", drillSessionId) }
     }
     private fun decode(value: JSONArray): Any? = when (value.getString(0)) {
         "n" -> null; "l" -> value.getLong(1); "d" -> value.getDouble(1)

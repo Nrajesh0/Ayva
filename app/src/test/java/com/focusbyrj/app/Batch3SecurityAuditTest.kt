@@ -282,7 +282,6 @@ class Batch3SecurityAuditTest {
         val receiver = HabitActionReceiver()
         val intent = Intent(HabitActionReceiver.ACTION_INCREMENT_HABIT).apply {
             putExtra(HabitActionReceiver.EXTRA_HABIT_ID, 888L)
-            putExtra(HabitActionReceiver.EXTRA_NOTIFICATION_ID, 5001)
         }
         receiver.onReceive(context, intent)
 

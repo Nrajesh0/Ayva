@@ -26,7 +26,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
-                android:text="💧"
+                android:text="@string/a11y_notification_habit_expanded_text_1"
                 android:textSize="22sp" />
         </FrameLayout>
 
@@ -42,7 +42,7 @@
                 android:id="@+id/notif_exp_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Hydrate &amp; Glow"
+                android:text="@string/a11y_notification_habit_expanded_text_2"
                 android:textColor="#F8FAFC"
                 android:textSize="16sp"
                 android:textStyle="bold"
@@ -54,7 +54,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:text="2 of 6 completed today • Active window"
+                android:text="@string/a11y_notification_habit_expanded_text_3"
                 android:textColor="#94A3B8"
                 android:textSize="12sp"
                 android:ellipsize="end"
@@ -68,7 +68,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="Stay refreshed and energized throughout the day."
+        android:text="@string/a11y_notification_habit_expanded_text_4"
         android:textColor="#CBD5E1"
         android:textSize="13sp"
         android:maxLines="2"
@@ -104,7 +104,7 @@
             android:gravity="center"
             android:paddingTop="9dp"
             android:paddingBottom="9dp"
-            android:text="💧 Log (+1)"
+            android:text="@string/a11y_notification_habit_expanded_text_5"
             android:textColor="#FFFFFF"
             android:textSize="13sp"
             android:textStyle="bold" />
@@ -121,7 +121,7 @@
             android:paddingTop="9dp"
             android:paddingEnd="14dp"
             android:paddingBottom="9dp"
-            android:text="⏳ +30m"
+            android:text="@string/a11y_notification_habit_expanded_text_6"
             android:textColor="#94A3B8"
             android:textSize="13sp"
             android:textStyle="bold" />

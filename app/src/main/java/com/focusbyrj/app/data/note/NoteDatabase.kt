@@ -297,6 +297,7 @@ abstract class NoteDatabase : RoomDatabase() {
         }
 
         fun getInstance(context: Context): NoteDatabase {
+            MediaRetirement.initialize(context)
             return INSTANCE ?: synchronized(this) {
                 if (INSTANCE != null) return INSTANCE!!
 
@@ -314,7 +315,7 @@ abstract class NoteDatabase : RoomDatabase() {
                     Room.databaseBuilder(
                         appContext,
                         NoteDatabase::class.java,
-                        NoteDatabaseMigrationHelper.getEncryptedDatabaseName()
+                        com.focusbyrj.app.data.SecureDatabaseNames.NOTES
                     )
                         .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory(factory))
                         .addMigrations(
@@ -327,12 +328,7 @@ abstract class NoteDatabase : RoomDatabase() {
                         )
                         .build()
                 } catch (t: Throwable) {
-                    val isRobolectric = try {
-                        android.os.Build.FINGERPRINT.startsWith("robolectric") ||
-                        Class.forName("org.robolectric.Robolectric") != null
-                    } catch (_: Throwable) {
-                        false
-                    }
+                    val isRobolectric = com.focusbyrj.app.util.crypto.TestRuntimeKeys.available
                     if (isRobolectric) {
                         android.util.Log.w("NoteDatabase", "Robolectric test environment detected; utilizing in-memory test database", t)
                         Room.inMemoryDatabaseBuilder(appContext, NoteDatabase::class.java)
@@ -343,19 +339,6 @@ abstract class NoteDatabase : RoomDatabase() {
                         android.util.Log.e("NoteDatabase", "FATAL: Failed to securely initialize SQLCipher NoteDatabase", t)
                         throw SecurityException("Database encryption failure: unable to securely initialize SQLCipher database. Fail-closed security enforced.", t)
                     }
-                }
-
-                // Quarantine any insecure legacy fallback database if one existed instead of blind deletion
-                try {
-                    val fallbackDb = appContext.getDatabasePath("keep_notes_fallback.db")
-                    com.focusbyrj.app.data.FocusDatabaseMigrationHelper.quarantineFallbackDatabase(fallbackDb)
-                } catch (_: Exception) {}
-
-                // Check and migrate legacy unencrypted notes if any exist
-                try {
-                    NoteDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(appContext, instance)
-                } catch (t: Throwable) {
-                    android.util.Log.e("NoteDatabase", "Legacy plaintext migration failed gracefully", t)
                 }
 
                 INSTANCE = instance

@@ -56,14 +56,7 @@ object Argon2idKdf {
 
     fun isNativeAvailable(): Boolean = argon2Kt != null
 
-    private val isUnitTestEnvironment: Boolean by lazy {
-        try {
-            android.os.Build.FINGERPRINT.startsWith("robolectric") ||
-            Class.forName("org.robolectric.Robolectric") != null
-        } catch (_: Throwable) {
-            false
-        }
-    }
+    private val isUnitTestEnvironment: Boolean get() = TestRuntimeKeys.available
 
     private fun deriveKeyJvmFallback(password: CharArray, salt: ByteArray, outputLengthBytes: Int): ByteArray {
         val keySpec = javax.crypto.spec.PBEKeySpec(password, salt, 100_000, outputLengthBytes * 8)

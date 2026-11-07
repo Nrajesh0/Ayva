@@ -89,36 +89,46 @@ fun FullscreenSolutionsView(
     var isReattemptMode by remember { mutableStateOf(false) }
     val reattemptUserAnswers = remember { mutableStateMapOf<Int, Int>() } // qNum -> selectedOptIndex
 
-    // Load data: Try repository first (low memory, no JSON string parsing), then fallback to JSON
-    LaunchedEffect(summaryJson) {
-        questionsList.clear()
-        withContext(Dispatchers.IO) {
-            var loadedSummary: DrillSummary? = null
-            // Check if summaryJson is a sessionId
-            if (summaryJson.isNotBlank() && !summaryJson.startsWith("{")) {
-                loadedSummary = DrillSessionRepository.getSummary(summaryJson)
-            }
-            if (loadedSummary == null && summaryJson.isNotBlank()) {
-                loadedSummary = DrillSummary.fromJson(summaryJson)
-            }
+    var loadError by remember { mutableStateOf(false) }
+    var loadAttempt by remember { mutableStateOf(0) }
 
-            withContext(Dispatchers.Main) {
-                if (loadedSummary != null && loadedSummary.questions.isNotEmpty()) {
-                    examTitle = if (loadedSummary.isBlitz) "⚡ Speed Blitz Review" else "${loadedSummary.title} Solutions"
-                    questionsList.addAll(loadedSummary.questions)
-                } else {
-                    // Fallback to legacy parsing if needed
-                    try {
-                        val obj = JSONObject(summaryJson)
-                        val isBlitz = obj.optBoolean("isBlitz", false)
-                        val categoryTitle = obj.optString("title", "Arithmetic & Speed Drill")
-                        examTitle = if (isBlitz) "⚡ Speed Blitz Review" else "$categoryTitle Solutions"
-                        val qArr = obj.optJSONArray("questions")
-                        questionsList.addAll(SolutionsViewHelper.parseQuestionsSafely(qArr))
-                    } catch (_: Exception) {}
+    // Load data: Try repository first (low memory, no JSON string parsing), then fallback to JSON
+    LaunchedEffect(summaryJson, loadAttempt) {
+        loadError = false
+        try {
+            questionsList.clear()
+            withContext(Dispatchers.IO) {
+                var loadedSummary: DrillSummary? = null
+                // Check if summaryJson is a sessionId
+                if (summaryJson.isNotBlank() && !summaryJson.startsWith("{")) {
+                    loadedSummary = DrillSessionRepository.getSummary(summaryJson)
+                }
+                if (loadedSummary == null && summaryJson.isNotBlank()) {
+                    loadedSummary = DrillSummary.fromJson(summaryJson)
+                }
+
+                withContext(Dispatchers.Main) {
+                    if (loadedSummary != null && loadedSummary.questions.isNotEmpty()) {
+                        examTitle = if (loadedSummary.isBlitz) "⚡ Speed Blitz Review" else "${loadedSummary.title} Solutions"
+                        questionsList.addAll(loadedSummary.questions)
+                    } else {
+                        // Fallback to legacy parsing if needed
+                        try {
+                            val obj = JSONObject(summaryJson)
+                            val isBlitz = obj.optBoolean("isBlitz", false)
+                            val categoryTitle = obj.optString("title", "Arithmetic & Speed Drill")
+                            examTitle = if (isBlitz) "⚡ Speed Blitz Review" else "$categoryTitle Solutions"
+                            val qArr = obj.optJSONArray("questions")
+                            questionsList.addAll(SolutionsViewHelper.parseQuestionsSafely(qArr))
+                        } catch (_: Exception) {}
+                    }
                 }
             }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            loadError = true
         }
+
     }
 
     val totalCount = questionsList.size
@@ -138,6 +148,14 @@ fun FullscreenSolutionsView(
             stripListState.animateScrollToItem(validIndex)
             scrollState.scrollTo(0)
         }
+    }
+
+    if (loadError) {
+        androidx.compose.material3.AlertDialog(onDismissRequest = onClose,
+            title = { Text("Result could not be loaded") },
+            text = { Text("Could not read this result. Try again when storage is available.") },
+            confirmButton = { TextButton(onClick = { loadAttempt++ }) { Text("Retry") } },
+            dismissButton = { TextButton(onClick = onClose) { Text("Close") } })
     }
 
     Box(

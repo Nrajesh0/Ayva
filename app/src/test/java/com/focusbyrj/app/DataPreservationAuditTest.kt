@@ -32,10 +32,11 @@ class DataPreservationAuditTest {
         assertNull(EncryptedMediaStorage.openDecryptedInputStream(file))
     }
 
-    @Test fun atomicMediaOverwriteRoundTripsAndKeepsLegacyPlaintextReadable() {
+    @Test fun atomicMediaOverwriteRoundTripsAndPlaintextReadsPreserveOriginalFile() {
         val file = File(context.cacheDir, "atomic-media")
         file.writeText("legacy")
-        assertEquals("legacy", EncryptedMediaStorage.openDecryptedInputStream(file)!!.use { it.readBytes().decodeToString() })
+        assertNull(EncryptedMediaStorage.openDecryptedInputStream(file))
+        assertEquals("legacy", file.readText())
         EncryptedMediaStorage.writeEncryptedBytes(file, "first".toByteArray())
         EncryptedMediaStorage.writeEncryptedBytes(file, "replacement".toByteArray())
         assertEquals("replacement", EncryptedMediaStorage.readDecryptedBytes(file)!!.decodeToString())

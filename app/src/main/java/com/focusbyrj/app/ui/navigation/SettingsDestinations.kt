@@ -39,7 +39,7 @@ internal fun NavGraphBuilder.settingsDestinations(
     composable("settings_widgets") { SettingsSearchDestination(nav) { WidgetsSettingsScreen(nav) } }
     composable("security") { SettingsSearchDestination(nav) { SecurityScreen(nav) } }
     composable("settings_data") { SettingsSearchDestination(nav) { DataRecoveryScreen(nav, onDataRestored) } }
-    composable("settings_automatic_backups") { SettingsSearchDestination(nav) { AutomaticBackupsScreen(nav) } }
+    composable("settings_automatic_backups") { SettingsSearchDestination(nav) { AutomaticBackupsScreen(nav, onDataRestored) } }
     composable("settings_help") { SettingsSearchDestination(nav) { HelpSettingsScreen(nav, onSetup) } }
     composable("settings_diagnostics") { SettingsSearchDestination(nav) { DiagnosticsSettingsScreen(nav) } }
     composable("settings_vault") { SettingsSearchDestination(nav) { vaultContent() } }

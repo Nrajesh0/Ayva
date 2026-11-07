@@ -10,7 +10,7 @@
         android:layout_height="match_parent"
         android:scaleType="fitXY"
         android:src="@drawable/widget_item_bg"
-        android:contentDescription="Item Background" />
+        android:contentDescription="@string/a11y_widget_todo_item_contentDescription_1" />
 
     <LinearLayout
         android:id="@+id/widget_item_root"
@@ -30,7 +30,7 @@
             android:layout_height="22dp"
             android:background="@android:color/transparent"
             android:src="@drawable/ic_widget_check_empty"
-            android:contentDescription="Complete Task" />
+            android:contentDescription="@string/a11y_widget_todo_item_contentDescription_2" />
 
         <!-- Title & Details -->
         <LinearLayout
@@ -45,7 +45,7 @@
                 android:id="@+id/widget_item_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Task Title"
+                android:text="@string/a11y_widget_todo_item_text_3"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
                 android:singleLine="true"
@@ -62,7 +62,7 @@
                     android:id="@+id/widget_item_due"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Today 5:00 PM"
+                    android:text="@string/a11y_widget_todo_item_text_4"
                     android:textColor="#2EE59D"
                     android:textSize="11sp" />
 
@@ -71,7 +71,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
-                    android:text="Recurring"
+                    android:text="@string/a11y_widget_todo_item_text_5"
                     android:textColor="#A0ABA4"
                     android:textSize="10sp"
                     android:visibility="gone" />

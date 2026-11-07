@@ -60,7 +60,11 @@ object AppLogger {
     private val JWT_REGEX = Regex("Bearer\\s+[A-Za-z0-9-_=]+\\.[A-Za-z0-9-_=]+\\.?[A-Za-z0-9-_.+/=]*")
     private val RAW_JWT_REGEX = Regex("eyJ[A-Za-z0-9-_=]{20,}\\.[A-Za-z0-9-_=]{20,}\\.?[A-Za-z0-9-_.+/=]*")
     private val BIP39_MNEMONIC_REGEX = Regex("\\b(?:[a-z]{3,8}\\s+){11,23}[a-z]{3,8}\\b", RegexOption.IGNORE_CASE)
-    private val PIN_OR_SECRET_REGEX = Regex("(?i)(\\b(?:passcode|pin|password|secret|apikey|api_key|access_token|auth_token|token|passphrase|mnemonic)\\b[\"':=\\s]+)([A-Za-z0-9!@#\$%^&*()_+=-]{3,})")
+    // Quoted values can contain spaces/newlines. For unquoted fields retain only
+    // the label: logging less context is preferable to retaining part of a secret.
+    private val PIN_OR_SECRET_REGEX = Regex(
+        """(?i)(\b(?:passcode|pin|password|secret|apikey|api_key|access_token|auth_token|token|passphrase|mnemonic|recovery[_ -]?key|backup[_ -]?key|credential)\b["']?\s*(?:[:=]\s*|\s+))(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n]*)"""
+    )
 
     fun init(context: Context) {
         val app = context.applicationContext
@@ -80,38 +84,33 @@ object AppLogger {
 
     fun isRecording(): Boolean = isRecordingEnabled
 
-    fun v(tag: String, message: String, throwable: Throwable? = null) {
-        Log.v(tag, message, throwable)
-        logInternal("V", tag, message, throwable)
+    fun v(tag: String, message: String, throwable: Throwable? = null) = emit("V", tag, message, throwable)
+    fun d(tag: String, message: String, throwable: Throwable? = null) = emit("D", tag, message, throwable)
+    fun i(tag: String, message: String, throwable: Throwable? = null) = emit("I", tag, message, throwable)
+    fun w(tag: String, message: String, throwable: Throwable? = null) = emit("W", tag, message, throwable)
+    fun e(tag: String, message: String, throwable: Throwable? = null) = emit("E", tag, message, throwable)
+
+    private fun emit(level: String, tag: String, message: String, throwable: Throwable?) {
+        val safeTag = sanitize(tag).take(128)
+        val safeMessage = sanitize(message).take(4_000)
+        val safeStack = throwable?.let { sanitize(Log.getStackTraceString(it)).take(4_000) }
+        val printable = if (safeStack == null) safeMessage else "$safeMessage\n$safeStack"
+        // Never pass the original Throwable to Android: its message/cause may contain credentials.
+        when (level) {
+            "V" -> Log.v(safeTag, printable)
+            "D" -> Log.d(safeTag, printable)
+            "I" -> Log.i(safeTag, printable)
+            "W" -> Log.w(safeTag, printable)
+            else -> Log.e(safeTag, printable)
+        }
+        logInternal(level, safeTag, safeMessage, safeStack)
     }
 
-    fun d(tag: String, message: String, throwable: Throwable? = null) {
-        Log.d(tag, message, throwable)
-        logInternal("D", tag, message, throwable)
-    }
-
-    fun i(tag: String, message: String, throwable: Throwable? = null) {
-        Log.i(tag, message, throwable)
-        logInternal("I", tag, message, throwable)
-    }
-
-    fun w(tag: String, message: String, throwable: Throwable? = null) {
-        Log.w(tag, message, throwable)
-        logInternal("W", tag, message, throwable)
-    }
-
-    fun e(tag: String, message: String, throwable: Throwable? = null) {
-        Log.e(tag, message, throwable)
-        logInternal("E", tag, message, throwable)
-    }
-
-    private fun logInternal(level: String, tag: String, rawMessage: String, throwable: Throwable?) {
-        val sanitized = sanitize(rawMessage)
+    private fun logInternal(level: String, tag: String, sanitized: String, stackTrace: String?) {
         val timestamp = synchronized(dateFormat) { dateFormat.format(Date()) }
         val threadName = Thread.currentThread().name
 
-        val logLine = if (throwable != null) {
-            val stackTrace = sanitize(Log.getStackTraceString(throwable))
+        val logLine = if (stackTrace != null) {
             "[$timestamp] [T:$threadName] [$level] [$tag]: $sanitized\n$stackTrace"
         } else {
             "[$timestamp] [T:$threadName] [$level] [$tag]: $sanitized"
@@ -135,20 +134,14 @@ object AppLogger {
      * Masks any sensitive tokens, mnemonic phrases, and PINs.
      */
     fun sanitize(input: String): String {
-        var clean = input
+        var clean = input.take(65_536)
         if (clean.contains("Bearer", ignoreCase = true)) {
             clean = JWT_REGEX.replace(clean, "Bearer [REDACTED_JWT]")
         }
         if (clean.contains("eyJ", ignoreCase = false)) {
             clean = RAW_JWT_REGEX.replace(clean, "[REDACTED_KEY]")
         }
-        if (clean.contains("passcode", ignoreCase = true) ||
-            clean.contains("pin", ignoreCase = true) ||
-            clean.contains("secret", ignoreCase = true) ||
-            clean.contains("password", ignoreCase = true)
-        ) {
-            clean = PIN_OR_SECRET_REGEX.replace(clean) { mr -> "${mr.groupValues[1]}[REDACTED]" }
-        }
+        clean = PIN_OR_SECRET_REGEX.replace(clean) { mr -> "${mr.groupValues[1]}[REDACTED]" }
         if (clean.split(Regex("\\s+")).filter { it.isNotBlank() }.size >= 12) {
             clean = BIP39_MNEMONIC_REGEX.replace(clean, "[REDACTED_MNEMONIC]")
         }

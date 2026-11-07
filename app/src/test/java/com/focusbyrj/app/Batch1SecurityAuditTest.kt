@@ -70,9 +70,9 @@ class Batch1SecurityAuditTest {
         assertEquals("New backups must write V4 (0x04)", 0x04.toByte(), versionByte)
     }
 
-    // Legacy V3 backups must still decrypt (backward compat)
+    // Retired V3 development archives are rejected
     @Test
-    fun legacyV3BackupStillDecrypts() {
+    fun unsupportedV3BackupIsRejectedWithoutChangingInput() {
         val password = "legacyV3Pw".toCharArray()
         val plaintext = "legacy v3 content".toByteArray()
         val salt = ByteArray(16) { it.toByte() }
@@ -88,13 +88,14 @@ class Batch1SecurityAuditTest {
             write(byteArrayOf(0x03))
             write(salt); write(iv); write(ct)
         }.toByteArray()
-        val decrypted = CryptoBackupEngine.decrypt(ByteArrayInputStream(v3Frame), password.copyOf())
-        assertArrayEquals("Legacy V3 backup must still decrypt", plaintext, decrypted)
+        try { CryptoBackupEngine.decrypt(ByteArrayInputStream(v3Frame), password.copyOf()); fail("Retired backup version must be rejected") }
+        catch (_: IllegalArgumentException) { }
+
     }
 
-    // B1-F-002: Legacy V2 backups must still decrypt (backward compat)
+    // B1-F-002: Retired V2 development archives are rejected
     @Test
-    fun legacyV2BackupStillDecrypts() {
+    fun unsupportedV2BackupIsRejectedWithoutChangingInput() {
         val password = "legacyPw".toCharArray()
         val plaintext = "legacy content".toByteArray()
         val salt = ByteArray(16) { it.toByte() }
@@ -110,13 +111,14 @@ class Batch1SecurityAuditTest {
             write(byteArrayOf(0x02))
             write(salt); write(iv); write(ct)
         }.toByteArray()
-        val decrypted = CryptoBackupEngine.decrypt(ByteArrayInputStream(v2Frame), password.copyOf())
-        assertArrayEquals("B1-F-002: V2 backup must still decrypt", plaintext, decrypted)
+        try { CryptoBackupEngine.decrypt(ByteArrayInputStream(v2Frame), password.copyOf()); fail("Retired backup version must be rejected") }
+        catch (_: IllegalArgumentException) { }
+
     }
 
     // B1-F-002: V3 round-trip must work end-to-end
     @Test
-    fun v3BackupRoundTrip() {
+    fun currentV4BackupRoundTrip() {
         val password = "strongPassword99".toCharArray()
         val plaintext = "important data".toByteArray()
         val encOut = ByteArrayOutputStream()
@@ -460,7 +462,7 @@ class Batch1SecurityAuditTest {
         val prefs = context.getSharedPreferences("focus_notes_archive_vault_security", android.content.Context.MODE_PRIVATE)
         // Corrupt the stored hash IV to trigger GCM/KeyStore decryption failure
         val badIv = android.util.Base64.encodeToString(ByteArray(12) { 0xFF.toByte() }, android.util.Base64.NO_WRAP)
-        prefs.edit().putString("enc_iv", badIv).commit()
+        prefs.edit().putString("pin_verifier_v2", badIv).commit()
 
         val initialAttempts = prefs.getInt("failed_attempts_count", 0)
 
@@ -480,7 +482,7 @@ class Batch1SecurityAuditTest {
 
     // B1-F-027: PBKDF2 auto-upgrade must re-wrap the recovery envelope so 12-word mnemonic recovery succeeds
     @Test
-    fun autoUpgradeFromPbkdf2ReWrapsRecoveryEnvelopeSoMnemonicRecoverySucceeds() {
+    fun unsupportedPbkdf2VaultDoesNotChangeNotesOrRecoveryCredentials() {
         val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         val mnemonic = VaultCryptoEngine.generate12WordMnemonic()
         ArchiveVaultSecurity.setPasscode(context, "112233", mnemonic, true)
@@ -518,23 +520,13 @@ class Batch1SecurityAuditTest {
             .putString("rec_phrase_iv", android.util.Base64.encodeToString(legacyEncryptedPhrase.second, android.util.Base64.NO_WRAP))
             .commit()
 
-        // 2. Perform auto-upgrade via verifyPasscode
+        val preservedPrefs = prefs.all.toMap()
         val verifyResult = ArchiveVaultSecurity.verifyPasscode(context, "112233")
-        assertTrue("Auto-upgrade unlock must succeed", verifyResult is ArchiveVaultSecurity.VerifyResult.Success)
-
-        // Lock vault so we can test mnemonic recovery
-        ArchiveVaultSecurity.lockVault()
-
-        // 3. Test mnemonic recovery with new PIN
-        val recoverSuccess = ArchiveVaultSecurity.recoverVaultWithMnemonic(context, mnemonic, "998877")
-        assertTrue("B1-F-027: Mnemonic recovery must succeed after PBKDF2 to Argon2id auto-upgrade", recoverSuccess)
-
-        // Verify the note is readable with the new PIN
-        val newSubKey = ArchiveVaultSecurity.getActiveVaultSubKey()!!
-        val currentNote = kotlinx.coroutines.runBlocking { noteDb.noteDao().getNoteByIdSync(101)!! }
-        val decryptedResult = VaultPayloadEncryptor.tryDecryptNotePayload(currentNote, newSubKey)
-        assertTrue("Restored note must decrypt cleanly under new PIN", decryptedResult is VaultPayloadEncryptor.DecryptionResult.Success)
-        assertEquals("Original note title must match", "Secret Upgrade Note", (decryptedResult as VaultPayloadEncryptor.DecryptionResult.Success).note.title)
+        assertTrue("Unsupported development vaults must fail closed", verifyResult is ArchiveVaultSecurity.VerifyResult.Error)
+        assertFalse(ArchiveVaultSecurity.recoverVaultWithMnemonic(context, mnemonic, "998877"))
+        assertEquals(preservedPrefs, prefs.all)
+        assertEquals(noteWithPbkdf2.content, kotlinx.coroutines.runBlocking { noteDb.noteDao().getNoteByIdSync(101)!! }.content)
+        assertNull(ArchiveVaultSecurity.getActiveVaultSubKey())
 
         // Clean up
         kotlinx.coroutines.runBlocking { noteDb.noteDao().deleteAllNotes() }
@@ -804,9 +796,8 @@ class Batch1SecurityAuditTest {
             val plainFile = File(context.cacheDir, "plain_stream_test.txt")
             plainFile.writeBytes("Plain text fallback stream".toByteArray(Charsets.UTF_8))
             val plainStream = EncryptedMediaStorage.openDecryptedInputStream(plainFile)
-            assertNotNull("Plain stream must not be null", plainStream)
-            val plainRead = plainStream!!.use { it.readBytes() }
-            assertArrayEquals("Plain stream must match original plaintext", "Plain text fallback stream".toByteArray(Charsets.UTF_8), plainRead)
+            assertNull("Unsupported plaintext media must be rejected", plainStream)
+            assertEquals("Plain text fallback stream", plainFile.readText())
             plainFile.delete()
         } finally {
             testFile.delete()

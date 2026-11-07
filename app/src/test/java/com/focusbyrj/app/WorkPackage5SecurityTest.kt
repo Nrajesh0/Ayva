@@ -22,6 +22,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Assert.assertArrayEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -38,7 +39,7 @@ import java.util.zip.ZipOutputStream
  * Verifies:
  * - F05: Internal snapshots (daily, pre-op, emergency) are encrypted at rest with hardware-backed AES-256-GCM.
  *   Raw snapshot files contain zero readable note titles or content.
- * - F05: Legacy unencrypted JSON snapshots are transparently migrated to encrypted containers.
+ * - F05: Unsupported plaintext snapshots are rejected without changing their bytes.
  * - F05: Locked vault automatic snapshots preserve opaque authenticated ciphertext without leaking plaintext.
  * - F06: Restoring a historical snapshot never overwrites working live notes with obsolete undecryptable ciphertext.
  * - F14: Preference restore strictly enforces PREF_FILES allowlist and rejects disallowed security preferences.
@@ -129,7 +130,7 @@ class WorkPackage5SecurityTest {
     // =========================================================================
 
     @Test
-    fun f05_legacyPlaintextSnapshotsTransparentlyMigratedToEncrypted() = runBlocking {
+    fun f05_plaintextSnapshotsAreRejectedWithoutModification() = runBlocking {
         // The real Application schedules catch-up migration in the background. Keep this
         // fixture isolated so the test measures its own migration, not a competing worker.
         val context = object : android.content.ContextWrapper(this@WorkPackage5SecurityTest.context) {
@@ -162,23 +163,11 @@ class WorkPackage5SecurityTest {
         assertTrue("Legacy snapshot file contains plaintext title initially", legacyFile.readText().contains("Legacy Plaintext Title"))
 
         // Run migration
-        val migratedCount = DataSafetyManager.migrateLegacyPlaintextSnapshots(context)
-        assertEquals("Exactly 1 legacy snapshot must be migrated", 1, migratedCount)
+        val original = legacyFile.readBytes()
+        try { DataSafetyManager.readAtomically(legacyFile); org.junit.Assert.fail("Plaintext snapshots must be rejected") }
+        catch (_: SecurityException) { }
+        assertArrayEquals(original, legacyFile.readBytes())
 
-        // Verify the file on disk is NOW encrypted!
-        assertTrue("Migrated snapshot file must now be encrypted", SnapshotCryptoEngine.isEncrypted(legacyFile))
-        val rawBytes = FileInputStream(legacyFile).use { it.readBytes() }
-        val rawText = String(rawBytes, Charsets.ISO_8859_1)
-        assertFalse("Migrated snapshot must no longer have plaintext note title on disk", rawText.contains("Legacy Plaintext Title"))
-
-        // Verify it can still be restored cleanly
-        val restoreResult = DataSafetyManager.restoreSnapshot(context, legacyFile.absolutePath, noteDb.noteDao())
-        assertTrue("Restore from migrated snapshot must succeed", restoreResult.isSuccess)
-
-        val restored = noteDb.noteDao().getNoteByIdSync(202L)
-        assertNotNull(restored)
-        assertEquals("Legacy Plaintext Title", restored!!.title)
-        assertEquals("Legacy Plaintext Content", restored.content)
     }
 
     // =========================================================================

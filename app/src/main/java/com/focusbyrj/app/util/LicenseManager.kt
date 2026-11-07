@@ -70,7 +70,7 @@ object LicenseManager {
         if (prefs == null && context != null) {
             init(context)
         }
-        prefs?.edit()?.putBoolean(KEY_IS_PRO, true)?.commit()
+        check(prefs?.edit()?.putBoolean(KEY_IS_PRO, true)?.commit() == true) { "License activation was not saved" }
         _isProFlow.value = true
         FocusEconomyManager.unlockProMax()
     }

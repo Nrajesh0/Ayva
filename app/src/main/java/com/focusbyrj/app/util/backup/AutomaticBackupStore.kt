@@ -59,6 +59,10 @@ internal class AndroidBackupKeyWrapper : BackupKeyWrapper {
     companion object { private const val ALIAS = "run_automatic_backup_wrapper_v1" }
 }
 
+internal class BackupVaultChangedException : SecurityException(
+    "Vault protection changed. Reconnect your original recovery file to continue."
+)
+
 /** Device-local configuration/ledger and wrapped secrets are deliberately excluded from portable backup preferences. */
 internal class AutomaticBackupStore(context: Context, private val wrapper: BackupKeyWrapper = AndroidBackupKeyWrapper()) {
     private val prefs = context.applicationContext.getSharedPreferences("automatic_full_backups_v1", Context.MODE_PRIVATE)
@@ -153,8 +157,7 @@ internal class AutomaticBackupStore(context: Context, private val wrapper: Backu
     }
     fun requireVaultIdentity(activeKey: ByteArray?) {
         val origin = vaultOrigin(config().keyId) ?: return
-        if (activeKey == null || origin != fingerprint(activeKey)) throw SecurityException(
-            "This backup key belongs to a previous private vault. Unlock that vault, import your saved recovery key, or create a new backup key. Keep old recovery documents for older backups.")
+        if (activeKey == null || origin != fingerprint(activeKey)) throw BackupVaultChangedException()
     }
     fun vaultAuthorizationToken() = prefs.getString("vault_auth_generation", "none") ?: "none"
     fun requestEpoch() = (prefs.all["request_epoch"] as? String)?.takeIf { it.matches(Regex("[a-f0-9-]{36}")) } ?: "invalid"

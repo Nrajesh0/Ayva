@@ -33,16 +33,22 @@ import com.focusbyrj.app.ui.screens.security.RestoreBackupPasswordDialog
 import com.focusbyrj.app.util.backup.BackupRestoreManager
 import kotlinx.coroutines.launch
 
-internal data class BackupActions(val export: () -> Unit, val restore: () -> Unit, val busy: Boolean)
+internal data class BackupActions(val export: () -> Unit, val restore: () -> Unit, val busy: Boolean, val restoreFile: (android.net.Uri) -> Unit)
 
 /** The only UI owner of full encrypted export/restore; all other entry points navigate here. */
 @Composable
-internal fun BackupFlow(onRestored: () -> Unit = {}, content: @Composable (BackupActions) -> Unit) {
+internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean = false, content: @Composable (BackupActions) -> Unit) {
     val context = LocalContext.current
     // Backup & Restore State
     var showExportPasswordDialog by remember { mutableStateOf(false) }
     var showRestorePasswordDialog by remember { mutableStateOf(false) }
-    var isRestoring by remember { mutableStateOf(false) }
+    val restore: RestoreBackupViewModel = viewModel()
+    val restoreState by restore.state.collectAsStateWithLifecycle()
+    val isRestoring = restoreState.phase in setOf(RestorePhase.CHECKING, RestorePhase.APPLYING)
+    var restoreAutomaticHint by remember { mutableStateOf(automaticRestore) }
+    val backupRevision by com.focusbyrj.app.util.backup.AutomaticBackupStore.revision.collectAsStateWithLifecycle()
+    val hasSavedRecoveryKey = remember(backupRevision) { com.focusbyrj.app.util.backup.AutomaticBackupStore(context).hasKey() }
+    var requireRecoveryFile by remember { mutableStateOf(false) }
     var showExportVaultPin by remember { mutableStateOf(false) }
     var pendingPickerId by rememberSaveable { mutableStateOf<String?>(null) }
     val manual: ManualBackupViewModel = viewModel()
@@ -50,9 +56,6 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, content: @Composable (Backu
     val isPreparing = exportState.phase == ManualBackupPhase.PREPARING
     val isExporting = exportState.phase == ManualBackupPhase.SAVING
     var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var pendingRestorePassword by remember { mutableStateOf<String?>(null) }
-    var pendingRestoreCleanRestore by remember { mutableStateOf(false) }
-    var showConfigureVaultPinDialog by remember { mutableStateOf(false) }
     val exportSuccessMetadata = exportState.takeIf { it.phase == ManualBackupPhase.SAVED }?.metadata
     val coroutineScope = rememberCoroutineScope()
 
@@ -80,9 +83,10 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, content: @Composable (Backu
         }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, manual) {
+    DisposableEffect(lifecycleOwner, manual, restore) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
+                if ((context as? android.app.Activity)?.isChangingConfigurations != true) restore.onBackground()
                 if (showExportVaultPin || showExportPasswordDialog) {
                     showExportVaultPin = false; showExportPasswordDialog = false
                     ArchiveVaultSecurity.lockVault()
@@ -102,12 +106,14 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, content: @Composable (Backu
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             pendingRestoreUri = uri
+            requireRecoveryFile = false
+            restoreAutomaticHint = automaticRestore || hasSavedRecoveryKey || uri.toString().contains("RUN-Auto-")
             showRestorePasswordDialog = true
         }
     }
 
 
-    val busy = isPreparing || isExporting || isRestoring || showConfigureVaultPinDialog ||
+    val busy = isPreparing || isExporting || restoreState.phase != RestorePhase.IDLE ||
         showExportVaultPin || showExportPasswordDialog || showRestorePasswordDialog ||
         exportState.phase in setOf(ManualBackupPhase.READY, ManualBackupPhase.PICKER)
     content(BackupActions(
@@ -124,7 +130,16 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, content: @Composable (Backu
                 Toast.makeText(context, "No file picker is available to select a backup.", Toast.LENGTH_LONG).show()
             }
         },
-        busy = busy
+        busy = busy,
+        restoreFile = { uri ->
+            if (!busy) {
+                pendingRestoreUri = uri
+                restoreAutomaticHint = true
+                requireRecoveryFile = !hasSavedRecoveryKey
+                if (hasSavedRecoveryKey) restore.prepare(uri, null, true)
+                else showRestorePasswordDialog = true
+            }
+        }
     ))
 
     if (showExportVaultPin) {
@@ -234,95 +249,105 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, content: @Composable (Backu
 
     if (showRestorePasswordDialog && pendingRestoreUri != null) {
         val uri = pendingRestoreUri!!
+        fun start(credential: String?, replace: Boolean) {
+            if (!showRestorePasswordDialog) return
+            showRestorePasswordDialog = false
+            restore.prepare(uri, credential, replace)
+        }
         RestoreBackupPasswordDialog(
             isRestoring = isRestoring,
-            onDismiss = {
-                showRestorePasswordDialog = false
-                pendingRestoreUri = null
-                pendingRestorePassword = null
-            },
-            onConfirm = { password, cleanRestore ->
-                isRestoring = true
-                pendingRestorePassword = password
-                pendingRestoreCleanRestore = cleanRestore
-                coroutineScope.launch {
-                    val result = try {
-                        BackupRestoreManager.restoreEncryptedBackup(context, uri, password, cleanRestore)
-                    } finally { isRestoring = false }
-                    val ex = result.exceptionOrNull()
-                    if (ex is BackupRestoreManager.RequiresVaultSetupException) {
-                        showRestorePasswordDialog = false
-                        showConfigureVaultPinDialog = true
-                    } else {
-                        showRestorePasswordDialog = false
+            onDismiss = { showRestorePasswordDialog = false; pendingRestoreUri = null },
+            automaticDefault = restoreAutomaticHint,
+            hasSavedKey = hasSavedRecoveryKey && !requireRecoveryFile,
+            onSavedKey = { start(null, it) },
+            onConfirm = { credential, replace -> start(credential, replace) }
+        )
+    }
+    LaunchedEffect(restoreState.phase) {
+        if (restoreState.phase == RestorePhase.SUCCESS) onRestored()
+    }
+    when (restoreState.phase) {
+        RestorePhase.CHECKING, RestorePhase.APPLYING -> AlertDialog(
+            onDismissRequest = {},
+            title = { Text(if (restoreState.phase == RestorePhase.CHECKING) "Checking backup" else "Restoring data") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(if (restoreState.phase == RestorePhase.CHECKING) "Checking the key and every saved file." else "Protecting current data and saving the restored records.")
+                Text("Keep the app open until this finishes.", style = MaterialTheme.typography.bodySmall)
+            } }, confirmButton = {},
+            dismissButton = { if (restoreState.phase == RestorePhase.CHECKING) TextButton(onClick = { restore.cancel() }) { Text("Cancel") } }
+        )
+        RestorePhase.REVIEW -> RestoreReviewDialog(restoreState, restore::acceptReview) { restore.cancel() }
+        RestorePhase.UNLOCK_SAVED_KEY, RestorePhase.UNLOCK -> {
+            var verifiedPin by remember { mutableStateOf<String?>(null) }
+            ArchiveVaultUnlockDialog(
+                onDismiss = { verifiedPin = null; restore.cancel(); ArchiveVaultSecurity.lockVault() },
+                onVerify = { pin -> ArchiveVaultSecurity.verifyPasscode(context, pin).also {
+                    if (it is ArchiveVaultSecurity.VerifyResult.Success) verifiedPin = pin
+                } },
+                onSuccess = { val pin = verifiedPin; verifiedPin = null
+                    if (restoreState.phase == RestorePhase.UNLOCK_SAVED_KEY) restore.authorizeSavedKey() else restore.confirm(pin)
+                },
+                title = "Confirm your vault PIN",
+                description = if (restoreState.phase == RestorePhase.UNLOCK_SAVED_KEY) "Use this phone’s saved recovery key. Vault protection stays on." else "Restore private data here. Vault protection stays on."
+            )
+        }
+        RestorePhase.SETUP_PIN -> ConfigureRestoredVaultPinDialog(
+            isRestoring = false, onDismiss = { restore.cancel() }, onConfirm = { restore.confirm(it) }
+        )
+        RestorePhase.SUCCESS -> AlertDialog(
+            onDismissRequest = { pendingRestoreUri = null; restore.cancel() },
+            title = { Text("Restore complete") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (restoreState.replace) "Your data now matches the backup." else "Additional copies were imported.")
+                restoreState.metadata?.let { Text("${it.noteCount} notes · ${it.taskCount} tasks · ${it.habitCount} habits") }
+                Text("Your backup file was kept.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { Button(onClick = { pendingRestoreUri = null; restore.cancel() }) { Text("Done") } }
+        )
+        RestorePhase.ERROR -> {
+            var details by remember { mutableStateOf(false) }
+            AlertDialog(onDismissRequest = { restore.cancel() }, title = { Text("Restore not completed") },
+                text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired) "Restart the app to finish recovery. Keep your backup file."
+                        else if (restoreState.needsBackupFile) "Choose the backup file again. Its folder may be unavailable."
+                        else if (restoreState.needsRecoveryFile) "This backup needs its original recovery file."
+                        else "Check the recovery key and available storage, then try again.")
+                    TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "Details") }
+                    if (details) Text(restoreState.message.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                } },
+                confirmButton = { TextButton(onClick = {
+                    val chooseFile = restoreState.needsBackupFile
+                    requireRecoveryFile = restoreState.needsRecoveryFile
+                    restore.cancel()
+                    if (chooseFile) {
                         pendingRestoreUri = null
-                        pendingRestorePassword = null
-                        if (result.isSuccess) {
-                            val meta = result.getOrNull()
-
-                            onRestored()
-                            Toast.makeText(
-                                context,
-                                "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits and ${meta?.planCount ?: 0} plans.",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            Toast.makeText(
-                                context,
-                                "Restore failed: ${ex?.message ?: "Unknown error"}",
-                                Toast.LENGTH_LONG
-                            ).show()
+                        runCatching { importLauncher.launch(arrayOf("*/*")) }.onFailure {
+                            Toast.makeText(context, "No backup file picker is available.", Toast.LENGTH_LONG).show()
                         }
-                    }
-                }
-            }
-        )
+                    } else if (pendingRestoreUri != null) showRestorePasswordDialog = true
+                }) { Text(if (restoreState.needsBackupFile) "Choose backup" else "Try again") } },
+                dismissButton = { TextButton(onClick = { pendingRestoreUri = null; restore.cancel() }) { Text("Close") } }
+            )
+        }
+        RestorePhase.IDLE -> Unit
     }
+}
 
-    if (showConfigureVaultPinDialog && pendingRestoreUri != null && pendingRestorePassword != null) {
-        val uri = pendingRestoreUri!!
-        val password = pendingRestorePassword!!
-        val cleanRestore = pendingRestoreCleanRestore
-        ConfigureRestoredVaultPinDialog(
-            isRestoring = isRestoring,
-            onDismiss = {
-                showConfigureVaultPinDialog = false
-                pendingRestoreUri = null
-                pendingRestorePassword = null
-            },
-            onConfirm = { pin ->
-                isRestoring = true
-                coroutineScope.launch {
-                    val result = try {
-                        BackupRestoreManager.restoreEncryptedBackup(
-                            context = context,
-                            sourceUri = uri,
-                            password = password,
-                            cleanRestore = cleanRestore,
-                            vaultPin = pin
-                        )
-                    } finally { isRestoring = false }
-                    showConfigureVaultPinDialog = false
-                    pendingRestoreUri = null
-                    pendingRestorePassword = null
-                    if (result.isSuccess) {
-                        val meta = result.getOrNull()
-
-                        onRestored()
-                        Toast.makeText(
-                            context,
-                            "Restore completed! Restored ${meta?.noteCount ?: 0} notes, ${meta?.taskCount ?: 0} tasks, ${meta?.habitCount ?: 0} habits and ${meta?.planCount ?: 0} plans.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        Toast.makeText(
-                            context,
-                            "Restore failed: ${result.exceptionOrNull()?.message ?: "Unknown error"}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                }
-            }
+/** Shared confirmation surface: opening/checking a file never authorizes replacement. */
+@Composable
+internal fun RestoreReviewDialog(state: RestoreState, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+            onDismissRequest = { onDismiss() },
+            title = { Text(if (state.replace) "Restore this snapshot?" else "Import extra copies?") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Backup: ${backupTime(state.createdAt)}")
+                Text("${state.notes} notes · ${state.tasks} tasks")
+                Text(if (state.replace) "Current records and settings will match this backup. Later changes will be replaced."
+                    else "Adds extra records and applies backed-up settings.")
+                Text("Current notes and tasks get a safety snapshot first.", style = MaterialTheme.typography.bodySmall)
+            } },
+            confirmButton = { Button(onClick = onConfirm) { Text(if (state.replace) "Restore backup" else "Import copies") } },
+            dismissButton = { TextButton(onClick = { onDismiss() }) { Text("Cancel") } }
         )
-    }
 }

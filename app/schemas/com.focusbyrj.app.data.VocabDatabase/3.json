@@ -1,0 +1,270 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "77d548b846ebd62c21a51bb1f509361a",
+    "entities": [
+      {
+        "tableName": "idioms",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `sn` INTEGER, `idiom` TEXT NOT NULL, `meaning` TEXT NOT NULL, `repetition_ssc` INTEGER DEFAULT 0, `repetition_other` INTEGER DEFAULT 0, `is_top_200` INTEGER DEFAULT 0, `is_mastered` INTEGER DEFAULT 0, `is_bookmarked` INTEGER DEFAULT 0, `learned_at` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sn",
+            "columnName": "sn",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "idiom",
+            "columnName": "idiom",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "meaning",
+            "columnName": "meaning",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "repetitionSsc",
+            "columnName": "repetition_ssc",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "repetitionOther",
+            "columnName": "repetition_other",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "isTop200",
+            "columnName": "is_top_200",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "isMastered",
+            "columnName": "is_mastered",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "isBookmarked",
+            "columnName": "is_bookmarked",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "learnedAt",
+            "columnName": "learned_at",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_idiom_name",
+            "unique": false,
+            "columnNames": [
+              "idiom"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_idiom_name` ON `${TABLE_NAME}` (`idiom`)"
+          },
+          {
+            "name": "idx_idiom_priority",
+            "unique": false,
+            "columnNames": [
+              "is_top_200",
+              "repetition_ssc"
+            ],
+            "orders": [
+              "DESC",
+              "DESC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_idiom_priority` ON `${TABLE_NAME}` (`is_top_200` DESC, `repetition_ssc` DESC)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "ows",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `sn` INTEGER, `term` TEXT NOT NULL, `part_of_speech` TEXT, `definition` TEXT NOT NULL, `repetition_ssc` INTEGER DEFAULT 0, `repetition_other` INTEGER DEFAULT 0, `is_top_200` INTEGER DEFAULT 0, `is_spelling_pyq` INTEGER DEFAULT 0, `has_syno_anto` INTEGER DEFAULT 0, `is_mastered` INTEGER DEFAULT 0, `is_bookmarked` INTEGER DEFAULT 0, `learned_at` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sn",
+            "columnName": "sn",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "term",
+            "columnName": "term",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "partOfSpeech",
+            "columnName": "part_of_speech",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "definition",
+            "columnName": "definition",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "repetitionSsc",
+            "columnName": "repetition_ssc",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "repetitionOther",
+            "columnName": "repetition_other",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "isTop200",
+            "columnName": "is_top_200",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "isSpellingPyq",
+            "columnName": "is_spelling_pyq",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "hasSynoAnto",
+            "columnName": "has_syno_anto",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "isMastered",
+            "columnName": "is_mastered",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "isBookmarked",
+            "columnName": "is_bookmarked",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "learnedAt",
+            "columnName": "learned_at",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_ows_term",
+            "unique": false,
+            "columnNames": [
+              "term"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_ows_term` ON `${TABLE_NAME}` (`term`)"
+          },
+          {
+            "name": "idx_ows_priority",
+            "unique": false,
+            "columnNames": [
+              "is_top_200",
+              "repetition_ssc"
+            ],
+            "orders": [
+              "DESC",
+              "DESC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_ows_priority` ON `${TABLE_NAME}` (`is_top_200` DESC, `repetition_ssc` DESC)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "dictionary_bookmarks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`senseId` TEXT NOT NULL, `wordKey` TEXT NOT NULL, `owsId` INTEGER NOT NULL, PRIMARY KEY(`senseId`))",
+        "fields": [
+          {
+            "fieldPath": "senseId",
+            "columnName": "senseId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wordKey",
+            "columnName": "wordKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "owsId",
+            "columnName": "owsId",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "senseId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '77d548b846ebd62c21a51bb1f509361a')"
+    ]
+  }
+}

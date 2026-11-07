@@ -17,6 +17,14 @@ internal class MaintenancePreferences(private val prefs: SharedPreferences) : Sh
         override fun commit(): Boolean = MaintenanceGate.write { editor.commit() }
         // Finish persistence inside admission: an asynchronous disk write must not
         // escape into the restore interval after its caller has released the barrier.
-        override fun apply() { MaintenanceGate.write { editor.commit() } }
+        override fun apply() {
+            MaintenanceGate.write {
+                val saved = editor.commit()
+                // Recovery operations must roll back when an existing manager's
+                // apply-style API cannot persist. Preserve ordinary API semantics
+                // outside the journal rather than introducing uncaught UI errors.
+                if (MaintenanceGate.requiresDurableCommit) check(saved) { "Preference update was not durably saved" }
+            }
+        }
     }
 }

@@ -1057,7 +1057,7 @@ object AyvaTalkEngine {
                                 curTimeMins >= startMins || curTimeMins < endMins
                             }
                         }
-                        val routineEndsAt = activeSchedule?.let { String.format("%02d:%02d", it.endHour, it.endMinute) }
+                        val routineEndsAt = activeSchedule?.let { String.format(java.util.Locale.ROOT, "%02d:%02d", it.endHour, it.endMinute) }
 
                         // Restrictions
                         val restrictions = app.database.appRestrictionDao().getAllRestrictions().firstOrNull() ?: emptyList()
@@ -1282,8 +1282,8 @@ object AyvaTalkEngine {
                                             TalkAction.NavigateAppScreen("schedules", "View Routines", "📅")
                                         )
                                         val routineListText = allSchedules.mapIndexed { idx, it ->
-                                            val startStr = String.format("%02d:%02d", it.startHour, it.startMinute)
-                                            val endStr = String.format("%02d:%02d", it.endHour, it.endMinute)
+                                            val startStr = String.format(java.util.Locale.ROOT, "%02d:%02d", it.startHour, it.startMinute)
+                                            val endStr = String.format(java.util.Locale.ROOT, "%02d:%02d", it.endHour, it.endMinute)
                                             "${idx + 1}. **${it.name}** ($startStr - $endStr) • *Enabled*"
                                         }.joinToString("\n")
                                         return TalkResponse(
@@ -1300,8 +1300,8 @@ object AyvaTalkEngine {
 
                                         if (matched != null) {
                                             app.database.scheduleDao().insertSchedule(matched.copy(isEnabled = true))
-                                            val startStr = String.format("%02d:%02d", matched.startHour, matched.startMinute)
-                                            val endStr = String.format("%02d:%02d", matched.endHour, matched.endMinute)
+                                            val startStr = String.format(java.util.Locale.ROOT, "%02d:%02d", matched.startHour, matched.startMinute)
+                                            val endStr = String.format(java.util.Locale.ROOT, "%02d:%02d", matched.endHour, matched.endMinute)
                                             val appCount = if (matched.appsToBlock.isNotBlank()) matched.appsToBlock.split(",").filter { s -> s.isNotBlank() }.size else 0
                                             val appSummary = if (appCount > 0) "$appCount apps restricted" else "No apps restricted"
                                             
@@ -1334,8 +1334,8 @@ object AyvaTalkEngine {
                                             TalkAction.NavigateAppScreen("schedules", "Open Routines", "📅")
                                         )
                                         val routineListText = allSchedules.mapIndexed { idx, it ->
-                                            val startStr = String.format("%02d:%02d", it.startHour, it.startMinute)
-                                            val endStr = String.format("%02d:%02d", it.endHour, it.endMinute)
+                                            val startStr = String.format(java.util.Locale.ROOT, "%02d:%02d", it.startHour, it.startMinute)
+                                            val endStr = String.format(java.util.Locale.ROOT, "%02d:%02d", it.endHour, it.endMinute)
                                             val statusStr = if (it.isEnabled) "⚡ Active" else "⏸️ Paused"
                                             "${idx + 1}. **${it.name}** ($startStr - $endStr) — $statusStr"
                                         }.joinToString("\n")
@@ -1421,8 +1421,8 @@ object AyvaTalkEngine {
                                             TalkAction.NavigateAppScreen("schedules", "Open Routines", "📅")
                                         )
                                         val routineListText = allSchedules.mapIndexed { idx, it ->
-                                            val startStr = String.format("%02d:%02d", it.startHour, it.startMinute)
-                                            val endStr = String.format("%02d:%02d", it.endHour, it.endMinute)
+                                            val startStr = String.format(java.util.Locale.ROOT, "%02d:%02d", it.startHour, it.startMinute)
+                                            val endStr = String.format(java.util.Locale.ROOT, "%02d:%02d", it.endHour, it.endMinute)
                                             val statusStr = if (it.isEnabled) "⚡ Active" else "⏸️ Paused"
                                             "${idx + 1}. **${it.name}** ($startStr - $endStr) — $statusStr"
                                         }.joinToString("\n")
@@ -1450,8 +1450,8 @@ object AyvaTalkEngine {
                                     val sb = StringBuilder()
                                     sb.append("🗓️ **Your Focus Routines (${allSchedules.size})**:\n\n")
                                     allSchedules.forEachIndexed { idx, it ->
-                                        val startStr = String.format("%02d:%02d", it.startHour, it.startMinute)
-                                        val endStr = String.format("%02d:%02d", it.endHour, it.endMinute)
+                                        val startStr = String.format(java.util.Locale.ROOT, "%02d:%02d", it.startHour, it.startMinute)
+                                        val endStr = String.format(java.util.Locale.ROOT, "%02d:%02d", it.endHour, it.endMinute)
                                         val statusStr = if (it.isEnabled) "⚡ **Enabled**" else "⏸️ *Paused*"
                                         val appCount = if (it.appsToBlock.isNotBlank()) it.appsToBlock.split(",").filter { s -> s.isNotBlank() }.size else 0
                                         val appStr = if (appCount > 0) "$appCount apps restricted" else "No apps restricted"
@@ -1737,7 +1737,7 @@ object AyvaTalkEngine {
                     val hr = timeMatch.groupValues[1].toIntOrNull() ?: 12
                     val min = timeMatch.groupValues[2]
                     val ampm = (timeMatch.groupValues[3].uppercase().takeIf { it.isNotBlank() } ?: "AM")
-                    stringVal = String.format("%02d:%s %s", hr, min, ampm)
+                    stringVal = String.format(java.util.Locale.ROOT, "%02d:%s %s", hr, min, ampm)
                 } else if (cleanQuery.contains("dark")) stringVal = "dark"
                 else if (cleanQuery.contains("light")) stringVal = "light"
                 else if (cleanQuery.contains("system")) stringVal = "system"

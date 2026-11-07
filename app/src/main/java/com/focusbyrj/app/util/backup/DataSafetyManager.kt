@@ -96,7 +96,6 @@ object DataSafetyManager {
             writeAtomically(file, payload)
 
             // Migrate any old unencrypted legacy snapshots
-            try { migrateLegacyPlaintextSnapshots(context) } catch (_: Exception) {}
 
             // Rotate: remove oldest if over limit
             rotateDailyBackups(dir)
@@ -139,7 +138,6 @@ object DataSafetyManager {
             writeAtomically(file, payload)
 
             // Migrate any old unencrypted legacy snapshots
-            try { migrateLegacyPlaintextSnapshots(context) } catch (_: Exception) {}
 
             // Rotate: keep only the most recent MAX_PRE_OP_BACKUPS
             rotatePreOpBackups(dir)
@@ -657,29 +655,6 @@ object DataSafetyManager {
     // ──────────────────────────────────────────────────────────────────────
     // Internals
     // ──────────────────────────────────────────────────────────────────────
-
-    /**
-     * Converts any existing unencrypted legacy JSON snapshots into encrypted containers (F05).
-     * Preserves exact contents and safely deletes old plaintext files after verification.
-     */
-    fun migrateLegacyPlaintextSnapshots(context: Context): Int {
-        var count = 0
-        listOf(File(context.filesDir, AUTO_BACKUP_DIR), File(context.filesDir, PRE_OP_DIR)).forEach { dir ->
-            if (dir.exists()) {
-                dir.listFiles { f -> f.isFile && f.name.endsWith(".json") }?.forEach { file ->
-                    try {
-                        if (EncryptedSnapshotFile.migratePlaintext(file)) {
-                            count++
-                            Log.i(TAG, "Migrated legacy plaintext snapshot to encrypted container: ${file.name}")
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to migrate legacy snapshot: ${file.name}", e)
-                    }
-                }
-            }
-        }
-        return count
-    }
 
     internal fun writeAtomically(file: File, content: String) = EncryptedSnapshotFile.write(file, content)
 

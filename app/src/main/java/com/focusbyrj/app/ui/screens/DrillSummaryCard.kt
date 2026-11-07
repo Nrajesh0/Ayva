@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
+import kotlinx.coroutines.launch
+
 import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -49,6 +51,8 @@ fun DrillSummaryCard(
 ) {
     val json = message.drillSummaryJson ?: return
     val context = LocalContext.current
+    val saveScope = rememberCoroutineScope()
+    var savingClaim by remember { mutableStateOf(false) }
     
     var title by remember { mutableStateOf("") }
     var tier by remember { mutableStateOf(1) }
@@ -84,11 +88,25 @@ fun DrillSummaryCard(
     // UI flow state: 0 = Initial Summary, 1 = Upgrading XP Bar View, 2 = Claim Finished
     var claimState by remember(initiallyClaimed) { mutableStateOf(if (initiallyClaimed) 2 else 0) }
     var showXpAddedBanner by remember(initiallyClaimed) { mutableStateOf(false) }
+    var recoveredClaim by remember(message.id) { mutableStateOf(false) }
+    LaunchedEffect(message.id, json) {
+        try {
+            val id = JSONObject(json).optString("sessionId", message.id)
+            if (com.focusbyrj.app.data.drill.DrillSessionRepository.getSummary(id)?.isClaimed == true) {
+                // The Room acknowledgement can survive a kill before the chat copy saves.
+                recoveredClaim = true
+                claimState = 2
+            }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            android.util.Log.w("DrillSummary", "Stored completion state unavailable; retaining message state")
+        }
+    }
 
     LaunchedEffect(claimState) {
         onClaimStateChanged?.invoke(claimState)
         if (claimState == 2) {
-            if (!initiallyClaimed) {
+            if (!initiallyClaimed && !recoveredClaim) {
                 showXpAddedBanner = true
                 kotlinx.coroutines.delay(2200)
                 showXpAddedBanner = false
@@ -98,19 +116,28 @@ fun DrillSummaryCard(
         }
     }
 
-    val markAsClaimed = {
-        try {
-            val obj = JSONObject(json)
-            obj.put("isClaimed", true)
-            val updatedJson = obj.toString()
-            onMessageUpdate?.invoke(message.copy(drillSummaryJson = updatedJson))
-        } catch (_: Exception) {}
+    val markAsClaimed: (Int) -> Unit = { nextState ->
+        if (!savingClaim) {
+            savingClaim = true
+            saveScope.launch {
+                try {
+                    val obj = JSONObject(json)
+                    val id = obj.optString("sessionId", message.id)
+                    com.focusbyrj.app.data.drill.DrillSessionRepository.markClaimed(id).getOrThrow()
+                    obj.put("isClaimed", true)
+                    onMessageUpdate?.invoke(message.copy(drillSummaryJson = obj.toString()))
+                    claimState = nextState
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    android.widget.Toast.makeText(context, "Could not save completion. Please try again.", android.widget.Toast.LENGTH_LONG).show()
+                } finally { savingClaim = false }
+            }
+        }
     }
 
     LaunchedEffect(externalClaimTrigger) {
         if (externalClaimTrigger == 1 && claimState == 0) {
-            markAsClaimed()
-            claimState = 1
+            markAsClaimed(1)
         }
     }
 
@@ -379,8 +406,7 @@ fun DrillSummaryCard(
                                             text = "CLAIM XP",
                                             modifier = Modifier.weight(1f),
                                             onClick = {
-                                                markAsClaimed()
-                                                claimState = 1
+                                                markAsClaimed(1)
                                             }
                                         )
                                     }
@@ -584,8 +610,7 @@ fun DrillSummaryCard(
                                 text = "CONTINUE",
                                 modifier = Modifier.fillMaxWidth(),
                                 onClick = {
-                                    markAsClaimed()
-                                    claimState = 2 // Move to completed state
+                                    markAsClaimed(2)
                                 }
                             )
                         }

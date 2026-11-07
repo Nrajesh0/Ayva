@@ -10,7 +10,7 @@
     android:paddingBottom="2dp">
 
     <!-- Attached Image (Only visible on top item if image exists) -->
-    <ImageView
+    <ImageView android:contentDescription="@null" android:importantForAccessibility="no"
         android:id="@+id/widget_note_text_item_image"
         android:layout_width="match_parent"
         android:layout_height="140dp"

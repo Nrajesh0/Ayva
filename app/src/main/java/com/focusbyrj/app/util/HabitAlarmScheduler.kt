@@ -121,8 +121,7 @@ object HabitAlarmScheduler {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val pendingIntent = getPendingIntent(context, habitId, getRequestCode(habitId))
         alarmManager.cancel(pendingIntent)
-        (context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager)
-            ?.cancel(com.focusbyrj.app.service.HabitReceiver.getNotificationId(habitId))
+        HabitNotifications.cancel(context, habitId)
         com.focusbyrj.app.service.HabitFloatingOverlayManager.dismissHabit(habitId)
     }
 

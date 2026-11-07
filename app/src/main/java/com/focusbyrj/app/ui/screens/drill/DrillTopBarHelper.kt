@@ -15,7 +15,7 @@ object DrillTopBarHelper {
         val safeSeconds = blitzSecondsRemaining.coerceAtLeast(0)
         val mins = safeSeconds / 60
         val secs = safeSeconds % 60
-        return if (mins > 0) String.format("%d:%02d", mins, secs) else "${secs}s"
+        return if (mins > 0) String.format(java.util.Locale.ROOT, "%d:%02d", mins, secs) else "${secs}s"
     }
 
     /**

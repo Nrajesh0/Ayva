@@ -13,7 +13,6 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.focusbyrj.app.data.AppRepository
 import com.focusbyrj.app.data.FocusDatabase
-import com.focusbyrj.app.data.FocusDatabaseMigrationHelper
 import com.focusbyrj.app.data.TaskRepository
 import com.focusbyrj.app.data.note.DatabaseKeyProvider
 import com.focusbyrj.app.util.backup.AutoBackupScheduler
@@ -48,7 +47,6 @@ class FocusApplication : Application(), ImageLoaderFactory {
         // Complete or roll back an interrupted restore before managers or workers can write.
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
             com.focusbyrj.app.util.backup.RestoreJournal.recover(this@FocusApplication)
-            com.focusbyrj.app.util.backup.RestoreStaging.protectLegacyStages(this@FocusApplication)
         }
         com.focusbyrj.app.util.AppThemeManager.init(this)
         com.focusbyrj.app.util.LicenseManager.init(this)
@@ -63,6 +61,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
         com.focusbyrj.app.util.StreakManager.init(this)
         com.focusbyrj.app.data.drill.DrillSessionRepository.init(this)
         com.focusbyrj.app.service.HabitReceiver.createHabitNotificationChannel(this)
+        com.focusbyrj.app.util.ReminderPrivacy.refreshActive(this)
         com.focusbyrj.app.util.AyvaAlertCategory.createNotificationChannels(this)
         com.focusbyrj.app.service.UnifiedOverlayCoordinator.restorePending(this)
 
@@ -81,11 +80,6 @@ class FocusApplication : Application(), ImageLoaderFactory {
         ioScope.launch {
             com.focusbyrj.app.util.LegacyDialogueCleanup.remove(this@FocusApplication)
             com.focusbyrj.app.util.AyvaTalkEngine.warmUp(this@FocusApplication)
-            try {
-                habitRepository.cleanPlaceholderData(this@FocusApplication)
-            } catch (t: Throwable) {
-                android.util.Log.e("FocusApplication", "Failed to clean placeholder habit data", t)
-            }
         }
         runCatching { com.focusbyrj.app.util.backup.ExportCleanupWorker.schedule(this) }
         AutoBackupScheduler.schedule(this, ioScope)
@@ -100,7 +94,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
             Room.databaseBuilder(
                 this,
                 FocusDatabase::class.java,
-                FocusDatabaseMigrationHelper.getEncryptedDatabaseName()
+                com.focusbyrj.app.data.SecureDatabaseNames.FOCUS
             )
             .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory(factory))
             .addMigrations(
@@ -137,12 +131,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
             )
             .build()
         } catch (t: Throwable) {
-            val isRobolectric = try {
-                android.os.Build.FINGERPRINT.startsWith("robolectric") ||
-                Class.forName("org.robolectric.Robolectric") != null
-            } catch (_: Throwable) {
-                false
-            }
+            val isRobolectric = com.focusbyrj.app.util.crypto.TestRuntimeKeys.available
             if (isRobolectric) {
                 android.util.Log.w("FocusApplication", "Robolectric test environment detected; utilizing in-memory test database", t)
                 Room.inMemoryDatabaseBuilder(this, FocusDatabase::class.java)
@@ -155,33 +144,11 @@ class FocusApplication : Application(), ImageLoaderFactory {
             }
         }
 
-        // Quarantine any insecure legacy fallback database if one existed instead of blind deletion
-        try {
-            val fallbackDb = getDatabasePath("focus_database_fallback.db")
-            FocusDatabaseMigrationHelper.quarantineFallbackDatabase(fallbackDb)
-        } catch (_: Exception) {}
-
-        try {
-            FocusDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(this, instance)
-        } catch (t: Throwable) {
-            android.util.Log.e("FocusApplication", "FocusDatabase legacy migration failed gracefully", t)
-        }
-
         instance
     }
     
-    val vocabDatabase by lazy {
-        Room.databaseBuilder(
-            this,
-            com.focusbyrj.app.data.VocabDatabase::class.java,
-            "vocab.db"
-        )
-        .createFromAsset("vocab.db")
-        .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory())
-        .addMigrations(com.focusbyrj.app.data.VocabDatabase.MIGRATION_1_2, com.focusbyrj.app.data.VocabDatabase.MIGRATION_2_3)
-        .build()
-    }
-    
+    val vocabDatabase by lazy { com.focusbyrj.app.data.VocabDatabase.create(this) }
+
     val repository by lazy { AppRepository(database) }
     val taskRepository by lazy { TaskRepository(database.taskDao()) }
     val habitRepository by lazy { com.focusbyrj.app.data.HabitRepository(database.habitDao()) }

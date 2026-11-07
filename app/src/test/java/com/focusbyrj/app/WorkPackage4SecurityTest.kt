@@ -35,7 +35,7 @@ import javax.crypto.spec.SecretKeySpec
  * - F01/F03: Stable Vault Data Key (VDK) architecture replaces fragile PIN-as-data-key.
  * - Credential rotation (PIN changes) executes with ZERO note-ciphertext rewrites.
  * - Mnemonic emergency recovery resets credentials with ZERO note-ciphertext rewrites.
- * - Transparent upgrade from legacy PIN-as-data-key vaults to VDK.
+ * - Unsupported development vaults fail closed without changing files.
  * - Vault disabling safely restores encrypted notes back to plaintext.
  * - Domain separation: General tasks/habits and ordinary notes operate independently of vault locks.
  */
@@ -193,7 +193,7 @@ class WorkPackage4SecurityTest {
     // =========================================================================
 
     @Test
-    fun f01_f03_transparentUpgradeFromLegacyPinKeyToVdk() = runBlocking {
+    fun f01_f03_retiredPinKeyFormatIsRejectedWithoutChangingData() = runBlocking {
         val legacyPin = "334455"
         val salt = ByteArray(16) { (it + 5).toByte() }
 
@@ -221,27 +221,14 @@ class WorkPackage4SecurityTest {
         val encryptedNote = VaultPayloadEncryptor.encryptNotePayload(note, legacyKey)
         noteDb.noteDao().insertNote(encryptedNote)
 
-        // First unlock with legacy PIN
-        val unlockResult = ArchiveVaultSecurity.verifyPasscode(context, legacyPin)
-        assertTrue("Unlock with legacy PIN must succeed", unlockResult is ArchiveVaultSecurity.VerifyResult.Success)
+        val originalPrefs = prefs.all.toMap()
+        val originalCiphertext = noteDb.noteDao().getNoteByIdSync(88)!!.content
+        val result = ArchiveVaultSecurity.verifyPasscode(context, legacyPin)
+        assertTrue(result is ArchiveVaultSecurity.VerifyResult.Error)
+        assertNull(ArchiveVaultSecurity.getActiveVaultSubKey())
+        assertEquals(originalPrefs, prefs.all)
+        assertEquals(originalCiphertext, noteDb.noteDao().getNoteByIdSync(88)!!.content)
 
-        // Must have transparently upgraded to VDK in SharedPreferences
-        assertTrue("Vault must now have KEY_WRAPPED_VAULT_DATA_KEY after unlock", prefs.contains(ArchiveVaultSecurity.KEY_WRAPPED_VAULT_DATA_KEY))
-        assertTrue("Vault must now have KEY_WRAPPED_VAULT_DATA_KEY_IV", prefs.contains(ArchiveVaultSecurity.KEY_WRAPPED_VAULT_DATA_KEY_IV))
-
-        // Note must decrypt cleanly
-        val activeKey = ArchiveVaultSecurity.getActiveVaultSubKey()!!
-        val decryptedResult = VaultPayloadEncryptor.tryDecryptNotePayload(noteDb.noteDao().getNoteByIdSync(88)!!, activeKey)
-        assertTrue("Upgraded note must decrypt cleanly", decryptedResult is VaultPayloadEncryptor.DecryptionResult.Success)
-        assertEquals(originalTitle, (decryptedResult as VaultPayloadEncryptor.DecryptionResult.Success).note.title)
-
-        // Subsequent PIN rotation must now execute with zero note rewrites!
-        val rawCiphertextBefore = noteDb.noteDao().getNoteByIdSync(88)!!.content
-        val newPin = "778899"
-        val rotationSuccess = ArchiveVaultSecurity.setPasscode(context, newPin)
-        assertTrue("PIN rotation on upgraded vault must succeed", rotationSuccess)
-        val rawCiphertextAfter = noteDb.noteDao().getNoteByIdSync(88)!!.content
-        assertEquals("Subsequent rotation on upgraded vault must have zero note rewrites", rawCiphertextBefore, rawCiphertextAfter)
     }
 
     // =========================================================================
@@ -303,4 +290,16 @@ class WorkPackage4SecurityTest {
         assertFalse("Ordinary note is not archived", retrieved.isArchived)
         assertFalse("Ordinary note is not vault-encrypted", VaultPayloadEncryptor.isVaultEncrypted(retrieved))
     }
+    @Test fun unreadableStoredPhraseCannotSilentlyReplaceAWorkingRecoveryEnvelope() {
+        val words = VaultCryptoEngine.generate12WordMnemonic()
+        assertTrue(ArchiveVaultSecurity.setPasscode(context, "629413", words))
+        val prefs = context.getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, 0)
+        prefs.edit().putString("rec_phrase_iv", "invalid development fixture").commit()
+        val before = prefs.all.toMap()
+        assertNull(ArchiveVaultSecurity.getOrConfigureRecoveryPhrase(context))
+        assertFalse(ArchiveVaultSecurity.setPasscode(context, "417398"))
+        assertEquals(before, prefs.all)
+        assertTrue(ArchiveVaultSecurity.verifyMnemonicOnly(context, words))
+    }
+
 }

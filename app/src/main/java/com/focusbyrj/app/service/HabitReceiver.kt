@@ -33,13 +33,8 @@ class HabitReceiver : BroadcastReceiver() {
     companion object {
         const val CHANNEL_ID = "habit_nudges"
         const val CHANNEL_NAME = "Habit Nudges"
-        const val NOTIFICATION_ID_OFFSET = 500_000
         const val HABITS_GROUP_KEY = "com.focusbyrj.app.HABITS_GROUP"
         const val HABITS_SUMMARY_ID = 999_901
-
-        fun getNotificationId(habitId: Long): Int {
-            return (NOTIFICATION_ID_OFFSET + (habitId % 400_000L)).toInt()
-        }
 
         fun createHabitNotificationChannel(context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -56,7 +51,7 @@ class HabitReceiver : BroadcastReceiver() {
                     // Crisp double-tap haptic distinct from alarms
                     vibrationPattern = longArrayOf(0, 70, 80, 90)
                     setShowBadge(true)
-                    lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                    lockscreenVisibility = com.focusbyrj.app.util.ReminderPrivacy.visibility(context)
                 }
                 notificationManager.createNotificationChannel(channel)
             }
@@ -165,10 +160,11 @@ class HabitReceiver : BroadcastReceiver() {
                     createHabitNotificationChannel(appContext)
                     val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-                    val notificationId = getNotificationId(habit.id)
+                    val notificationId = com.focusbyrj.app.util.HabitNotifications.ID
 
                     // 1. Content Intent (Tapping the notification opens the app into the habits dashboard)
                     val openAppIntent = Intent(appContext, MainActivity::class.java).apply {
+                        data = com.focusbyrj.app.util.HabitNotifications.actionUri(habit.id, "open")
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         putExtra("navigate_to", "habits")
                         putExtra("habit_id", habit.id)
@@ -182,9 +178,9 @@ class HabitReceiver : BroadcastReceiver() {
 
                     // 2. Action: 1-Tap Log (+1)
                     val logActionIntent = Intent(appContext, HabitActionReceiver::class.java).apply {
+                        data = com.focusbyrj.app.util.HabitNotifications.actionUri(habit.id, "increment")
                         action = HabitActionReceiver.ACTION_INCREMENT_HABIT
                         putExtra(HabitActionReceiver.EXTRA_HABIT_ID, habit.id)
-                        putExtra(HabitActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
                     }
                     val logPendingIntent = PendingIntent.getBroadcast(
                         appContext,
@@ -195,9 +191,9 @@ class HabitReceiver : BroadcastReceiver() {
 
                     // 3. Action: Snooze (+30m)
                     val snoozeActionIntent = Intent(appContext, HabitActionReceiver::class.java).apply {
+                        data = com.focusbyrj.app.util.HabitNotifications.actionUri(habit.id, "snooze")
                         action = HabitActionReceiver.ACTION_SNOOZE_HABIT
                         putExtra(HabitActionReceiver.EXTRA_HABIT_ID, habit.id)
-                        putExtra(HabitActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
                     }
                     val snoozePendingIntent = PendingIntent.getBroadcast(
                         appContext,
@@ -252,6 +248,7 @@ class HabitReceiver : BroadcastReceiver() {
                     }
 
                     val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
+                        .also { com.focusbyrj.app.util.ReminderPrivacy.configure(it, appContext, CHANNEL_ID) }
                         .setSmallIcon(R.drawable.ic_app_logo)
                         .setContentTitle("${habit.iconEmoji} ${habit.title}")
                         .setContentText(progressText)
@@ -269,7 +266,7 @@ class HabitReceiver : BroadcastReceiver() {
                         .addAction(0, actionLabel, logPendingIntent)
                         .addAction(0, "⏳ +30m", snoozePendingIntent)
 
-                    notificationManager.notify(notificationId, builder.build())
+                    com.focusbyrj.app.util.HabitNotifications.post(appContext, notificationManager, habit.id, builder.build())
 
                     // Clean group summary for expandable notification drawer
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
@@ -286,6 +283,7 @@ class HabitReceiver : BroadcastReceiver() {
                                 }
                             }
                             val summaryNotification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+                                .also { com.focusbyrj.app.util.ReminderPrivacy.configure(it, appContext, CHANNEL_ID) }
                                 .setSmallIcon(R.drawable.ic_app_logo)
                                 .setContentTitle("Habit Reminders")
                                 .setContentText("${activeHabits.size} habits scheduled")

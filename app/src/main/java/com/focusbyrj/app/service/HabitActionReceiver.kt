@@ -30,7 +30,6 @@ class HabitActionReceiver : BroadcastReceiver() {
         const val ACTION_DISMISS_HABIT = "com.focusbyrj.app.ACTION_DISMISS_HABIT"
 
         const val EXTRA_HABIT_ID = "extra_habit_id"
-        const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -39,7 +38,6 @@ class HabitActionReceiver : BroadcastReceiver() {
             return
         }
         val habitId = intent.getLongExtra(EXTRA_HABIT_ID, -1L)
-        val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
         if (habitId == -1L) return
 
         val pendingResult = goAsync()
@@ -58,10 +56,8 @@ class HabitActionReceiver : BroadcastReceiver() {
                         val habit = app.habitRepository.getHabitById(habitId) ?: return@launch
                         if (habit.isArchived || habit.isPaused || !habit.isReminderEnabled) {
                             HabitAlarmScheduler.cancelHabitReminder(appContext, habitId)
-                            if (notificationId != -1) {
-                                notificationManager.cancel(notificationId)
-                                cleanUpHabitSummary(notificationManager, notificationId)
-                            }
+                            com.focusbyrj.app.util.HabitNotifications.cancel(notificationManager, habitId)
+                            cleanUpHabitSummary(notificationManager)
                             return@launch
                         }
 
@@ -101,6 +97,7 @@ class HabitActionReceiver : BroadcastReceiver() {
 
                         // Update existing notification to visually reward user
                         val updatedNotification = NotificationCompat.Builder(appContext, HabitReceiver.CHANNEL_ID)
+                            .also { com.focusbyrj.app.util.ReminderPrivacy.configure(it, appContext, HabitReceiver.CHANNEL_ID) }
                             .setSmallIcon(R.drawable.ic_app_logo)
                             .setContentTitle(feedbackTitle)
                             .setContentText(feedbackText)
@@ -115,9 +112,7 @@ class HabitActionReceiver : BroadcastReceiver() {
                             }
                             .build()
 
-                        if (notificationId != -1) {
-                            notificationManager.notify(notificationId, updatedNotification)
-                        }
+                        com.focusbyrj.app.util.HabitNotifications.post(appContext, notificationManager, habitId, updatedNotification)
 
                         // Reschedule next reminder for interval habit or next day if goal is completed
                         HabitAlarmScheduler.scheduleHabitReminder(
@@ -129,10 +124,8 @@ class HabitActionReceiver : BroadcastReceiver() {
                     }
 
                     ACTION_SNOOZE_HABIT -> {
-                        if (notificationId != -1) {
-                            notificationManager.cancel(notificationId)
-                            cleanUpHabitSummary(notificationManager, notificationId)
-                        }
+                        com.focusbyrj.app.util.HabitNotifications.cancel(notificationManager, habitId)
+                        cleanUpHabitSummary(notificationManager)
                         val habit = app.habitRepository.getHabitById(habitId)
                         if (habit == null || habit.isArchived || habit.isPaused || !habit.isReminderEnabled) {
                             HabitAlarmScheduler.cancelHabitReminder(appContext, habitId)
@@ -142,10 +135,8 @@ class HabitActionReceiver : BroadcastReceiver() {
                     }
 
                     ACTION_DISMISS_HABIT -> {
-                        if (notificationId != -1) {
-                            notificationManager.cancel(notificationId)
-                            cleanUpHabitSummary(notificationManager, notificationId)
-                        }
+                        com.focusbyrj.app.util.HabitNotifications.cancel(notificationManager, habitId)
+                        cleanUpHabitSummary(notificationManager)
                     }
                 }
             } catch (e: Exception) {
@@ -156,12 +147,11 @@ class HabitActionReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun cleanUpHabitSummary(notificationManager: NotificationManager, dismissedNotificationId: Int? = null) {
+    private fun cleanUpHabitSummary(notificationManager: NotificationManager) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             val activeNotifs = notificationManager.activeNotifications ?: emptyArray()
             val activeHabits = activeNotifs.filter {
                 it.id != HabitReceiver.HABITS_SUMMARY_ID &&
-                (dismissedNotificationId == null || it.id != dismissedNotificationId) &&
                 it.notification.group == HabitReceiver.HABITS_GROUP_KEY
             }
             if (activeHabits.size < 2) {

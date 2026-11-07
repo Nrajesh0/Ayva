@@ -22,6 +22,7 @@ internal object SettingsSearchCatalog {
         SettingsSearchEntry("Routine alerts", "", "Notifications & reminders", "settings_notifications", "notifications.routines", listOf("Routine Notifications")),
         SettingsSearchEntry("Task reminder delivery", "System notification backup is retained. Priority tasks always show a popup.", "Notifications & reminders", "settings_notifications", "notifications.tasks", listOf("Task Notification Style")),
         SettingsSearchEntry("Habit notification-bar alerts", "", "Notifications & reminders", "settings_notifications", "notifications.habits", listOf("Habit Top Notifications")),
+        SettingsSearchEntry("Allow reminder details on lock screen", "Private by default; show generic reminders while locked", "Notifications", "settings_notifications", "notifications.privacy", listOf("Lock screen privacy", "Hide notification details")),
         SettingsSearchEntry("Default launch screen", "", "Focus & behavior", "settings_focus", "focus.launch", listOf("Default Launch Tab")),
         SettingsSearchEntry("Enable Chat Bubble", "", "Bubble Settings", "bubble_settings", "bubble.enabled", listOf()),
         SettingsSearchEntry("Auto-hide Bubble", "", "Bubble Settings", "bubble_settings", "bubble.auto_hide", listOf()),

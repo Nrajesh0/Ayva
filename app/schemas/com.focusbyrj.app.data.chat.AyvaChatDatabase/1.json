@@ -1,0 +1,337 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "fc9ee808208e18f9f464ec48f2087a73",
+    "entities": [
+      {
+        "tableName": "ayva_chat_messages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `text` TEXT NOT NULL, `isUser` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `firstViewedTimestamp` INTEGER NOT NULL, `isArithmetic` INTEGER NOT NULL, `arithmeticJson` TEXT, `isDrillSummary` INTEGER NOT NULL, `drillSummaryJson` TEXT, `isAptitudeProfile` INTEGER NOT NULL, `isStreakPrompt` INTEGER NOT NULL, `streakPromptJson` TEXT, `isTaskSummary` INTEGER NOT NULL, `taskSummaryJson` TEXT, `isTalkAction` INTEGER NOT NULL, `talkActionJson` TEXT, `pendingActionJson` TEXT, `isDailyQuests` INTEGER NOT NULL, `isMysteryBox` INTEGER NOT NULL, `isMorningBrief` INTEGER NOT NULL, `isEveningBrief` INTEGER NOT NULL, `isStreakFreezeSkipped` INTEGER NOT NULL, `isVocabBrief` INTEGER NOT NULL, `isVocabHub` INTEGER NOT NULL, `vocabJson` TEXT, `isWelcome` INTEGER NOT NULL, `isHabitsSummary` INTEGER NOT NULL, `habitsSummaryJson` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isUser",
+            "columnName": "isUser",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstViewedTimestamp",
+            "columnName": "firstViewedTimestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isArithmetic",
+            "columnName": "isArithmetic",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "arithmeticJson",
+            "columnName": "arithmeticJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isDrillSummary",
+            "columnName": "isDrillSummary",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "drillSummaryJson",
+            "columnName": "drillSummaryJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isAptitudeProfile",
+            "columnName": "isAptitudeProfile",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isStreakPrompt",
+            "columnName": "isStreakPrompt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "streakPromptJson",
+            "columnName": "streakPromptJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isTaskSummary",
+            "columnName": "isTaskSummary",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "taskSummaryJson",
+            "columnName": "taskSummaryJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isTalkAction",
+            "columnName": "isTalkAction",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "talkActionJson",
+            "columnName": "talkActionJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "pendingActionJson",
+            "columnName": "pendingActionJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isDailyQuests",
+            "columnName": "isDailyQuests",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isMysteryBox",
+            "columnName": "isMysteryBox",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isMorningBrief",
+            "columnName": "isMorningBrief",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isEveningBrief",
+            "columnName": "isEveningBrief",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isStreakFreezeSkipped",
+            "columnName": "isStreakFreezeSkipped",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isVocabBrief",
+            "columnName": "isVocabBrief",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isVocabHub",
+            "columnName": "isVocabHub",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "vocabJson",
+            "columnName": "vocabJson",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isWelcome",
+            "columnName": "isWelcome",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isHabitsSummary",
+            "columnName": "isHabitsSummary",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "habitsSummaryJson",
+            "columnName": "habitsSummaryJson",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_ayva_chat_messages_timestamp",
+            "unique": false,
+            "columnNames": [
+              "timestamp"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ayva_chat_messages_timestamp` ON `${TABLE_NAME}` (`timestamp`)"
+          },
+          {
+            "name": "index_ayva_chat_messages_firstViewedTimestamp",
+            "unique": false,
+            "columnNames": [
+              "firstViewedTimestamp"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ayva_chat_messages_firstViewedTimestamp` ON `${TABLE_NAME}` (`firstViewedTimestamp`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "active_drill_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sessionId` TEXT NOT NULL, `difficulty` TEXT NOT NULL, `targetQuestions` INTEGER NOT NULL, `correct` INTEGER NOT NULL, `total` INTEGER NOT NULL, `xp` INTEGER NOT NULL, `gold` INTEGER NOT NULL, `combo` INTEGER NOT NULL, `maxCombo` INTEGER NOT NULL, `isBlitz` INTEGER NOT NULL, `blitzSecondsRemaining` INTEGER NOT NULL, `startTime` INTEGER NOT NULL, `preGeneratedQuestionsJson` TEXT NOT NULL, `questionRecordsJson` TEXT NOT NULL, `attemptedIndicesJson` TEXT NOT NULL, `markedForReviewJson` TEXT NOT NULL, `highestSeenIndex` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`sessionId`))",
+        "fields": [
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "difficulty",
+            "columnName": "difficulty",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetQuestions",
+            "columnName": "targetQuestions",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "correct",
+            "columnName": "correct",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "total",
+            "columnName": "total",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "xp",
+            "columnName": "xp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gold",
+            "columnName": "gold",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "combo",
+            "columnName": "combo",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxCombo",
+            "columnName": "maxCombo",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isBlitz",
+            "columnName": "isBlitz",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "blitzSecondsRemaining",
+            "columnName": "blitzSecondsRemaining",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startTime",
+            "columnName": "startTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "preGeneratedQuestionsJson",
+            "columnName": "preGeneratedQuestionsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "questionRecordsJson",
+            "columnName": "questionRecordsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attemptedIndicesJson",
+            "columnName": "attemptedIndicesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "markedForReviewJson",
+            "columnName": "markedForReviewJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "highestSeenIndex",
+            "columnName": "highestSeenIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sessionId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fc9ee808208e18f9f464ec48f2087a73')"
+    ]
+  }
+}

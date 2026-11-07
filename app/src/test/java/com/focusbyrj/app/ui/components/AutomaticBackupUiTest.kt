@@ -39,7 +39,13 @@ class AutomaticBackupUiTest {
             androidx.work.WorkManager.initialize(app,androidx.work.Configuration.Builder().build())
         }
     }
-    private fun page() {compose.setContent{FocusByRjTheme {val nav=rememberNavController();NavHost(nav,startDestination="automatic") {composable("automatic"){AutomaticBackupsScreen(nav)}}}}}
+    private fun page(fontScale: Float = 1f) { compose.setContent { FocusByRjTheme {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)) {
+            val nav = rememberNavController()
+            NavHost(nav, startDestination = "automatic") { composable("automatic") { AutomaticBackupsScreen(nav) } }
+        }
+    } } }
     private fun capture(name:String) {
         compose.runOnIdle {
             val view=compose.activity.window.decorView;val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)
@@ -48,9 +54,11 @@ class AutomaticBackupUiTest {
     }
     @Test fun initialSetupClearlySeparatesKeyExportFromHavingABackupAndDisablesUnconfiguredSchedule() {
         page();compose.waitForIdle()
-        compose.onNodeWithText("Not configured").assertExists()
-        compose.onNodeWithText("Create recovery key").assertExists()
-        compose.onNodeWithText("Last verified full backup: None yet").assertExists()
+        compose.onNodeWithContentDescription("Back").assertIsDisplayed()
+        compose.onNodeWithText("STEP 1 OF 3").assertExists()
+        compose.onNodeWithText("Choose where backups go").assertExists()
+        compose.onNodeWithText("Last backup: None yet").assertExists()
+        compose.onNodeWithText("Save recovery PDF").assertDoesNotExist()
         capture("automatic-backup-setup")
         compose.onAllNodesWithText("Automatic backups",substring=false).onFirst().assertExists()
         assertFalse(AutomaticBackupStore(app).config().enabled)
@@ -60,32 +68,35 @@ class AutomaticBackupUiTest {
         BackupRecoveryKey.generate().use{store.install(it)}
         store.save(store.config().copy(keyExported=true,keyAcknowledged=true,tree="content://test/tree/folder",keep=7))
         page();compose.waitForIdle();capture("automatic-backup-key-ready")
-        compose.onNodeWithText("Keep 7 verified backups").performScrollTo().assertExists()
-        compose.onAllNodesWithText("Set").onLast().performClick()
+        compose.onNodeWithText("Advanced options").performScrollTo().performClick()
+        compose.onNodeWithTag("automatic_retention").performScrollTo().performClick()
         compose.onNodeWithText("Maximum backups").assertExists()
         compose.onNode(hasSetTextAction()).performTextReplacement("0")
-        compose.onNodeWithText("Save").assertIsNotEnabled()
+        compose.onNode(hasText("Save") and hasAnyAncestor(isDialog())).assertIsNotEnabled()
         compose.onNode(hasSetTextAction()).performTextReplacement("3")
-        compose.onNodeWithText("Save").performClick();compose.waitForIdle()
+        compose.onNode(hasText("Save") and hasAnyAncestor(isDialog())).performClick();compose.waitForIdle()
         compose.waitUntil(5000){store.config().keep==3}
         assertTrue(store.config().keyAcknowledged);assertTrue(store.records().isEmpty())
     }
     @Test fun calendarFrequencyOffersAllFourUnitsAndSavesTheSelectedInterval() {
         page();compose.waitForIdle()
-        compose.onNodeWithText("Every 1 day").performScrollTo()
-        compose.onAllNodesWithText("Set").onFirst().performClick()
+        compose.onNodeWithText("Advanced options").performScrollTo().performClick()
+        compose.onNodeWithText("Edit").performScrollTo().performClick()
         compose.onNodeWithText("Months").performClick()
         compose.onNode(hasSetTextAction()).performTextReplacement("2")
-        compose.onNodeWithText("Save").performClick();compose.waitForIdle()
+        compose.onNode(hasText("Save") and hasAnyAncestor(isDialog())).performClick();compose.waitForIdle()
         compose.waitUntil(5000){AutomaticBackupStore(app).config().frequency.unit=="MONTHS"}
         assertEquals(2,AutomaticBackupStore(app).config().frequency.every)
-        compose.onNodeWithText("Every 2 months").assertExists()
+        compose.onNodeWithText("Edit").performScrollTo().performClick()
+        compose.onNode(hasSetTextAction()).assertTextContains("2")
+        compose.onNodeWithText("Cancel").performClick()
     }
     @Test fun replacingAKeyCanBeCancelledWithoutChangingTheCredentialOrBackupSetup() {
         val store=AutomaticBackupStore(app,TestBackupWrapper());BackupRecoveryKey.generate().use{store.install(it)}
         val before=app.getSharedPreferences("automatic_full_backups_v1",0).all.toMap()
         page();compose.waitForIdle()
-        compose.onNodeWithText("New key").performClick()
+        compose.onNodeWithText("Advanced options").performScrollTo().performClick()
+        compose.onNodeWithText("Replace").performScrollTo().performClick()
         compose.onNodeWithText("Create a new backup key?").assertExists()
         compose.onNodeWithText("Cancel").performClick();compose.waitForIdle()
         assertEquals(before,app.getSharedPreferences("automatic_full_backups_v1",0).all)
@@ -111,12 +122,15 @@ class AutomaticBackupUiTest {
         com.focusbyrj.app.data.note.ArchiveVaultSecurity.lockVault()
         try {
             page();compose.waitForIdle()
-            compose.onAllNodesWithText("Export").onFirst().performClick()
+            compose.onNodeWithText("Advanced options").performScrollTo().performClick()
+            compose.onNodeWithTag("automatic_recovery_pdf").performScrollTo().performClick()
             val activity=org.robolectric.Shadows.shadowOf(compose.activity)
             val picker=activity.nextStartedActivityForResult
             assertNotNull(picker);assertEquals(android.content.Intent.ACTION_CREATE_DOCUMENT,picker.intent.action)
             compose.runOnIdle{activity.receiveResult(picker.intent,android.app.Activity.RESULT_OK,android.content.Intent().setData(android.net.Uri.parse("content://unavailable/recovery-key.pdf")))}
-            compose.onNodeWithText("Enter 6-digit passcode to unlock").assertExists()
+            compose.onNodeWithText("Include private notes?").assertExists()
+            compose.onNodeWithText("Include and continue").performClick()
+            compose.onNodeWithText("Confirm vault PIN").assertExists()
             assertFalse(store.config().keyExported);assertFalse(store.config().enabled)
         } finally {prefs.edit().clear().commit();com.focusbyrj.app.data.note.ArchiveVaultSecurity.lockVault()}
     }
@@ -124,7 +138,8 @@ class AutomaticBackupUiTest {
         val store=AutomaticBackupStore(app,TestBackupWrapper());BackupRecoveryKey.generate().use{store.install(it)}
         val before=app.getSharedPreferences("automatic_full_backups_v1",0).all.toMap()
         page();compose.waitForIdle()
-        compose.onNodeWithText("Enter").performClick()
+        compose.onNodeWithText("Advanced options").performScrollTo().performClick()
+        compose.onNodeWithText("Enter key").performScrollTo().performClick()
         BackupRecoveryKey.generate().use {candidate ->
             compose.onNode(hasSetTextAction()).performTextReplacement(candidate.credential())
             compose.onNodeWithText("Use key").performClick()
@@ -138,15 +153,15 @@ class AutomaticBackupUiTest {
         var visible by mutableStateOf(true);var supplied:String?=null
         BackupRecoveryKey.generate().use {key ->
             compose.setContent{FocusByRjTheme {if(visible)RestoreBackupPasswordDialog(false,{visible=false}){password,_->supplied=password;visible=false}}}
-            compose.onAllNodes(isToggleable()).onFirst().performClick()
+            compose.onNodeWithText("Automatic").performClick()
             compose.onNode(hasSetTextAction()).performTextReplacement(key.credential().replace("-"," \n"))
-            compose.onNodeWithText("Decrypt & Restore").performClick();compose.waitForIdle()
+            compose.onNodeWithText("Check backup").performClick();compose.waitForIdle()
             assertEquals(key.credential(),supplied)
         }
         supplied=null;visible=true;compose.waitForIdle()
         val password="  Exact manual password  "
         compose.onNode(hasSetTextAction()).performTextReplacement(password)
-        compose.onNodeWithText("Decrypt & Restore").performClick();compose.waitForIdle()
+        compose.onNodeWithText("Check backup").performClick();compose.waitForIdle()
         assertEquals(password,supplied)
     }
     @Test fun revocationNeedsConfirmationAndExplainsExistingArchiveAccess() {
@@ -154,6 +169,7 @@ class AutomaticBackupUiTest {
         BackupRecoveryKey.generate().use { store.install(it) }
         store.authorizeVault(ByteArray(32) { it.toByte() })
         page()
+        compose.onNodeWithText("Advanced options").performScrollTo().performClick()
         compose.onNodeWithText("Revoke").performScrollTo().performClick()
         compose.onNodeWithText("Revoke private-note backup access?").assertExists()
         compose.onNodeWithText("Existing backup files will be kept", substring = true).assertExists()
@@ -164,6 +180,91 @@ class AutomaticBackupUiTest {
         compose.onNodeWithText("Revoke access").performClick()
         compose.waitUntil(5000) { !store.hasVaultAuthorization() }
         assertNull(store.staged())
+    }
+
+    @Test fun automaticRestoreCanUseThisPhonesKeyWithoutTypingAndDefaultsToSnapshot() {
+        var savedKeyRequested: Boolean? = null
+        compose.setContent { FocusByRjTheme {
+            RestoreBackupPasswordDialog(false, {}, automaticDefault = true, hasSavedKey = true,
+                onSavedKey = { savedKeyRequested = it }, onConfirm = { _, _ -> fail("No typed credential is needed") })
+        } }
+        compose.onNodeWithText("Use the recovery key saved on this phone.").assertExists()
+        compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
+        compose.onNodeWithText("Restore snapshot · no extra copies").assertExists()
+        compose.onNodeWithText("Check backup").performClick()
+        assertEquals(true, savedKeyRequested)
+    }
+
+    @Test fun setupShowsOneRecoveryFileActionAndWaitsForExplicitEnable() {
+        val store = AutomaticBackupStore(app, TestBackupWrapper())
+        BackupRecoveryKey.generate().use { store.install(it) }
+        store.save(store.config().copy(tree = "content://test/tree/folder"))
+        page()
+        compose.onNodeWithText("STEP 2 OF 3").assertExists()
+        compose.onNodeWithText("Save recovery file").assertIsEnabled()
+        compose.onNodeWithText("Save recovery PDF").assertDoesNotExist()
+        capture("automatic-backup-recovery-file")
+        compose.runOnIdle { store.save(store.config().copy(keyExported = true)) }
+        compose.waitUntil(5000) { compose.onAllNodesWithText("STEP 3 OF 3").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Turn on automatic backups").assertIsEnabled()
+        assertFalse(store.config().enabled)
+        assertFalse(store.config().keyAcknowledged)
+        capture("automatic-backup-confirm")
+    }
+
+    @Test @Config(qualifiers = "w320dp-h800dp-xhdpi") fun primaryActionsRemainReachableOnSmallScreensWithLargeText() {
+        val store = AutomaticBackupStore(app, TestBackupWrapper())
+        BackupRecoveryKey.generate().use { store.install(it) }
+        store.save(store.config().copy(tree = "content://test/tree/folder", keyExported = true, keyAcknowledged = true))
+        page(fontScale = 1.6f)
+        compose.onNodeWithText("Back up now").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Restore backup").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Custom").performScrollTo().assertIsDisplayed()
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText("Custom").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals("A large-text schedule label must remain whole", 1, layouts.single().lineCount)
+        compose.onNodeWithText("Advanced options").performScrollTo().assertIsDisplayed()
+        capture("automatic-backup-large-text")
+    }
+
+    @Test fun aKeyInstalledDuringSetupIsAvailableToRestoreWithoutReopeningThePage() {
+        val store = AutomaticBackupStore(app, TestBackupWrapper())
+        page()
+        compose.runOnIdle {
+            BackupRecoveryKey.generate().use { store.install(it) }
+            store.save(store.config().copy(tree = "content://test/tree/folder", keyExported = true, keyAcknowledged = true))
+        }
+        compose.waitUntil(5000) { compose.onAllNodesWithText("Restore backup").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Restore backup").performScrollTo().performClick()
+        val activity = org.robolectric.Shadows.shadowOf(compose.activity)
+        val picker = activity.nextStartedActivityForResult
+        assertEquals(android.content.Intent.ACTION_OPEN_DOCUMENT, picker.intent.action)
+        compose.runOnIdle { activity.receiveResult(picker.intent, android.app.Activity.RESULT_OK,
+            android.content.Intent().setData(android.net.Uri.parse("content://test/selected-backup"))) }
+        compose.onNodeWithText("Use the recovery key saved on this phone.").assertExists()
+    }
+
+    @Test fun recentBackupSelectionUsesDatesAndFallsBackToARecoveryFileWhenTheSavedKeyIsUnavailable() {
+        val store = AutomaticBackupStore(app, TestBackupWrapper())
+        BackupRecoveryKey.generate().use { store.install(it) }
+        val config = store.config().copy(tree = "content://test/tree/folder", keyExported = true, keyAcknowledged = true)
+        store.save(config)
+        val created = System.currentTimeMillis()
+        store.records(listOf(ManagedBackup("content://test/selected-backup", "RUN-Auto-${config.stream}-${config.keyId}-$created.fixture",
+            config.stream, config.keyId, created, 4096, "a".repeat(64))))
+        val originalKey = app.getSharedPreferences("automatic_full_backups_v1", 0).getString("wrapped_key", null)
+        page()
+        compose.onNodeWithText("Restore backup").performScrollTo().performClick()
+        compose.onNodeWithText("Choose backup").assertExists()
+        compose.onNodeWithText("Latest", substring = true).assertExists()
+        compose.onNodeWithTag("automatic_restore_$created").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Restore not completed").fetchSemanticsNodes().isNotEmpty() }
+        assertNull(org.robolectric.Shadows.shadowOf(compose.activity).nextStartedActivityForResult)
+        compose.onNodeWithText("This backup needs its original recovery file.").assertExists()
+        compose.onNodeWithText("Try again").performClick()
+        compose.onNodeWithText("Choose recovery file").assertExists()
+        compose.onNodeWithText("Use the recovery key saved on this phone.").assertDoesNotExist()
+        assertEquals(originalKey, app.getSharedPreferences("automatic_full_backups_v1", 0).getString("wrapped_key", null))
     }
 
 }

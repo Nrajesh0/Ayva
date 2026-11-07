@@ -16,6 +16,7 @@ import com.focusbyrj.app.MainActivity
 import com.focusbyrj.app.R
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
@@ -31,6 +32,10 @@ internal object AutomaticBackups {
     private val operation = Mutex()
     private val active = kotlinx.coroutines.flow.MutableStateFlow(false)
     val running: kotlinx.coroutines.flow.StateFlow<Boolean> = active
+    private val mutableProgress = kotlinx.coroutines.flow.MutableStateFlow("Starting backup")
+    val progress: kotlinx.coroutines.flow.StateFlow<String> = mutableProgress
+    fun pendingNow(context: Context) = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(IMMEDIATE)
+        .map { work -> work.any { !it.state.isFinished } }
     suspend fun <T> edit(block: suspend () -> T): T = withContext(Dispatchers.IO) { operation.withLock { block() } }
 
     fun schedule(context: Context) {
@@ -53,7 +58,7 @@ internal object AutomaticBackups {
             OneTimeWorkRequestBuilder<AutomaticFullBackupWorker>().setInputData(workDataOf("force" to true, "request_id" to UUID.randomUUID().toString(),
                 "setup_stream" to config.stream, "setup_key" to config.keyId, "request_epoch" to store.requestEpoch()))
                 .setConstraints(Constraints.Builder().setRequiresStorageNotLow(true).build())
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES).build()).await()
     }
     suspend fun enable(context: Context, enabled: Boolean, store: AutomaticBackupStore = AutomaticBackupStore(context)) = edit {
         val config = store.config()
@@ -151,13 +156,24 @@ internal object AutomaticBackups {
         if ((!config.enabled && !force) || (!force && config.nextDue > now)) return@edit true
         if (!config.keyExported || !config.keyAcknowledged || config.tree.isBlank()) return@edit true
         var phase = "KEY"
+        fun stage(value: String) {
+            phase = value
+            mutableProgress.value = when (value) {
+                "ARCHIVE" -> "Preparing backup"
+                "VERIFY" -> "Saving and verifying"
+                "RETENTION" -> "Finishing backup"
+                "DESTINATION" -> "Checking backup folder"
+                else -> "Starting backup"
+            }
+        }
+        stage("KEY")
         active.value = true
         try {
             store.save(config.copy(lastAttempt = now))
             store.key().use { key ->
-                phase = "BOOKKEEPING"
+                stage("BOOKKEEPING")
                 store.repairBookkeeping()
-                phase = "DESTINATION"
+                stage("DESTINATION")
                 val destination = destinationFactory(config.tree)
                 if (destination is SafBackupDestination) destination.probe()
                 val folder = File(app.noBackupFilesDir, "automatic_backup_staging").apply { check(mkdirs() || isDirectory) }
@@ -173,7 +189,7 @@ internal object AutomaticBackups {
                     runCatching { val f = stageFile(value); f.isFile && f.inputStream().use { digestBackup(it, value.size) } == EncryptedFileDigest(value.size, value.sha256) }.getOrDefault(false)
                 } == true
                 if (!usable) {
-                    phase = "ARCHIVE"
+                    stage("ARCHIVE")
                     val file = File(folder, "${UUID.randomUUID()}.enc")
                     var installed = false
                     try {
@@ -190,17 +206,17 @@ internal object AutomaticBackups {
                 }
                 val stage = checkNotNull(staged)
                 val file = stageFile(stage)
-                phase = "VERIFY"
+                stage("VERIFY")
                 val name = "RUN-Auto-${config.stream}-${config.keyId}-${stage.created}-${UUID.randomUUID()}.focusbackup"
                 val published = AutomaticBackupFiles.publish(destination, name, EncryptedFileDigest(stage.size, stage.sha256)) { file.inputStream() }
                 val record = stage.copy(uri = published.uri, name = published.name)
                 // Save ownership durably before retention. An interrupted ledger write never deletes old copies.
                 val records = store.records() + record
                 store.records(records)
-                phase = "RETENTION"
+                stage("RETENTION")
                 val (kept, failures, retainedVerified) = AutomaticBackupFiles.prune(destination, store.records(), config.stream, config.keyId, config.keep)
                 store.records(kept)
-                if (!retainedVerified) { phase = "VERIFY"; error("The committed destination copy could no longer be verified; local retry archive retained.") }
+                if (!retainedVerified) { stage("VERIFY"); error("The committed destination copy could no longer be verified; local retry archive retained.") }
                 val nextDue = config.frequency.nextAfter(stage.created).coerceAtLeast(System.currentTimeMillis() + 60_000L)
                 store.save(store.config().copy(lastSuccess = stage.created, nextDue = nextDue, lastFile = published.name,
                     problem = if (failures > 0) "RETENTION" else "",

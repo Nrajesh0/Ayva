@@ -1,20 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Device-bound Keystore keys cannot be transferred by Android system backup.
+     Transfers use the app's explicit portable encrypted backup/restore flow. -->
 <data-extraction-rules>
-    <cloud-backup>
-        <!-- Exclude databases encrypted with AndroidKeyStore hardware keys -->
-        <exclude domain="database" path="keep_notes_encrypted.db" />
-        <exclude domain="database" path="keep_notes_encrypted.db-wal" />
-        <exclude domain="database" path="keep_notes_encrypted.db-shm" />
-        <!-- Exclude KeyStore-encrypted passphrases and vault credentials -->
-        <exclude domain="sharedpref" path="focus_notes_vault_security_prefs.xml" />
-        <exclude domain="sharedpref" path="focus_notes_archive_vault_security.xml" />
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
     </cloud-backup>
-    <device-to-device-transfer>
-        <!-- KeyStore hardware keys cannot transfer across devices -->
-        <exclude domain="database" path="keep_notes_encrypted.db" />
-        <exclude domain="database" path="keep_notes_encrypted.db-wal" />
-        <exclude domain="database" path="keep_notes_encrypted.db-shm" />
-        <exclude domain="sharedpref" path="focus_notes_vault_security_prefs.xml" />
-        <exclude domain="sharedpref" path="focus_notes_archive_vault_security.xml" />
-    </device-to-device-transfer>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </device-transfer>
 </data-extraction-rules>

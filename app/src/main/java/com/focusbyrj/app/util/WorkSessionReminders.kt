@@ -115,10 +115,11 @@ object WorkSessionReminders {
         }
         val content = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         manager.notify("ayva.work.$taskId.$sessionId", 0, NotificationCompat.Builder(context, CHANNEL)
+            .also { ReminderPrivacy.configure(it, context, CHANNEL) }
             .setSmallIcon(R.drawable.ic_app_logo).setContentTitle("Time to work on ${task.title}")
             .setContentText("${session.minutes} minute work session").setContentIntent(content)
             .setOnlyAlertOnce(true).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).build())
+            .build())
         delivered.put(deliveryKey, now)
         delivered.keys().asSequence().toList().filter { now - delivered.optLong(it) > 14 * 86_400_000L }.forEach(delivered::remove)
         while (delivered.length() > 2000) delivered.remove(delivered.keys().next())

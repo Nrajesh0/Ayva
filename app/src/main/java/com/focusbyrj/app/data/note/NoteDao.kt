@@ -65,10 +65,27 @@ interface NoteDao {
     suspend fun searchNotesSync(query: String): List<NoteEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertNote(note: NoteEntity): Long
+    suspend fun insertNoteStored(note: NoteEntity): Long
+
+    suspend fun insertNote(note: NoteEntity): Long {
+        MediaRetirement.protect(note)
+        if (note.id != 0L) MediaRetirement.beforeChange(getNoteByIdSync(note.id), note)
+        return insertNoteStored(note)
+    }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertNotes(notes: List<NoteEntity>)
+    suspend fun insertNotesStored(notes: List<NoteEntity>)
+
+    suspend fun insertNotes(notes: List<NoteEntity>) {
+        notes.forEach { MediaRetirement.protect(it) }
+        notes.filter { it.id != 0L }.forEach { MediaRetirement.beforeChange(getNoteByIdSync(it.id), it) }
+        insertNotesStored(notes)
+    }
+
+    @androidx.room.Transaction
+    suspend fun withMediaReferenceSnapshot(consume: suspend (List<NoteEntity>) -> Unit) {
+        consume(getAllNotesList())
+    }
 
     /** Rollback must never expose a committed empty table if reinsertion fails. */
     @androidx.room.Transaction
@@ -78,7 +95,12 @@ interface NoteDao {
     }
 
     @Update
-    suspend fun updateNoteUnchecked(note: NoteEntity): Int
+    suspend fun updateNoteStored(note: NoteEntity): Int
+
+    suspend fun updateNoteUnchecked(note: NoteEntity): Int {
+        MediaRetirement.beforeChange(getNoteByIdSync(note.id), note)
+        return updateNoteStored(note)
+    }
 
     @androidx.room.Transaction
     suspend fun updateNote(note: NoteEntity): Int {
@@ -114,7 +136,13 @@ interface NoteDao {
      * use [softDeleteNote] or [updateTrashStatus] instead.
      */
     @Delete
-    suspend fun deleteNote(note: NoteEntity)
+    suspend fun deleteNoteStored(note: NoteEntity)
+
+    @androidx.room.Transaction
+    suspend fun deleteNote(note: NoteEntity) {
+        MediaRetirement.beforeChange(getNoteByIdSync(note.id), null)
+        deleteNoteStored(note)
+    }
 
     /**
      * Soft-delete: moves note to trash with a [trashedAt] timestamp.

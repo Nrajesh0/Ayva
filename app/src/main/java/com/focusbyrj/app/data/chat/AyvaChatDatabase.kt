@@ -20,7 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ActiveDrillStateEntity::class
     ],
     version = 1,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AyvaChatDatabase : RoomDatabase() {
     abstract fun chatDao(): AyvaChatDao
@@ -44,7 +44,7 @@ abstract class AyvaChatDatabase : RoomDatabase() {
                     // Reserve slot for future migrations. Example:
                     // object : Migration(1, 2) { override fun migrate(db: SupportSQLiteDatabase) { ... } }
                 )
-                .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory())
+                .openHelperFactory(com.focusbyrj.app.data.SecureRoomFactory.create(context))
                     .build()
                 .also { INSTANCE = it }
             }

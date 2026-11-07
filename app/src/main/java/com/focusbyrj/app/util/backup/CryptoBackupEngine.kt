@@ -16,30 +16,13 @@ import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/**
- * AES-256-GCM encryption engine for backup files.
- *
- * Format v2 (new backups):
- *   [Magic: 4 bytes]  "FBCK"
- *   [Version: 1 byte] 0x02
- *   [Argon2id Salt: 16 bytes]
- *   [GCM IV / Nonce: 12 bytes]
- *   [AES-256-GCM Ciphertext + 128-bit Authentication Tag]
- *
- * Format v1 (legacy, read-only backward compat):
- *   [Magic: 4 bytes]  "FBCK"
- *   [Version: 1 byte] 0x01
- *   [PBKDF2 Salt: 16 bytes]
- *   [GCM IV / Nonce: 12 bytes]
- *   [AES-256-GCM Ciphertext + 128-bit Authentication Tag]
- */
+/** Current portable password archive: v4 Argon2id BACKUP/64MB, authenticated
+ * header and password canary, AES-256-GCM payload. Historical development
+ * archive versions are unsupported and never interpreted as current data. */
 object CryptoBackupEngine {
 
     private val MAGIC_HEADER = byteArrayOf('F'.code.toByte(), 'B'.code.toByte(), 'C'.code.toByte(), 'K'.code.toByte())
 
-    internal const val FORMAT_VERSION_V1: Byte = 0x01  // PBKDF2-100K (legacy, read-only)
-    internal const val FORMAT_VERSION_V2: Byte = 0x02  // Argon2id LOGIN/32MB (legacy, read-only)
-    internal const val FORMAT_VERSION_V3: Byte = 0x03  // Argon2id BACKUP/64MB without canary (legacy, read-only)
     internal const val FORMAT_VERSION_V4: Byte = 0x04  // Argon2id BACKUP/64MB with Canary Verifier & Header AAD (current)
 
     private val VERIFIER_PLAINTEXT = "AYVA_BACKUP_V4_OK".toByteArray(Charsets.UTF_8) // 17 bytes -> padded/exact
@@ -51,9 +34,6 @@ object CryptoBackupEngine {
     private const val GCM_TAG_LENGTH_BITS = 128
     private const val CIPHER_TRANSFORMATION = "AES/GCM/NoPadding"
 
-    // Legacy PBKDF2 constants (kept for v1 backward-compat decryption only)
-    private const val PBKDF2_ITERATIONS = 100_000
-    private const val PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256"
 
     private fun readFully(inputStream: InputStream, buffer: ByteArray): Boolean {
         var offset = 0
@@ -124,9 +104,6 @@ object CryptoBackupEngine {
      * Opens a streaming CipherInputStream for decrypting an encrypted backup archive on-the-fly.
      * Supports four format versions:
      *   v4 (0x04): Argon2id BACKUP/64MB with Canary Verifier & Header AAD (current)
-     *   v3 (0x03): Argon2id BACKUP/64MB params without canary (legacy backward compat)
-     *   v2 (0x02): Argon2id LOGIN/32MB params (legacy backward compat)
-     *   v1 (0x01): PBKDF2-100K (oldest legacy backward compat)
      *
      * In V4, password incorrectness is verified immediately via the Canary Verifier block
      * prior to streaming any archive payload.
@@ -147,13 +124,8 @@ object CryptoBackupEngine {
             if (versionByte == -1) {
                 throw IllegalArgumentException("Corrupted backup header: unexpected end of stream.")
             }
-            val isV4 = versionByte == FORMAT_VERSION_V4.toInt()
-            val isV3 = versionByte == FORMAT_VERSION_V3.toInt()
-            val isV2 = versionByte == FORMAT_VERSION_V2.toInt()
-            val isV1 = versionByte == FORMAT_VERSION_V1.toInt()
-
-            if (!isV1 && !isV2 && !isV3 && !isV4) {
-                throw IllegalArgumentException("Unsupported backup format version: $versionByte. Expected 1, 2, 3, or 4.")
+            require(versionByte == FORMAT_VERSION_V4.toInt()) {
+                "Unsupported development backup version: $versionByte. Current backups use version 4; the original archive is unchanged."
             }
 
             val salt = ByteArray(SALT_LENGTH)
@@ -161,7 +133,7 @@ object CryptoBackupEngine {
                 throw IllegalArgumentException("Corrupted backup header: incomplete salt.")
             }
 
-            if (isV4) {
+            run {
                 val verifierIv = ByteArray(IV_LENGTH)
                 if (!readFully(inputStream, verifierIv)) {
                     throw IllegalArgumentException("Corrupted backup header: incomplete verifier IV.")
@@ -214,46 +186,6 @@ object CryptoBackupEngine {
                 return javax.crypto.CipherInputStream(inputStream, payloadCipher)
             }
 
-            // Legacy formats V1, V2, V3
-            val iv = ByteArray(IV_LENGTH)
-            if (!readFully(inputStream, iv)) {
-                throw IllegalArgumentException("Corrupted backup header: incomplete IV.")
-            }
-
-            derivedKeyBytes = when {
-                isV3 -> {
-                    // v3: Argon2id BACKUP params (64MB)
-                    Argon2idKdf.deriveKey(
-                        password = internalChars,
-                        salt = salt,
-                        params = Argon2idKdf.Parameters.BACKUP
-                    )
-                }
-                isV2 -> {
-                    // v2: Argon2id LOGIN params (32MB)
-                    Argon2idKdf.deriveKey(
-                        password = internalChars,
-                        salt = salt,
-                        params = Argon2idKdf.Parameters.LOGIN
-                    )
-                }
-                else -> {
-                    // v1: Legacy PBKDF2
-                    val keySpec = javax.crypto.spec.PBEKeySpec(internalChars, salt, PBKDF2_ITERATIONS, KEY_LENGTH_BITS)
-                    try {
-                        val keyFactory = javax.crypto.SecretKeyFactory.getInstance(PBKDF2_ALGORITHM)
-                        keyFactory.generateSecret(keySpec).encoded
-                    } finally {
-                        keySpec.clearPassword()
-                    }
-                }
-            }
-
-            val secretKey = SecretKeySpec(derivedKeyBytes, "AES")
-            val cipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-
-            return javax.crypto.CipherInputStream(inputStream, cipher)
         } catch (e: Exception) {
             if (e is IllegalArgumentException || e is SecurityException) throw e
             throw SecurityException("Incorrect password or corrupted backup file.", e)

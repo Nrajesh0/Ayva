@@ -34,6 +34,9 @@ class RestoreRecoveryDeviceTest {
         fixture.writeText(JSONObject().put("noteId", noteId).put("taskId", taskId)
             .put("notes", fingerprint(notes.getAllNotesList().sortedBy { it.id }.toString()))
             .put("tasks", fingerprint(tasks.getAllTasksList().sortedBy { it.id }.toString())).toString())
+        File(app.cacheDir, "restore_media_stage_native_interrupted/keep_images/incomplete.enc").apply {
+            parentFile!!.mkdirs(); writeBytes(byteArrayOf())
+        }
         RestoreJournal.checkpointHook = { phase ->
             if (phase == "before_commit") {
                 val proof = JSONObject(fixture.readText()).put("terminatedAt", phase)
@@ -59,11 +62,65 @@ class RestoreRecoveryDeviceTest {
         assertEquals(saved.getString("tasks"), fingerprint(tasks.getAllTasksList().sortedBy { it.id }.toString()))
         assertEquals("before", app.getSharedPreferences("focus_prefs", 0).getString("audit_recovery", null))
         assertFalse(File(app.filesDir, "restore_before_state.enc").exists())
+        val interruptedStage = File(app.cacheDir, "restore_media_stage_native_interrupted/keep_images/incomplete.enc")
+        assertTrue("Unowned interrupted staging must not block startup or be silently imported/deleted", interruptedStage.exists())
+        File(app.cacheDir, "restore_media_stage_native_interrupted").deleteRecursively()
         notes.getNoteByIdSync(saved.getLong("noteId"))?.let { notes.deleteNote(it) }
         tasks.getTaskById(saved.getLong("taskId"))?.let { tasks.deleteTask(it) }
         app.getSharedPreferences("focus_prefs", 0).edit().remove("audit_recovery").commit()
         fixture.delete()
         Unit
+    }
+
+    @Test fun snapshotRestoreKeepsVaultEnabledAndDoesNotDuplicate() = runBlocking<Unit> {
+        val vault = com.focusbyrj.app.data.note.ArchiveVaultSecurity
+        check(vault.getVaultStatus(app) != com.focusbyrj.app.data.note.ArchiveVaultSecurity.VaultStatus.ENABLED) { "Use a clean emulator fixture" }
+        val notes = NoteDatabase.getInstance(app).noteDao()
+        check(notes.getAllNotesList().none { it.isArchived }) { "Use a clean fixture without private notes" }
+        val pin = "729461"
+        val media = File(app.filesDir, "keep_images/native-restore-${java.util.UUID.randomUUID()}.bin")
+        EncryptedMediaStorage.writeEncryptedBytes(media, "synthetic-native-restore-media".toByteArray())
+        val publicId = notes.insertNote(NoteEntity(title = "Native restore public fixture", imageUrisJson = org.json.JSONArray(listOf(media.path)).toString()))
+        var privateId = 0L
+        val archive = File(app.cacheDir, "native-snapshot-restore.focusbackup")
+        val ownedMedia = mutableSetOf(media)
+        try {
+            assertTrue(vault.setPasscode(app, pin))
+            val key = vault.getActiveVaultSubKey()!!
+            try { privateId = notes.insertNote(com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(
+                NoteEntity(title = "Native restore private fixture", isArchived = true), key)) }
+            finally { key.fill(0) }
+            BackupRestoreManager.createEncryptedBackup(app, android.net.Uri.fromFile(archive), "synthetic-native-password").getOrThrow()
+            vault.lockVault()
+            repeat(2) {
+                val prepared = BackupRestoreManager.prepareRestore(app, android.net.Uri.fromFile(archive), "synthetic-native-password").getOrThrow()
+                assertTrue(BackupRestoreManager.applyPreparedRestore(app, prepared).exceptionOrNull() is BackupRestoreManager.RequiresVaultUnlockException)
+                if (it == 0) {
+                    assertTrue(vault.verifyPasscode(app, pin) is com.focusbyrj.app.data.note.ArchiveVaultSecurity.VerifyResult.Success)
+                    val authorization = BackupRestoreManager.captureRestoreAuthorization(app)
+                    assertTrue(vault.isVaultLocked(app))
+                    try { BackupRestoreManager.applyPreparedRestore(app, prepared, authorization = authorization).getOrThrow() }
+                    finally { authorization.close() }
+                } else BackupRestoreManager.applyPreparedRestore(app, prepared, vaultPin = pin).getOrThrow()
+                assertEquals(com.focusbyrj.app.data.note.ArchiveVaultSecurity.VaultStatus.ENABLED, vault.getVaultStatus(app))
+                assertTrue(vault.isVaultLocked(app))
+                assertEquals(1, notes.getAllNotesList().count { note -> note.id == privateId })
+                assertEquals(1, notes.getAllNotesList().count { note -> note.id == publicId })
+                assertTrue(com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(notes.getNoteByIdSync(privateId)!!))
+                val restoredMedia = File(notes.getNoteByIdSync(publicId)!!.getImageUris().single())
+                ownedMedia.add(restoredMedia)
+                assertEquals("synthetic-native-restore-media", EncryptedMediaStorage.readDecryptedBytes(restoredMedia)!!.decodeToString())
+            }
+        } finally {
+            if (vault.getVaultStatus(app) == com.focusbyrj.app.data.note.ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                check(vault.verifyPasscode(app, pin) is com.focusbyrj.app.data.note.ArchiveVaultSecurity.VerifyResult.Success)
+                check(vault.disablePasscode(app))
+            }
+            notes.getNoteByIdSync(privateId)?.let { notes.deleteNote(it) }
+            notes.getNoteByIdSync(publicId)?.let { notes.deleteNote(it) }
+            ownedMedia.forEach { it.delete() }
+            archive.delete(); vault.lockVault()
+        }
     }
 
     @Test fun nativeKdfAndAndroidKeyStoreRejectTampering() {
@@ -80,9 +137,8 @@ class RestoreRecoveryDeviceTest {
         file.delete()
         val stage = File(app.cacheDir, "restore_media_stage_native_fixture/keep_images/old.bin")
         stage.parentFile!!.mkdirs(); stage.writeText("synthetic-legacy-media")
-        RestoreStaging.protectLegacyStages(app)
-        assertTrue(EncryptedMediaStorage.isEncrypted(stage))
-        assertEquals("synthetic-legacy-media", EncryptedMediaStorage.readDecryptedBytes(stage)!!.decodeToString())
+        assertNull("Unsupported plaintext stages must not be imported", EncryptedMediaStorage.openDecryptedInputStream(stage))
+        assertEquals("synthetic-legacy-media", stage.readText())
         File(app.cacheDir, "restore_media_stage_native_fixture").deleteRecursively()
     }
 }

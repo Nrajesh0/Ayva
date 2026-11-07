@@ -64,8 +64,6 @@ object DatabaseKeyProvider {
                         val decrypted = decryptPassphrase(encryptedBytes, iv)
                         if (decrypted != null && decrypted.size == PASSPHRASE_BYTE_LENGTH) {
                             cachedPassphrase = decrypted
-                            // Transparently upgrade legacy static key encryption to KeyStore if KeyStore is operational
-                            tryUpgradeLegacyPassphrase(appContext, decrypted, encryptedBytes, iv)
                             return decrypted.clone()
                         }
                     } catch (e: Exception) {
@@ -84,11 +82,14 @@ object DatabaseKeyProvider {
         }
 
         val encryptedDatabases = listOf(
-            NoteDatabaseMigrationHelper.getEncryptedDatabaseName(),
-            com.focusbyrj.app.data.FocusDatabaseMigrationHelper.getEncryptedDatabaseName()
+            com.focusbyrj.app.data.SecureDatabaseNames.NOTES,
+            com.focusbyrj.app.data.SecureDatabaseNames.FOCUS,
+            "ayva_chat.db", "drill_sessions.db", "vocab.db"
         )
         check(encryptedDatabases.none { name ->
-            appContext.getDatabasePath(name).let { it.exists() && it.length() > 0L }
+            val database = appContext.getDatabasePath(name)
+            listOf(database, java.io.File(database.path + "-wal"), java.io.File(database.path + "-shm"),
+                java.io.File(database.path + "-journal")).any { it.exists() && it.length() > 0L }
         }) { "Database encryption key is missing for an existing database. Restore credentials or a portable backup; refusing to generate a replacement key." }
 
         // Generate new cryptographically secure 256-bit passphrase (first-time initialization)
@@ -135,14 +136,7 @@ object DatabaseKeyProvider {
         cachedPassphrase = null
     }
 
-    private val isUnitTestEnvironment: Boolean by lazy {
-        try {
-            android.os.Build.FINGERPRINT.startsWith("robolectric") ||
-            Class.forName("org.robolectric.Robolectric") != null
-        } catch (_: Throwable) {
-            false
-        }
-    }
+    private val isUnitTestEnvironment: Boolean get() = com.focusbyrj.app.util.crypto.TestRuntimeKeys.available
 
     private fun getMasterKeyForEncryption(): SecretKey {
         return try {
@@ -172,7 +166,7 @@ object DatabaseKeyProvider {
             if (e is SecurityException) throw e
             if (isUnitTestEnvironment) {
                 Log.w(TAG, "AndroidKeyStore is unavailable in unit test environment; using test software key.")
-                return getLegacyFallbackKey()
+                return getTestKey()
             }
             Log.e(TAG, "AndroidKeyStore is unavailable for master key generation. Refusing to use static software key for new writes.", e)
             throw SecurityException("Failed to generate hardware-backed database master key in AndroidKeyStore", e)
@@ -194,11 +188,7 @@ object DatabaseKeyProvider {
         }
     }
 
-    internal fun getLegacyFallbackKey(): SecretKey {
-        val fallbackSeed = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("focus_notes_sqlcipher_software_seed_v1".toByteArray(Charsets.UTF_8))
-        return javax.crypto.spec.SecretKeySpec(fallbackSeed, "AES")
-    }
+    internal fun getTestKey(): SecretKey = com.focusbyrj.app.util.crypto.TestRuntimeKeys.key("database")
 
     private fun encryptPassphrase(passphrase: ByteArray): Pair<ByteArray, ByteArray> {
         val masterKey = getMasterKeyForEncryption()
@@ -209,69 +199,12 @@ object DatabaseKeyProvider {
         return Pair(encryptedBytes, iv)
     }
 
-    internal fun decryptPassphrase(encryptedBytes: ByteArray, iv: ByteArray): ByteArray? {
-        // 1. Primary: KeyStore hardware master key
-        try {
-            val masterKey = getMasterKeyForDecryption()
-            if (masterKey != null) {
-                val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-                val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-                cipher.init(Cipher.DECRYPT_MODE, masterKey, spec)
-                return cipher.doFinal(encryptedBytes)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "KeyStore decryption failed, checking legacy software compatibility adapter...", e)
+    internal fun decryptPassphrase(encryptedBytes: ByteArray, iv: ByteArray): ByteArray? = try {
+        val key = getMasterKeyForDecryption() ?: if (com.focusbyrj.app.util.crypto.TestRuntimeKeys.available) getTestKey()
+            else throw SecurityException("Database key is unavailable")
+        Cipher.getInstance(AES_GCM_TRANSFORMATION).run {
+            init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            doFinal(encryptedBytes)
         }
-
-        // 2. Compatibility Adapter: Legacy software fallback key (read-only)
-        return try {
-            val legacyKey = getLegacyFallbackKey()
-            val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-            val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-            cipher.init(Cipher.DECRYPT_MODE, legacyKey, spec)
-            val decrypted = cipher.doFinal(encryptedBytes)
-            Log.w(TAG, "Successfully decrypted database passphrase using legacy static software key.")
-            decrypted
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to decrypt database passphrase with both KeyStore and legacy compatibility adapter", e)
-            null
-        }
-    }
-
-    private fun tryUpgradeLegacyPassphrase(
-        context: Context,
-        passphrase: ByteArray,
-        originalCiphertext: ByteArray,
-        originalIv: ByteArray
-    ) {
-        if (isUnitTestEnvironment) return
-        try {
-            // Verify if original ciphertext was encrypted with legacy key
-            val keyStoreKey = getMasterKeyForDecryption()
-            if (keyStoreKey != null) {
-                try {
-                    val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
-                    cipher.init(Cipher.DECRYPT_MODE, keyStoreKey, GCMParameterSpec(GCM_TAG_LENGTH, originalIv))
-                    cipher.doFinal(originalCiphertext)
-                    // Decrypted cleanly with KeyStore key, already modern
-                    return
-                } catch (_: Exception) {
-                    // KeyStore key failed to decrypt, meaning original was encrypted under legacy key
-                }
-            }
-
-            // Re-encrypt under AndroidKeyStore
-            val (newCiphertext, newIv) = encryptPassphrase(passphrase)
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val success = prefs.edit()
-                .putString(KEY_ENCRYPTED_PASSPHRASE, Base64.encodeToString(newCiphertext, Base64.NO_WRAP))
-                .putString(KEY_PASSPHRASE_IV, Base64.encodeToString(newIv, Base64.NO_WRAP))
-                .commit()
-            if (success) {
-                Log.i(TAG, "Successfully upgraded legacy static database passphrase to AndroidKeyStore.")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Passphrase upgrade from legacy key to KeyStore deferred/skipped", e)
-        }
-    }
+    } catch (_: Exception) { null }
 }

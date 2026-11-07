@@ -23,23 +23,11 @@ internal object EncryptedSnapshotFile {
         }
     }
 
-    /** Keep detection/read/replacement under the same lock as ordinary snapshot I/O. */
-    @Synchronized
-    fun migratePlaintext(file: File): Boolean {
-        if (SnapshotCryptoEngine.isEncrypted(file)) return false
-        val content = read(file)
-        // A corrupt container is not a legacy JSON snapshot.
-        org.json.JSONObject(content)
-        write(file, content)
-        check(read(file) == content) { "Snapshot migration verification failed" }
-        return true
-    }
-
     @Synchronized
     fun read(file: File): String {
         val bytes = AtomicFile(file).openRead().use { it.readBytes() }
         return if (SnapshotCryptoEngine.isEncrypted(bytes)) {
             SnapshotCryptoEngine.decryptSnapshot(bytes).toString(Charsets.UTF_8)
-        } else bytes.toString(Charsets.UTF_8)
+        } else throw SecurityException("Unsupported snapshot format; original file retained")
     }
 }

@@ -2,12 +2,9 @@ package com.focusbyrj.app.data.drill
 
 import android.content.Context
 import androidx.room.*
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 
 @Entity(tableName = "drill_sessions")
 data class DrillSessionEntity(
@@ -40,14 +37,11 @@ interface DrillSessionDao {
     @Query("SELECT * FROM drill_sessions ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getRecentSessions(limit: Int): List<DrillSessionEntity>
 
-    @Query("UPDATE drill_sessions SET isClaimed = 1 WHERE sessionId = :sessionId")
-    suspend fun markClaimed(sessionId: String)
-
     @Query("DELETE FROM drill_sessions")
     suspend fun deleteAllSessions()
 }
 
-@Database(entities = [DrillSessionEntity::class], version = 1, exportSchema = false)
+@Database(entities = [DrillSessionEntity::class], version = 1, exportSchema = true)
 abstract class DrillDatabase : RoomDatabase() {
     abstract fun drillSessionDao(): DrillSessionDao
 
@@ -62,7 +56,7 @@ abstract class DrillDatabase : RoomDatabase() {
                     DrillDatabase::class.java,
                     "drill_sessions.db"
                 )
-                .openHelperFactory(com.focusbyrj.app.util.backup.MaintenanceOpenHelperFactory())
+                .openHelperFactory(com.focusbyrj.app.data.SecureRoomFactory.create(context))
                     .build()
                 .also { INSTANCE = it }
             }
@@ -70,78 +64,74 @@ abstract class DrillDatabase : RoomDatabase() {
     }
 }
 
+/** Cache entries are published only after Room acknowledges a durable write. */
 object DrillSessionRepository {
     private const val MAX_CACHE_ENTRIES = 50
-    // In-memory bounded LRU cache for instantaneous 0ms session lookups without JSON parsing
     private val memoryCache = java.util.Collections.synchronizedMap(
         object : java.util.LinkedHashMap<String, DrillSummary>(MAX_CACHE_ENTRIES, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DrillSummary>?): Boolean {
-                return size > MAX_CACHE_ENTRIES
-            }
-        }
-    )
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DrillSummary>?) = size > MAX_CACHE_ENTRIES
+        })
     private var database: DrillDatabase? = null
-    private val repoScope = CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+    private var appContext: Context? = null
+    private val settlementMutex = kotlinx.coroutines.sync.Mutex()
+    private val _saveError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val saveError: kotlinx.coroutines.flow.StateFlow<String?> = _saveError
 
-    @Synchronized
-    fun init(context: Context) {
-        if (database == null) {
-            database = DrillDatabase.getDatabase(context)
+    @Synchronized fun init(context: Context) {
+        appContext = context.applicationContext
+        if (database == null) database = DrillDatabase.getDatabase(context)
+    }
+    fun invalidateCache() { memoryCache.clear() }
+    private fun db() = checkNotNull(database) { "Drill storage is not ready" }
+
+    suspend fun saveSummary(summary: DrillSummary, context: Context? = null) = withContext(Dispatchers.IO) {
+        if (context != null) init(context)
+        val existing = db().drillSessionDao().getSessionById(summary.sessionId)
+        val effective = if (existing?.isClaimed == true) summary.copy(isClaimed = true) else summary
+        db().drillSessionDao().insertSession(DrillSessionEntity(
+            sessionId = effective.sessionId, title = effective.title, totalQuestions = effective.totalQuestions,
+            correctCount = effective.correctCount, timeSpentSeconds = effective.timeSpentSeconds,
+            xpEarned = effective.xpEarned, isBlitz = effective.isBlitz, isClaimed = effective.isClaimed,
+            timestamp = existing?.timestamp ?: System.currentTimeMillis(), summaryJson = effective.toJson()))
+        memoryCache[effective.sessionId] = effective
+        _saveError.value = null
+    }
+
+    suspend fun getSummary(sessionId: String): DrillSummary? = withContext(Dispatchers.IO) {
+        memoryCache[sessionId] ?: db().drillSessionDao().getSessionById(sessionId)?.let { entity ->
+            DrillSummary.fromJson(entity.summaryJson).copy(isClaimed = entity.isClaimed).also { memoryCache[sessionId] = it }
         }
     }
 
-    fun saveSummary(summary: DrillSummary, context: Context? = null) {
-        memoryCache[summary.sessionId] = summary
-        val ctx = context
-        if (database == null && ctx != null) {
-            init(ctx)
-        }
-        database?.let { db ->
-            repoScope.launch {
-                try {
-                    val entity = DrillSessionEntity(
-                        sessionId = summary.sessionId,
-                        title = summary.title,
-                        totalQuestions = summary.totalQuestions,
-                        correctCount = summary.correctCount,
-                        timeSpentSeconds = summary.timeSpentSeconds,
-                        xpEarned = summary.xpEarned,
-                        isBlitz = summary.isBlitz,
-                        isClaimed = summary.isClaimed,
-                        summaryJson = summary.toJson()
-                    )
-                    db.drillSessionDao().insertSession(entity)
-                } catch (_: Exception) {}
+    /** One durable identity guards both reward settlement and summary persistence. */
+    suspend fun <T> settleOnce(sessionId: String, existing: (DrillSummary) -> T, create: suspend () -> T): T {
+        settlementMutex.lock()
+        try {
+            val context = checkNotNull(appContext) { "Drill storage is not ready" }
+            val result = com.focusbyrj.app.util.backup.RestoreJournal.mutateDrill(context, sessionId) {
+                runCatching {
+                    val saved = db().drillSessionDao().getSessionById(sessionId)
+                    if (saved != null) existing(DrillSummary.fromJson(saved.summaryJson).copy(isClaimed = saved.isClaimed)) else create()
+                }
             }
-        }
+            return result.getOrElse { error ->
+                invalidateCache()
+                _saveError.value = "Result could not be saved. Your drill is still open; try Finish again."
+                throw error
+            }
+        } finally { settlementMutex.unlock() }
     }
 
-    suspend fun getSummary(sessionId: String): DrillSummary? {
-        memoryCache[sessionId]?.let { return it }
-        return withContext(Dispatchers.IO) {
-            try {
-                val entity = database?.drillSessionDao()?.getSessionById(sessionId)
-                if (entity != null) {
-                    val parsed = DrillSummary.fromJson(entity.summaryJson)
-                    memoryCache[sessionId] = parsed
-                    parsed
-                } else null
-            } catch (_: Exception) {
-                null
+    suspend fun markClaimed(sessionId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val updated = db().withTransaction {
+                val stored = requireNotNull(db().drillSessionDao().getSessionById(sessionId)) { "Drill result is unavailable" }
+                val summary = DrillSummary.fromJson(stored.summaryJson).copy(isClaimed = true)
+                db().drillSessionDao().insertSession(stored.copy(isClaimed = true, summaryJson = summary.toJson()))
+                summary
             }
-        }
-    }
-
-    fun markClaimed(sessionId: String) {
-        memoryCache[sessionId]?.let { existing ->
-            memoryCache[sessionId] = existing.copy(isClaimed = true)
-        }
-        database?.let { db ->
-            repoScope.launch {
-                try {
-                    db.drillSessionDao().markClaimed(sessionId)
-                } catch (_: Exception) {}
-            }
-        }
+            memoryCache[sessionId] = updated
+            _saveError.value = null
+        }.onFailure { _saveError.value = "Could not save completion. Please try again." }
     }
 }

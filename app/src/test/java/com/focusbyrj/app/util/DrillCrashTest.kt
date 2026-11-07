@@ -60,7 +60,7 @@ class DrillCrashTest {
         session.maxCombo = 5
         session.gold = 50
         
-        val summaryMsg = DrillSummaryHelper.generateSummaryMessage(session)
+        val summaryMsg = kotlinx.coroutines.runBlocking { DrillSummaryHelper.generateSummaryMessage(session) }
         assertNotNull(summaryMsg)
         assertTrue(summaryMsg.isDrillSummary)
         assertNotNull(summaryMsg.drillSummaryJson)
@@ -147,7 +147,7 @@ class DrillCrashTest {
         val session = createDrillSessionWithQuestions("easy", 10)
         session.correct = 8
         session.total = 10
-        val summaryMsg = DrillSummaryHelper.generateSummaryMessage(session)
+        val summaryMsg = kotlinx.coroutines.runBlocking { DrillSummaryHelper.generateSummaryMessage(session) }
 
         // Save summary with a timestamp from 11 minutes ago
         val elevenMinutesAgo = System.currentTimeMillis() - (11 * 60 * 1000L)
@@ -171,7 +171,7 @@ class DrillCrashTest {
         val session = createDrillSessionWithQuestions("easy", 10)
         session.correct = 10
         session.total = 10
-        val summaryMsg = DrillSummaryHelper.generateSummaryMessage(session)
+        val summaryMsg = kotlinx.coroutines.runBlocking { DrillSummaryHelper.generateSummaryMessage(session) }
 
         var dismissed = false
         composeTestRule.setContent {

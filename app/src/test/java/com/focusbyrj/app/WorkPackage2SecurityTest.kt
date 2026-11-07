@@ -214,9 +214,9 @@ class WorkPackage2SecurityTest {
         NoteMediaManager.deleteNoteMediaFiles(note1, listOf(note1, note2))
         assertTrue("Shared file must not be deleted while note 2 references it", sharedImage.exists())
 
-        // Deleting note2 when no other note references it should delete sharedImage
+        // A caller-owned snapshot can schedule retirement but cannot authorize destruction.
         NoteMediaManager.deleteNoteMediaFiles(note2, listOf(note2))
-        assertFalse("File should be deleted once no other note references it", sharedImage.exists())
+        assertTrue("Media remains until a fresh complete transactional inventory proves retirement", sharedImage.exists())
     }
 
     // ──────────────────────────────────────────────────────────────────────

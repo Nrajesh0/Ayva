@@ -178,7 +178,7 @@ class Batch10SecurityAuditTest {
                 isClaimed = false,
                 questions = emptyList()
             )
-            com.focusbyrj.app.data.drill.DrillSessionRepository.saveSummary(summary, app)
+            kotlinx.coroutines.runBlocking { com.focusbyrj.app.data.drill.DrillSessionRepository.saveSummary(summary, app) }
         }
 
         // Session 1 should have been evicted from the bounded LRU cache (capacity = 50)

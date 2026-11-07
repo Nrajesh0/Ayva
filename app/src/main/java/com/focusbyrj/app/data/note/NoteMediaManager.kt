@@ -45,14 +45,15 @@ object NoteMediaManager {
 
                 val isUnderImages = path.startsWith(keepImagesDir + File.separator) || path == keepImagesDir
                 val isUnderAudio = path.startsWith(keepAudioDir + File.separator) || path == keepAudioDir
+                val isUnderDrawings = path.startsWith(File(filesCanonical, "keep_drawings").canonicalPath + File.separator)
                 val isUnderCache = path.startsWith(cachePath + File.separator) || path == cachePath
 
-                if (!isUnderImages && !isUnderAudio && !isUnderCache) {
+                if (!isUnderImages && !isUnderAudio && !isUnderDrawings && !isUnderCache) {
                     return false
                 }
             } else {
                 val parentName = canonical.parentFile?.name ?: return false
-                if (parentName != "keep_images" && parentName != "keep_audio") {
+                if (parentName != "keep_images" && parentName != "keep_audio" && parentName != "keep_drawings") {
                     return false
                 }
             }
@@ -64,7 +65,8 @@ object NoteMediaManager {
     }
 
     /**
-     * Forensically overwrites file with zeros before deleting to ensure privacy and security.
+     * Best-effort overwrite for explicit deletion. Flash storage and retained backups
+     * prevent a guarantee of forensic erasure.
      */
     fun secureDeleteMediaFile(file: File, context: Context? = null): Unit = com.focusbyrj.app.util.backup.MaintenanceGate.write {
         if (!file.exists() || !file.isFile) return@write
@@ -108,175 +110,59 @@ object NoteMediaManager {
      * and embedded Notesnook block images/attachments.
      */
     fun deleteNoteMediaFiles(note: NoteEntity, allNotes: List<NoteEntity>? = null): Boolean {
+        val key = ArchiveVaultSecurity.getActiveVaultSubKey()
         return try {
-            // Physical deletion is safe only with a complete, readable reference set.
-            if (allNotes == null) {
-                Log.w(TAG, "Refusing media deletion for note ${note.id}: complete note set was not supplied")
-                return false
-            }
-            val target = decryptForReferenceScan(note) ?: return false
-            val otherReferencedPaths = HashSet<String>()
-            allNotes.filter { it.id != note.id }.forEach { rawOther ->
-                val other = decryptForReferenceScan(rawOther) ?: run {
-                    Log.w(TAG, "Refusing media deletion: note ${rawOther.id} references cannot be read")
-                    return false
-                }
-                collectReferences(other).forEach { addPathVariants(otherReferencedPaths, it) }
-            }
-
-            collectReferences(target).forEach { path ->
-                val variants = HashSet<String>().also { addPathVariants(it, path) }
-                if (variants.none { it in otherReferencedPaths }) secureDeleteMediaFile(path)
-            }
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error deleting note media files for note ${note.id}", e)
+            if (allNotes == null) return false
+            val referencedElsewhere = allNotes.filter { it.id != note.id }
+                .flatMap { MediaRetirement.references(it, key) }.toSet()
+            // This call schedules proven retirements. Destruction only happens in the
+            // fresh transactional inventory below, never from a caller-owned snapshot.
+            MediaRetirement.retire(MediaRetirement.references(note, key) - referencedElsewhere)
+        } catch (_: Exception) {
+            Log.w(TAG, "Media retirement deferred because references are incomplete")
             false
+        } finally {
+            key?.fill(0)
         }
-    }
-
-    private fun decryptForReferenceScan(note: NoteEntity): NoteEntity? {
-        if (!com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) return note
-        val key = ArchiveVaultSecurity.getActiveVaultSubKey() ?: return null
-        return when (val result = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, key)) {
-            is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> result.note
-            else -> {
-                Log.w(TAG, "Could not decrypt note ${note.id} while building media reference set: $result")
-                null
-            }
-        }
-    }
-
-    private fun collectReferences(note: NoteEntity): Set<String> {
-        val paths = linkedSetOf<String>()
-        paths.addAll(note.getImageUris())
-        paths.addAll(note.getAudioUris())
-        if (note.content.contains(com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.BLOCKS_PREFIX)) {
-            com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.parse(note.content).forEach { block ->
-                when (block) {
-                    is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Image -> block.uri.takeIf { it.isNotBlank() }?.let(paths::add)
-                    is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Attachment -> block.uri.takeIf { it.isNotBlank() }?.let(paths::add)
-                    else -> Unit
-                }
-            }
-        }
-        return paths
-    }
-
-    private fun addPathVariants(paths: MutableSet<String>, path: String) {
-        paths.add(path)
-        try { paths.add(File(path).canonicalPath) } catch (_: Exception) {}
     }
 
     /**
-     * Scans internal app storage (keep_images and keep_audio) and securely wipes any orphaned
-     * media files that no longer correspond to any active, archived, or trashed note in Room.
+     * Reclaims only explicitly retired authenticated media after a complete transactional
+     * reference check. Arbitrary files are never classified as garbage by age.
      */
     suspend fun cleanOrphanedMedia(context: Context, noteDao: NoteDao) {
+        // Capture authorization before opening a DB transaction: credential
+        // changes can hold the vault monitor while waiting for the DB writer.
+        val key = ArchiveVaultSecurity.getActiveVaultSubKey()
         try {
-            // Guard: If Secret Vault is enabled and currently locked, we cannot decrypt note
-            // envelopes to read their media attachments. Abort cleanup completely to prevent
-            // falsely destroying photos and voice recordings that belong to secret notes.
-            val vaultStatus = ArchiveVaultSecurity.getVaultStatus(context)
-            val activeSubKey = ArchiveVaultSecurity.getActiveVaultSubKey()
-            if (vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED && activeSubKey == null) {
-                Log.w(TAG, "Secret Vault is locked. Aborting orphaned media cleanup to protect encrypted vault attachments.")
-                return
-            }
-
-            val allNotes = noteDao.getAllNotesList()
-            val validImagePaths = HashSet<String>()
-            val validAudioPaths = HashSet<String>()
-
-            for (rawNote in allNotes) {
-                val note = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(rawNote)) {
-                    if (activeSubKey != null) {
-                        val decrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(rawNote, activeSubKey)
-                        if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(decrypted)) {
-                            Log.w(TAG, "Note ${rawNote.id} payload could not be decrypted. Aborting orphan cleanup to protect attachments.")
-                            return
-                        }
-                        decrypted
-                    } else {
-                        Log.w(TAG, "Unreadable note ${rawNote.id} without active subkey. Aborting orphan cleanup.")
-                        return
+            MediaRetirement.initialize(context)
+            // Pending recovery can reference media not yet represented by a committed row.
+            if (listOf("pending_vault_draft.enc", "pending_vault_draft.vault").any { name ->
+                    listOf("", ".bak", ".new").any { suffix -> File(context.filesDir, name + suffix).exists() }
+                }) return
+            val candidates = MediaRetirement.candidates(context)
+            if (candidates.isEmpty()) return
+            noteDao.withMediaReferenceSnapshot { notes ->
+                val references = notes.flatMap { MediaRetirement.references(it, key) }.toSet()
+                for (path in candidates) {
+                    val file = File(path).canonicalFile
+                    if (!isAllowedMediaFile(file, context)) continue
+                    if (file.path in references) {
+                        MediaRetirement.forget(path)
+                        continue
                     }
-                } else {
-                    rawNote
-                }
-                note.getImageUris().forEach { path ->
-                    validImagePaths.add(path)
-                    try { validImagePaths.add(File(path).canonicalPath) } catch (_: Exception) {}
-                }
-                note.getAudioUris().forEach { path ->
-                    validAudioPaths.add(path)
-                    try { validAudioPaths.add(File(path).canonicalPath) } catch (_: Exception) {}
-                }
-
-                // Collect media referenced inside embedded Notesnook blocks
-                if (note.content.contains(com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.BLOCKS_PREFIX)) {
-                    try {
-                        val blocks = com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager.parse(note.content)
-                        for (b in blocks) {
-                            when (b) {
-                                is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Image -> {
-                                    if (b.uri.isNotBlank()) {
-                                        validImagePaths.add(b.uri)
-                                        try { validImagePaths.add(File(b.uri).canonicalPath) } catch (_: Exception) {}
-                                    }
-                                }
-                                is com.focusbyrj.app.ui.screens.notes.NotesnookBlock.Attachment -> {
-                                    if (b.uri.isNotBlank()) {
-                                        validImagePaths.add(b.uri)
-                                        validAudioPaths.add(b.uri)
-                                        try {
-                                            val c = File(b.uri).canonicalPath
-                                            validImagePaths.add(c)
-                                            validAudioPaths.add(c)
-                                        } catch (_: Exception) {}
-                                    }
-                                }
-                                else -> {}
-                            }
-                        }
-                    } catch (_: Exception) {}
+                    // Files without a supported authenticated container remain available
+                    // for explicit recovery/review; they are never guessed to be disposable.
+                    if (file.exists() && !com.focusbyrj.app.util.crypto.EncryptedMediaStorage.isEncrypted(file)) continue
+                    if (MediaRetirement.reclaimIfUnused(file)) MediaRetirement.forget(path)
                 }
             }
-
-            // Clean orphaned images
-            val imagesDir = File(context.filesDir, "keep_images")
-            if (imagesDir.exists() && imagesDir.isDirectory) {
-                imagesDir.listFiles()?.forEach { file ->
-                    val abs = file.absolutePath
-                    val can = try { file.canonicalPath } catch (_: Exception) { abs }
-                    if (file.isFile && !validImagePaths.contains(abs) && !validImagePaths.contains(can)) {
-                        // Allow 5 minutes grace period for recently captured or drafted images
-                        val ageMs = System.currentTimeMillis() - file.lastModified()
-                        if (ageMs > 300_000L) {
-                            Log.i(TAG, "Removing orphaned image: ${file.name}")
-                            secureDeleteMediaFile(file, context)
-                        }
-                    }
-                }
-            }
-
-            // Clean orphaned audio
-            val audioDir = File(context.filesDir, "keep_audio")
-            if (audioDir.exists() && audioDir.isDirectory) {
-                audioDir.listFiles()?.forEach { file ->
-                    val abs = file.absolutePath
-                    val can = try { file.canonicalPath } catch (_: Exception) { abs }
-                    if (file.isFile && !validAudioPaths.contains(abs) && !validAudioPaths.contains(can)) {
-                        val ageMs = System.currentTimeMillis() - file.lastModified()
-                        if (ageMs > 300_000L) {
-                            Log.i(TAG, "Removing orphaned audio: ${file.name}")
-                            secureDeleteMediaFile(file, context)
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clean orphaned media", e)
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            Log.w(TAG, "Media cleanup paused; inventory or references could not be verified. Files retained.")
+        } finally {
+            key?.fill(0)
         }
     }
 }

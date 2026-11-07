@@ -164,11 +164,11 @@ class BackupRestoreHardeningTest {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 4. Backward Compatibility with V1, V2, V3
+    // 4. Unsupported development versions fail closed
     // ─────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun testLegacyV3DecryptionCompatibility() {
+    fun testUnsupportedV3IsRejectedWithoutChangingCallerCredentials() {
         val password = "LegacyV3Password!".toCharArray()
         val payload = "Legacy V3 archive payload".toByteArray(Charsets.UTF_8)
 
@@ -188,15 +188,17 @@ class BackupRestoreHardeningTest {
         v3Stream.write(iv)
         v3Stream.write(ciphertext)
 
-        val decIn = CryptoBackupEngine.openDecryptingStream(ByteArrayInputStream(v3Stream.toByteArray()), password)
-        val decrypted = decIn.readBytes()
-        decIn.close()
+        val originalPassword = password.copyOf()
+        try {
+            CryptoBackupEngine.openDecryptingStream(ByteArrayInputStream(v3Stream.toByteArray()), password)
+            fail("Unsupported development archives must not be interpreted as current data")
+        } catch (_: IllegalArgumentException) { }
+        assertArrayEquals(originalPassword, password)
 
-        assertArrayEquals("Legacy V3 archive must decrypt faithfully", payload, decrypted)
     }
 
     @Test
-    fun testLegacyV2DecryptionCompatibility() {
+    fun testUnsupportedV2IsRejectedWithoutChangingCallerCredentials() {
         val password = "LegacyV2Password!".toCharArray()
         val payload = "Legacy V2 archive payload".toByteArray(Charsets.UTF_8)
 
@@ -216,15 +218,17 @@ class BackupRestoreHardeningTest {
         v2Stream.write(iv)
         v2Stream.write(ciphertext)
 
-        val decIn = CryptoBackupEngine.openDecryptingStream(ByteArrayInputStream(v2Stream.toByteArray()), password)
-        val decrypted = decIn.readBytes()
-        decIn.close()
+        val originalPassword = password.copyOf()
+        try {
+            CryptoBackupEngine.openDecryptingStream(ByteArrayInputStream(v2Stream.toByteArray()), password)
+            fail("Unsupported development archives must not be interpreted as current data")
+        } catch (_: IllegalArgumentException) { }
+        assertArrayEquals(originalPassword, password)
 
-        assertArrayEquals("Legacy V2 archive must decrypt faithfully", payload, decrypted)
     }
 
     @Test
-    fun testLegacyV1DecryptionCompatibility() {
+    fun testUnsupportedV1IsRejectedWithoutChangingCallerCredentials() {
         val password = "LegacyV1Password!".toCharArray()
         val payload = "Legacy V1 archive payload".toByteArray(Charsets.UTF_8)
 
@@ -246,11 +250,13 @@ class BackupRestoreHardeningTest {
         v1Stream.write(iv)
         v1Stream.write(ciphertext)
 
-        val decIn = CryptoBackupEngine.openDecryptingStream(ByteArrayInputStream(v1Stream.toByteArray()), password)
-        val decrypted = decIn.readBytes()
-        decIn.close()
+        val originalPassword = password.copyOf()
+        try {
+            CryptoBackupEngine.openDecryptingStream(ByteArrayInputStream(v1Stream.toByteArray()), password)
+            fail("Unsupported development archives must not be interpreted as current data")
+        } catch (_: IllegalArgumentException) { }
+        assertArrayEquals(originalPassword, password)
 
-        assertArrayEquals("Legacy V1 archive must decrypt faithfully", payload, decrypted)
     }
 
     // ─────────────────────────────────────────────────────────────────────────

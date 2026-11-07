@@ -7,7 +7,6 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.focusbyrj.app.data.*
 import com.focusbyrj.app.data.note.NoteDatabase
-import com.focusbyrj.app.data.note.NoteDatabaseMigrationHelper
 import com.focusbyrj.app.data.note.NoteEntity
 import com.focusbyrj.app.ui.screens.notes.ArticleDocxGenerator
 import com.focusbyrj.app.ui.screens.notes.ArticleExporter
@@ -149,109 +148,10 @@ class Batch5SecurityAuditTest {
     }
 
     // B5-F-003: FocusDatabaseMigrationHelper extracts modern columns when present
-    @Test
-    fun testFocusDatabaseMigrationHelperPreservesModernTaskColumns() = runBlocking {
-        // Keep migration fixtures separate from application startup's asynchronous trash purge.
-        val migrationDb = Room.inMemoryDatabaseBuilder(context, FocusDatabase::class.java).build()
-        try {
-            val legacyDbFile = context.getDatabasePath("focus_database")
-            legacyDbFile.parentFile?.mkdirs()
-            if (legacyDbFile.exists()) legacyDbFile.delete()
 
-            val rawDb = SQLiteDatabase.openOrCreateDatabase(legacyDbFile, null)
-            rawDb.execSQL("""
-                CREATE TABLE tasks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                    title TEXT NOT NULL,
-                    details TEXT NOT NULL DEFAULT '',
-                    dueDate INTEGER,
-                    isCompleted INTEGER NOT NULL DEFAULT 0,
-                    type TEXT NOT NULL DEFAULT 'TASK',
-                    recurrence TEXT NOT NULL DEFAULT 'NONE',
-                    isPersistent INTEGER NOT NULL DEFAULT 0,
-                    isPriority INTEGER NOT NULL DEFAULT 0,
-                    completedAt INTEGER,
-                    updatedAt INTEGER NOT NULL DEFAULT 0,
-                    isTrashed INTEGER NOT NULL DEFAULT 0,
-                    trashedAt INTEGER DEFAULT NULL,
-                    deletedAt INTEGER DEFAULT NULL,
-                    subtasksJson TEXT NOT NULL DEFAULT '[]'
-                )
-            """.trimIndent())
-
-            val subtasks = """[{"id":"1","text":"Do homework","isCompleted":false}]"""
-            rawDb.execSQL("""
-                INSERT INTO tasks (id, title, details, dueDate, isCompleted, type, recurrence, isPersistent, isPriority, completedAt, updatedAt, isTrashed, trashedAt, deletedAt, subtasksJson)
-                VALUES (1, 'Legacy Task', 'From unencrypted db', 1700000000000, 0, 'TASK', 'NONE', 0, 1, NULL, 1701111111000, 1, 1702222222000, 1703333333000, '$subtasks')
-            """.trimIndent())
-            rawDb.close()
-
-            FocusDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(context, migrationDb)
-
-            val migratedTasks = migrationDb.taskDao().getAllTasksList()
-            assertEquals("Must migrate 1 task", 1, migratedTasks.size)
-            val migrated = migratedTasks.first()
-            assertEquals(1701111111000L, migrated.updatedAt)
-            assertTrue("isTrashed must be true", migrated.isTrashed)
-            assertEquals(1702222222000L, migrated.trashedAt)
-            assertEquals(1703333333000L, migrated.deletedAt)
-            assertEquals(subtasks, migrated.subtasksJson)
-        } finally {
-            migrationDb.close()
-        }
-    }
 
     // B5-F-004: NoteDatabaseMigrationHelper extracts fontKey, trashedAt, and deletedAt when present
-    @Test
-    fun testNoteDatabaseMigrationHelperPreservesFontKeyAndDeletedAt() = runBlocking {
-        // Startup trash cleanup must not purge the intentionally old migrated fixture.
-        val migrationDb = Room.inMemoryDatabaseBuilder(context, NoteDatabase::class.java).build()
-        try {
-            val legacyDbFile = context.getDatabasePath("keep_notes.db")
-            legacyDbFile.parentFile?.mkdirs()
-            if (legacyDbFile.exists()) legacyDbFile.delete()
 
-            val rawDb = SQLiteDatabase.openOrCreateDatabase(legacyDbFile, null)
-            rawDb.execSQL("""
-                CREATE TABLE keep_notes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                    title TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    isChecklist INTEGER NOT NULL DEFAULT 0,
-                    checklistJson TEXT NOT NULL DEFAULT '[]',
-                    colorKey TEXT NOT NULL DEFAULT 'default',
-                    isPinned INTEGER NOT NULL DEFAULT 0,
-                    isArchived INTEGER NOT NULL DEFAULT 0,
-                    isTrashed INTEGER NOT NULL DEFAULT 0,
-                    labelsJson TEXT NOT NULL DEFAULT '[]',
-                    imageUrisJson TEXT NOT NULL DEFAULT '[]',
-                    audioUrisJson TEXT NOT NULL DEFAULT '[]',
-                    fontKey TEXT NOT NULL DEFAULT 'default',
-                    createdAt INTEGER NOT NULL DEFAULT 0,
-                    updatedAt INTEGER NOT NULL DEFAULT 0,
-                    trashedAt INTEGER DEFAULT NULL,
-                    deletedAt INTEGER DEFAULT NULL
-                )
-            """.trimIndent())
-
-            rawDb.execSQL("""
-                INSERT INTO keep_notes (id, title, content, fontKey, trashedAt, deletedAt, isTrashed)
-                VALUES (1, 'Legacy Note', 'Migrated content', 'mono', 1705555555000, 1706666666000, 1)
-            """.trimIndent())
-            rawDb.close()
-
-            NoteDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(context, migrationDb)
-
-            val migratedNotes = migrationDb.noteDao().getAllNotesList()
-            assertEquals("Must migrate 1 note", 1, migratedNotes.size)
-            val migrated = migratedNotes.first()
-            assertEquals("mono", migrated.fontKey)
-            assertEquals(1705555555000L, migrated.trashedAt)
-            assertEquals(1706666666000L, migrated.deletedAt)
-        } finally {
-            migrationDb.close()
-        }
-    }
 
     // B5-F-006: ArticleDocxGenerator strips illegal XML control characters and includes xml:space="preserve"
     @Test
@@ -441,55 +341,7 @@ class Batch5SecurityAuditTest {
     }
 
     // B5-NEW-005: FocusDatabaseMigrationHelper securely zero-wipes and deletes legacy db
-    @Test
-    fun testFocusDatabaseMigrationHelperSecureWipeAndIdempotency() = runBlocking {
-        val legacyDbFile = context.getDatabasePath("focus_database")
-        legacyDbFile.parentFile?.mkdirs()
-        if (legacyDbFile.exists()) legacyDbFile.delete()
 
-        val rawDb = SQLiteDatabase.openOrCreateDatabase(legacyDbFile, null)
-        rawDb.execSQL("""
-            CREATE TABLE tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                title TEXT NOT NULL,
-                details TEXT NOT NULL DEFAULT '',
-                dueDate INTEGER,
-                isCompleted INTEGER NOT NULL DEFAULT 0,
-                type TEXT NOT NULL DEFAULT 'TASK',
-                recurrence TEXT NOT NULL DEFAULT 'NONE',
-                isPersistent INTEGER NOT NULL DEFAULT 0,
-                isPriority INTEGER NOT NULL DEFAULT 0,
-                completedAt INTEGER,
-                updatedAt INTEGER NOT NULL DEFAULT 0,
-                isTrashed INTEGER NOT NULL DEFAULT 0,
-                trashedAt INTEGER DEFAULT NULL,
-                deletedAt INTEGER DEFAULT NULL,
-                subtasksJson TEXT NOT NULL DEFAULT '[]'
-            )
-        """.trimIndent())
-        rawDb.execSQL("""
-            INSERT INTO tasks (id, title, details, dueDate, isCompleted, type, recurrence, isPersistent, isPriority, completedAt, updatedAt, isTrashed, trashedAt, deletedAt, subtasksJson)
-            VALUES (1, 'Legacy Task To Wipe', 'Details', NULL, 0, 'TASK', 'NONE', 0, 0, NULL, 1700000000000, 0, NULL, NULL, '[]')
-        """.trimIndent())
-        rawDb.close()
-
-        assertTrue("Legacy plaintext db must exist before migration", legacyDbFile.exists())
-
-        FocusDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(context, focusDb)
-
-        // Legacy db must be deleted, not renamed to .migrated
-        assertFalse("Legacy plaintext db must be zero-wiped and deleted", legacyDbFile.exists())
-        val migratedBackup = File(legacyDbFile.parentFile, "focus_database.migrated")
-        assertFalse("No plaintext .migrated file should linger on disk", migratedBackup.exists())
-
-        val tasksAfterFirst = focusDb.taskDao().getAllTasksList()
-        assertEquals(1, tasksAfterFirst.size)
-
-        // Second call must be a clean no-op
-        FocusDatabaseMigrationHelper.checkAndMigrateIfLegacyPlaintextExists(context, focusDb)
-        val tasksAfterSecond = focusDb.taskDao().getAllTasksList()
-        assertEquals("Second migration call must not duplicate tasks", 1, tasksAfterSecond.size)
-    }
 
     // B5-NEW-008: Subtask.listFromJson handles both text/isCompleted and title/isDone
     @Test

@@ -22,7 +22,7 @@ import java.io.File
 class SyncAndConflictResolutionTest {
 
     @Test
-    fun testNoteMediaDeletionOnTombstone() {
+    fun testTombstoneSnapshotCannotAuthorizePermanentMediaDeletion() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val imagesDir = File(context.filesDir, "keep_images").apply { mkdirs() }
         val audioDir = File(context.filesDir, "keep_audio").apply { mkdirs() }
@@ -50,9 +50,9 @@ class SyncAndConflictResolutionTest {
         // Perform media deletion as executed when purging a deleted note
         NoteMediaManager.deleteNoteMediaFiles(note, listOf(note))
 
-        // Both files should be wiped and unlinked from the filesystem
-        assertFalse("Image file should be deleted on tombstone", imageFile.exists())
-        assertFalse("Audio file should be deleted on tombstone", audioFile.exists())
+        // A caller snapshot does not prove current ownership; retain until transactional cleanup.
+        assertTrue("Image must be retained until ownership is freshly verified", imageFile.exists())
+        assertTrue("Audio must be retained until ownership is freshly verified", audioFile.exists())
     }
 
     @Test

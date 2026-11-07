@@ -20,25 +20,29 @@ fun DataRecoveryScreen(nav: NavController, onRestored: () -> Unit = {}) {
             c.nextDue > 0 && System.currentTimeMillis() > c.nextDue + 3_600_000L -> "Overdue"; else -> "Scheduled" }
     }.getOrDefault("Needs attention") }
     var snapshots by remember { mutableStateOf(false) }
+    var recoveryTools by remember { mutableStateOf(false) }
     val target = SettingsSearchCatalog.id(LocalSettingsSearchTarget.current)
-    LaunchedEffect(target) { if (target == "data.snapshots") snapshots = true }
+    LaunchedEffect(target) {
+        if (target == "data.snapshots") snapshots = true
+        if (target in setOf("data.verify", "data.snapshots", "data.repair", "data.drafts", "data.storage")) recoveryTools = true
+    }
     SettingsMenuPage("Data & recovery", nav) {
         BackupFlow(onRestored) { actions ->
             SettingsMenuSectionHeader("ENCRYPTED BACKUPS")
-            Text("Manual backups use a password you choose. Automatic backups use an exported backup recovery key. Your vault PIN only unlocks private notes inside RUN; keep each backup's own password or key to restore it.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 8.dp))
             SettingsMenuLink(Icons.Default.Update, "Automatic backups", "data.automatic", nav, automaticStatus)
             SettingsMenuRow(Icons.Default.CloudUpload, "Create manual backup", Modifier.settingsSearchTarget("data.export")) {
                 GrantButton("Create", enabled = !actions.busy, onClick = actions.export)
             }
-            Text("Private notes? Unlock here when asked—do not disable the vault. Preparation happens first, then you choose where to save the encrypted file. Only saved records and attachments are included.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 8.dp))
             SettingsMenuRow(Icons.Default.CloudDownload, "Restore encrypted backup", Modifier.settingsSearchTarget("data.restore")) {
                 GrantButton("Restore", enabled = !actions.busy, onClick = actions.restore)
             }
+            Text("Automatic: recovery file. Manual: chosen password.", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+            TextButton(onClick = { recoveryTools = !recoveryTools }) { Text(if (recoveryTools) "Hide recovery tools" else "More recovery tools") }
             DataRecoveryTools { open ->
+              if (com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired && !recoveryTools)
+                SettingsMenuRow(Icons.Default.Restore, "Finish interrupted recovery") { GrantButton("Review") { open("recovery") } }
+              if (recoveryTools) {
                 SettingsMenuRow(Icons.Default.VerifiedUser, "Verify a backup", Modifier.settingsSearchTarget("data.verify")) { GrantButton("Verify") { open("backup") } }
                 SettingsMenuSectionHeader("RECOVER YOUR WORK")
                 SettingsMenuRow(Icons.Default.History, "Safety snapshots", Modifier.settingsSearchTarget("data.snapshots")) { GrantButton("Open") { snapshots = true } }
@@ -47,7 +51,8 @@ fun DataRecoveryScreen(nav: NavController, onRestored: () -> Unit = {}) {
                 SettingsMenuRow(Icons.Default.Description, "Saved drafts", Modifier.settingsSearchTarget("data.drafts")) { GrantButton("Review") { open("drafts") } }
                 SettingsMenuSectionHeader("ON THIS DEVICE")
                 SettingsMenuRow(Icons.Default.Storage, "Storage", Modifier.settingsSearchTarget("data.storage")) { GrantButton("Manage") { open("storage") } }
-                Text("A full encrypted backup includes records and media. Local safety snapshots restore records; deleted attachments require a full backup.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Safety snapshots recover records. Full backups also recover attachments.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+              }
             }
         }
     }

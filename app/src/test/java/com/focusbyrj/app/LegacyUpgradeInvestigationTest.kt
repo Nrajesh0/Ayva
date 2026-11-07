@@ -106,7 +106,7 @@ class LegacyUpgradeInvestigationTest {
         }
     }
 
-    @Test fun oldSoftwareWrappedDatabaseKeyRemainsReadableWithoutReplacingIt() {
+    @Test fun oldSoftwareWrappedDatabaseKeyIsRejectedWithoutReplacingIt() {
         // Exact legacy seed and preference names used in 2.0.0; test data only.
         val seed = MessageDigest.getInstance("SHA-256").digest("focus_notes_sqlcipher_software_seed_v1".toByteArray())
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -118,7 +118,10 @@ class LegacyUpgradeInvestigationTest {
             .putString("enc_db_passphrase_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).commit()
         DatabaseKeyProvider.clearCachedPassphrase()
         try {
-            assertArrayEquals(passphrase, DatabaseKeyProvider.getOrCreatePassphrase(context))
+            val before = prefs.all.toMap()
+            try { DatabaseKeyProvider.getOrCreatePassphrase(context); fail("Static software credentials must be rejected") }
+            catch (_: SecurityException) { }
+            assertEquals(before, prefs.all)
             assertEquals(encrypted, prefs.getString("enc_db_passphrase", null))
         } finally { DatabaseKeyProvider.clearCachedPassphrase() }
     }

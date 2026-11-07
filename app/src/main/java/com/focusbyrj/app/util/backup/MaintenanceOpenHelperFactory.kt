@@ -12,7 +12,24 @@ internal class MaintenanceOpenHelperFactory(
     private val factory: SupportSQLiteOpenHelper.Factory = FrameworkSQLiteOpenHelperFactory()
 ) : SupportSQLiteOpenHelper.Factory {
     override fun create(configuration: SupportSQLiteOpenHelper.Configuration): SupportSQLiteOpenHelper {
-        val helper = factory.create(configuration)
+        val delegate = configuration.callback
+        val preserving = object : SupportSQLiteOpenHelper.Callback(delegate.version) {
+            override fun onConfigure(db: SupportSQLiteDatabase) = delegate.onConfigure(db)
+            override fun onCreate(db: SupportSQLiteDatabase) = delegate.onCreate(db)
+            override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = delegate.onUpgrade(db, oldVersion, newVersion)
+            override fun onDowngrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = delegate.onDowngrade(db, oldVersion, newVersion)
+            override fun onOpen(db: SupportSQLiteDatabase) = delegate.onOpen(db)
+            override fun onCorruption(db: SupportSQLiteDatabase) {
+                // AndroidX's default callback closes and deletes database files.
+                // A damaged/unreadable user store must remain available for recovery.
+                throw SecurityException("Database integrity check failed. Existing files have been retained for recovery.")
+            }
+        }
+        val safeConfiguration = SupportSQLiteOpenHelper.Configuration.builder(configuration.context)
+            .name(configuration.name).callback(preserving)
+            .noBackupDirectory(configuration.useNoBackupDirectory)
+            .allowDataLossOnRecovery(false).build()
+        val helper = factory.create(safeConfiguration)
         return object : SupportSQLiteOpenHelper by helper {
             override val writableDatabase: SupportSQLiteDatabase get() = GatedDatabase(helper.writableDatabase)
             override val readableDatabase: SupportSQLiteDatabase get() = GatedDatabase(helper.readableDatabase)

@@ -10,7 +10,7 @@
         android:layout_height="match_parent"
         android:scaleType="fitXY"
         android:src="@drawable/widget_bg"
-        android:contentDescription="Note Widget Background" />
+        android:contentDescription="@string/a11y_widget_note_layout_contentDescription_1" />
 
     <LinearLayout
         android:id="@+id/widget_note_main_container"
@@ -36,7 +36,7 @@
                 android:layout_height="22dp"
                 android:padding="2dp"
                 android:src="@drawable/ic_widget_checklist"
-                android:contentDescription="Open Notes in App"
+                android:contentDescription="@string/a11y_widget_note_layout_contentDescription_2"
                 android:clickable="true" />
 
             <!-- Title & Pinned Badge clickable to open note in quick edit -->
@@ -56,7 +56,7 @@
         android:textSize="18sp"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Groceries"
+                    android:text="@string/a11y_widget_note_layout_text_3"
                     android:textColor="#FFFFFF"
                     android:textStyle="bold"
                     android:singleLine="true"
@@ -68,7 +68,7 @@
                     android:layout_height="14dp"
                     android:layout_marginStart="6dp"
                     android:src="@drawable/ic_widget_pin"
-                    android:contentDescription="Pinned Note"
+                    android:contentDescription="@string/a11y_widget_note_layout_contentDescription_4"
                     android:visibility="gone" />
             </LinearLayout>
 
@@ -98,7 +98,7 @@
                         android:background="@android:color/transparent"
                         android:src="@drawable/ic_widget_arrow_left"
                         android:padding="3dp"
-                        android:contentDescription="Previous Note" />
+                        android:contentDescription="@string/a11y_widget_note_layout_contentDescription_5" />
 
                     <!-- Page Indicator: 1 / 3 -->
                     <TextView
@@ -107,7 +107,7 @@
                         android:layout_height="wrap_content"
                         android:paddingLeft="4dp"
                         android:paddingRight="4dp"
-                        android:text="1/1"
+                        android:text="@string/a11y_widget_note_layout_text_6"
                         android:textColor="#9AA0A6"
                         android:textSize="11sp"
                         android:textStyle="bold" />
@@ -120,7 +120,7 @@
                         android:background="@android:color/transparent"
                         android:src="@drawable/ic_widget_arrow_right"
                         android:padding="3dp"
-                        android:contentDescription="Next Note" />
+                        android:contentDescription="@string/a11y_widget_note_layout_contentDescription_7" />
                 </LinearLayout>
 
                 <!-- Filter Mode Capsule (All / Lists / Pinned) -->
@@ -132,12 +132,12 @@
                     android:gravity="center"
                     android:paddingLeft="8dp"
                     android:paddingRight="8dp"
-                    android:text="All"
+                    android:text="@string/a11y_widget_note_layout_text_8"
                     android:textColor="#9AA0A6"
                     android:textSize="11sp"
                     android:textStyle="bold"
                     android:background="@drawable/widget_note_badge_bg"
-                    android:contentDescription="Filter Mode" />
+                    android:contentDescription="@string/a11y_widget_note_layout_contentDescription_9" />
 
                 <!-- Settings Button -->
                 <ImageView
@@ -148,7 +148,7 @@
                     android:background="@drawable/widget_note_circle_action_bg"
                     android:src="@drawable/ic_widget_settings"
                     android:padding="5dp"
-                    android:contentDescription="Configure Widget" />
+                    android:contentDescription="@string/a11y_widget_note_layout_contentDescription_10" />
             </LinearLayout>
         </LinearLayout>
 
@@ -158,7 +158,7 @@
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:src="@drawable/widget_count_bg"
-            android:contentDescription="Divider" />
+            android:contentDescription="@string/a11y_widget_note_layout_contentDescription_11" />
 
         <!-- Content Area: ListView for checklists or TextView for note content -->
         <FrameLayout
@@ -184,7 +184,7 @@
                 android:orientation="vertical"
                 android:visibility="gone">
                 
-                <ImageView
+                <ImageView android:contentDescription="@string/note_image_description"
                     android:id="@+id/widget_note_image"
                     android:layout_width="match_parent"
                     android:layout_height="160dp"
@@ -223,14 +223,14 @@
                     android:layout_height="32dp"
                     android:src="@drawable/ic_widget_notes"
                     android:alpha="0.4"
-                    android:contentDescription="Empty Note" />
+                    android:contentDescription="@string/a11y_widget_note_layout_contentDescription_12" />
 
                 <TextView
                     android:id="@+id/widget_note_empty_title"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="No items in this note"
+                    android:text="@string/a11y_widget_note_layout_text_13"
                     android:textColor="#9AA0A6"
                     android:textSize="13.5sp"
                     android:textStyle="bold" />
@@ -240,7 +240,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="3dp"
-                    android:text="Tap below to capture ideas"
+                    android:text="@string/a11y_widget_note_layout_text_14"
                     android:textColor="#5F6368"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -272,14 +272,14 @@
                     android:layout_width="16dp"
                     android:layout_height="16dp"
                     android:src="@drawable/ic_widget_add"
-                    android:contentDescription="Add" />
+                    android:contentDescription="@string/a11y_widget_note_layout_contentDescription_15" />
 
                 <TextView
                     android:id="@+id/widget_note_add_hint"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
-                    android:text="Add item..."
+                    android:text="@string/a11y_widget_note_layout_text_16"
                     android:textColor="#9AA0A6" />
             </LinearLayout>
 
@@ -292,7 +292,7 @@
                 android:padding="10dp"
                 android:src="@drawable/ic_widget_mic"
                 android:background="@drawable/widget_note_circle_action_bg"
-                android:contentDescription="Add Voice Note" />
+                android:contentDescription="@string/a11y_widget_note_layout_contentDescription_17" />
 
             <!-- New Note Button (38x38 Circle) -->
             <ImageView
@@ -303,7 +303,7 @@
                 android:padding="10dp"
                 android:src="@drawable/ic_widget_notes"
                 android:background="@drawable/widget_note_circle_action_bg"
-                android:contentDescription="New Note" />
+                android:contentDescription="@string/a11y_widget_note_layout_contentDescription_18" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

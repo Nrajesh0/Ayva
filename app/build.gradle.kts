@@ -15,8 +15,8 @@ android {
     multiDexEnabled = true
     minSdk = 31 // Android 12 and newer.
     targetSdk = 35
-    versionCode = 144
-    versionName = "2.0.44"
+    versionCode = 145
+    versionName = "2.0.45"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -40,8 +40,8 @@ android {
   }
 
   lint {
-    abortOnError = false
-    checkReleaseBuilds = false
+    abortOnError = true
+    checkReleaseBuilds = true
   }
 
   buildTypes {
@@ -140,6 +140,7 @@ dependencies {
   implementation(libs.androidx.dynamicanimation)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.work.runtime.ktx)
+  testImplementation(libs.androidx.work.testing)
   implementation("androidx.fragment:fragment-ktx:1.6.2")
   implementation("androidx.appcompat:appcompat:1.6.1")
 

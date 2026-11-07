@@ -25,6 +25,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
 
     steps:
       - name: Checkout Source Code
@@ -77,6 +78,10 @@ jobs:
             echo "SIGNING_KEY secret is not set."
           fi
 
+      - name: Check source security contracts
+        run: python3 docs/security/ayva_review_checks.py
+      - name: Run Android lint
+        run: ./gradlew :app:lintDebug :app:lintRelease --no-daemon --stacktrace --max-workers=2
       - name: Run unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --max-workers=2
 
@@ -92,6 +97,7 @@ jobs:
           path: |
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
+            app/build/reports/lint-results-*
           if-no-files-found: ignore
           retention-days: 14
 

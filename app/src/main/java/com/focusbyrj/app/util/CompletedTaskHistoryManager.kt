@@ -24,8 +24,8 @@ import java.util.Calendar
 object CompletedTaskHistoryManager {
 
     private const val TAG = "CompletedTaskHistory"
-    private const val PREFS_NAME = "focus_completed_tasks_history"
-    private const val KEY_HISTORY = "completed_records_json"
+    internal const val PREFS_NAME = "focus_completed_tasks_history"
+    internal const val KEY_HISTORY = "completed_records_json"
 
     data class CompletedTaskRecord(
         val id: Long,
@@ -82,7 +82,7 @@ object CompletedTaskHistoryManager {
             val validToday = currentList.filter { it.completedAt >= startOfDay }
 
             saveRecords(prefs, validToday)
-            Log.d(TAG, "Recorded completed task '${task.title}', total today: ${validToday.size}")
+            Log.d(TAG, "Recorded completed task history")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to record completed task", e)
         }
@@ -142,7 +142,8 @@ object CompletedTaskHistoryManager {
     }
 
     private fun loadAllRecords(prefs: android.content.SharedPreferences): List<CompletedTaskRecord> {
-        val jsonStr = prefs.getString(KEY_HISTORY, null) ?: return emptyList()
+        val encoded = prefs.getString(KEY_HISTORY, null) ?: return emptyList()
+        val jsonStr = decode(encoded)
         val list = mutableListOf<CompletedTaskRecord>()
         try {
             val array = JSONArray(jsonStr)
@@ -161,7 +162,7 @@ object CompletedTaskHistoryManager {
                 )
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Error parsing completed tasks JSON", e)
+            throw IllegalStateException("Completed task history could not be read; existing data retained", e)
         }
         return list
     }
@@ -183,6 +184,36 @@ object CompletedTaskHistoryManager {
             }
             array.put(obj)
         }
-        prefs.edit().putString(KEY_HISTORY, array.toString()).commit()
+        check(prefs.edit().putString(KEY_HISTORY, encode(array.toString())).commit()) { "Completed task history was not saved" }
     }
+    internal fun encode(json: String): String {
+        JSONArray(json) // Validate before touching the installed value.
+        return "AYH1:" + android.util.Base64.encodeToString(
+            com.focusbyrj.app.util.backup.SnapshotCryptoEngine.encryptSnapshot(json.toByteArray()), android.util.Base64.NO_WRAP)
+    }
+    internal fun decode(encoded: String): String {
+        require(encoded.startsWith("AYH1:")) { "Unsupported completed task history format; file retained" }
+        return com.focusbyrj.app.util.backup.SnapshotCryptoEngine.decryptSnapshot(
+            android.util.Base64.decode(encoded.substring(5), android.util.Base64.NO_WRAP)).decodeToString()
+    }
+    /** The outer portable archive provides encryption; device-bound ciphertext must not travel. */
+    internal fun portable(context: Context): org.json.JSONObject {
+        val encoded = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_HISTORY, null)
+        return org.json.JSONObject().apply { if (encoded != null) put(KEY_HISTORY, JSONArray(decode(encoded))) }
+    }
+    internal fun restorePortable(context: Context, value: org.json.JSONObject, clean: Boolean, ids: Map<Long, Long>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val incoming = value.optJSONArray(KEY_HISTORY) ?: JSONArray()
+        val merged = if (clean) JSONArray() else JSONArray(prefs.getString(KEY_HISTORY, null)?.let(::decode) ?: "[]")
+        for (i in 0 until incoming.length()) {
+            val record = incoming.getJSONObject(i)
+            val oldId = record.getLong("id")
+            // Completed tasks have no active task mapping. Use a fresh negative identity
+            // when merging rather than accidentally replacing an unrelated local record.
+            record.put("id", ids[oldId] ?: if (clean) oldId else -java.util.UUID.randomUUID().mostSignificantBits.and(Long.MAX_VALUE).coerceAtLeast(1))
+            merged.put(record)
+        }
+        check(prefs.edit().putString(KEY_HISTORY, encode(merged.toString())).commit())
+    }
+
 }

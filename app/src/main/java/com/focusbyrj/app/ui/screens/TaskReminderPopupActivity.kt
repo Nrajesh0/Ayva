@@ -1,6 +1,5 @@
 package com.focusbyrj.app.ui.screens
 
-import android.app.KeyguardManager
 import android.content.Context
 import android.os.Build
 import android.os.Bundle
@@ -109,6 +108,7 @@ import java.util.Calendar
 import java.util.TimeZone
 
 class TaskReminderPopupActivity : ComponentActivity() {
+    private var presentation = 0L
 
     companion object {
         const val EXTRA_TASK_ID = "taskId"
@@ -124,22 +124,23 @@ class TaskReminderPopupActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Wake screen and display over lockscreen
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-            keyguardManager?.requestDismissKeyguard(this, null)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-            )
-        }
+        // This screen is opened by an explicit notification tap. Keep task details
+        // behind the normal device lock rather than exposing them over keyguard.
+        setShowWhenLocked(false)
+        setTurnScreenOn(false)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
 
+        renderReminder()
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        renderReminder()
+    }
+
+    private fun renderReminder() {
         val taskId = intent.getLongExtra(EXTRA_TASK_ID, -1L)
         val initialTitle = intent.getStringExtra(EXTRA_TASK_TITLE) ?: "Task Reminder"
         val initialDetails = intent.getStringExtra(EXTRA_TASK_DETAILS) ?: ""
@@ -152,7 +153,9 @@ class TaskReminderPopupActivity : ComponentActivity() {
         val initialType = kotlin.runCatching { TaskType.valueOf(initialTypeStr.trim().uppercase(java.util.Locale.ROOT)) }.getOrDefault(TaskType.TASK)
         val initialRecurrence = kotlin.runCatching { RecurrencePattern.valueOf(initialRecurrenceStr.trim().uppercase(java.util.Locale.ROOT)) }.getOrDefault(RecurrencePattern.NONE)
 
+        val version = ++presentation
         setContent {
+            androidx.compose.runtime.key(version) {
             FocusByRjTheme {
                 TaskReminderPopupScreen(
                     taskId = taskId,
@@ -177,6 +180,7 @@ class TaskReminderPopupActivity : ComponentActivity() {
                         finish()
                     }
                 )
+            }
             }
         }
     }

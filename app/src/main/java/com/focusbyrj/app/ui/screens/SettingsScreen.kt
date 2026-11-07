@@ -114,6 +114,7 @@ fun SettingsScreen(navController: NavController, category: SettingsCategory = Se
     var showNotificationDropdown by remember { mutableStateOf(false) }
 
     var habitTopNotifications by rememberSetting(prefs, "habit_top_notifications", false)
+    var showLockedReminderContent by rememberSetting(prefs, com.focusbyrj.app.util.ReminderPrivacy.KEY, false)
 
     val currentAppTheme by AppThemeManager.themeFlow.collectAsState()
     val currentThemeMode by AppThemeManager.themeModeFlow.collectAsState()
@@ -418,6 +419,20 @@ fun SettingsScreen(navController: NavController, category: SettingsCategory = Se
                     }
                 )
                 HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
+                SettingsSwitchRow(
+                    icon = Icons.Filled.Notifications,
+                    title = "Allow reminder details on lock screen",
+                    checked = showLockedReminderContent,
+                    onCheckedChange = { enabled ->
+                        try {
+                            com.focusbyrj.app.util.ReminderPrivacy.setAllowsContent(context, enabled)
+                            showLockedReminderContent = enabled
+                        } catch (_: Exception) {
+                            android.widget.Toast.makeText(context, "Could not save reminder privacy. Please try again.", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                )
+                Text("Off by default: locked-screen reminders show a generic message. Android notification settings control final visibility and can keep details hidden even when this option is on.", Modifier.padding(horizontal = 6.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("A notification-bar backup is always retained. Priority tasks also show a floating popup, even when notification-bar-only delivery is selected.", Modifier.padding(horizontal = 6.dp, vertical = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SettingsMenuSectionHeader("RELATED SETTINGS")
                 SettingsMenuLink(Icons.Filled.Schedule, "Daily summaries & practice", "notifications.practice", navController)
