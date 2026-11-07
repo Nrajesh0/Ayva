@@ -683,6 +683,8 @@ fun KeepNoteEditor(
         }
     )
 
+    fun takePhoto() = launchCameraPreview(context) { cameraLauncher.launch(null) }
+
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
         onResult = { result ->
@@ -2676,7 +2678,7 @@ fun KeepNoteEditor(
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 showMoreMenu = false
-                                cameraLauncher.launch(null)
+                                takePhoto()
                             }
                         )
 
@@ -3017,7 +3019,7 @@ fun KeepNoteEditor(
         if (showImageOptionsSheet) {
             NotesnookImageOptionsSheet(
                 onDismiss = { showImageOptionsSheet = false },
-                onTakePhoto = { cameraLauncher.launch(null) },
+                onTakePhoto = { takePhoto() },
                 onPickGallery = {
                     photoPickerLauncher.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -3070,7 +3072,7 @@ fun KeepNoteEditor(
                         title = "Take photo",
                         onClick = {
                             showAddSheet = false
-                            cameraLauncher.launch(null)
+                            takePhoto()
                         }
                     )
 

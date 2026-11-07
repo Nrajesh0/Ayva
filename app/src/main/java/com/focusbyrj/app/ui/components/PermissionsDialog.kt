@@ -152,7 +152,7 @@ fun SetupPermissionsDialog(
                 PermissionSetupCard(
                     number = "03",
                     title = "Battery & background access",
-                    subtitle = "Prevents Android from killing your focus sessions to save battery.",
+                    subtitle = "Optional: helps focus services and reminders run reliably in the background.",
                     isGranted = isBatteryUnrestricted,
                     onAction = { PermissionUtils.requestIgnoreBatteryOptimizations(context) },
                     onLearnMore = { showWhyBatteryDialog = true }
@@ -218,13 +218,13 @@ fun SetupPermissionsDialog(
             text = {
                 Column {
                     Text(
-                        "If you don't allow background persistence, Android might kill the app to save battery, which will prematurely end your focus session.",
+                        "Battery exemption can improve background blocking and reminder reliability. Android and manufacturer restrictions can still stop or delay the app.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "Setting this to 'Unrestricted' ensures your focus blocks remain active and trigger exactly when they should.",
+                        "This setting is optional. You can skip it and continue using the app, then enable it here if background features are being interrupted.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

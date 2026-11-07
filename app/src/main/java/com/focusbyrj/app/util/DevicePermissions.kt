@@ -7,9 +7,9 @@ import android.os.Build
 enum class DevicePermission(val settingId: String, val title: String, val explanation: String) {
     USAGE("permissions.usage", "Usage access", "Recognize when a distracting app is opened."),
     OVERLAY("permissions.overlay", "Display over other apps", "Show the blocking screen and floating reminders."),
-    BATTERY("permissions.battery", "Battery & background access", "Allow blocking and reminders to keep working in the background."),
+    BATTERY("permissions.battery", "Battery & background access", "Optional: improve background reliability. Android and manufacturer restrictions can still stop or delay work."),
     NOTIFICATIONS("permissions.notifications", "Notifications", "Keep task, habit and routine alerts available in the notification bar."),
-    ALARMS("permissions.alarms", "Alarms & reminders", "Allow precisely scheduled reminders where Android supports them.");
+    ALARMS("permissions.alarms", "Alarms & reminders", "Allow precise reminders. Without this access, Android may deliver reminders later.");
 
     fun granted(context: Context): Boolean = when (this) {
         USAGE -> PermissionUtils.hasUsageStatsPermission(context)

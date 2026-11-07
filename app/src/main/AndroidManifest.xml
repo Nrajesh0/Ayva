@@ -2,8 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Photos are captured by a user-selected camera app, not by this process. -->
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- Enforced for private broadcasts on Android 12/12L as well as newer releases. -->
+    <permission android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
     <!-- App blocking needs discovery of installed apps, including apps without launcher entries. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
@@ -15,11 +21,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Exact reminders use user-controlled access, with inexact scheduling as fallback. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove" />
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" tools:node="remove" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
@@ -273,6 +280,7 @@
 
         <receiver android:name=".service.ReminderClockReceiver" android:exported="false">
             <intent-filter>
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>

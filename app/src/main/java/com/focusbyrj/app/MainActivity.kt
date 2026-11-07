@@ -97,6 +97,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -205,10 +206,8 @@ class MainActivity : FragmentActivity() {
         kotlin.runCatching { FocusBlockerService.startService(this) }
         kotlin.runCatching { com.focusbyrj.app.service.BubbleService.startIfEnabled(this) }
         kotlin.runCatching { com.focusbyrj.app.util.CompletedTaskHistoryManager.purgeExpiredCompletedTasks(this) }
-        kotlin.runCatching { com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(this) }
-        kotlin.runCatching { com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleRandomDrillReminders(this) }
-        kotlin.runCatching { com.focusbyrj.app.util.TaskReminderHelper.scheduleAllPendingReminders(this) }
-        kotlin.runCatching { com.focusbyrj.app.util.HabitAlarmScheduler.rescheduleAllHabits(this) }
+        // onResume queues one durable reminder restoration, shared with alarm-access
+        // broadcasts. Do not also deliver overdue reminders from a parallel startup path.
         kotlin.runCatching { com.focusbyrj.app.widget.TodoWidgetProvider.updateAllWidgets(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(this) }
 
@@ -239,6 +238,14 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         updateSecureWindowFlags()
+        lifecycleScope.launch {
+            try {
+                com.focusbyrj.app.util.AlarmPermissionRecovery.reconcile(applicationContext)
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                android.util.Log.w("MainActivity", "Could not queue alarm recovery; will retry on resume", error)
+            }
+        }
         // Regranting overlay permission should recover the bubble independently
         // of usage-access polling or a full Activity recreation.
         kotlin.runCatching { com.focusbyrj.app.service.BubbleService.startIfEnabled(this) }

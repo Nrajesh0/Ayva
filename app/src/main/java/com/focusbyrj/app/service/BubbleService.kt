@@ -373,13 +373,7 @@ class BubbleService : Service() {
             addAction(ACTION_SETTINGS_CHANGED)
             addAction(ACTION_ICON_CHANGED)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            // Export flags are enforced above on API 33+; preserve legacy registration below it.
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            registerReceiver(receiver, filter)
-        }
+        com.focusbyrj.app.util.InternalBroadcasts.register(this, receiver, filter)
 
         val systemFilter = IntentFilter().apply {
             addAction(Intent.ACTION_USER_PRESENT)

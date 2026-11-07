@@ -75,14 +75,32 @@ fun SecurityScreen(navController: NavController) {
     val permissions by com.focusbyrj.app.ui.components.rememberDevicePermissions()
     val prefs = remember { context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE) }
     var secureRecents by com.focusbyrj.app.ui.components.rememberSetting(prefs, "secure_recents", false)
-    val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    val dpm = context.getSystemService(DevicePolicyManager::class.java)
     val admin = ComponentName(context, FocusDeviceAdminReceiver::class.java)
-    var adminEnabled by remember { mutableStateOf(dpm.isAdminActive(admin)) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { adminEnabled = dpm.isAdminActive(admin) }
+    var adminEnabled by remember { mutableStateOf(runCatching { dpm?.isAdminActive(admin) == true }.getOrDefault(false)) }
+    var legacyLockAccess by remember { mutableStateOf(false) }
+    var adminUpdating by remember { mutableStateOf(false) }
+    var adminError by remember { mutableStateOf<String?>(null) }
+    val adminScope = rememberCoroutineScope()
+    val adminSupported = remember(context) {
+        dpm != null && context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_DEVICE_ADMIN)
+    }
+    fun refreshAdminState() {
+        try {
+            val active = dpm?.isAdminActive(admin) == true
+            val legacy = active && dpm?.hasGrantedPolicy(admin, android.app.admin.DeviceAdminInfo.USES_POLICY_FORCE_LOCK) == true
+            adminEnabled = active
+            legacyLockAccess = legacy
+            adminError = null
+        } catch (_: Exception) {
+            adminError = "Android could not read device-admin access. Check device-admin apps in Android Settings."
+        }
+    }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { refreshAdminState() }
     val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) adminEnabled = dpm.isAdminActive(admin)
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refreshAdminState()
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
@@ -103,17 +121,48 @@ fun SecurityScreen(navController: NavController) {
             }
             HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = .05f))
         }
-        Text("Blocking needs usage, overlay and background access. Notifications and alarm access support timely reminders.", Modifier.padding(horizontal = 6.dp, vertical = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Usage access and overlays support app blocking. Battery exemption is optional. Notifications show reminders; without alarm access, Android may deliver them later.", Modifier.padding(horizontal = 6.dp, vertical = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SettingsMenuSectionHeader("PRIVACY & PROTECTION")
         SettingsMenuRow(Icons.Default.Security, "Uninstall protection", Modifier.settingsSearchTarget("privacy.uninstall")) {
-            GrantButton(text = if (adminEnabled) "Disable" else "Enable") {
-                if (adminEnabled) { dpm.removeActiveAdmin(admin); adminEnabled = false }
-                else launcher.launch(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                    putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin)
-                    putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Prevent accidental removal during focus sessions.")
-                })
+            GrantButton(text = if (adminUpdating) "Updating…" else if (adminEnabled) "Disable" else "Enable",
+                enabled = !adminUpdating && (adminSupported || adminEnabled)) {
+                if (!adminUpdating) {
+                    adminUpdating = true
+                    adminError = null
+                    adminScope.launch {
+                        try {
+                            val manager = checkNotNull(dpm) { "Device-admin service is unavailable" }
+                            if (adminEnabled) {
+                                manager.removeActiveAdmin(admin)
+                                // Removal can complete asynchronously. Keep the displayed state
+                                // tied to Android's result rather than claiming it is already off.
+                                kotlinx.coroutines.withTimeoutOrNull(2_000L) {
+                                    while (manager.isAdminActive(admin)) kotlinx.coroutines.delay(100)
+                                }
+                                refreshAdminState()
+                                if (adminEnabled) adminError = "Android is still updating device-admin access. Reopen this screen to check the result."
+                            } else {
+                                launcher.launch(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                                    putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin)
+                                    putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Optional uninstall protection. You can turn it off here or in Android Settings.")
+                                })
+                            }
+                        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                        catch (_: Exception) {
+                            adminError = "Android could not change device-admin access. Check device-admin apps in Android Settings."
+                        } finally { adminUpdating = false }
+                    }
+                }
             }
         }
+        Text(if (adminSupported || adminEnabled)
+            "Optional device-admin access. Android may require you to disable it before uninstalling. You can turn it off here or in Android Settings."
+            else "Device-admin access is unavailable on this device. Other app features remain available.",
+            Modifier.padding(horizontal = 6.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (legacyLockAccess) Text(
+            "Earlier administrator access may still include screen-lock authority. Disable and re-enable uninstall protection to apply the reduced access. Your saved data is kept.",
+            Modifier.padding(horizontal = 6.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        adminError?.let { Text(it, Modifier.padding(horizontal = 6.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         SettingsMenuRow(Icons.Default.VisibilityOff, "Screenshot protection", Modifier.settingsSearchTarget("privacy.screenshots")) {
             Switch(checked = secureRecents, onCheckedChange = { enabled ->
                 secureRecents = enabled

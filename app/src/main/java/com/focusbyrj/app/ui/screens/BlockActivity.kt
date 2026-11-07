@@ -74,13 +74,7 @@ class BlockActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val filter = android.content.IntentFilter("com.focusbyrj.app.CLOSE_BLOCK_SCREEN")
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(closeReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            // Export flags are enforced above on API 33+; preserve legacy registration below it.
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            registerReceiver(closeReceiver, filter)
-        }
+        com.focusbyrj.app.util.InternalBroadcasts.register(this, closeReceiver, filter)
         
         val prefs = getSharedPreferences("focus_prefs", android.content.Context.MODE_PRIVATE)
         val secureRecents = prefs.getBoolean("secure_recents", true)

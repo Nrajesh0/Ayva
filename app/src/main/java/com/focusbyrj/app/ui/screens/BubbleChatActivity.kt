@@ -313,7 +313,6 @@ class BubbleChatActivity : ComponentActivity() {
         }
     }
 
-    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installScreenCaptureProtection()
@@ -321,11 +320,7 @@ class BubbleChatActivity : ComponentActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         
         val filter = IntentFilter("com.focusbyrj.app.CLOSE_CHAT")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(closeReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(closeReceiver, filter)
-        }
+        com.focusbyrj.app.util.InternalBroadcasts.register(this, closeReceiver, filter)
         
 
         
@@ -342,11 +337,7 @@ class BubbleChatActivity : ComponentActivity() {
                         }
                     }
                     val f = IntentFilter("com.focusbyrj.app.TRIGGER_CLOSE_ANIM")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        context.registerReceiver(animReceiver, f, Context.RECEIVER_NOT_EXPORTED)
-                    } else {
-                        context.registerReceiver(animReceiver, f)
-                    }
+                    com.focusbyrj.app.util.InternalBroadcasts.register(context, animReceiver, f)
                     onDispose { context.unregisterReceiver(animReceiver) }
                 }
 

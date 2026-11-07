@@ -71,4 +71,16 @@ class ReminderRecoveryTest {
         val registered = context.packageManager.queryBroadcastReceivers(Intent(Intent.ACTION_TIMEZONE_CHANGED).setPackage(context.packageName), 0)
         assertTrue(registered.any { it.activityInfo.name == ReminderClockReceiver::class.java.name && !it.activityInfo.exported })
     }
+
+    @Test fun alarmPermissionObservationDurablyQueuesFullRecovery() = runBlocking {
+        org.robolectric.shadows.ShadowAlarmManager.setCanScheduleExactAlarms(false)
+        val recovery = com.focusbyrj.app.util.AlarmPermissionRecoveryCoordinator()
+        assertTrue(recovery.reconcile(context))
+        val first = work.getWorkInfosForUniqueWork("run_boot_reminders").get(5, TimeUnit.SECONDS)
+            .single { it.state != WorkInfo.State.CANCELLED }
+        assertFalse(recovery.reconcile(context))
+        val repeated = work.getWorkInfosForUniqueWork("run_boot_reminders").get(5, TimeUnit.SECONDS)
+            .single { it.state != WorkInfo.State.CANCELLED }
+        assertEquals(first.id, repeated.id)
+    }
 }

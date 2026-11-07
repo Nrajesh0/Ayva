@@ -39,6 +39,7 @@ class ReminderReconcileWorker(context: Context, parameters: WorkerParameters) : 
             }
         }
         if (inputData.getBoolean(RESTORE_ABSOLUTE, false)) {
+            attempt("focus timer") { com.focusbyrj.app.util.FocusSessionManager.restore(app) }
             attempt("work sessions") { WorkSessionReminders.reconcileAll(app) }
             attempt("task reminders") {
                 app.database.taskDao().getAllActiveTasksList().forEach { task ->
