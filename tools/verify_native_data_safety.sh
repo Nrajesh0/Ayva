@@ -18,8 +18,8 @@ run_test() {
   local target="$1" evidence="$2"
   adb shell am instrument -w -r -e class "$target" "$runner" > "$evidence" 2>&1
   cat "$evidence"
-  rg -q '^OK \([0-9]+ test' "$evidence"
-  ! rg -q 'FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=' "$evidence"
+  grep -Eq '^OK \([1-9][0-9]* test' "$evidence"
+  ! grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=' "$evidence"
 }
 run_test "$class#nativeKdfAndAndroidKeyStoreRejectTampering" build/native-verification/crypto.txt
 run_test com.focusbyrj.app.util.backup.AuxiliaryEncryptionDeviceTest build/native-verification/stores.txt
