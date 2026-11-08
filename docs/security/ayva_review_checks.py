@@ -20,6 +20,10 @@ assert "pin_verifier_v2" in vault
 assert "sanitize" in read("util/diagnostics/AppLogger.kt")
 assert "allowDataLossOnRecovery(false)" in read("util/backup/MaintenanceOpenHelperFactory.kt")
 assert "override fun onCorruption" in read("util/backup/MaintenanceOpenHelperFactory.kt")
+assert "DatabaseErrorHandler" in read("data/PreservingSqlCipherFactory.kt")
+for path in ["FocusApplication.kt", "data/note/NoteDatabase.kt", "data/SecureRoomFactory.kt"]:
+    assert "PreservingSqlCipherFactory" in read(path), path
+    assert "SupportFactory(" not in read(path), path
 assert "BuildConfig.DEBUG &&" in read("util/crypto/TestRuntimeKeys.kt")
 assert "abortOnError = true" in (ROOT / "app/build.gradle.kts").read_text()
 print("Pre-release source security contracts passed (not runtime verification).")

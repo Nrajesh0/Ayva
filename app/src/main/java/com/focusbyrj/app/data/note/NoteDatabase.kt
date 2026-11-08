@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import net.sqlcipher.database.SQLiteDatabase
-import net.sqlcipher.database.SupportFactory
+import com.focusbyrj.app.data.PreservingSqlCipherFactory
 
 @Database(entities = [NoteEntity::class], version = 7, exportSchema = true)
 abstract class NoteDatabase : RoomDatabase() {
@@ -310,7 +310,7 @@ abstract class NoteDatabase : RoomDatabase() {
 
                 val instance = try {
                     val passphrase = DatabaseKeyProvider.getOrCreatePassphrase(appContext)
-                    val factory = SupportFactory(passphrase, null, false)
+                    val factory = PreservingSqlCipherFactory(passphrase)
 
                     Room.databaseBuilder(
                         appContext,

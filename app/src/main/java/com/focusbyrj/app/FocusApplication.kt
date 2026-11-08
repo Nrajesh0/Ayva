@@ -16,7 +16,7 @@ import com.focusbyrj.app.data.FocusDatabase
 import com.focusbyrj.app.data.TaskRepository
 import com.focusbyrj.app.data.note.DatabaseKeyProvider
 import com.focusbyrj.app.util.backup.AutoBackupScheduler
-import net.sqlcipher.database.SupportFactory
+import com.focusbyrj.app.data.PreservingSqlCipherFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -90,7 +90,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
     val database by lazy { 
         val instance = try {
             val passphrase = DatabaseKeyProvider.getOrCreatePassphrase(this)
-            val factory = SupportFactory(passphrase, null, false)
+            val factory = PreservingSqlCipherFactory(passphrase)
             Room.databaseBuilder(
                 this,
                 FocusDatabase::class.java,
