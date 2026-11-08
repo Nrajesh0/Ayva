@@ -81,9 +81,9 @@ jobs:
       - name: Check source security contracts
         run: python3 docs/security/ayva_review_checks.py
       - name: Run Android lint
-        run: ./gradlew :app:lintDebug :app:lintRelease --no-daemon --stacktrace --max-workers=2
+        run: ./gradlew :app:lintDebug :app:lintRelease --no-daemon --stacktrace --max-workers=1
       - name: Run unit tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --max-workers=2
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace --max-workers=1
 
       - name: Summarize unit test results
         if: always()
@@ -108,7 +108,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=1
 
       - name: Validate and prepare single universal APK
         run: python3 tools/package_release_apks.py
