@@ -67,6 +67,13 @@ class ProductivityNavigationTest {
     }
     @Test fun recoveryLandingOnlyShowsMainDestinationsAndStorageOpensSeparately() {
         compose.setContent { MaterialTheme { com.focusbyrj.app.ui.screens.DataRecoveryScreen(androidx.navigation.compose.rememberNavController()) } }
+        compose.onNodeWithText("Automatic backups").assertExists()
+        compose.onNodeWithText("Create manual backup").assertExists()
+        compose.onNodeWithText("Restore encrypted backup").assertExists()
+        compose.onNodeWithText("Saved drafts").assertDoesNotExist()
+        compose.onNodeWithText("Safety snapshots").assertDoesNotExist()
+        compose.onNodeWithText("Verify a backup").assertDoesNotExist()
+        compose.onNodeWithText("More recovery tools").performScrollTo().performClick()
         compose.onNodeWithText("Saved drafts").assertExists()
         compose.onNodeWithText("Safety snapshots").assertExists()
         compose.onNodeWithText("Verify a backup").assertExists()
