@@ -5,7 +5,7 @@
 <h1 align="center">RuN</h1>
 
 <p align="center">
-  <strong>A Privacy-First, Zero-Network App Locker & Offline Focus Suite</strong>
+  <strong>Offline Focus, App Blocking, Private Notes & Planning</strong>
 </p>
 
 <p align="center">
@@ -15,53 +15,143 @@
   <a href="TRADEMARK.md"><img src="https://img.shields.io/badge/trademark-Brand%20Policy-orange?style=flat-square" alt="Trademark Policy"></a>
 </p>
 
----
 
 ## Overview
 
-**RuN** is an offline productivity and digital wellbeing application designed to protect your attention with uncompromising privacy. Featuring an app blocker, habit tracker, encrypted note vault, and floating focus tools, RuN runs entirely locally on your device with **zero network connections, zero trackers, and zero telemetry**.
+**RuN** is an Android productivity app that brings app blocking, focus sessions,
+tasks, habits, private notes and an offline assistant into one place. The Android
+application lives in this repository under the project name **Ayva**.
 
-## Key Highlights
+## Features
 
-- 🔒 **Zero-Network Architecture**: Operates 100% offline. No internet permission required for core functions.
-- ⚡ **Direct Window Overlay Blocker**: Built for modern Android (including Android 14+ / 16+) bypassing Background Activity Launch (BAL) restrictions via direct system overlay rendering.
-- 🔐 **Encrypted Vault**: High-grade encrypted notes and private archive exports.
-- 🎯 **Dynamic App Themes & Avatars**: Minimalist dark and OLED modes with customizable launcher profile emblems.
+| Area | What RuN provides |
+| --- | --- |
+| App blocking | Manual app rules, scheduled routines, strict/soft blocking and usage-based limits, using a direct system overlay. |
+| Focus and planning | Focus countdowns, activity tracking, tasks, reminders, recurring tasks and checklists. |
+| Habits | Goals, schedules, reminders and daily progress tracking. |
+| Notes and private archive | Rich notes with attachments, encrypted storage and a PIN-protected private archive. Optional PIN-free archiving lets you add protected notes while the vault stays locked; viewing or unarchiving still requires authorization. |
+| Backup and restore | Password-protected manual backups, scheduled encrypted backups, a portable recovery file, backup verification and restore progress. Snapshot restore replaces backed-up app data after review; importing extra copies is a separate choice. |
+| Ayva assistant | On-device conversation for supported task, habit, focus, routine and settings actions, with clarification, previews and guarded undo where supported. |
+| Learning | Bundled dictionary, vocabulary practice and Drill/Blitz exercises. |
+| Widgets and appearance | Home-screen widgets for notes, exams and battery health; themes, launcher icons and animated companion artwork. |
 
-## Download & Installation
+Ayva uses authored content and bounded rules. It is not a general-purpose language
+model and does not download a model or call a hosted AI service. Private note
+contents are outside the assistant's data-access capabilities. See the
+[assistant guide](docs/assistant/README.md) for supported scope and limitations.
 
-You can download the latest official APK directly from GitHub Releases:
+## Privacy and permissions
 
-- 📦 **[Download Latest APK](https://github.com/Nrajesh0/Ayva/releases/latest)**
-- 🌐 **[Official Website](https://Nrajesh0.github.io/Ayva/)**
+RuN removes the Android Internet permission and keeps its core processing and
+storage on the device. The project does not integrate analytics or advertising
+SDKs. Android's automatic app backup is disabled; RuN provides its own explicit
+encrypted backup flows.
 
-There is **one universal APK** for Android 12 and newer, including POCO X6 Pro.
-It includes all supported CPU architectures, features and offline content.
+Optional speech input uses the device's speech-recognition service. Its processing
+and network behavior depend on the selected service and available offline support.
+A cloud folder selected through Android's document picker is likewise handled by
+that provider. These external services are separate from RuN's own network access.
 
-## Building from Source
+Permissions and special access support specific features:
 
-See the [documentation guide](docs/README.md) for setup, test scheduling, security
-reviews and backup/archive implementation records.
+| Access | Purpose |
+| --- | --- |
+| Usage access and installed-app visibility | Identify apps, evaluate usage and apply blocking rules. |
+| Display over other apps | Show app-blocking screens and floating tools. |
+| Notifications and foreground services | Show reminders, active-service status and backup progress. |
+| Exact alarms, when granted | Improve reminder timing; Android scheduling restrictions still apply. |
+| Microphone, when granted | Optional speech input. |
+| User-selected files/folders | Import/export attachments, recovery files and encrypted backups through Android's document picker. |
+| Battery-optimization exemption, when granted | Help background blocking and scheduled work continue. |
 
-To compile the application locally using the Gradle wrapper:
+Grant relevant access through the app's setup/settings screens. Android and device
+manufacturer restrictions can affect background execution and reminder delivery.
+For implementation details, findings and verification limits, read the
+[security guide](docs/security/README.md).
 
-```bash
-./gradlew :app:assembleRelease
+## Backup and recovery
+
+Automatic setup is under **Settings → Data & recovery → Automatic backups**:
+choose a folder, save the recovery file, and turn on the schedule. If a private
+vault is configured, authorize access using its PIN when prompted. Manual backup
+and restore also support inline vault authorization; disabling the vault is
+unnecessary.
+
+Keep the recovery file somewhere accessible independently of the app and separate
+from the backup folder. The vault PIN is not a substitute for the backup password
+or recovery credential. Anyone with both an archive and its recovery credential
+can decrypt that backup.
+
+Scheduled backups can run without opening RuN, but their timing is approximate.
+Force-stop, battery restrictions, low storage and an unavailable destination can
+delay them. Check the last successful backup in settings. A backup kept only on
+the same phone does not protect against losing that phone. See the
+[backup and archive references](docs/features/README.md) for recovery behavior.
+
+## Download and installation
+
+Download the **universal APK** from [GitHub Releases](https://github.com/Nrajesh0/Ayva/releases/latest).
+It supports **Android 12 and newer (API 31+)** and includes ARM and x86 native
+libraries, bundled dictionary content and artwork. The target SDK is Android 15
+(API 35); a newer Android release can still run the app.
+
+Install the APK through Android's package installer, allowing installation from
+the source you use when prompted. Official updates must retain the same signing
+identity to install over an existing copy.
+
+## Build from source
+
+Use **JDK 21**, the checked-in **Gradle 8.9 wrapper**, Android SDK platform **35**
+and build-tools **34.0.0**. Set `ANDROID_HOME` to your SDK location. The first build
+requires access to dependency repositories.
+
+```sh
+./gradlew :app:assembleDebug --no-daemon --max-workers=1
+```
+
+The debug APK is written under `app/build/outputs/apk/debug/`. A fresh checkout
+can use the standard generated debug key; private release credentials are not
+required.
+
+To assemble and package a release APK:
+
+```sh
+./gradlew :app:assembleRelease --no-daemon --max-workers=1
 python3 tools/package_release_apks.py
 ```
 
-A single verified APK and its checksum are generated under `build/release-apks/`.
-Signing uses the existing release keystore configuration. The minimum supported
-version is Android 12 (API 31); the target SDK remains Android 15 (API 35).
+The packaging script verifies the universal APK's metadata and native
+architectures, then writes the APK, manifest and SHA-256 checksum under
+`build/release-apks/`. Release assembly is unsigned without a configured keystore;
+packaging alone does not sign it or make it an official release. Keep signing keys
+and credentials outside the repository.
 
----
+Run the JVM regression suite separately from APK assembly:
 
-## Trademark & Brand Guidelines
+```sh
+./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1
+```
 
-The **RuN** name, logo, app icon designs, and visual branding are official brand assets. Please consult our [**Trademark Policy & Brand Guidelines**](TRADEMARK.md) for details on permitted use and rebranding requirements for forks.
+GitHub validation also runs lint, source guards and native data-safety checks on
+Android API 31, 34, 35 and 36 emulators. Development tests do not run when someone
+opens the installed app. See the [build and test guide](docs/development/BUILD_AND_TEST.md)
+for focused checks, CI scheduling and device-testing limits.
 
-## License
+## Documentation
 
-This project is licensed under the **GNU Affero General Public License v3.0 (GNU AGPLv3)**. See the [LICENSE](LICENSE) file for the full license terms, disclaimer of warranty, and limitation of liability.
+- [Documentation index](docs/README.md)
+- [Feature implementation guide](docs/features/README.md)
+- [Assistant scope and history](docs/assistant/README.md)
+- [Security reviews and evidence](docs/security/README.md)
+- [Recorded release notes](docs/releases/CHANGELOG.md)
 
-All brand names, trademarks, logos, and app icon artwork remain proprietary under our [**Trademark Policy & Brand Guidelines**](TRADEMARK.md).
+## License and branding
+
+The project is licensed under the **GNU Affero General Public License v3.0
+(AGPLv3)**. See [LICENSE](LICENSE) for the terms, warranty disclaimer and limitation
+of liability. Bundled dependencies and datasets retain their applicable licences
+and notices; see the relevant source and [dictionary guide](docs/assistant/DICTIONARY_DATA.md).
+
+The **RuN** name, logo, app icons and visual branding are governed separately by
+[TRADEMARK.md](TRADEMARK.md). The code licence does not grant unrestricted use of
+those brand assets.
