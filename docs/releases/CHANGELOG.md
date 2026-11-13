@@ -1,0 +1,292 @@
+# Recorded release notes
+
+Consolidated release-note files, newest recorded entry first. This is a partial
+historical record, not a complete release list or proof that a release was
+published. Check [GitHub Releases](https://github.com/Nrajesh0/Ayva/releases) for
+published artifacts. Entry versions, checks and device limits remain as recorded.
+
+## Contents
+
+- [Release 2.0.45](#version-2-0-45)
+- [Ayva 2.0.44 (144)](#version-2-0-44)
+- [Ayva 2.0.43 (143)](#version-2-0-43)
+- [Ayva 2.0.42 (142)](#version-2-0-42)
+- [Ayva 2.0.41 (141)](#version-2-0-41)
+- [Ayva 2.0.40 (140)](#version-2-0-40)
+- [Ayva 2.0.25 (125)](#version-2-0-25)
+- [Ayva 2.0.24 (124)](#version-2-0-24)
+
+<a id="version-2-0-45"></a>
+
+<a id="version-2-0-45-release-2045"></a>
+
+## Release 2.0.45
+
+Version code: **145**
+
+Automatic-backup setup now follows three steps: choose a folder, save the
+recovery file, and turn backups on. Recent backups are shown by date and size;
+custom schedules and other advanced options remain available separately.
+
+Restore confirms the current vault PIN in place and keeps vault protection
+enabled. Snapshot replacement is the default, with a review and replacement
+warning before applying changes. Importing extra copies is an explicit advanced
+choice. Repeating a snapshot restore does not append duplicate records. Restoring
+an original snapshot can replace existing duplicates, but also replaces changes
+made after that backup.
+
+Verified archive preparation is reused through review and authentication, and
+redundant media processing and rollback copies are removed. Authenticated
+encryption, destination verification, private-key binding and the durable
+recovery journal remain enforced. A changed or disabled vault cannot expose
+older private backups through the saved recovery key.
+
+This release also includes the completed [pre-release hardening](../features/system/PRE_RELEASE_HARDENING.md):
+encrypted auxiliary stores and completed-task history, fail-closed storage and
+removal of unsupported development-format importers, conservative media
+retirement, private notification defaults, full habit notification identities,
+durable drill submission, optional-permission flow corrections and native CI
+coverage. Speech-provider privacy remains deferred; the direct overlay blocker
+is unchanged.
+
+<a id="version-2-0-45-validation"></a>
+
+### Validation
+
+- Final application-source regression run: **313 tests in 45 classes**, zero
+  failures, errors or skips. Earlier hardening validation and its historical
+  full-suite/rerun accounting are documented in the hardening report.
+- Debug and release lint: zero errors. Existing warnings remain (244 debug,
+  242 release; 57 informational items each).
+- Debug APK, optimized unsigned release APK and instrumentation APK built
+  successfully before this metadata-only version bump.
+- Source security contracts, chat boundary, dictionary integrity, shell syntax
+  and whitespace checks pass.
+- Both generated variant manifests confirm **2.0.45 / 145**. Source hashes match
+  the previously validated inputs apart from the two version values.
+- Native device execution and phone timing remain unverified locally: no
+  connected Android device or emulator is available. The API 31/34/35/36 CI
+  matrix includes repeated snapshot restoration with an enabled vault.
+
+See the [backup-flow implementation report](../features/backups/BACKUP_FLOW_REDESIGN_2026-11-07.md)
+for restore semantics, security boundaries and performance limitations.
+
+The existing GitHub Actions workflow runs its checks and signed release build
+after the push to `main`, then publishes if those steps succeed.
+
+<a id="version-2-0-45-ci-repair"></a>
+
+### CI repair
+
+The initial publication attempt stopped before tests ran. Native SDK setup
+requested the removed `tools` package; it now explicitly installs the same
+supported packages as regular validation. Validation and release exhausted the
+Kotlin compiler heap while compiling debug and release concurrently. All CI
+Gradle commands now use one worker, matching the successful local validation.
+Lint, unit tests, the native API matrix, signing and publication checks remain
+enabled. The unpublished version is retried as 2.0.45 (145).
+
+The native evidence checker uses standard `grep` rather than requiring ripgrep
+on the runner, and rejects zero-test success output as well as instrumentation
+failures. The on-device assertions remain enabled.
+
+Device verification also exposed SQLCipher's native default corruption handler
+deleting a damaged database before the Room callback could protect it. All five
+encrypted stores now use an explicit native handler that fails closed and
+preserves the existing file. Encryption settings, keys, schema callbacks and
+maintenance close/reopen behavior are retained. The corruption-preservation
+assertions remain unchanged and must pass before publication.
+
+---
+
+<a id="version-2-0-44"></a>
+
+<a id="version-2-0-44-ayva-2044-144"></a>
+
+## Ayva 2.0.44 (144)
+
+Permission requests fall from 18 to 15. Photo capture stays delegated to the
+camera app, with clear messages when it is unavailable or blocked. The unused
+camera, unrestricted exact-alarm and full-screen-intent requests are removed.
+
+Private broadcast receivers require the app's signature permission on Android
+12/12L and newer versions. Exact reminders use user-controlled alarm access and
+approximate fallbacks. Durable reconciliation restores saved reminders after
+startup and access changes, preserves deadlines, and avoids parallel startup
+restoration. Queue waits are bounded and cancellable.
+
+Optional uninstall protection requests no device-control policies. Settings
+explain how to refresh older grants and handle unavailable device-admin access.
+Battery and alarm explanations describe optional access and possible background
+delays. Camera and microphone hardware are optional.
+
+Speech-provider behavior and speech privacy remain deferred. Vault encryption,
+backup credentials, data formats and the core blocking overlay are preserved.
+Installed-app visibility remains available for blocker and assistant discovery.
+
+Validation of the permission implementation before this metadata-only version bump:
+
+- Wider regression run: 323 tests, 322 passed and one existing five-second
+  WorkManager setup timeout. All 102 backup checks passed.
+- Isolated settings/reminder rerun: 29 passed. After removing an unnecessary
+  context reference, all 18 alarm-recovery tests passed. The final sequential
+  reminder rerun passed all three cases with original assertions and deadlines.
+- Final debug and optimized unsigned release builds passed. Both APKs were
+  inspected for the expected 15 permissions, signature sender protection,
+  optional capture hardware and empty device-admin policies.
+- Full debug lint: zero errors, 365 existing warnings, 56 informational findings,
+  and no added findings compared with the pre-change report.
+- Chat-boundary, dictionary and whitespace checks passed.
+
+Version 2.0.44/build 144 metadata is checked in both generated variant manifests
+before push. GitHub Actions runs the full test suite, then builds, signs and
+publishes through the existing release workflow if its checks pass.
+
+Physical-device camera delegation, older administrator grants, cross-app
+broadcast rejection, exact-alarm revocation and OEM background behavior remain
+device checks. See [permission implementation notes](../features/system/PERMISSION_HARDENING.md).
+
+---
+
+<a id="version-2-0-43"></a>
+
+<a id="version-2-0-43-ayva-2043-143"></a>
+
+## Ayva 2.0.43 (143)
+
+Manual backups now unlock private notes directly in Data & recovery. The vault
+relocks while the app prepares and verifies the encrypted archive, before asking
+for its destination. Saved output must match a read-back verification before
+success is reported. Clearer credential explanations, progress, retry, expiry
+and interruption messages use the existing app design.
+
+Automatic private-note backups require their own explicit authorization, even
+when the UI vault is unlocked. Revoking it invalidates pending requests and
+discards app-owned uncommitted stages while keeping existing external archives.
+Backup health distinguishes verified backups from attempts and preparation.
+
+Two independently reproduced reliability bugs are corrected: orphan cleanup
+cannot delete a live backup because of slow verification or clock changes, and
+repeated confirmation cannot cancel the first authorized preparation. Regression
+tests preserve the original encrypted private note and require a successful,
+single prepared archive after repeated input.
+
+The release also includes the session's reviewed cleanup of unused UI and
+duplicate assets/layouts. Resource aliases preserve saved widget design names.
+Lint repairs improve chat state observation and document narrowly scoped detector
+exceptions. Existing archive encryption, restore safeguards and the core blocking
+overlay mechanism are preserved.
+
+Validation:
+
+- All 24 focused manual-backup checks passed, including the four new regressions.
+- Full unit run: 1,663 executions, 1,662 passed, zero errors/skips. One existing
+  reminder test timed out during its five-second WorkManager setup, before its
+  behavior assertions. The unchanged `ReminderRecoveryTest` then passed both
+  tests in isolation. No assertions or production reminder code were altered to
+  address that setup timeout.
+- Debug and optimized unsigned release builds passed. Both APK manifests were
+  checked for version 2.0.43/code 143, minimum API 31 and target API 35. The release
+  packager verified the universal APK's four native architectures.
+- Lint: zero errors, 365 existing warnings and 56 informational findings.
+  Chat-boundary, dictionary-integrity and whitespace checks passed.
+
+Physical-device, cloud-provider, hardware Keystore and OEM scheduling checks
+remain release limitations; automated tests do not establish off-device cloud
+durability. Signing and publication use the existing GitHub Actions workflow.
+
+---
+
+<a id="version-2-0-42"></a>
+
+<a id="version-2-0-42-ayva-2042-142"></a>
+
+## Ayva 2.0.42 (142)
+
+Exam widgets with one visible exam now use the full design instead of a tiny list row. Multi-exam rows have clearer names, prominent countdown values and smaller unit captions. Timezone labels are removed from all widget layouts, including older saved configurations; scheduling zones are retained internally.
+
+A dedicated Text tab groups size presets, fonts, alignment and countdown format. A single details sheet offers Essentials and Date + time shortcuts. Exact adjustments remain available without duplicating them in the design controls. Re-selecting the current style keeps text adjustments intact.
+
+Style thumbnails and the live preview now use the production widget renderer with the configured exam data and dimensions. Existing-widget previews use launcher sizes, and Android 12+ responsive layouts use real size pairs. Large-widget surfaces retain their aspect ratio with bounded bitmap allocation.
+
+Validation before the version bump: 57 focused executions across five suites passed, then all 11 final editor checks and debug assembly passed after the last refinement. No failures, errors or skips. Source hashes matched the validated implementation before this bump. Chat-boundary, dictionary and whitespace guards passed.
+
+Debug and optimized unsigned release assembly passed with version 2.0.42/code 142. Release packaging verified Android 12+ metadata, all four native ABIs and absence of retired ChatScript assets/libraries.
+
+Physical launcher/OEM verification remains outstanding. Production signing and publication run in GitHub Actions.
+
+---
+
+<a id="version-2-0-41"></a>
+
+<a id="version-2-0-41-ayva-2041-141"></a>
+
+## Ayva 2.0.41 (141)
+
+Exam widgets now use a simpler editor with Exams, Design and Details tabs, a live preview, focused exam sheets and a cleaner widget/layout manager.
+
+The design picker has eight distinct options: **Poster, Orbit, Aurora, Bento, Signal, Frost, Prism and Layers**. Aurora is the starting point for new widgets. Seven older or overlapping layouts have been removed from selection; installed widgets, saved layouts and backups using those layouts remain readable and retain their settings until a new design is chosen.
+
+Glass designs provide translucent tint and reflective edges, with separate light/dark sample backdrops in the editor. They do not blur or capture the wallpaper. Palette, typography, transparency, exam-list, date/time and behavior controls remain available without a second layout chooser.
+
+Local verification: 50 focused checks passed across five suites with no failures, errors or skips, covering draft restoration/cancellation, legacy layout preservation, new defaults, native widget rendering and bounds, compact/large-font behavior, paging, contrast/transparency and productivity backup round trips. Chat-boundary, dictionary and whitespace guards passed.
+
+Debug and optimized unsigned release assembly passed with version 2.0.41/code 141. Release packaging verified Android 12+ metadata, all four native ABIs and absence of retired ChatScript assets/libraries. Production signing and publication run in GitHub Actions. Physical launcher/OEM pinning, resizing and translucency remain device checks.
+
+---
+
+<a id="version-2-0-40"></a>
+
+<a id="version-2-0-40-ayva-2040-140"></a>
+
+## Ayva 2.0.40 (140)
+
+- Automatic encrypted full backups with a chosen folder, configurable frequency and retention, and a portable recovery key exported as a key file or PDF. Recovery-key export and confirmation are required before scheduling.
+- Backup safeguards for private-vault authorization, queued work after settings changes, verified archive publication, and conservative deletion of owned older backups.
+- Multiple independent exam widgets and multiple exams per widget, with six designs, expanded appearance controls, saved layouts and pagination.
+- Recoverable encrypted-draft save failures preserve the last saved draft, keep the editor open and retry on later edits.
+- The home RHYTHMS card displays up to five habit rings with spacing and thickness adjusted to fit.
+
+Validation before this version bump: 1,611 full-app regression executions passed, followed by 461 security/backup/data-integrity executions after the final backup UI safeguard. All eight existing habit tests passed after the five-ring change. Debug and unsigned release builds also passed during the audits.
+
+After the bump, debug and unsigned optimized release assembly passed with version 2.0.40/code 140. Release packaging verified Android 12+ metadata, all four native ABIs and absence of retired ChatScript assets/libraries. Chat-boundary and dictionary guards passed. Production signing and publication run in GitHub Actions.
+
+Android scheduling is approximate. Physical-device checks for OnePlus/OEM behavior, Android Keystore, launcher pinning, PDF/QR output and document providers remain outstanding. The affected OnePlus phone's original crash cause has not been confirmed without its crash trace.
+
+---
+
+<a id="version-2-0-25"></a>
+
+<a id="version-2-0-25-ayva-2025-125"></a>
+
+## Ayva 2.0.25 (125)
+
+- Task + menu includes Create task, Create template, and Existing templates.
+- Planning, dependencies and start dates are grouped under the editor’s collapsed More section.
+- Template drafts are separate from task drafts; template names preserve date words.
+- Data & recovery uses themed settings rows and organized bottom sheets.
+- Habit routines use a labeled grouped card.
+- Includes recurring-checklist and autosaved-note deletion repairs.
+
+Validation: debug assembly and 32 focused checks passed on the preceding implementation;
+the earlier full suite passed 1,248 checks. This release commit changes version metadata only.
+
+---
+
+<a id="version-2-0-24"></a>
+
+<a id="version-2-0-24-ayva-2024-124"></a>
+
+## Ayva 2.0.24 (124)
+
+- Task dependencies, start dates, reusable templates, and required subtasks.
+- Selected-day and weekly habit targets, plus ordered habit routines.
+- Recovery centre, read-only backup verification, and storage reporting.
+- Customizable exam countdown home-screen widget with preview.
+- Stable transcription popup sizing and smoother voice-reactive animation.
+- Screen-capture protection for chat, shared-note entry, and widget configuration.
+
+Validation: 162 distinct focused productivity/regression checks passed across batches;
+backup merge round-trip and Notes isolation passed; debug APK assembled successfully.
+Prior voice and screen-protection focused checks also passed. Launcher appearance,
+resizing, pinning and physical-device scheduling still need phone verification.

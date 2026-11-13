@@ -1,23 +1,59 @@
-Follow-up repairs: [remaining audit remediation](APP_SECURITY_REMEDIATION_2026_10_29.md). This supersedes the original report’s outstanding implementation status; see its verification record for remaining device limits.
+# Security review guide
 
-Current audit results: [29 October 2026 audit and remediation](APP_SECURITY_DATA_AUDIT_2026_10_29.md). Source review is complete; outstanding recovery/concurrency risks and device checks are explicit.
+Security findings are tied to the commit/date reviewed. Historical remediation
+plans are not a fresh task list, and old “audit not started” or legacy-upgrade
+instructions do not describe the current unreleased-format policy. Revalidate a
+finding against current code before changing storage, credentials or recovery.
 
-# Current audit plan
+## Latest repository review
 
-For the new whole-app audit, start with [APP_SECURITY_DATA_AUDIT_PLAN.md](APP_SECURITY_DATA_AUDIT_PLAN.md). It prioritizes Notes, encryption, media and recoverability, accepts healthy code without changes, and requires current evidence before treating historical findings as actionable. Audit execution has not started.
+The [13 November 2026 repository review](../audits/REPOSITORY_REVIEW_2026-11-13.md)
+records an exposed historical licence-signing private key whose public verifier
+remains in the app. Retiring that licence key remains a security follow-up;
+documentation cleanup did not rotate it, rewrite history or change user data keys.
+See that review for evidence, scope and scan limitations. A clean current file
+scan does not remove a secret from Git history.
 
-# Security remediation handoff
+## Storage and backup implementation records
 
-Start with [the remediation plan](AYVA_REMEDIATION_PLAN.md). It covers direct upgrades from v1.6.0 onward, maximum notes protection, standard protection for other features, and preservation of existing data. [The security review](AYVA_SECURITY_DATA_REVIEW.md) records findings against commit `eaeeb8367d4bcff6cc935e08a74b9f88d7b5c049`; code links deliberately point to that reviewed commit. Revalidate findings against the current checkout before implementation.
+- [Archive/PIN flow](../features/notes/ARCHIVE_FLOW_2026-11-13.md).
+- [Backup progress and authenticated media reads](../features/backups/MEDIA_BACKUP_PROGRESS_2026-11-13.md).
+- [Simplified backup/restore flow](../features/backups/BACKUP_FLOW_REDESIGN_2026-11-07.md).
+- [Automatic backups](../features/backups/AUTOMATIC_FULL_BACKUPS.md) and
+  [consolidated historical audits](../features/backups/AUTOMATIC_BACKUP_AUDIT_HISTORY.md).
 
-These documents do not implement any application fixes. Work package 1 establishes reproducible builds, repairs test coverage, and creates historical upgrade fixtures. Implement packages in dependency order with reviewed commits; do not reset keys or clear app storage. Read the repository's AGENTS.md before editing.
+## Historical security evidence
 
-The optional `ayva_review_checks.py` requires Python 3 and the `cryptography` package. Run it from any directory:
+- [6 November independent review](INDEPENDENT_REVIEW_2026-11-06.md) and
+  [backup implementation audit](BACKUP_IMPLEMENTATION_AUDIT_2026-11-06.md).
+- [30 October review](SECURITY_REVIEW_2026_10_30.md).
+- [29 October whole-app audit](APP_SECURITY_DATA_AUDIT_2026_10_29.md) and
+  [remediation record](APP_SECURITY_REMEDIATION_2026_10_29.md).
+- [Earlier security review](AYVA_SECURITY_DATA_REVIEW.md),
+  [remediation plan](AYVA_REMEDIATION_PLAN.md) and
+  [audit plan](APP_SECURITY_DATA_AUDIT_PLAN.md).
+
+These preserve findings, source references, tests and limitations. Old legacy-file
+migration proposals and release statuses are historical evidence, not instructions
+to enable unsupported formats or rerun completed packages.
+
+## Active source guard and runtime verification
+
+Validation and release workflows run this Python 3 source-contract guard:
 
 ```sh
-python docs/security/ayva_review_checks.py
+python3 docs/security/ayva_review_checks.py
 ```
 
-It writes `ayva_review_checks.json` alongside the script. The checked-in result is the original audit result, not proof about later commits. These checks are source assertions and synthetic crypto/SQLite models; they do not replace Android builds, migration tests, instrumentation, or real-device Keystore testing. The source checks may intentionally fail once a finding is fixed; replace them with proper application regression tests rather than preserving the insecure behavior.
+The current script uses the standard library, checks current source contracts and
+prints its result; it does not generate or refresh the historical
+`ayva_review_checks.json` alongside it. That JSON and dated evidence files remain
+historical records, not results for the current checkout.
 
-The review's `/workspace` paths describe the original review environment. They are not setup requirements for a local PC. No genuine user data or credentials are included.
+Source assertions do not establish runtime cryptographic correctness or hardware
+Keystore behavior. JVM regressions, native emulator checks and physical-device
+acceptance serve distinct purposes; see the [build and test guide](../development/BUILD_AND_TEST.md).
+Review `AGENTS.md` before implementation and preserve existing data. Never clear
+storage, reset encryption/signing keys or introduce fallback plaintext storage to
+make a security check pass. Historical `/workspace` paths describe the original
+review environment, not setup requirements on a new machine.

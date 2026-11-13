@@ -33,7 +33,7 @@ described below; the original findings and evidence are retained as history.
 - Permanent regressions cover slow verification, clock changes in both
   directions, cleanup during saving, released ownership after cancellation,
   duplicate ViewModel requests and repeated UI confirmation with encrypted
-  private notes. Release validation is recorded in `docs/releases/2.0.43.md`.
+  private notes. Release validation is recorded in `docs/releases/CHANGELOG.md#version-2-0-43`.
 
 The findings below describe the pre-fix audit snapshot.
 

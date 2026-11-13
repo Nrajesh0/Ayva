@@ -1,6 +1,6 @@
 # Run: focused offline chat experiences
 
-Created: 28 October 2026. Status: implementation delivered locally; release validation remains open. See [implementation evidence and limits](FOCUSED_CHAT_IMPLEMENTATION.md).
+Created: 28 October 2026. Status: implementation delivered locally; release validation remains open. See [implementation evidence and limits](implementation/CHAT_EXPERIENCES.md#focused-chat).
 
 ## Product goal
 

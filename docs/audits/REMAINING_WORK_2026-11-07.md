@@ -1,5 +1,5 @@
 > Historical review of commit `53e0e005`. Implementation and validation status is tracked in
-> [Pre-release hardening](../implementation/PRE_RELEASE_HARDENING.md). Findings below describe the pre-change source.
+> [Pre-release hardening](../features/system/PRE_RELEASE_HARDENING.md). Findings below describe the pre-change source.
 
 # Ayva remaining-work review — 7 November 2026
 

@@ -6,7 +6,7 @@ The release is published at https://github.com/Nrajesh0/Ayva/releases/tag/v2.0.3
 
 ## Follow-up implementation
 
-The ten accepted findings are implemented in version 2.0.36 / 136 after this audited release. Local validation passed: 1,434 full-suite tests, 21 focused follow-up checks after the final resume hook, and final debug/release builds. See [changes, consequences and verification](../implementation/RUNTIME_RELIABILITY_FIXES.md). A03 remains deferred so intentional landscape hiding is preserved. The numbered findings below describe the original release and retain its source-line references.
+The ten accepted findings are implemented in version 2.0.36 / 136 after this audited release. Local validation passed: 1,434 full-suite tests, 21 focused follow-up checks after the final resume hook, and final debug/release builds. See [changes, consequences and verification](../features/system/RUNTIME_RELIABILITY_FIXES.md). A03 remains deferred so intentional landscape hiding is preserved. The numbered findings below describe the original release and retain its source-line references.
 
 ## Product decisions after review
 

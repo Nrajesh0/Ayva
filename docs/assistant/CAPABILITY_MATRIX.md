@@ -1,6 +1,6 @@
 # Current continuation
 
-See [OFFLINE_ASSISTANT_IMPLEMENTATION.md](OFFLINE_ASSISTANT_IMPLEMENTATION.md) for B3–B11 additions and remaining acceptance. The table and B2 vertical-migration record below document the earlier checkpoint. The live registry now also declares checklist editing, guided preparation drafts and the bundled dictionary/bookmark capability. Native/device and independent human validation are not implied by those declarations.
+See [OFFLINE_ASSISTANT_IMPLEMENTATION.md](history/FOUNDATION_DELIVERY.md#b3-b11-continuation) for B3–B11 additions and remaining acceptance. The table and B2 vertical-migration record below document the earlier checkpoint. The live registry now also declares checklist editing, guided preparation drafts and the bundled dictionary/bookmark capability. Native/device and independent human validation are not implied by those declarations.
 
 # B2 capability inventory and migration
 

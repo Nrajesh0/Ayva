@@ -1,8 +1,6 @@
 {
   "name": "RuN",
-  "description": "A fully offline App Locker & Focus Tracker app.",
+  "description": "Offline Android app for focus tracking, app blocking, tasks, habits, private notes, and an on-device assistant.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": []
 }

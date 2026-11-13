@@ -1,17 +1,17 @@
 # RUN visual guide
 
-[Read the PDF](RUN-Visual-Guide.pdf) · [Download the complete ZIP](RUN-Visual-Guide-bundle.zip) · [Interactive HTML](RUN-Visual-Guide.html)
+[Interactive HTML guide](RUN-Visual-Guide.html)
 
 Download and open the HTML locally to browse searchable file details, directory
 trees and clickable connections. GitHub's HTML file preview displays its source.
 Use the file page's download button for the offline guide.
 
-The 69-page PDF covers 13 feature areas, 21 diagrams, UI navigation,
-component responsibilities, storage/encryption, shared feature flows, material
-provenance/license gaps and a concrete F-Droid preparation checklist. Its appendix
-catalogs all 396 production Kotlin files. The complete bundle also includes
-the 1109-file inventory, static references, editable diagrams, material ledger,
-machine-readable data and generator scripts.
+The retained HTML guide covers 13 feature areas, UI navigation, component
+responsibilities, storage/encryption, shared feature flows, material provenance
+and a concrete F-Droid preparation checklist. It describes the historical snapshot
+below, not the current repository inventory. The CSV indexes and validation record
+remain available. Duplicate PDF and ZIP distributions were removed during the
+13 November 2026 repository cleanup.
 
 Source snapshot: [`cce930915554`](https://github.com/Nrajesh0/Ayva/tree/cce930915554c64c4884b134c238daed93e78155),
 version 2.0.37 / 137, 3 November 2026. This includes the

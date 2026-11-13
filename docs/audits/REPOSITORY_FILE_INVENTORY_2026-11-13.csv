@@ -1,0 +1,1198 @@
+path,category,tracked_bytes,android_main_input
+.github/workflows/native-validation.yml,CI and development tools,1711,False
+.github/workflows/release.yml,CI and development tools,4796,False
+.github/workflows/validate.yml,CI and development tools,2111,False
+.gitignore,Build/config/other,432,False
+AGENTS.md,Documentation and review files,761,False
+AUDIT_TRACKER.md,Documentation and review files,209474,False
+LICENSE,Build/config/other,33882,False
+README.md,Documentation and review files,3205,False
+TRADEMARK.md,Documentation and review files,4927,False
+app/.gitignore,Build/config/other,7,False
+app/README.md,Documentation and review files,424,False
+app/build.gradle.kts,Build/config/other,6695,False
+app/proguard-rules.pro,Build/config/other,5662,False
+app/schemas/com.focusbyrj.app.data.FocusDatabase/12.json,Room schema snapshots,15070,False
+app/schemas/com.focusbyrj.app.data.FocusDatabase/13.json,Room schema snapshots,16599,False
+app/schemas/com.focusbyrj.app.data.FocusDatabase/14.json,Room schema snapshots,16842,False
+app/schemas/com.focusbyrj.app.data.FocusDatabase/15.json,Room schema snapshots,17285,False
+app/schemas/com.focusbyrj.app.data.FocusDatabase/16.json,Room schema snapshots,17531,False
+app/schemas/com.focusbyrj.app.data.VocabDatabase/3.json,Room schema snapshots,8257,False
+app/schemas/com.focusbyrj.app.data.chat.AyvaChatDatabase/1.json,Room schema snapshots,11112,False
+app/schemas/com.focusbyrj.app.data.drill.DrillDatabase/1.json,Room schema snapshots,2723,False
+app/schemas/com.focusbyrj.app.data.note.NoteDatabase/7.json,Room schema snapshots,3997,False
+app/src/androidTest/java/com/focusbyrj/app/ui/AdditionalEditorBackDeviceTest.kt,Tests and test support,5898,False
+app/src/androidTest/java/com/focusbyrj/app/ui/EditorBackDeviceTest.kt,Tests and test support,6771,False
+app/src/androidTest/java/com/focusbyrj/app/ui/chat/FocusedDiscoveryDeviceTest.kt,Tests and test support,3606,False
+app/src/androidTest/java/com/focusbyrj/app/ui/components/SmokePawChestDeviceTest.kt,Tests and test support,6330,False
+app/src/androidTest/java/com/focusbyrj/app/util/backup/AuxiliaryEncryptionDeviceTest.kt,Tests and test support,7579,False
+app/src/androidTest/java/com/focusbyrj/app/util/backup/RestoreRecoveryDeviceTest.kt,Tests and test support,11272,False
+app/src/main/AndroidManifest.xml,Production resources/assets/manifest,23023,True
+app/src/main/assets/ayva_knowledge_base.json,Production resources/assets/manifest,49486,True
+app/src/main/assets/cat_action.lottie,Production resources/assets/manifest,193328,True
+app/src/main/assets/cat_angry.lottie,Production resources/assets/manifest,2467,True
+app/src/main/assets/cat_awesome_morning.riv,Production resources/assets/manifest,23368,True
+app/src/main/assets/cat_blunng.riv,Production resources/assets/manifest,21537,True
+app/src/main/assets/cat_dance.lottie,Production resources/assets/manifest,19607,True
+app/src/main/assets/cat_error.lottie,Production resources/assets/manifest,13309,True
+app/src/main/assets/cat_evening.lottie,Production resources/assets/manifest,4737,True
+app/src/main/assets/cat_flying.lottie,Production resources/assets/manifest,12394,True
+app/src/main/assets/cat_gold_fish.riv,Production resources/assets/manifest,48029,True
+app/src/main/assets/cat_googlyeyes.riv,Production resources/assets/manifest,2962,True
+app/src/main/assets/cat_luna.riv,Production resources/assets/manifest,58169,True
+app/src/main/assets/cat_morning.lottie,Production resources/assets/manifest,266061,True
+app/src/main/assets/cat_wildfairy.riv,Production resources/assets/manifest,1649674,True
+app/src/main/assets/dictionary/00.dict,Production resources/assets/manifest,38208,True
+app/src/main/assets/dictionary/01.dict,Production resources/assets/manifest,36551,True
+app/src/main/assets/dictionary/02.dict,Production resources/assets/manifest,35786,True
+app/src/main/assets/dictionary/03.dict,Production resources/assets/manifest,34917,True
+app/src/main/assets/dictionary/04.dict,Production resources/assets/manifest,39254,True
+app/src/main/assets/dictionary/05.dict,Production resources/assets/manifest,35756,True
+app/src/main/assets/dictionary/06.dict,Production resources/assets/manifest,38713,True
+app/src/main/assets/dictionary/07.dict,Production resources/assets/manifest,34766,True
+app/src/main/assets/dictionary/08.dict,Production resources/assets/manifest,37939,True
+app/src/main/assets/dictionary/09.dict,Production resources/assets/manifest,35424,True
+app/src/main/assets/dictionary/0a.dict,Production resources/assets/manifest,37521,True
+app/src/main/assets/dictionary/0b.dict,Production resources/assets/manifest,38981,True
+app/src/main/assets/dictionary/0c.dict,Production resources/assets/manifest,34911,True
+app/src/main/assets/dictionary/0d.dict,Production resources/assets/manifest,37806,True
+app/src/main/assets/dictionary/0e.dict,Production resources/assets/manifest,35982,True
+app/src/main/assets/dictionary/0f.dict,Production resources/assets/manifest,38940,True
+app/src/main/assets/dictionary/10.dict,Production resources/assets/manifest,32991,True
+app/src/main/assets/dictionary/11.dict,Production resources/assets/manifest,40650,True
+app/src/main/assets/dictionary/12.dict,Production resources/assets/manifest,37201,True
+app/src/main/assets/dictionary/13.dict,Production resources/assets/manifest,35432,True
+app/src/main/assets/dictionary/14.dict,Production resources/assets/manifest,39095,True
+app/src/main/assets/dictionary/15.dict,Production resources/assets/manifest,38661,True
+app/src/main/assets/dictionary/16.dict,Production resources/assets/manifest,41018,True
+app/src/main/assets/dictionary/17.dict,Production resources/assets/manifest,34076,True
+app/src/main/assets/dictionary/18.dict,Production resources/assets/manifest,36739,True
+app/src/main/assets/dictionary/19.dict,Production resources/assets/manifest,41687,True
+app/src/main/assets/dictionary/1a.dict,Production resources/assets/manifest,36692,True
+app/src/main/assets/dictionary/1b.dict,Production resources/assets/manifest,39581,True
+app/src/main/assets/dictionary/1c.dict,Production resources/assets/manifest,36235,True
+app/src/main/assets/dictionary/1d.dict,Production resources/assets/manifest,36425,True
+app/src/main/assets/dictionary/1e.dict,Production resources/assets/manifest,35598,True
+app/src/main/assets/dictionary/1f.dict,Production resources/assets/manifest,35040,True
+app/src/main/assets/dictionary/20.dict,Production resources/assets/manifest,37715,True
+app/src/main/assets/dictionary/21.dict,Production resources/assets/manifest,31736,True
+app/src/main/assets/dictionary/22.dict,Production resources/assets/manifest,38003,True
+app/src/main/assets/dictionary/23.dict,Production resources/assets/manifest,42807,True
+app/src/main/assets/dictionary/24.dict,Production resources/assets/manifest,41204,True
+app/src/main/assets/dictionary/25.dict,Production resources/assets/manifest,37213,True
+app/src/main/assets/dictionary/26.dict,Production resources/assets/manifest,33703,True
+app/src/main/assets/dictionary/27.dict,Production resources/assets/manifest,35904,True
+app/src/main/assets/dictionary/28.dict,Production resources/assets/manifest,34375,True
+app/src/main/assets/dictionary/29.dict,Production resources/assets/manifest,38445,True
+app/src/main/assets/dictionary/2a.dict,Production resources/assets/manifest,39071,True
+app/src/main/assets/dictionary/2b.dict,Production resources/assets/manifest,42416,True
+app/src/main/assets/dictionary/2c.dict,Production resources/assets/manifest,42047,True
+app/src/main/assets/dictionary/2d.dict,Production resources/assets/manifest,40052,True
+app/src/main/assets/dictionary/2e.dict,Production resources/assets/manifest,37466,True
+app/src/main/assets/dictionary/2f.dict,Production resources/assets/manifest,34416,True
+app/src/main/assets/dictionary/30.dict,Production resources/assets/manifest,34002,True
+app/src/main/assets/dictionary/31.dict,Production resources/assets/manifest,39207,True
+app/src/main/assets/dictionary/32.dict,Production resources/assets/manifest,38228,True
+app/src/main/assets/dictionary/33.dict,Production resources/assets/manifest,38094,True
+app/src/main/assets/dictionary/34.dict,Production resources/assets/manifest,38288,True
+app/src/main/assets/dictionary/35.dict,Production resources/assets/manifest,38031,True
+app/src/main/assets/dictionary/36.dict,Production resources/assets/manifest,36368,True
+app/src/main/assets/dictionary/37.dict,Production resources/assets/manifest,42531,True
+app/src/main/assets/dictionary/38.dict,Production resources/assets/manifest,36108,True
+app/src/main/assets/dictionary/39.dict,Production resources/assets/manifest,39719,True
+app/src/main/assets/dictionary/3a.dict,Production resources/assets/manifest,34984,True
+app/src/main/assets/dictionary/3b.dict,Production resources/assets/manifest,36391,True
+app/src/main/assets/dictionary/3c.dict,Production resources/assets/manifest,37544,True
+app/src/main/assets/dictionary/3d.dict,Production resources/assets/manifest,37214,True
+app/src/main/assets/dictionary/3e.dict,Production resources/assets/manifest,40295,True
+app/src/main/assets/dictionary/3f.dict,Production resources/assets/manifest,41043,True
+app/src/main/assets/dictionary/40.dict,Production resources/assets/manifest,38636,True
+app/src/main/assets/dictionary/41.dict,Production resources/assets/manifest,38015,True
+app/src/main/assets/dictionary/42.dict,Production resources/assets/manifest,34914,True
+app/src/main/assets/dictionary/43.dict,Production resources/assets/manifest,35227,True
+app/src/main/assets/dictionary/44.dict,Production resources/assets/manifest,37643,True
+app/src/main/assets/dictionary/45.dict,Production resources/assets/manifest,35361,True
+app/src/main/assets/dictionary/46.dict,Production resources/assets/manifest,36869,True
+app/src/main/assets/dictionary/47.dict,Production resources/assets/manifest,38024,True
+app/src/main/assets/dictionary/48.dict,Production resources/assets/manifest,36333,True
+app/src/main/assets/dictionary/49.dict,Production resources/assets/manifest,36571,True
+app/src/main/assets/dictionary/4a.dict,Production resources/assets/manifest,35325,True
+app/src/main/assets/dictionary/4b.dict,Production resources/assets/manifest,39788,True
+app/src/main/assets/dictionary/4c.dict,Production resources/assets/manifest,40838,True
+app/src/main/assets/dictionary/4d.dict,Production resources/assets/manifest,34698,True
+app/src/main/assets/dictionary/4e.dict,Production resources/assets/manifest,36557,True
+app/src/main/assets/dictionary/4f.dict,Production resources/assets/manifest,39004,True
+app/src/main/assets/dictionary/50.dict,Production resources/assets/manifest,36210,True
+app/src/main/assets/dictionary/51.dict,Production resources/assets/manifest,37560,True
+app/src/main/assets/dictionary/52.dict,Production resources/assets/manifest,37172,True
+app/src/main/assets/dictionary/53.dict,Production resources/assets/manifest,35773,True
+app/src/main/assets/dictionary/54.dict,Production resources/assets/manifest,36581,True
+app/src/main/assets/dictionary/55.dict,Production resources/assets/manifest,35614,True
+app/src/main/assets/dictionary/56.dict,Production resources/assets/manifest,36805,True
+app/src/main/assets/dictionary/57.dict,Production resources/assets/manifest,36968,True
+app/src/main/assets/dictionary/58.dict,Production resources/assets/manifest,38325,True
+app/src/main/assets/dictionary/59.dict,Production resources/assets/manifest,35667,True
+app/src/main/assets/dictionary/5a.dict,Production resources/assets/manifest,39836,True
+app/src/main/assets/dictionary/5b.dict,Production resources/assets/manifest,36229,True
+app/src/main/assets/dictionary/5c.dict,Production resources/assets/manifest,34777,True
+app/src/main/assets/dictionary/5d.dict,Production resources/assets/manifest,36632,True
+app/src/main/assets/dictionary/5e.dict,Production resources/assets/manifest,38059,True
+app/src/main/assets/dictionary/5f.dict,Production resources/assets/manifest,33917,True
+app/src/main/assets/dictionary/60.dict,Production resources/assets/manifest,35517,True
+app/src/main/assets/dictionary/61.dict,Production resources/assets/manifest,36836,True
+app/src/main/assets/dictionary/62.dict,Production resources/assets/manifest,37664,True
+app/src/main/assets/dictionary/63.dict,Production resources/assets/manifest,41564,True
+app/src/main/assets/dictionary/64.dict,Production resources/assets/manifest,34172,True
+app/src/main/assets/dictionary/65.dict,Production resources/assets/manifest,35379,True
+app/src/main/assets/dictionary/66.dict,Production resources/assets/manifest,38129,True
+app/src/main/assets/dictionary/67.dict,Production resources/assets/manifest,34814,True
+app/src/main/assets/dictionary/68.dict,Production resources/assets/manifest,38727,True
+app/src/main/assets/dictionary/69.dict,Production resources/assets/manifest,35124,True
+app/src/main/assets/dictionary/6a.dict,Production resources/assets/manifest,36847,True
+app/src/main/assets/dictionary/6b.dict,Production resources/assets/manifest,30721,True
+app/src/main/assets/dictionary/6c.dict,Production resources/assets/manifest,40907,True
+app/src/main/assets/dictionary/6d.dict,Production resources/assets/manifest,35456,True
+app/src/main/assets/dictionary/6e.dict,Production resources/assets/manifest,40668,True
+app/src/main/assets/dictionary/6f.dict,Production resources/assets/manifest,36219,True
+app/src/main/assets/dictionary/70.dict,Production resources/assets/manifest,38624,True
+app/src/main/assets/dictionary/71.dict,Production resources/assets/manifest,37159,True
+app/src/main/assets/dictionary/72.dict,Production resources/assets/manifest,38125,True
+app/src/main/assets/dictionary/73.dict,Production resources/assets/manifest,36386,True
+app/src/main/assets/dictionary/74.dict,Production resources/assets/manifest,38040,True
+app/src/main/assets/dictionary/75.dict,Production resources/assets/manifest,36533,True
+app/src/main/assets/dictionary/76.dict,Production resources/assets/manifest,35297,True
+app/src/main/assets/dictionary/77.dict,Production resources/assets/manifest,37021,True
+app/src/main/assets/dictionary/78.dict,Production resources/assets/manifest,36940,True
+app/src/main/assets/dictionary/79.dict,Production resources/assets/manifest,34622,True
+app/src/main/assets/dictionary/7a.dict,Production resources/assets/manifest,36564,True
+app/src/main/assets/dictionary/7b.dict,Production resources/assets/manifest,38828,True
+app/src/main/assets/dictionary/7c.dict,Production resources/assets/manifest,36704,True
+app/src/main/assets/dictionary/7d.dict,Production resources/assets/manifest,37944,True
+app/src/main/assets/dictionary/7e.dict,Production resources/assets/manifest,35582,True
+app/src/main/assets/dictionary/7f.dict,Production resources/assets/manifest,36721,True
+app/src/main/assets/dictionary/80.dict,Production resources/assets/manifest,37780,True
+app/src/main/assets/dictionary/81.dict,Production resources/assets/manifest,40918,True
+app/src/main/assets/dictionary/82.dict,Production resources/assets/manifest,40254,True
+app/src/main/assets/dictionary/83.dict,Production resources/assets/manifest,36920,True
+app/src/main/assets/dictionary/84.dict,Production resources/assets/manifest,36521,True
+app/src/main/assets/dictionary/85.dict,Production resources/assets/manifest,38169,True
+app/src/main/assets/dictionary/86.dict,Production resources/assets/manifest,35124,True
+app/src/main/assets/dictionary/87.dict,Production resources/assets/manifest,37639,True
+app/src/main/assets/dictionary/88.dict,Production resources/assets/manifest,39817,True
+app/src/main/assets/dictionary/89.dict,Production resources/assets/manifest,36072,True
+app/src/main/assets/dictionary/8a.dict,Production resources/assets/manifest,37663,True
+app/src/main/assets/dictionary/8b.dict,Production resources/assets/manifest,37089,True
+app/src/main/assets/dictionary/8c.dict,Production resources/assets/manifest,33445,True
+app/src/main/assets/dictionary/8d.dict,Production resources/assets/manifest,34552,True
+app/src/main/assets/dictionary/8e.dict,Production resources/assets/manifest,35460,True
+app/src/main/assets/dictionary/8f.dict,Production resources/assets/manifest,41868,True
+app/src/main/assets/dictionary/90.dict,Production resources/assets/manifest,40400,True
+app/src/main/assets/dictionary/91.dict,Production resources/assets/manifest,35700,True
+app/src/main/assets/dictionary/92.dict,Production resources/assets/manifest,36371,True
+app/src/main/assets/dictionary/93.dict,Production resources/assets/manifest,36390,True
+app/src/main/assets/dictionary/94.dict,Production resources/assets/manifest,40141,True
+app/src/main/assets/dictionary/95.dict,Production resources/assets/manifest,38588,True
+app/src/main/assets/dictionary/96.dict,Production resources/assets/manifest,35771,True
+app/src/main/assets/dictionary/97.dict,Production resources/assets/manifest,38081,True
+app/src/main/assets/dictionary/98.dict,Production resources/assets/manifest,36939,True
+app/src/main/assets/dictionary/99.dict,Production resources/assets/manifest,37410,True
+app/src/main/assets/dictionary/9a.dict,Production resources/assets/manifest,34808,True
+app/src/main/assets/dictionary/9b.dict,Production resources/assets/manifest,40143,True
+app/src/main/assets/dictionary/9c.dict,Production resources/assets/manifest,36548,True
+app/src/main/assets/dictionary/9d.dict,Production resources/assets/manifest,35246,True
+app/src/main/assets/dictionary/9e.dict,Production resources/assets/manifest,35278,True
+app/src/main/assets/dictionary/9f.dict,Production resources/assets/manifest,37942,True
+app/src/main/assets/dictionary/LICENSE.txt,Production resources/assets/manifest,2497,True
+app/src/main/assets/dictionary/a0.dict,Production resources/assets/manifest,36826,True
+app/src/main/assets/dictionary/a1.dict,Production resources/assets/manifest,36106,True
+app/src/main/assets/dictionary/a2.dict,Production resources/assets/manifest,35136,True
+app/src/main/assets/dictionary/a3.dict,Production resources/assets/manifest,37175,True
+app/src/main/assets/dictionary/a4.dict,Production resources/assets/manifest,36143,True
+app/src/main/assets/dictionary/a5.dict,Production resources/assets/manifest,37534,True
+app/src/main/assets/dictionary/a6.dict,Production resources/assets/manifest,38451,True
+app/src/main/assets/dictionary/a7.dict,Production resources/assets/manifest,34394,True
+app/src/main/assets/dictionary/a8.dict,Production resources/assets/manifest,34989,True
+app/src/main/assets/dictionary/a9.dict,Production resources/assets/manifest,41766,True
+app/src/main/assets/dictionary/aa.dict,Production resources/assets/manifest,36151,True
+app/src/main/assets/dictionary/ab.dict,Production resources/assets/manifest,39951,True
+app/src/main/assets/dictionary/ac.dict,Production resources/assets/manifest,38970,True
+app/src/main/assets/dictionary/ad.dict,Production resources/assets/manifest,39485,True
+app/src/main/assets/dictionary/ae.dict,Production resources/assets/manifest,35793,True
+app/src/main/assets/dictionary/af.dict,Production resources/assets/manifest,36902,True
+app/src/main/assets/dictionary/b0.dict,Production resources/assets/manifest,35350,True
+app/src/main/assets/dictionary/b1.dict,Production resources/assets/manifest,42660,True
+app/src/main/assets/dictionary/b2.dict,Production resources/assets/manifest,37503,True
+app/src/main/assets/dictionary/b3.dict,Production resources/assets/manifest,37681,True
+app/src/main/assets/dictionary/b4.dict,Production resources/assets/manifest,34198,True
+app/src/main/assets/dictionary/b5.dict,Production resources/assets/manifest,34039,True
+app/src/main/assets/dictionary/b6.dict,Production resources/assets/manifest,34593,True
+app/src/main/assets/dictionary/b7.dict,Production resources/assets/manifest,40043,True
+app/src/main/assets/dictionary/b8.dict,Production resources/assets/manifest,35714,True
+app/src/main/assets/dictionary/b9.dict,Production resources/assets/manifest,34807,True
+app/src/main/assets/dictionary/ba.dict,Production resources/assets/manifest,36506,True
+app/src/main/assets/dictionary/bb.dict,Production resources/assets/manifest,37479,True
+app/src/main/assets/dictionary/bc.dict,Production resources/assets/manifest,36043,True
+app/src/main/assets/dictionary/bd.dict,Production resources/assets/manifest,36591,True
+app/src/main/assets/dictionary/be.dict,Production resources/assets/manifest,38206,True
+app/src/main/assets/dictionary/bf.dict,Production resources/assets/manifest,37392,True
+app/src/main/assets/dictionary/c0.dict,Production resources/assets/manifest,39674,True
+app/src/main/assets/dictionary/c1.dict,Production resources/assets/manifest,36738,True
+app/src/main/assets/dictionary/c2.dict,Production resources/assets/manifest,34862,True
+app/src/main/assets/dictionary/c3.dict,Production resources/assets/manifest,35047,True
+app/src/main/assets/dictionary/c4.dict,Production resources/assets/manifest,36351,True
+app/src/main/assets/dictionary/c5.dict,Production resources/assets/manifest,39027,True
+app/src/main/assets/dictionary/c6.dict,Production resources/assets/manifest,36117,True
+app/src/main/assets/dictionary/c7.dict,Production resources/assets/manifest,37306,True
+app/src/main/assets/dictionary/c8.dict,Production resources/assets/manifest,34375,True
+app/src/main/assets/dictionary/c9.dict,Production resources/assets/manifest,36691,True
+app/src/main/assets/dictionary/ca.dict,Production resources/assets/manifest,41293,True
+app/src/main/assets/dictionary/cb.dict,Production resources/assets/manifest,38971,True
+app/src/main/assets/dictionary/cc.dict,Production resources/assets/manifest,37736,True
+app/src/main/assets/dictionary/cd.dict,Production resources/assets/manifest,35008,True
+app/src/main/assets/dictionary/ce.dict,Production resources/assets/manifest,38808,True
+app/src/main/assets/dictionary/cf.dict,Production resources/assets/manifest,37562,True
+app/src/main/assets/dictionary/d0.dict,Production resources/assets/manifest,41440,True
+app/src/main/assets/dictionary/d1.dict,Production resources/assets/manifest,38293,True
+app/src/main/assets/dictionary/d2.dict,Production resources/assets/manifest,36862,True
+app/src/main/assets/dictionary/d3.dict,Production resources/assets/manifest,36481,True
+app/src/main/assets/dictionary/d4.dict,Production resources/assets/manifest,37420,True
+app/src/main/assets/dictionary/d5.dict,Production resources/assets/manifest,33120,True
+app/src/main/assets/dictionary/d6.dict,Production resources/assets/manifest,37413,True
+app/src/main/assets/dictionary/d7.dict,Production resources/assets/manifest,42901,True
+app/src/main/assets/dictionary/d8.dict,Production resources/assets/manifest,34144,True
+app/src/main/assets/dictionary/d9.dict,Production resources/assets/manifest,40314,True
+app/src/main/assets/dictionary/da.dict,Production resources/assets/manifest,35265,True
+app/src/main/assets/dictionary/db.dict,Production resources/assets/manifest,35155,True
+app/src/main/assets/dictionary/dc.dict,Production resources/assets/manifest,42772,True
+app/src/main/assets/dictionary/dd.dict,Production resources/assets/manifest,37270,True
+app/src/main/assets/dictionary/de.dict,Production resources/assets/manifest,34175,True
+app/src/main/assets/dictionary/df.dict,Production resources/assets/manifest,35251,True
+app/src/main/assets/dictionary/e0.dict,Production resources/assets/manifest,38186,True
+app/src/main/assets/dictionary/e1.dict,Production resources/assets/manifest,31063,True
+app/src/main/assets/dictionary/e2.dict,Production resources/assets/manifest,35372,True
+app/src/main/assets/dictionary/e3.dict,Production resources/assets/manifest,35870,True
+app/src/main/assets/dictionary/e4.dict,Production resources/assets/manifest,39390,True
+app/src/main/assets/dictionary/e5.dict,Production resources/assets/manifest,36498,True
+app/src/main/assets/dictionary/e6.dict,Production resources/assets/manifest,39985,True
+app/src/main/assets/dictionary/e7.dict,Production resources/assets/manifest,35136,True
+app/src/main/assets/dictionary/e8.dict,Production resources/assets/manifest,36038,True
+app/src/main/assets/dictionary/e9.dict,Production resources/assets/manifest,37382,True
+app/src/main/assets/dictionary/ea.dict,Production resources/assets/manifest,36703,True
+app/src/main/assets/dictionary/eb.dict,Production resources/assets/manifest,35322,True
+app/src/main/assets/dictionary/ec.dict,Production resources/assets/manifest,38712,True
+app/src/main/assets/dictionary/ed.dict,Production resources/assets/manifest,37688,True
+app/src/main/assets/dictionary/ee.dict,Production resources/assets/manifest,36080,True
+app/src/main/assets/dictionary/ef.dict,Production resources/assets/manifest,33993,True
+app/src/main/assets/dictionary/f0.dict,Production resources/assets/manifest,37580,True
+app/src/main/assets/dictionary/f1.dict,Production resources/assets/manifest,36597,True
+app/src/main/assets/dictionary/f2.dict,Production resources/assets/manifest,34085,True
+app/src/main/assets/dictionary/f3.dict,Production resources/assets/manifest,36073,True
+app/src/main/assets/dictionary/f4.dict,Production resources/assets/manifest,37401,True
+app/src/main/assets/dictionary/f5.dict,Production resources/assets/manifest,39063,True
+app/src/main/assets/dictionary/f6.dict,Production resources/assets/manifest,34086,True
+app/src/main/assets/dictionary/f7.dict,Production resources/assets/manifest,36504,True
+app/src/main/assets/dictionary/f8.dict,Production resources/assets/manifest,33904,True
+app/src/main/assets/dictionary/f9.dict,Production resources/assets/manifest,39797,True
+app/src/main/assets/dictionary/fa.dict,Production resources/assets/manifest,39073,True
+app/src/main/assets/dictionary/fb.dict,Production resources/assets/manifest,35489,True
+app/src/main/assets/dictionary/fc.dict,Production resources/assets/manifest,40348,True
+app/src/main/assets/dictionary/fd.dict,Production resources/assets/manifest,37581,True
+app/src/main/assets/dictionary/fe.dict,Production resources/assets/manifest,36280,True
+app/src/main/assets/dictionary/ff.dict,Production resources/assets/manifest,39423,True
+app/src/main/assets/dictionary/manifest.json,Production resources/assets/manifest,20502,True
+app/src/main/assets/dictionary/plain_english.json,Production resources/assets/manifest,5522,True
+app/src/main/assets/habbitautumcat.lottie,Production resources/assets/manifest,40924,True
+app/src/main/assets/habbitboredcat.lottie,Production resources/assets/manifest,9194,True
+app/src/main/assets/habbitcatplayingbyobservingballs.lottie,Production resources/assets/manifest,5335,True
+app/src/main/assets/habbitcatssleeping.lottie,Production resources/assets/manifest,20124,True
+app/src/main/assets/habbitchrismascat.lottie,Production resources/assets/manifest,65029,True
+app/src/main/assets/habbitcutegirlcat.lottie,Production resources/assets/manifest,27296,True
+app/src/main/assets/habbitgojoawseomecat.lottie,Production resources/assets/manifest,75584,True
+app/src/main/assets/habbithappylaptopcat.lottie,Production resources/assets/manifest,65301,True
+app/src/main/assets/habbithollowencat.lottie,Production resources/assets/manifest,353437,True
+app/src/main/assets/habbitpopupcat.lottie,Production resources/assets/manifest,204939,True
+app/src/main/assets/habbitscalmcat.lottie,Production resources/assets/manifest,20360,True
+app/src/main/assets/habbitsppokycat.lottie,Production resources/assets/manifest,9356,True
+app/src/main/assets/licenses/Allura-OFL.txt,Production resources/assets/manifest,4384,True
+app/src/main/assets/smoke_paw_chest.html,Production resources/assets/manifest,19201,True
+app/src/main/assets/vocab.db,Production resources/assets/manifest,561152,True
+app/src/main/java/com/focusbyrj/app/FocusApplication.kt,Production Kotlin/Java,7274,True
+app/src/main/java/com/focusbyrj/app/MainActivity.kt,Production Kotlin/Java,40723,True
+app/src/main/java/com/focusbyrj/app/data/AppRepository.kt,Production Kotlin/Java,4702,True
+app/src/main/java/com/focusbyrj/app/data/AppRestriction.kt,Production Kotlin/Java,764,True
+app/src/main/java/com/focusbyrj/app/data/AppRestrictionDao.kt,Production Kotlin/Java,1513,True
+app/src/main/java/com/focusbyrj/app/data/AssistantPlanReceipt.kt,Production Kotlin/Java,1102,True
+app/src/main/java/com/focusbyrj/app/data/DictionaryBookmark.kt,Production Kotlin/Java,560,True
+app/src/main/java/com/focusbyrj/app/data/FocusDatabase.kt,Production Kotlin/Java,14243,True
+app/src/main/java/com/focusbyrj/app/data/FocusSchedule.kt,Production Kotlin/Java,2549,True
+app/src/main/java/com/focusbyrj/app/data/Habit.kt,Production Kotlin/Java,4372,True
+app/src/main/java/com/focusbyrj/app/data/HabitDao.kt,Production Kotlin/Java,3720,True
+app/src/main/java/com/focusbyrj/app/data/HabitFrequency.kt,Production Kotlin/Java,2989,True
+app/src/main/java/com/focusbyrj/app/data/HabitPause.kt,Production Kotlin/Java,913,True
+app/src/main/java/com/focusbyrj/app/data/HabitRepository.kt,Production Kotlin/Java,15486,True
+app/src/main/java/com/focusbyrj/app/data/PreservingSqlCipherFactory.kt,Production Kotlin/Java,2838,True
+app/src/main/java/com/focusbyrj/app/data/ProductivityLibrary.kt,Production Kotlin/Java,7030,True
+app/src/main/java/com/focusbyrj/app/data/RecurringTaskWork.kt,Production Kotlin/Java,3138,True
+app/src/main/java/com/focusbyrj/app/data/ScheduleDao.kt,Production Kotlin/Java,1023,True
+app/src/main/java/com/focusbyrj/app/data/SecureRoomFactory.kt,Production Kotlin/Java,924,True
+app/src/main/java/com/focusbyrj/app/data/Task.kt,Production Kotlin/Java,2967,True
+app/src/main/java/com/focusbyrj/app/data/TaskCompletionRules.kt,Production Kotlin/Java,862,True
+app/src/main/java/com/focusbyrj/app/data/TaskDao.kt,Production Kotlin/Java,8107,True
+app/src/main/java/com/focusbyrj/app/data/TaskPlanning.kt,Production Kotlin/Java,7448,True
+app/src/main/java/com/focusbyrj/app/data/TaskRepository.kt,Production Kotlin/Java,1722,True
+app/src/main/java/com/focusbyrj/app/data/VocabDao.kt,Production Kotlin/Java,5780,True
+app/src/main/java/com/focusbyrj/app/data/VocabDatabase.kt,Production Kotlin/Java,1646,True
+app/src/main/java/com/focusbyrj/app/data/VocabEntities.kt,Production Kotlin/Java,2204,True
+app/src/main/java/com/focusbyrj/app/data/VocabQuizWriter.kt,Production Kotlin/Java,1499,True
+app/src/main/java/com/focusbyrj/app/data/VocabRepository.kt,Production Kotlin/Java,5328,True
+app/src/main/java/com/focusbyrj/app/data/VocabSeed.kt,Production Kotlin/Java,2522,True
+app/src/main/java/com/focusbyrj/app/data/WorkSession.kt,Production Kotlin/Java,1481,True
+app/src/main/java/com/focusbyrj/app/data/chat/ActiveDrillStateEntity.kt,Production Kotlin/Java,1025,True
+app/src/main/java/com/focusbyrj/app/data/chat/AyvaChatDao.kt,Production Kotlin/Java,2578,True
+app/src/main/java/com/focusbyrj/app/data/chat/AyvaChatDatabase.kt,Production Kotlin/Java,1846,True
+app/src/main/java/com/focusbyrj/app/data/chat/AyvaChatMessageEntity.kt,Production Kotlin/Java,4067,True
+app/src/main/java/com/focusbyrj/app/data/drill/DrillDatabase.kt,Production Kotlin/Java,6213,True
+app/src/main/java/com/focusbyrj/app/data/drill/DrillModels.kt,Production Kotlin/Java,8775,True
+app/src/main/java/com/focusbyrj/app/data/note/ArchiveVaultSecurity.kt,Production Kotlin/Java,38810,True
+app/src/main/java/com/focusbyrj/app/data/note/DatabaseKeyProvider.kt,Production Kotlin/Java,9700,True
+app/src/main/java/com/focusbyrj/app/data/note/MediaRetirement.kt,Production Kotlin/Java,4564,True
+app/src/main/java/com/focusbyrj/app/data/note/NoteDao.kt,Production Kotlin/Java,9382,True
+app/src/main/java/com/focusbyrj/app/data/note/NoteDatabase.kt,Production Kotlin/Java,15413,True
+app/src/main/java/com/focusbyrj/app/data/note/NoteEntity.kt,Production Kotlin/Java,8506,True
+app/src/main/java/com/focusbyrj/app/data/note/NoteImageHelper.kt,Production Kotlin/Java,12591,True
+app/src/main/java/com/focusbyrj/app/data/note/NoteMediaInventory.kt,Production Kotlin/Java,3684,True
+app/src/main/java/com/focusbyrj/app/data/note/NoteMediaManager.kt,Production Kotlin/Java,7423,True
+app/src/main/java/com/focusbyrj/app/data/note/NoteRepository.kt,Production Kotlin/Java,15294,True
+app/src/main/java/com/focusbyrj/app/data/note/NotesStorageVersion.kt,Production Kotlin/Java,313,True
+app/src/main/java/com/focusbyrj/app/service/AptitudeReminderHelper.kt,Production Kotlin/Java,1643,True
+app/src/main/java/com/focusbyrj/app/service/AptitudeReminderReceiver.kt,Production Kotlin/Java,13462,True
+app/src/main/java/com/focusbyrj/app/service/BlockOverlayManager.kt,Production Kotlin/Java,22101,True
+app/src/main/java/com/focusbyrj/app/service/BootReceiver.kt,Production Kotlin/Java,1805,True
+app/src/main/java/com/focusbyrj/app/service/BubbleService.kt,Production Kotlin/Java,70546,True
+app/src/main/java/com/focusbyrj/app/service/DailySummaryReceiver.kt,Production Kotlin/Java,12072,True
+app/src/main/java/com/focusbyrj/app/service/FocusBlockerService.kt,Production Kotlin/Java,31130,True
+app/src/main/java/com/focusbyrj/app/service/FocusDeviceAdminReceiver.kt,Production Kotlin/Java,136,True
+app/src/main/java/com/focusbyrj/app/service/FocusSessionEndReceiver.kt,Production Kotlin/Java,552,True
+app/src/main/java/com/focusbyrj/app/service/HabitActionReceiver.kt,Production Kotlin/Java,7744,True
+app/src/main/java/com/focusbyrj/app/service/HabitFloatingOverlayManager.kt,Production Kotlin/Java,36347,True
+app/src/main/java/com/focusbyrj/app/service/HabitReceiver.kt,Production Kotlin/Java,16935,True
+app/src/main/java/com/focusbyrj/app/service/PackageChangeReceiver.kt,Production Kotlin/Java,1606,True
+app/src/main/java/com/focusbyrj/app/service/ReminderClockReceiver.kt,Production Kotlin/Java,1511,True
+app/src/main/java/com/focusbyrj/app/service/ReminderOverlayStore.kt,Production Kotlin/Java,2286,True
+app/src/main/java/com/focusbyrj/app/service/ReminderReconcileWorker.kt,Production Kotlin/Java,3333,True
+app/src/main/java/com/focusbyrj/app/service/TaskActionReceiver.kt,Production Kotlin/Java,4804,True
+app/src/main/java/com/focusbyrj/app/service/TaskReminderOverlayManager.kt,Production Kotlin/Java,34654,True
+app/src/main/java/com/focusbyrj/app/service/TaskReminderReceiver.kt,Production Kotlin/Java,16327,True
+app/src/main/java/com/focusbyrj/app/service/UnifiedOverlayCoordinator.kt,Production Kotlin/Java,15881,True
+app/src/main/java/com/focusbyrj/app/service/WorkReminderReconcileWorker.kt,Production Kotlin/Java,580,True
+app/src/main/java/com/focusbyrj/app/service/WorkSessionReminderReceiver.kt,Production Kotlin/Java,983,True
+app/src/main/java/com/focusbyrj/app/ui/components/AppModeSection.kt,Production Kotlin/Java,6057,True
+app/src/main/java/com/focusbyrj/app/ui/components/AyvaIcon.kt,Production Kotlin/Java,1552,True
+app/src/main/java/com/focusbyrj/app/ui/components/AyvaNotificationColorsDialog.kt,Production Kotlin/Java,17465,True
+app/src/main/java/com/focusbyrj/app/ui/components/BoundaryControls.kt,Production Kotlin/Java,5415,True
+app/src/main/java/com/focusbyrj/app/ui/components/BubbleIconPicker.kt,Production Kotlin/Java,3867,True
+app/src/main/java/com/focusbyrj/app/ui/components/CatMagicRiveView.kt,Production Kotlin/Java,29897,True
+app/src/main/java/com/focusbyrj/app/ui/components/CustomRestrictionSection.kt,Production Kotlin/Java,19003,True
+app/src/main/java/com/focusbyrj/app/ui/components/DataRecoveryTools.kt,Production Kotlin/Java,13195,True
+app/src/main/java/com/focusbyrj/app/ui/components/DevicePermissionsState.kt,Production Kotlin/Java,962,True
+app/src/main/java/com/focusbyrj/app/ui/components/DuolingoComponents.kt,Production Kotlin/Java,13124,True
+app/src/main/java/com/focusbyrj/app/ui/components/DuolingoMysteryChestDialog.kt,Production Kotlin/Java,15909,True
+app/src/main/java/com/focusbyrj/app/ui/components/EditorDrafts.kt,Production Kotlin/Java,5610,True
+app/src/main/java/com/focusbyrj/app/ui/components/FeatureSheet.kt,Production Kotlin/Java,3623,True
+app/src/main/java/com/focusbyrj/app/ui/components/FocusBottomBar.kt,Production Kotlin/Java,10098,True
+app/src/main/java/com/focusbyrj/app/ui/components/HabitFrequencyEditor.kt,Production Kotlin/Java,1850,True
+app/src/main/java/com/focusbyrj/app/ui/components/LayeredVizagDrawable.kt,Production Kotlin/Java,13463,True
+app/src/main/java/com/focusbyrj/app/ui/components/LegacyWebpDrawable.kt,Production Kotlin/Java,4681,True
+app/src/main/java/com/focusbyrj/app/ui/components/MysteryBoxChatCard.kt,Production Kotlin/Java,16755,True
+app/src/main/java/com/focusbyrj/app/ui/components/PermissionsDialog.kt,Production Kotlin/Java,14387,True
+app/src/main/java/com/focusbyrj/app/ui/components/ProductivityLibraryUi.kt,Production Kotlin/Java,7257,True
+app/src/main/java/com/focusbyrj/app/ui/components/ProfessionalSlider.kt,Production Kotlin/Java,5673,True
+app/src/main/java/com/focusbyrj/app/ui/components/SettingsMenuRow.kt,Production Kotlin/Java,4920,True
+app/src/main/java/com/focusbyrj/app/ui/components/SettingsPreferences.kt,Production Kotlin/Java,1359,True
+app/src/main/java/com/focusbyrj/app/ui/components/SettingsSearch.kt,Production Kotlin/Java,6345,True
+app/src/main/java/com/focusbyrj/app/ui/components/SettingsSearchCatalog.kt,Production Kotlin/Java,12208,True
+app/src/main/java/com/focusbyrj/app/ui/components/SettingsVizagFooter.kt,Production Kotlin/Java,18131,True
+app/src/main/java/com/focusbyrj/app/ui/components/SmokePawChestScene.kt,Production Kotlin/Java,8757,True
+app/src/main/java/com/focusbyrj/app/ui/components/TalkActionChips.kt,Production Kotlin/Java,19262,True
+app/src/main/java/com/focusbyrj/app/ui/components/TaskDependencyEditor.kt,Production Kotlin/Java,2371,True
+app/src/main/java/com/focusbyrj/app/ui/components/TaskPlanningEditor.kt,Production Kotlin/Java,6907,True
+app/src/main/java/com/focusbyrj/app/ui/components/TaskSpeedDialFab.kt,Production Kotlin/Java,8621,True
+app/src/main/java/com/focusbyrj/app/ui/components/VocabBriefContent.kt,Production Kotlin/Java,8688,True
+app/src/main/java/com/focusbyrj/app/ui/components/VocabRetentionHubChatCard.kt,Production Kotlin/Java,40200,True
+app/src/main/java/com/focusbyrj/app/ui/navigation/Screen.kt,Production Kotlin/Java,2437,True
+app/src/main/java/com/focusbyrj/app/ui/navigation/SettingsDestinations.kt,Production Kotlin/Java,2974,True
+app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt,Production Kotlin/Java,218983,True
+app/src/main/java/com/focusbyrj/app/ui/screens/AddRestrictionScreen.kt,Production Kotlin/Java,32552,True
+app/src/main/java/com/focusbyrj/app/ui/screens/AptitudeCardHelper.kt,Production Kotlin/Java,788,True
+app/src/main/java/com/focusbyrj/app/ui/screens/AptitudeProfileCard.kt,Production Kotlin/Java,18945,True
+app/src/main/java/com/focusbyrj/app/ui/screens/ArithmeticCard.kt,Production Kotlin/Java,17788,True
+app/src/main/java/com/focusbyrj/app/ui/screens/AutomaticBackupsScreen.kt,Production Kotlin/Java,37536,True
+app/src/main/java/com/focusbyrj/app/ui/screens/BackupFlow.kt,Production Kotlin/Java,20368,True
+app/src/main/java/com/focusbyrj/app/ui/screens/BlockActivity.kt,Production Kotlin/Java,27204,True
+app/src/main/java/com/focusbyrj/app/ui/screens/BubbleChatActivity.kt,Production Kotlin/Java,120710,True
+app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsHelper.kt,Production Kotlin/Java,1904,True
+app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt,Production Kotlin/Java,59520,True
+app/src/main/java/com/focusbyrj/app/ui/screens/CategoryEditorHelper.kt,Production Kotlin/Java,695,True
+app/src/main/java/com/focusbyrj/app/ui/screens/CustomCategoryEditor.kt,Production Kotlin/Java,15735,True
+app/src/main/java/com/focusbyrj/app/ui/screens/DailyQuestsCard.kt,Production Kotlin/Java,9907,True
+app/src/main/java/com/focusbyrj/app/ui/screens/DashboardScreen.kt,Production Kotlin/Java,78675,True
+app/src/main/java/com/focusbyrj/app/ui/screens/DataRecoveryScreen.kt,Production Kotlin/Java,4324,True
+app/src/main/java/com/focusbyrj/app/ui/screens/DrillSummaryCard.kt,Production Kotlin/Java,32793,True
+app/src/main/java/com/focusbyrj/app/ui/screens/FullscreenDrillSummaryView.kt,Production Kotlin/Java,31544,True
+app/src/main/java/com/focusbyrj/app/ui/screens/FullscreenDrillView.kt,Production Kotlin/Java,23828,True
+app/src/main/java/com/focusbyrj/app/ui/screens/FullscreenSolutionsView.kt,Production Kotlin/Java,32160,True
+app/src/main/java/com/focusbyrj/app/ui/screens/HabitsChatCard.kt,Production Kotlin/Java,70703,True
+app/src/main/java/com/focusbyrj/app/ui/screens/HabitsScreen.kt,Production Kotlin/Java,87731,True
+app/src/main/java/com/focusbyrj/app/ui/screens/HelpSettingsScreen.kt,Production Kotlin/Java,5266,True
+app/src/main/java/com/focusbyrj/app/ui/screens/ManualBackupViewModel.kt,Production Kotlin/Java,8496,True
+app/src/main/java/com/focusbyrj/app/ui/screens/PreferencesHubHelper.kt,Production Kotlin/Java,638,True
+app/src/main/java/com/focusbyrj/app/ui/screens/PreferencesHubScreen.kt,Production Kotlin/Java,6431,True
+app/src/main/java/com/focusbyrj/app/ui/screens/PrivateVaultSettings.kt,Production Kotlin/Java,10000,True
+app/src/main/java/com/focusbyrj/app/ui/screens/QuickAddTaskActivity.kt,Production Kotlin/Java,27073,True
+app/src/main/java/com/focusbyrj/app/ui/screens/RestoreBackupViewModel.kt,Production Kotlin/Java,8917,True
+app/src/main/java/com/focusbyrj/app/ui/screens/SchedulesScreen.kt,Production Kotlin/Java,42570,True
+app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt,Production Kotlin/Java,27203,True
+app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt,Production Kotlin/Java,69371,True
+app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreenHelper.kt,Production Kotlin/Java,1207,True
+app/src/main/java/com/focusbyrj/app/ui/screens/SubscriptionScreen.kt,Production Kotlin/Java,13532,True
+app/src/main/java/com/focusbyrj/app/ui/screens/TaskReminderPopupActivity.kt,Production Kotlin/Java,42143,True
+app/src/main/java/com/focusbyrj/app/ui/screens/TimeScreen.kt,Production Kotlin/Java,14891,True
+app/src/main/java/com/focusbyrj/app/ui/screens/TodosScreen.kt,Production Kotlin/Java,90653,True
+app/src/main/java/com/focusbyrj/app/ui/screens/WidgetsSettingsScreen.kt,Production Kotlin/Java,5793,True
+app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaCatPeekingHost.kt,Production Kotlin/Java,10026,True
+app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaChatChrome.kt,Production Kotlin/Java,8926,True
+app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaChatTimeline.kt,Production Kotlin/Java,85571,True
+app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaComposerBar.kt,Production Kotlin/Java,22323,True
+app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaConversationMessage.kt,Production Kotlin/Java,16321,True
+app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaPlanningControls.kt,Production Kotlin/Java,789,True
+app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaResponseControls.kt,Production Kotlin/Java,11921,True
+app/src/main/java/com/focusbyrj/app/ui/screens/chat/ChatLifecycle.kt,Production Kotlin/Java,1677,True
+app/src/main/java/com/focusbyrj/app/ui/screens/chat/ChatTextSizeDialog.kt,Production Kotlin/Java,6691,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillBottomActionRow.kt,Production Kotlin/Java,3445,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillPaletteHelper.kt,Production Kotlin/Java,522,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillQuestionPaletteModal.kt,Production Kotlin/Java,6473,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillStreakHelper.kt,Production Kotlin/Java,627,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillSummaryMathHelper.kt,Production Kotlin/Java,781,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillTopBar.kt,Production Kotlin/Java,13135,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillTopBarHelper.kt,Production Kotlin/Java,1108,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/ExplanationSection.kt,Production Kotlin/Java,2372,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/FullscreenDrillHelper.kt,Production Kotlin/Java,1186,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/SolutionCardItem.kt,Production Kotlin/Java,9124,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/SolutionsTopBar.kt,Production Kotlin/Java,7055,True
+app/src/main/java/com/focusbyrj/app/ui/screens/drill/SolutionsViewHelper.kt,Production Kotlin/Java,1268,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArchiveVaultDialogs.kt,Production Kotlin/Java,98250,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleDocxGenerator.kt,Production Kotlin/Java,21214,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleEditorialBottomSheet.kt,Production Kotlin/Java,11172,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleExportBottomSheet.kt,Production Kotlin/Java,18942,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleExporter.kt,Production Kotlin/Java,32860,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleExporterHelper.kt,Production Kotlin/Java,4222,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticlePdfGenerator.kt,Production Kotlin/Java,28175,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleTocHelper.kt,Production Kotlin/Java,12687,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/AudioMemoManager.kt,Production Kotlin/Java,11313,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/AudioPlayerWidget.kt,Production Kotlin/Java,16607,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/CameraCapture.kt,Production Kotlin/Java,853,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/DocumentStatsDialog.kt,Production Kotlin/Java,16723,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/EditLabelsDialog.kt,Production Kotlin/Java,16052,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepColorDialog.kt,Production Kotlin/Java,13639,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepColorPalette.kt,Production Kotlin/Java,13324,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepFontPalette.kt,Production Kotlin/Java,3339,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepImageCollage.kt,Production Kotlin/Java,13997,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepNoteCard.kt,Production Kotlin/Java,23346,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepNoteEditor.kt,Production Kotlin/Java,193453,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepNoteShareParser.kt,Production Kotlin/Java,11849,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepSketchDialog.kt,Production Kotlin/Java,83872,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepThemeIllustration.kt,Production Kotlin/Java,23559,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/McqTextParser.kt,Production Kotlin/Java,11852,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NoteLabelsDialog.kt,Production Kotlin/Java,9293,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesScreen.kt,Production Kotlin/Java,105558,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesSpeedDialFab.kt,Production Kotlin/Java,10449,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesViewModel.kt,Production Kotlin/Java,116803,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookBlockModel.kt,Production Kotlin/Java,30171,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookBlockWidgets.kt,Production Kotlin/Java,45247,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookEditorDrawer.kt,Production Kotlin/Java,48216,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookFormattingHelper.kt,Production Kotlin/Java,21011,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookInsertBottomSheet.kt,Production Kotlin/Java,42852,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookTableWidget.kt,Production Kotlin/Java,76687,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/RichTextEngine.kt,Production Kotlin/Java,57874,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/ShareToNoteActivity.kt,Production Kotlin/Java,29118,True
+app/src/main/java/com/focusbyrj/app/ui/screens/notes/VoiceRecordDialog.kt,Production Kotlin/Java,2739,True
+app/src/main/java/com/focusbyrj/app/ui/screens/security/BackupDialogs.kt,Production Kotlin/Java,18399,True
+app/src/main/java/com/focusbyrj/app/ui/security/ScreenCaptureProtection.kt,Production Kotlin/Java,1529,True
+app/src/main/java/com/focusbyrj/app/ui/speech/VoiceCaptureContent.kt,Production Kotlin/Java,10253,True
+app/src/main/java/com/focusbyrj/app/ui/speech/VoiceStyle.kt,Production Kotlin/Java,1570,True
+app/src/main/java/com/focusbyrj/app/ui/speech/VoiceStyleSettings.kt,Production Kotlin/Java,5178,True
+app/src/main/java/com/focusbyrj/app/ui/speech/VoiceVisualization.kt,Production Kotlin/Java,12406,True
+app/src/main/java/com/focusbyrj/app/ui/theme/Color.kt,Production Kotlin/Java,833,True
+app/src/main/java/com/focusbyrj/app/ui/theme/Theme.kt,Production Kotlin/Java,5509,True
+app/src/main/java/com/focusbyrj/app/ui/theme/Type.kt,Production Kotlin/Java,1678,True
+app/src/main/java/com/focusbyrj/app/ui/viewmodels/FocusViewModel.kt,Production Kotlin/Java,10162,True
+app/src/main/java/com/focusbyrj/app/ui/viewmodels/HabitViewModel.kt,Production Kotlin/Java,4653,True
+app/src/main/java/com/focusbyrj/app/ui/viewmodels/TaskViewModel.kt,Production Kotlin/Java,6203,True
+app/src/main/java/com/focusbyrj/app/util/AlarmPermissionRecovery.kt,Production Kotlin/Java,1776,True
+app/src/main/java/com/focusbyrj/app/util/AppCatalog.kt,Production Kotlin/Java,7526,True
+app/src/main/java/com/focusbyrj/app/util/AppIconManager.kt,Production Kotlin/Java,7826,True
+app/src/main/java/com/focusbyrj/app/util/AppThemeManager.kt,Production Kotlin/Java,7821,True
+app/src/main/java/com/focusbyrj/app/util/AptitudeManager.kt,Production Kotlin/Java,24943,True
+app/src/main/java/com/focusbyrj/app/util/ArithmeticEngine.kt,Production Kotlin/Java,88790,True
+app/src/main/java/com/focusbyrj/app/util/AyvaAlertTheme.kt,Production Kotlin/Java,13316,True
+app/src/main/java/com/focusbyrj/app/util/AyvaDialogueEngine.kt,Production Kotlin/Java,58426,True
+app/src/main/java/com/focusbyrj/app/util/AyvaTalkEngine.kt,Production Kotlin/Java,124876,True
+app/src/main/java/com/focusbyrj/app/util/BubbleChatManager.kt,Production Kotlin/Java,20803,True
+app/src/main/java/com/focusbyrj/app/util/BubbleIconManager.kt,Production Kotlin/Java,1486,True
+app/src/main/java/com/focusbyrj/app/util/ChatConversationContext.kt,Production Kotlin/Java,2606,True
+app/src/main/java/com/focusbyrj/app/util/ChatTaskDraft.kt,Production Kotlin/Java,1434,True
+app/src/main/java/com/focusbyrj/app/util/CompletedTaskHistoryManager.kt,Production Kotlin/Java,9090,True
+app/src/main/java/com/focusbyrj/app/util/CustomCategoryManager.kt,Production Kotlin/Java,3760,True
+app/src/main/java/com/focusbyrj/app/util/DailyQuestManager.kt,Production Kotlin/Java,11448,True
+app/src/main/java/com/focusbyrj/app/util/DevicePermissions.kt,Production Kotlin/Java,2517,True
+app/src/main/java/com/focusbyrj/app/util/DrillSummaryHelper.kt,Production Kotlin/Java,8914,True
+app/src/main/java/com/focusbyrj/app/util/FocusEconomyManager.kt,Production Kotlin/Java,23021,True
+app/src/main/java/com/focusbyrj/app/util/FocusQuotes.kt,Production Kotlin/Java,2865,True
+app/src/main/java/com/focusbyrj/app/util/FocusSessionManager.kt,Production Kotlin/Java,7694,True
+app/src/main/java/com/focusbyrj/app/util/FocusStatsManager.kt,Production Kotlin/Java,11136,True
+app/src/main/java/com/focusbyrj/app/util/GamificationHaptics.kt,Production Kotlin/Java,4691,True
+app/src/main/java/com/focusbyrj/app/util/HabitAlarmScheduler.kt,Production Kotlin/Java,12580,True
+app/src/main/java/com/focusbyrj/app/util/HabitMicroCopyProvider.kt,Production Kotlin/Java,42237,True
+app/src/main/java/com/focusbyrj/app/util/HabitNotifications.kt,Production Kotlin/Java,1193,True
+app/src/main/java/com/focusbyrj/app/util/ImageUtils.kt,Production Kotlin/Java,3122,True
+app/src/main/java/com/focusbyrj/app/util/InternalBroadcasts.kt,Production Kotlin/Java,612,True
+app/src/main/java/com/focusbyrj/app/util/LegacyDialogueCleanup.kt,Production Kotlin/Java,686,True
+app/src/main/java/com/focusbyrj/app/util/LicenseManager.kt,Production Kotlin/Java,3026,True
+app/src/main/java/com/focusbyrj/app/util/OfflineNluEngine.kt,Production Kotlin/Java,61024,True
+app/src/main/java/com/focusbyrj/app/util/PermissionUtils.kt,Production Kotlin/Java,7756,True
+app/src/main/java/com/focusbyrj/app/util/ProfileAvatarManager.kt,Production Kotlin/Java,6170,True
+app/src/main/java/com/focusbyrj/app/util/ReminderPrivacy.kt,Production Kotlin/Java,3210,True
+app/src/main/java/com/focusbyrj/app/util/SafePrefsExtensions.kt,Production Kotlin/Java,4920,True
+app/src/main/java/com/focusbyrj/app/util/SettingsPreferenceRules.kt,Production Kotlin/Java,2879,True
+app/src/main/java/com/focusbyrj/app/util/SmartDateParser.kt,Production Kotlin/Java,27377,True
+app/src/main/java/com/focusbyrj/app/util/StreakManager.kt,Production Kotlin/Java,2521,True
+app/src/main/java/com/focusbyrj/app/util/SummaryQuotes.kt,Production Kotlin/Java,47994,True
+app/src/main/java/com/focusbyrj/app/util/TalkAction.kt,Production Kotlin/Java,3862,True
+app/src/main/java/com/focusbyrj/app/util/TaskNotifications.kt,Production Kotlin/Java,1798,True
+app/src/main/java/com/focusbyrj/app/util/TaskReminderHelper.kt,Production Kotlin/Java,23052,True
+app/src/main/java/com/focusbyrj/app/util/TaskReminderTap.kt,Production Kotlin/Java,1242,True
+app/src/main/java/com/focusbyrj/app/util/TemporaryUnlockManager.kt,Production Kotlin/Java,1886,True
+app/src/main/java/com/focusbyrj/app/util/UsageBreakTracker.kt,Production Kotlin/Java,12190,True
+app/src/main/java/com/focusbyrj/app/util/UsageStatsHelper.kt,Production Kotlin/Java,11572,True
+app/src/main/java/com/focusbyrj/app/util/VocabQuizChoices.kt,Production Kotlin/Java,784,True
+app/src/main/java/com/focusbyrj/app/util/WorkSessionReminders.kt,Production Kotlin/Java,8315,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AdvancedPlanLanguage.kt,Production Kotlin/Java,16582,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantAction.kt,Production Kotlin/Java,8584,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantActionExecutor.kt,Production Kotlin/Java,26399,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantAppControl.kt,Production Kotlin/Java,17972,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantAppKnowledge.kt,Production Kotlin/Java,17686,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantCalculator.kt,Production Kotlin/Java,2975,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantCapabilities.kt,Production Kotlin/Java,22190,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantChecklist.kt,Production Kotlin/Java,4491,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantCompoundParser.kt,Production Kotlin/Java,1219,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantContext.kt,Production Kotlin/Java,942,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantConversation.kt,Production Kotlin/Java,10126,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantConversationSupport.kt,Production Kotlin/Java,10888,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantDeviceFeatures.kt,Production Kotlin/Java,14825,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantDialogue.kt,Production Kotlin/Java,12170,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantDictionary.kt,Production Kotlin/Java,12394,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantDictionaryStore.kt,Production Kotlin/Java,3713,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantDiscussion.kt,Production Kotlin/Java,26948,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantEditDialogue.kt,Production Kotlin/Java,2519,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantFeatureActions.kt,Production Kotlin/Java,15372,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantFeatureLanguage.kt,Production Kotlin/Java,4393,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantFeatures.kt,Production Kotlin/Java,3213,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantFocusLanguage.kt,Production Kotlin/Java,1515,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantGuidedPlanning.kt,Production Kotlin/Java,24141,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantHabitConversation.kt,Production Kotlin/Java,4503,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantHabitEditing.kt,Production Kotlin/Java,8456,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantHabitLanguage.kt,Production Kotlin/Java,1164,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantInitiative.kt,Production Kotlin/Java,3102,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantInterpretation.kt,Production Kotlin/Java,5062,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantLanguage.kt,Production Kotlin/Java,4570,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantLearningFeatures.kt,Production Kotlin/Java,6421,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantLearningLanguage.kt,Production Kotlin/Java,8338,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantPersonalization.kt,Production Kotlin/Java,9717,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantPlanStore.kt,Production Kotlin/Java,5119,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantPlanning.kt,Production Kotlin/Java,13527,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantPlanningArchive.kt,Production Kotlin/Java,6420,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantPreferences.kt,Production Kotlin/Java,16404,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantPresentation.kt,Production Kotlin/Java,6394,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantReplyStyle.kt,Production Kotlin/Java,7942,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantResponseContent.kt,Production Kotlin/Java,2349,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantRoutineConversation.kt,Production Kotlin/Java,12540,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantRoutineDialogue.kt,Production Kotlin/Java,6564,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantSession.kt,Production Kotlin/Java,10472,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantSocial.kt,Production Kotlin/Java,30905,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantStateLock.kt,Production Kotlin/Java,244,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantTaskDateRepair.kt,Production Kotlin/Java,7353,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantTaskLanguage.kt,Production Kotlin/Java,9699,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantTaskReferences.kt,Production Kotlin/Java,4996,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantTaskViews.kt,Production Kotlin/Java,4650,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantTranscriptFeatures.kt,Production Kotlin/Java,4521,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AssistantVocabularyFeatures.kt,Production Kotlin/Java,6464,True
+app/src/main/java/com/focusbyrj/app/util/assistant/AyvaPersonality.kt,Production Kotlin/Java,8828,True
+app/src/main/java/com/focusbyrj/app/util/assistant/CanonicalPlanTasks.kt,Production Kotlin/Java,2097,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ChatExperiences.kt,Production Kotlin/Java,4676,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ChatMode.kt,Production Kotlin/Java,1765,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationKnowledge.kt,Production Kotlin/Java,15308,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationLanguage.kt,Production Kotlin/Java,1996,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationMeaning.kt,Production Kotlin/Java,2404,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationPlanStore.kt,Production Kotlin/Java,15846,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationPlanner.kt,Production Kotlin/Java,64608,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationReasoning.kt,Production Kotlin/Java,14494,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationRegistry.kt,Production Kotlin/Java,1815,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationRouting.kt,Production Kotlin/Java,5503,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationStories.kt,Production Kotlin/Java,4041,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ConversationVoice.kt,Production Kotlin/Java,3162,True
+app/src/main/java/com/focusbyrj/app/util/assistant/DiscussionComparison.kt,Production Kotlin/Java,36826,True
+app/src/main/java/com/focusbyrj/app/util/assistant/DiscussionCriteria.kt,Production Kotlin/Java,16763,True
+app/src/main/java/com/focusbyrj/app/util/assistant/EntertainmentPack.kt,Production Kotlin/Java,16406,True
+app/src/main/java/com/focusbyrj/app/util/assistant/EverydayTopics.kt,Production Kotlin/Java,11139,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ExistingTaskPlanning.kt,Production Kotlin/Java,3434,True
+app/src/main/java/com/focusbyrj/app/util/assistant/ExperienceContent.kt,Production Kotlin/Java,23534,True
+app/src/main/java/com/focusbyrj/app/util/assistant/FocusedChat.kt,Production Kotlin/Java,30652,True
+app/src/main/java/com/focusbyrj/app/util/assistant/GeneralConversation.kt,Production Kotlin/Java,18611,True
+app/src/main/java/com/focusbyrj/app/util/assistant/GeneralDialogue.kt,Production Kotlin/Java,24617,True
+app/src/main/java/com/focusbyrj/app/util/assistant/GeneralDialoguePacks.kt,Production Kotlin/Java,12770,True
+app/src/main/java/com/focusbyrj/app/util/assistant/GeneralDialoguePhrases.kt,Production Kotlin/Java,2677,True
+app/src/main/java/com/focusbyrj/app/util/assistant/MilestonePlanning.kt,Production Kotlin/Java,13696,True
+app/src/main/java/com/focusbyrj/app/util/assistant/OfflineAssistant.kt,Production Kotlin/Java,117298,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanBreakdown.kt,Production Kotlin/Java,11564,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanChangeTrail.kt,Production Kotlin/Java,3967,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanClock.kt,Production Kotlin/Java,1084,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanCollaboration.kt,Production Kotlin/Java,12919,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanConversationRepairs.kt,Production Kotlin/Java,3391,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanDiff.kt,Production Kotlin/Java,2117,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanLanguage.kt,Production Kotlin/Java,11719,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanMilestone.kt,Production Kotlin/Java,4156,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanPolicy.kt,Production Kotlin/Java,3224,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanProgress.kt,Production Kotlin/Java,6665,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanTemporalLanguage.kt,Production Kotlin/Java,1327,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanWorkAlternatives.kt,Production Kotlin/Java,2952,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanWorkspace.kt,Production Kotlin/Java,25028,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanningDialogue.kt,Production Kotlin/Java,23702,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanningDraft.kt,Production Kotlin/Java,4238,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanningLibrary.kt,Production Kotlin/Java,13410,True
+app/src/main/java/com/focusbyrj/app/util/assistant/PlanningMethods.kt,Production Kotlin/Java,6034,True
+app/src/main/java/com/focusbyrj/app/util/assistant/SavedPlanHistory.kt,Production Kotlin/Java,10274,True
+app/src/main/java/com/focusbyrj/app/util/assistant/SharedPlanConstraints.kt,Production Kotlin/Java,8198,True
+app/src/main/java/com/focusbyrj/app/util/assistant/TaskScheduleView.kt,Production Kotlin/Java,1450,True
+app/src/main/java/com/focusbyrj/app/util/assistant/TripChecklistConversation.kt,Production Kotlin/Java,69594,True
+app/src/main/java/com/focusbyrj/app/util/assistant/TripPlanningBridge.kt,Production Kotlin/Java,5721,True
+app/src/main/java/com/focusbyrj/app/util/backup/AutoBackupScheduler.kt,Production Kotlin/Java,4900,True
+app/src/main/java/com/focusbyrj/app/util/backup/AutoBackupWorker.kt,Production Kotlin/Java,4292,True
+app/src/main/java/com/focusbyrj/app/util/backup/AutomaticBackupDestination.kt,Production Kotlin/Java,7971,True
+app/src/main/java/com/focusbyrj/app/util/backup/AutomaticBackupModels.kt,Production Kotlin/Java,6053,True
+app/src/main/java/com/focusbyrj/app/util/backup/AutomaticBackupStore.kt,Production Kotlin/Java,14321,True
+app/src/main/java/com/focusbyrj/app/util/backup/AutomaticBackups.kt,Production Kotlin/Java,21178,True
+app/src/main/java/com/focusbyrj/app/util/backup/BackupArchiveLimits.kt,Production Kotlin/Java,2875,True
+app/src/main/java/com/focusbyrj/app/util/backup/BackupProgress.kt,Production Kotlin/Java,1105,True
+app/src/main/java/com/focusbyrj/app/util/backup/BackupRecoveryDocuments.kt,Production Kotlin/Java,5582,True
+app/src/main/java/com/focusbyrj/app/util/backup/BackupRecoveryKey.kt,Production Kotlin/Java,3543,True
+app/src/main/java/com/focusbyrj/app/util/backup/BackupRestoreManager.kt,Production Kotlin/Java,106487,True
+app/src/main/java/com/focusbyrj/app/util/backup/CryptoBackupEngine.kt,Production Kotlin/Java,11017,True
+app/src/main/java/com/focusbyrj/app/util/backup/DataSafetyManager.kt,Production Kotlin/Java,44833,True
+app/src/main/java/com/focusbyrj/app/util/backup/EncryptedSnapshotFile.kt,Production Kotlin/Java,1304,True
+app/src/main/java/com/focusbyrj/app/util/backup/ExportCleanupWorker.kt,Production Kotlin/Java,1200,True
+app/src/main/java/com/focusbyrj/app/util/backup/MaintenanceGate.kt,Production Kotlin/Java,2550,True
+app/src/main/java/com/focusbyrj/app/util/backup/MaintenanceOpenHelperFactory.kt,Production Kotlin/Java,4518,True
+app/src/main/java/com/focusbyrj/app/util/backup/MaintenancePreferences.kt,Production Kotlin/Java,1942,True
+app/src/main/java/com/focusbyrj/app/util/backup/ManualBackupFiles.kt,Production Kotlin/Java,6790,True
+app/src/main/java/com/focusbyrj/app/util/backup/RestoreJournal.kt,Production Kotlin/Java,15805,True
+app/src/main/java/com/focusbyrj/app/util/backup/SnapshotCryptoEngine.kt,Production Kotlin/Java,8264,True
+app/src/main/java/com/focusbyrj/app/util/backup/TaskRecoveryStore.kt,Production Kotlin/Java,5109,True
+app/src/main/java/com/focusbyrj/app/util/backup/VocabularyArchive.kt,Production Kotlin/Java,6013,True
+app/src/main/java/com/focusbyrj/app/util/command/AyvaChatCommands.kt,Production Kotlin/Java,750,True
+app/src/main/java/com/focusbyrj/app/util/command/AyvaCompoundCommandHandler.kt,Production Kotlin/Java,5575,True
+app/src/main/java/com/focusbyrj/app/util/context/AyvaContextEngine.kt,Production Kotlin/Java,6073,True
+app/src/main/java/com/focusbyrj/app/util/crypto/Argon2idKdf.kt,Production Kotlin/Java,6791,True
+app/src/main/java/com/focusbyrj/app/util/crypto/EncryptedMediaFetcher.kt,Production Kotlin/Java,3028,True
+app/src/main/java/com/focusbyrj/app/util/crypto/EncryptedMediaStorage.kt,Production Kotlin/Java,13640,True
+app/src/main/java/com/focusbyrj/app/util/crypto/HkdfUtil.kt,Production Kotlin/Java,5202,True
+app/src/main/java/com/focusbyrj/app/util/crypto/TestRuntimeKeys.kt,Production Kotlin/Java,659,True
+app/src/main/java/com/focusbyrj/app/util/crypto/VaultArchiveDeposit.kt,Production Kotlin/Java,9070,True
+app/src/main/java/com/focusbyrj/app/util/crypto/VaultPayloadEncryptor.kt,Production Kotlin/Java,16539,True
+app/src/main/java/com/focusbyrj/app/util/diagnostics/AppLogger.kt,Production Kotlin/Java,8544,True
+app/src/main/java/com/focusbyrj/app/util/diagnostics/CrashHandler.kt,Production Kotlin/Java,3871,True
+app/src/main/java/com/focusbyrj/app/util/diagnostics/DiagnosticManager.kt,Production Kotlin/Java,14626,True
+app/src/main/java/com/focusbyrj/app/util/router/AyvaIntentRouter.kt,Production Kotlin/Java,22446,True
+app/src/main/java/com/focusbyrj/app/util/speech/OnDeviceTranscriber.kt,Production Kotlin/Java,24876,True
+app/src/main/java/com/focusbyrj/app/util/speech/SpeechServiceDiagnostics.kt,Production Kotlin/Java,2232,True
+app/src/main/java/com/focusbyrj/app/util/sync/VaultCryptoEngine.kt,Production Kotlin/Java,42208,True
+app/src/main/java/com/focusbyrj/app/util/sync/VaultSyncManager.kt,Production Kotlin/Java,11230,True
+app/src/main/java/com/focusbyrj/app/widget/ExamCountdown.kt,Production Kotlin/Java,17484,True
+app/src/main/java/com/focusbyrj/app/widget/ExamCountdownConfigureActivity.kt,Production Kotlin/Java,20545,True
+app/src/main/java/com/focusbyrj/app/widget/ExamCountdownProvider.kt,Production Kotlin/Java,31241,True
+app/src/main/java/com/focusbyrj/app/widget/ExamEditorComponents.kt,Production Kotlin/Java,10171,True
+app/src/main/java/com/focusbyrj/app/widget/ExamListTypography.kt,Production Kotlin/Java,2894,True
+app/src/main/java/com/focusbyrj/app/widget/ExamRenderedPreview.kt,Production Kotlin/Java,6525,True
+app/src/main/java/com/focusbyrj/app/widget/ExamTextControls.kt,Production Kotlin/Java,5519,True
+app/src/main/java/com/focusbyrj/app/widget/ExamWidgetManagerDialog.kt,Production Kotlin/Java,7256,True
+app/src/main/java/com/focusbyrj/app/widget/ExamWidgetPresentation.kt,Production Kotlin/Java,4946,True
+app/src/main/java/com/focusbyrj/app/widget/ExamWidgetSizes.kt,Production Kotlin/Java,1527,True
+app/src/main/java/com/focusbyrj/app/widget/ExamWidgetSurfaces.kt,Production Kotlin/Java,5103,True
+app/src/main/java/com/focusbyrj/app/widget/NoteWidgetActionReceiver.kt,Production Kotlin/Java,18638,True
+app/src/main/java/com/focusbyrj/app/widget/NoteWidgetConfig.kt,Production Kotlin/Java,12024,True
+app/src/main/java/com/focusbyrj/app/widget/NoteWidgetConfigureActivity.kt,Production Kotlin/Java,21644,True
+app/src/main/java/com/focusbyrj/app/widget/NoteWidgetDrawableGenerator.kt,Production Kotlin/Java,8305,True
+app/src/main/java/com/focusbyrj/app/widget/NoteWidgetProvider.kt,Production Kotlin/Java,26866,True
+app/src/main/java/com/focusbyrj/app/widget/NoteWidgetService.kt,Production Kotlin/Java,16155,True
+app/src/main/java/com/focusbyrj/app/widget/NoteWidgetTypography.kt,Production Kotlin/Java,2201,True
+app/src/main/java/com/focusbyrj/app/widget/QuickAddNoteItemActivity.kt,Production Kotlin/Java,15824,True
+app/src/main/java/com/focusbyrj/app/widget/QuickEditNoteActivity.kt,Production Kotlin/Java,55547,True
+app/src/main/java/com/focusbyrj/app/widget/TodoWidgetActionReceiver.kt,Production Kotlin/Java,4333,True
+app/src/main/java/com/focusbyrj/app/widget/TodoWidgetConfigureActivity.kt,Production Kotlin/Java,14959,True
+app/src/main/java/com/focusbyrj/app/widget/TodoWidgetProvider.kt,Production Kotlin/Java,15114,True
+app/src/main/java/com/focusbyrj/app/widget/TodoWidgetService.kt,Production Kotlin/Java,9188,True
+app/src/main/java/com/focusbyrj/app/widget/WidgetConfig.kt,Production Kotlin/Java,7027,True
+app/src/main/java/com/focusbyrj/app/widget/WidgetDrawableGenerator.kt,Production Kotlin/Java,8465,True
+app/src/main/java/com/focusbyrj/app/widget/WidgetEditorComponents.kt,Production Kotlin/Java,8865,True
+app/src/main/res/drawable-nodpi/vizag_dolphins_nose_layers_dark.webp,Production resources/assets/manifest,35982,True
+app/src/main/res/drawable-nodpi/vizag_dolphins_nose_layers_light.webp,Production resources/assets/manifest,36566,True
+app/src/main/res/drawable-nodpi/vizag_dolphins_nose_light_poster.webp,Production resources/assets/manifest,31310,True
+app/src/main/res/drawable-nodpi/vizag_dolphins_nose_poster.webp,Production resources/assets/manifest,31986,True
+app/src/main/res/drawable-nodpi/vizag_fishing_harbour_poster.webp,Production resources/assets/manifest,45372,True
+app/src/main/res/drawable-nodpi/vizag_ins_kursura_poster.webp,Production resources/assets/manifest,22136,True
+app/src/main/res/drawable-nodpi/vizag_kailasagiri_layers_dark.webp,Production resources/assets/manifest,35678,True
+app/src/main/res/drawable-nodpi/vizag_kailasagiri_layers_light.webp,Production resources/assets/manifest,31282,True
+app/src/main/res/drawable-nodpi/vizag_kailasagiri_light_poster.webp,Production resources/assets/manifest,29750,True
+app/src/main/res/drawable-nodpi/vizag_kailasagiri_poster.webp,Production resources/assets/manifest,33756,True
+app/src/main/res/drawable-nodpi/vizag_rk_beach_layers_dark.webp,Production resources/assets/manifest,74408,True
+app/src/main/res/drawable-nodpi/vizag_rk_beach_layers_light.webp,Production resources/assets/manifest,68994,True
+app/src/main/res/drawable-nodpi/vizag_rk_beach_light_poster.webp,Production resources/assets/manifest,41936,True
+app/src/main/res/drawable-nodpi/vizag_rk_beach_poster.webp,Production resources/assets/manifest,41634,True
+app/src/main/res/drawable-nodpi/vizag_rushikonda_layers_dark.webp,Production resources/assets/manifest,91646,True
+app/src/main/res/drawable-nodpi/vizag_rushikonda_layers_light.webp,Production resources/assets/manifest,83222,True
+app/src/main/res/drawable-nodpi/vizag_rushikonda_light_poster.webp,Production resources/assets/manifest,60664,True
+app/src/main/res/drawable-nodpi/vizag_rushikonda_poster.webp,Production resources/assets/manifest,59128,True
+app/src/main/res/drawable-nodpi/vizag_simhachalam_poster.webp,Production resources/assets/manifest,34800,True
+app/src/main/res/drawable-nodpi/vizag_tenneti_park_layers_dark.webp,Production resources/assets/manifest,68136,True
+app/src/main/res/drawable-nodpi/vizag_tenneti_park_layers_light.webp,Production resources/assets/manifest,63058,True
+app/src/main/res/drawable-nodpi/vizag_tenneti_park_light_poster.webp,Production resources/assets/manifest,37030,True
+app/src/main/res/drawable-nodpi/vizag_tenneti_park_poster.webp,Production resources/assets/manifest,38134,True
+app/src/main/res/drawable-nodpi/vizag_vizag_port_poster.webp,Production resources/assets/manifest,42774,True
+app/src/main/res/drawable/app_icon.webp,Production resources/assets/manifest,6946,True
+app/src/main/res/drawable/avatar_champion.webp,Production resources/assets/manifest,109434,True
+app/src/main/res/drawable/avatar_companion.webp,Production resources/assets/manifest,35456,True
+app/src/main/res/drawable/avatar_crown.webp,Production resources/assets/manifest,35084,True
+app/src/main/res/drawable/avatar_emperor.webp,Production resources/assets/manifest,104022,True
+app/src/main/res/drawable/avatar_inferno.webp,Production resources/assets/manifest,39312,True
+app/src/main/res/drawable/avatar_knight.webp,Production resources/assets/manifest,19864,True
+app/src/main/res/drawable/avatar_noble.webp,Production resources/assets/manifest,54578,True
+app/src/main/res/drawable/avatar_phoenix.webp,Production resources/assets/manifest,55604,True
+app/src/main/res/drawable/avatar_prestige.webp,Production resources/assets/manifest,50062,True
+app/src/main/res/drawable/avatar_scholar.webp,Production resources/assets/manifest,41046,True
+app/src/main/res/drawable/avatar_wanderer.webp,Production resources/assets/manifest,20422,True
+app/src/main/res/drawable/bg_notification_action_pill.xml,Production resources/assets/manifest,221,True
+app/src/main/res/drawable/bg_notification_card.xml,Production resources/assets/manifest,296,True
+app/src/main/res/drawable/bg_notification_emoji_circle.xml,Production resources/assets/manifest,253,True
+app/src/main/res/drawable/bg_notification_snooze_pill.xml,Production resources/assets/manifest,298,True
+app/src/main/res/drawable/exam_list_card.xml,Production resources/assets/manifest,263,True
+app/src/main/res/drawable/ic_achievement_adept.webp,Production resources/assets/manifest,15928,True
+app/src/main/res/drawable/ic_achievement_apprentice.webp,Production resources/assets/manifest,12782,True
+app/src/main/res/drawable/ic_achievement_century_club.webp,Production resources/assets/manifest,13386,True
+app/src/main/res/drawable/ic_achievement_consistency.webp,Production resources/assets/manifest,12176,True
+app/src/main/res/drawable/ic_achievement_dedication.webp,Production resources/assets/manifest,14770,True
+app/src/main/res/drawable/ic_achievement_deep_work_sentinel.webp,Production resources/assets/manifest,11342,True
+app/src/main/res/drawable/ic_achievement_dopamine_detox.webp,Production resources/assets/manifest,13500,True
+app/src/main/res/drawable/ic_achievement_dragons_hoard.webp,Production resources/assets/manifest,14990,True
+app/src/main/res/drawable/ic_achievement_emperor.webp,Production resources/assets/manifest,17688,True
+app/src/main/res/drawable/ic_achievement_first_steps.webp,Production resources/assets/manifest,14678,True
+app/src/main/res/drawable/ic_achievement_first_temptation.webp,Production resources/assets/manifest,11962,True
+app/src/main/res/drawable/ic_achievement_flow_state.webp,Production resources/assets/manifest,12216,True
+app/src/main/res/drawable/ic_achievement_focus_champion.webp,Production resources/assets/manifest,16712,True
+app/src/main/res/drawable/ic_achievement_fortnight_focus.webp,Production resources/assets/manifest,12674,True
+app/src/main/res/drawable/ic_achievement_getting_started.webp,Production resources/assets/manifest,15124,True
+app/src/main/res/drawable/ic_achievement_grandmaster.webp,Production resources/assets/manifest,13562,True
+app/src/main/res/drawable/ic_achievement_habit_builder.webp,Production resources/assets/manifest,18652,True
+app/src/main/res/drawable/ic_achievement_hero.webp,Production resources/assets/manifest,16378,True
+app/src/main/res/drawable/ic_achievement_hoarder.webp,Production resources/assets/manifest,18706,True
+app/src/main/res/drawable/ic_achievement_iron_will.webp,Production resources/assets/manifest,12868,True
+app/src/main/res/drawable/ic_achievement_knight.webp,Production resources/assets/manifest,14598,True
+app/src/main/res/drawable/ic_achievement_legend.webp,Production resources/assets/manifest,12510,True
+app/src/main/res/drawable/ic_achievement_master.webp,Production resources/assets/manifest,18628,True
+app/src/main/res/drawable/ic_achievement_master_of_time.webp,Production resources/assets/manifest,12926,True
+app/src/main/res/drawable/ic_achievement_midas_touch.webp,Production resources/assets/manifest,17676,True
+app/src/main/res/drawable/ic_achievement_monk_mode.webp,Production resources/assets/manifest,16694,True
+app/src/main/res/drawable/ic_achievement_mythic.webp,Production resources/assets/manifest,14874,True
+app/src/main/res/drawable/ic_achievement_noble.webp,Production resources/assets/manifest,14700,True
+app/src/main/res/drawable/ic_achievement_piggy_bank.webp,Production resources/assets/manifest,14672,True
+app/src/main/res/drawable/ic_achievement_savings.webp,Production resources/assets/manifest,14120,True
+app/src/main/res/drawable/ic_achievement_scholar.webp,Production resources/assets/manifest,12286,True
+app/src/main/res/drawable/ic_achievement_time_lord.webp,Production resources/assets/manifest,12620,True
+app/src/main/res/drawable/ic_achievement_treasury.webp,Production resources/assets/manifest,11346,True
+app/src/main/res/drawable/ic_achievement_unbreakable.webp,Production resources/assets/manifest,12330,True
+app/src/main/res/drawable/ic_achievement_unshatterable.webp,Production resources/assets/manifest,16014,True
+app/src/main/res/drawable/ic_achievement_wealthy.webp,Production resources/assets/manifest,14490,True
+app/src/main/res/drawable/ic_achievement_willpower.webp,Production resources/assets/manifest,16624,True
+app/src/main/res/drawable/ic_achievement_year_of_focus.webp,Production resources/assets/manifest,12298,True
+app/src/main/res/drawable/ic_achievement_zen_mind.webp,Production resources/assets/manifest,11700,True
+app/src/main/res/drawable/ic_achievement_zone_in.webp,Production resources/assets/manifest,9266,True
+app/src/main/res/drawable/ic_app_logo.webp,Production resources/assets/manifest,4218,True
+app/src/main/res/drawable/ic_bubble_launcher_icon.xml,Production resources/assets/manifest,615,True
+app/src/main/res/drawable/ic_launcher_background.xml,Production resources/assets/manifest,330,True
+app/src/main/res/drawable/ic_launcher_foreground.xml,Production resources/assets/manifest,281,True
+app/src/main/res/drawable/ic_widget_add.xml,Production resources/assets/manifest,343,True
+app/src/main/res/drawable/ic_widget_arrow_left.xml,Production resources/assets/manifest,356,True
+app/src/main/res/drawable/ic_widget_arrow_right.xml,Production resources/assets/manifest,357,True
+app/src/main/res/drawable/ic_widget_check_empty.xml,Production resources/assets/manifest,410,True
+app/src/main/res/drawable/ic_widget_check_filled.xml,Production resources/assets/manifest,430,True
+app/src/main/res/drawable/ic_widget_checklist.xml,Production resources/assets/manifest,442,True
+app/src/main/res/drawable/ic_widget_drag_handle.xml,Production resources/assets/manifest,475,True
+app/src/main/res/drawable/ic_widget_mic.xml,Production resources/assets/manifest,501,True
+app/src/main/res/drawable/ic_widget_notes.xml,Production resources/assets/manifest,448,True
+app/src/main/res/drawable/ic_widget_pin.xml,Production resources/assets/manifest,372,True
+app/src/main/res/drawable/ic_widget_refresh.xml,Production resources/assets/manifest,526,True
+app/src/main/res/drawable/ic_widget_remove_x.xml,Production resources/assets/manifest,365,True
+app/src/main/res/drawable/ic_widget_settings.xml,Production resources/assets/manifest,1179,True
+app/src/main/res/drawable/ic_widget_todo.xml,Production resources/assets/manifest,447,True
+app/src/main/res/drawable/widget_add_btn_bg.xml,Production resources/assets/manifest,178,True
+app/src/main/res/drawable/widget_bg.xml,Production resources/assets/manifest,223,True
+app/src/main/res/drawable/widget_count_bg.xml,Production resources/assets/manifest,223,True
+app/src/main/res/drawable/widget_item_bg.xml,Production resources/assets/manifest,202,True
+app/src/main/res/drawable/widget_note_badge_bg.xml,Production resources/assets/manifest,300,True
+app/src/main/res/drawable/widget_note_circle_action_bg.xml,Production resources/assets/manifest,257,True
+app/src/main/res/drawable/widget_note_pill_bg.xml,Production resources/assets/manifest,300,True
+app/src/main/res/drawable/widget_tab_active.xml,Production resources/assets/manifest,220,True
+app/src/main/res/drawable/widget_tab_inactive.xml,Production resources/assets/manifest,239,True
+app/src/main/res/font/caveat.ttf,Production resources/assets/manifest,112736,True
+app/src/main/res/font/nunito.ttf,Production resources/assets/manifest,39072,True
+app/src/main/res/font/roboto_mono.ttf,Production resources/assets/manifest,22948,True
+app/src/main/res/font/roboto_serif.ttf,Production resources/assets/manifest,67208,True
+app/src/main/res/font/roboto_slab.ttf,Production resources/assets/manifest,27856,True
+app/src/main/res/font/vizag_signature.ttf,Production resources/assets/manifest,246632,True
+app/src/main/res/layout/notification_habit_custom.xml,Production resources/assets/manifest,2673,True
+app/src/main/res/layout/notification_habit_expanded.xml,Production resources/assets/manifest,4905,True
+app/src/main/res/layout/widget_exam_bento.xml,Production resources/assets/manifest,5915,True
+app/src/main/res/layout/widget_exam_colorblock.xml,Production resources/assets/manifest,5921,True
+app/src/main/res/layout/widget_exam_countdown.xml,Production resources/assets/manifest,5282,True
+app/src/main/res/layout/widget_exam_dashboard.xml,Production resources/assets/manifest,5282,True
+app/src/main/res/layout/widget_exam_hero.xml,Production resources/assets/manifest,5252,True
+app/src/main/res/layout/widget_exam_list_compact.xml,Production resources/assets/manifest,2992,True
+app/src/main/res/layout/widget_exam_list_row.xml,Production resources/assets/manifest,2921,True
+app/src/main/res/layout/widget_exam_minimal.xml,Production resources/assets/manifest,5269,True
+app/src/main/res/layout/widget_exam_timeline.xml,Production resources/assets/manifest,5276,True
+app/src/main/res/layout/widget_note_item.xml,Production resources/assets/manifest,2161,True
+app/src/main/res/layout/widget_note_layout.xml,Production resources/assets/manifest,14017,True
+app/src/main/res/layout/widget_note_text_item.xml,Production resources/assets/manifest,1213,True
+app/src/main/res/layout/widget_todo_item.xml,Production resources/assets/manifest,3268,True
+app/src/main/res/layout/widget_todo_layout.xml,Production resources/assets/manifest,11131,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml,Production resources/assets/manifest,273,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_champion.xml,Production resources/assets/manifest,345,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_companion.xml,Production resources/assets/manifest,346,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_crown.xml,Production resources/assets/manifest,342,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_emperor.xml,Production resources/assets/manifest,344,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_inferno.xml,Production resources/assets/manifest,344,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_knight.xml,Production resources/assets/manifest,343,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_noble.xml,Production resources/assets/manifest,342,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_phoenix.xml,Production resources/assets/manifest,344,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_prestige.xml,Production resources/assets/manifest,345,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml,Production resources/assets/manifest,273,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_scholar.xml,Production resources/assets/manifest,344,True
+app/src/main/res/mipmap-anydpi-v26/ic_launcher_wanderer.xml,Production resources/assets/manifest,345,True
+app/src/main/res/raw/cat_animation.json,Production resources/assets/manifest,10311,True
+app/src/main/res/raw/vizag_fishing_harbour.webp,Production resources/assets/manifest,3164918,True
+app/src/main/res/raw/vizag_ins_kursura.webp,Production resources/assets/manifest,1245210,True
+app/src/main/res/raw/vizag_replacement_layers.json,Production resources/assets/manifest,8871,True
+app/src/main/res/raw/vizag_simhachalam.webp,Production resources/assets/manifest,1799146,True
+app/src/main/res/raw/vizag_vizag_port.webp,Production resources/assets/manifest,2763322,True
+app/src/main/res/values/exam_layout_aliases.xml,Production resources/assets/manifest,1299,True
+app/src/main/res/values/strings.xml,Production resources/assets/manifest,7561,True
+app/src/main/res/values/themes.xml,Production resources/assets/manifest,541,True
+app/src/main/res/xml/backup_rules.xml,Production resources/assets/manifest,886,True
+app/src/main/res/xml/data_extraction_rules.xml,Production resources/assets/manifest,1253,True
+app/src/main/res/xml/device_admin_policies.xml,Production resources/assets/manifest,261,True
+app/src/main/res/xml/exam_countdown_info.xml,Production resources/assets/manifest,651,True
+app/src/main/res/xml/file_paths.xml,Production resources/assets/manifest,256,True
+app/src/main/res/xml/network_security_config.xml,Production resources/assets/manifest,295,True
+app/src/main/res/xml/note_widget_info.xml,Production resources/assets/manifest,759,True
+app/src/main/res/xml/todo_widget_info.xml,Production resources/assets/manifest,764,True
+app/src/test/java/com/focusbyrj/app/Android16StartupInvestigationTest.kt,Tests and test support,1887,False
+app/src/test/java/com/focusbyrj/app/AyvaAlertThemeTest.kt,Tests and test support,3453,False
+app/src/test/java/com/focusbyrj/app/BackupRestoreHardeningTest.kt,Tests and test support,20905,False
+app/src/test/java/com/focusbyrj/app/BackupVerificationTest.kt,Tests and test support,3036,False
+app/src/test/java/com/focusbyrj/app/Batch10SecurityAuditTest.kt,Tests and test support,17998,False
+app/src/test/java/com/focusbyrj/app/Batch11SecurityAuditTest.kt,Tests and test support,22966,False
+app/src/test/java/com/focusbyrj/app/Batch12SecurityAuditTest.kt,Tests and test support,18806,False
+app/src/test/java/com/focusbyrj/app/Batch13SecurityAuditTest.kt,Tests and test support,8132,False
+app/src/test/java/com/focusbyrj/app/Batch1SecurityAuditTest.kt,Tests and test support,46679,False
+app/src/test/java/com/focusbyrj/app/Batch2SecurityAuditTest.kt,Tests and test support,14635,False
+app/src/test/java/com/focusbyrj/app/Batch3SecurityAuditTest.kt,Tests and test support,14969,False
+app/src/test/java/com/focusbyrj/app/Batch4SecurityAuditTest.kt,Tests and test support,32801,False
+app/src/test/java/com/focusbyrj/app/Batch5SecurityAuditTest.kt,Tests and test support,23850,False
+app/src/test/java/com/focusbyrj/app/Batch6SecurityAuditTest.kt,Tests and test support,42598,False
+app/src/test/java/com/focusbyrj/app/Batch7SecurityAuditTest.kt,Tests and test support,28623,False
+app/src/test/java/com/focusbyrj/app/Batch8SecurityAuditTest.kt,Tests and test support,23405,False
+app/src/test/java/com/focusbyrj/app/Batch9SecurityAuditTest.kt,Tests and test support,24957,False
+app/src/test/java/com/focusbyrj/app/DataIntegrityPhase1Test.kt,Tests and test support,5322,False
+app/src/test/java/com/focusbyrj/app/DataIntegrityPhase2Test.kt,Tests and test support,13593,False
+app/src/test/java/com/focusbyrj/app/DataIntegrityPhase3Test.kt,Tests and test support,20119,False
+app/src/test/java/com/focusbyrj/app/DataPreservationAuditTest.kt,Tests and test support,9186,False
+app/src/test/java/com/focusbyrj/app/HabitFeatureTest.kt,Tests and test support,5833,False
+app/src/test/java/com/focusbyrj/app/KeepNotesFeatureTest.kt,Tests and test support,6862,False
+app/src/test/java/com/focusbyrj/app/LegacyUpgradeInvestigationTest.kt,Tests and test support,11169,False
+app/src/test/java/com/focusbyrj/app/McqTextParserTest.kt,Tests and test support,2984,False
+app/src/test/java/com/focusbyrj/app/MysteryChestRewardTest.kt,Tests and test support,3971,False
+app/src/test/java/com/focusbyrj/app/PreReleaseDataSafetyTest.kt,Tests and test support,14438,False
+app/src/test/java/com/focusbyrj/app/ProductivityBackupRoundTripTest.kt,Tests and test support,3513,False
+app/src/test/java/com/focusbyrj/app/RestoreRecoveryRepairTest.kt,Tests and test support,12785,False
+app/src/test/java/com/focusbyrj/app/SecurityRemediationRegressionTest.kt,Tests and test support,6551,False
+app/src/test/java/com/focusbyrj/app/SmartDateParserTest.kt,Tests and test support,8708,False
+app/src/test/java/com/focusbyrj/app/SyncAndConflictResolutionTest.kt,Tests and test support,5664,False
+app/src/test/java/com/focusbyrj/app/WidgetAuditRegressionTest.kt,Tests and test support,7439,False
+app/src/test/java/com/focusbyrj/app/WorkPackage2SecurityTest.kt,Tests and test support,12563,False
+app/src/test/java/com/focusbyrj/app/WorkPackage3SecurityTest.kt,Tests and test support,3679,False
+app/src/test/java/com/focusbyrj/app/WorkPackage4SecurityTest.kt,Tests and test support,15081,False
+app/src/test/java/com/focusbyrj/app/WorkPackage5SecurityTest.kt,Tests and test support,17061,False
+app/src/test/java/com/focusbyrj/app/WorkPackage6SecurityTest.kt,Tests and test support,10648,False
+app/src/test/java/com/focusbyrj/app/WorkPackage7SecurityTest.kt,Tests and test support,7604,False
+app/src/test/java/com/focusbyrj/app/ZeroNetworkSecurityAuditTest.kt,Tests and test support,3174,False
+app/src/test/java/com/focusbyrj/app/data/ProductivityFeaturesTest.kt,Tests and test support,10252,False
+app/src/test/java/com/focusbyrj/app/data/TaskOptionsTest.kt,Tests and test support,2111,False
+app/src/test/java/com/focusbyrj/app/router/AyvaChatConversationTest.kt,Tests and test support,9228,False
+app/src/test/java/com/focusbyrj/app/router/AyvaTaskPriorityConflictTest.kt,Tests and test support,6212,False
+app/src/test/java/com/focusbyrj/app/service/AuditPersistenceNotificationTest.kt,Tests and test support,5644,False
+app/src/test/java/com/focusbyrj/app/service/BubbleChatVisibilityTest.kt,Tests and test support,3366,False
+app/src/test/java/com/focusbyrj/app/service/BubbleRecoveryTest.kt,Tests and test support,6729,False
+app/src/test/java/com/focusbyrj/app/service/FocusScreenStateTest.kt,Tests and test support,2429,False
+app/src/test/java/com/focusbyrj/app/service/ReminderOverlayQueueTest.kt,Tests and test support,12342,False
+app/src/test/java/com/focusbyrj/app/service/ReminderOverlayRecoveryTest.kt,Tests and test support,10087,False
+app/src/test/java/com/focusbyrj/app/service/ReminderRecoveryTest.kt,Tests and test support,4728,False
+app/src/test/java/com/focusbyrj/app/ui/components/AccountSettingsNavigationTest.kt,Tests and test support,3835,False
+app/src/test/java/com/focusbyrj/app/ui/components/ArchiveMoveUiTest.kt,Tests and test support,6846,False
+app/src/test/java/com/focusbyrj/app/ui/components/AutomaticBackupUiTest.kt,Tests and test support,17836,False
+app/src/test/java/com/focusbyrj/app/ui/components/DeviceAdminPermissionUiTest.kt,Tests and test support,4531,False
+app/src/test/java/com/focusbyrj/app/ui/components/DevicePermissionModelTest.kt,Tests and test support,2039,False
+app/src/test/java/com/focusbyrj/app/ui/components/DraftAutosaveFailureTest.kt,Tests and test support,4197,False
+app/src/test/java/com/focusbyrj/app/ui/components/LosslessAnimationTest.kt,Tests and test support,2290,False
+app/src/test/java/com/focusbyrj/app/ui/components/ManualBackupUiTest.kt,Tests and test support,14709,False
+app/src/test/java/com/focusbyrj/app/ui/components/ProductivityNavigationTest.kt,Tests and test support,5443,False
+app/src/test/java/com/focusbyrj/app/ui/components/ProductivityStorageTest.kt,Tests and test support,1331,False
+app/src/test/java/com/focusbyrj/app/ui/components/ProfileTabNavigationTest.kt,Tests and test support,2559,False
+app/src/test/java/com/focusbyrj/app/ui/components/SettingsAndBoundariesTest.kt,Tests and test support,8158,False
+app/src/test/java/com/focusbyrj/app/ui/components/SettingsMenuScreenshotsTest.kt,Tests and test support,5707,False
+app/src/test/java/com/focusbyrj/app/ui/components/SettingsNavigationRecoveryTest.kt,Tests and test support,13777,False
+app/src/test/java/com/focusbyrj/app/ui/components/SettingsOwnershipTest.kt,Tests and test support,4815,False
+app/src/test/java/com/focusbyrj/app/ui/components/SettingsVizagFooterTest.kt,Tests and test support,17258,False
+app/src/test/java/com/focusbyrj/app/ui/screens/BlockActivityReceiverTest.kt,Tests and test support,1243,False
+app/src/test/java/com/focusbyrj/app/ui/screens/CameraCaptureTest.kt,Tests and test support,1411,False
+app/src/test/java/com/focusbyrj/app/ui/screens/FocusModeBehaviorTest.kt,Tests and test support,3472,False
+app/src/test/java/com/focusbyrj/app/ui/screens/chat/AyvaChatAppearanceTest.kt,Tests and test support,5458,False
+app/src/test/java/com/focusbyrj/app/ui/screens/chat/AyvaConversationUiTest.kt,Tests and test support,4734,False
+app/src/test/java/com/focusbyrj/app/ui/screens/chat/AyvaResponseControlsTest.kt,Tests and test support,5637,False
+app/src/test/java/com/focusbyrj/app/ui/screens/chat/ChatLifecycleTest.kt,Tests and test support,2075,False
+app/src/test/java/com/focusbyrj/app/ui/screens/chat/ChatRecordLifecycleTest.kt,Tests and test support,1218,False
+app/src/test/java/com/focusbyrj/app/ui/screens/chat/ChatTranscriptIntegrationTest.kt,Tests and test support,8367,False
+app/src/test/java/com/focusbyrj/app/ui/screens/notes/ArchiveMoveTest.kt,Tests and test support,17590,False
+app/src/test/java/com/focusbyrj/app/ui/screens/notes/AudioMemoManagerTest.kt,Tests and test support,25073,False
+app/src/test/java/com/focusbyrj/app/ui/security/ScreenCaptureProtectionTest.kt,Tests and test support,2198,False
+app/src/test/java/com/focusbyrj/app/ui/speech/VoiceAppearanceTest.kt,Tests and test support,15203,False
+app/src/test/java/com/focusbyrj/app/util/AlarmPermissionRecoveryTest.kt,Tests and test support,4781,False
+app/src/test/java/com/focusbyrj/app/util/AppCatalogTest.kt,Tests and test support,2183,False
+app/src/test/java/com/focusbyrj/app/util/ArithmeticCrashTest.kt,Tests and test support,3351,False
+app/src/test/java/com/focusbyrj/app/util/AssistantAppControlTest.kt,Tests and test support,10957,False
+app/src/test/java/com/focusbyrj/app/util/AssistantAppKnowledgeTest.kt,Tests and test support,11886,False
+app/src/test/java/com/focusbyrj/app/util/AssistantCapabilitiesTest.kt,Tests and test support,15650,False
+app/src/test/java/com/focusbyrj/app/util/AssistantChatPresentationTest.kt,Tests and test support,11830,False
+app/src/test/java/com/focusbyrj/app/util/AssistantConversationCapabilitiesTest.kt,Tests and test support,23339,False
+app/src/test/java/com/focusbyrj/app/util/AssistantConversationContinuityTest.kt,Tests and test support,21915,False
+app/src/test/java/com/focusbyrj/app/util/AssistantConversationExpansionTest.kt,Tests and test support,15589,False
+app/src/test/java/com/focusbyrj/app/util/AssistantConversationLanguageTest.kt,Tests and test support,19060,False
+app/src/test/java/com/focusbyrj/app/util/AssistantConversationPlanningTest.kt,Tests and test support,21101,False
+app/src/test/java/com/focusbyrj/app/util/AssistantDiscussionTest.kt,Tests and test support,39769,False
+app/src/test/java/com/focusbyrj/app/util/AssistantFeatureCapabilitiesTest.kt,Tests and test support,27335,False
+app/src/test/java/com/focusbyrj/app/util/AssistantGuidedPlanningTest.kt,Tests and test support,18755,False
+app/src/test/java/com/focusbyrj/app/util/AssistantNotesIsolationTest.kt,Tests and test support,12923,False
+app/src/test/java/com/focusbyrj/app/util/AssistantOfflineExpansionTest.kt,Tests and test support,19302,False
+app/src/test/java/com/focusbyrj/app/util/AyvaChatActionIntegrationTest.kt,Tests and test support,9680,False
+app/src/test/java/com/focusbyrj/app/util/AyvaTalkEngineTest.kt,Tests and test support,4910,False
+app/src/test/java/com/focusbyrj/app/util/CanonicalTaskPlanningTest.kt,Tests and test support,16718,False
+app/src/test/java/com/focusbyrj/app/util/ChatPersistenceConcurrencyTest.kt,Tests and test support,7595,False
+app/src/test/java/com/focusbyrj/app/util/ConversationQualitySafetyTest.kt,Tests and test support,27798,False
+app/src/test/java/com/focusbyrj/app/util/ConversationalPlannerTest.kt,Tests and test support,38350,False
+app/src/test/java/com/focusbyrj/app/util/DrillCrashTest.kt,Tests and test support,11204,False
+app/src/test/java/com/focusbyrj/app/util/FocusAlarmAccessTest.kt,Tests and test support,2697,False
+app/src/test/java/com/focusbyrj/app/util/FocusedChatIntegrationTest.kt,Tests and test support,6832,False
+app/src/test/java/com/focusbyrj/app/util/GeneralDialogueIntegrationTest.kt,Tests and test support,12640,False
+app/src/test/java/com/focusbyrj/app/util/GeneralDialoguePhrasesTest.kt,Tests and test support,1747,False
+app/src/test/java/com/focusbyrj/app/util/LegacyDialogueCleanupTest.kt,Tests and test support,1718,False
+app/src/test/java/com/focusbyrj/app/util/OfflineAssistantBatchTest.kt,Tests and test support,47541,False
+app/src/test/java/com/focusbyrj/app/util/OfflineNluEngineTest.kt,Tests and test support,9311,False
+app/src/test/java/com/focusbyrj/app/util/PermissionHardeningTest.kt,Tests and test support,5150,False
+app/src/test/java/com/focusbyrj/app/util/PlanningArchiveIntegrationTest.kt,Tests and test support,18250,False
+app/src/test/java/com/focusbyrj/app/util/PlanningCompletionEssentialsTest.kt,Tests and test support,33088,False
+app/src/test/java/com/focusbyrj/app/util/TripChecklistConversationTest.kt,Tests and test support,35489,False
+app/src/test/java/com/focusbyrj/app/util/VocabQuizChoicesTest.kt,Tests and test support,733,False
+app/src/test/java/com/focusbyrj/app/util/backup/AutomaticBackupsTest.kt,Tests and test support,30908,False
+app/src/test/java/com/focusbyrj/app/util/backup/AuxiliaryEncryptionBackupTest.kt,Tests and test support,5354,False
+app/src/test/java/com/focusbyrj/app/util/backup/BackupDocumentsTest.kt,Tests and test support,17763,False
+app/src/test/java/com/focusbyrj/app/util/backup/BackupProgressTest.kt,Tests and test support,1841,False
+app/src/test/java/com/focusbyrj/app/util/backup/BackupSecondAuditTest.kt,Tests and test support,7319,False
+app/src/test/java/com/focusbyrj/app/util/backup/DrillDurabilityTest.kt,Tests and test support,10420,False
+app/src/test/java/com/focusbyrj/app/util/backup/ManualBackupFilesTest.kt,Tests and test support,10147,False
+app/src/test/java/com/focusbyrj/app/util/backup/ManualBackupIntegrationTest.kt,Tests and test support,13066,False
+app/src/test/java/com/focusbyrj/app/util/backup/PortableAutomaticBackupTest.kt,Tests and test support,14416,False
+app/src/test/java/com/focusbyrj/app/util/backup/RestoreFlowSafetyTest.kt,Tests and test support,20205,False
+app/src/test/java/com/focusbyrj/app/util/crypto/EncryptedMediaReadSafetyTest.kt,Tests and test support,4881,False
+app/src/test/java/com/focusbyrj/app/util/crypto/VaultArchiveDepositTest.kt,Tests and test support,18901,False
+app/src/test/java/com/focusbyrj/app/widget/ExamWidgetEditorTest.kt,Tests and test support,13687,False
+app/src/test/java/com/focusbyrj/app/widget/ExamWidgetTest.kt,Tests and test support,29194,False
+app/src/test/java/com/focusbyrj/app/widget/NoteWidgetTypographyTest.kt,Tests and test support,7446,False
+app/src/test/java/com/focusbyrj/app/widget/WidgetEditorTest.kt,Tests and test support,10523,False
+app/src/test/resources/automatic-backups/.gitattributes,Tests and test support,103,False
+app/src/test/resources/automatic-backups/container.pdf,Tests and test support,810,False
+app/src/test/resources/settings-legacy-titles.json,Tests and test support,1234,False
+app/src/test/resources/vizag-frame-digests.json,Tests and test support,52320,False
+app/src/test/screenshots/greeting.png,Tests and test support,2868,False
+build.gradle.kts,Build/config/other,362,False
+docs/AYVA_CHAT_DESIGN.md,Documentation and review files,4954,False
+docs/AYVA_CHAT_REVIEW.md,Documentation and review files,19281,False
+docs/AYVA_CONVERSATIONAL_PLANNER_ROADMAP.md,Documentation and review files,50285,False
+docs/AYVA_CONVERSATION_CAPABILITIES.md,Documentation and review files,5188,False
+docs/AYVA_CONVERSATION_CONTINUITY.md,Documentation and review files,5063,False
+docs/AYVA_CONVERSATION_LANGUAGE.md,Documentation and review files,3966,False
+docs/AYVA_CONVERSATION_PLANNING.md,Documentation and review files,5707,False
+docs/AYVA_CONVERSATION_REPAIRS.md,Documentation and review files,4088,False
+docs/AYVA_FEATURE_CAPABILITIES.md,Documentation and review files,8099,False
+docs/AYVA_IMPLEMENTATION_PLAYBOOK.md,Documentation and review files,10075,False
+docs/AYVA_OFFLINE_ASSISTANT_BATCHES.md,Documentation and review files,11700,False
+docs/AYVA_RESPONSE_CONTROLS_AND_APP_HELP.md,Documentation and review files,7378,False
+docs/CODE_CLEANUP_REVIEW.md,Documentation and review files,12990,False
+docs/animation/SMOKE_PAW_MYSTERY_BOXES.md,Documentation and review files,3113,False
+docs/app-atlas/README.md,Documentation and review files,1822,False
+docs/app-atlas/RUN-Visual-Guide-bundle.zip,Documentation and review files,2129386,False
+docs/app-atlas/RUN-Visual-Guide.html,Documentation and review files,2968017,False
+docs/app-atlas/RUN-Visual-Guide.pdf,Documentation and review files,2013054,False
+docs/app-atlas/RUN-file-index.csv,Documentation and review files,602497,False
+docs/app-atlas/RUN-material-ledger.csv,Documentation and review files,11508,False
+docs/app-atlas/atlas-validation.json,Documentation and review files,1631,False
+docs/assistant/B0_B1_IMPLEMENTATION.md,Documentation and review files,6966,False
+docs/assistant/BUILD_AND_TEST.md,Documentation and review files,4774,False
+docs/assistant/CAPABILITY_MATRIX.md,Documentation and review files,7780,False
+docs/assistant/CONVERSATION_QUALITY_PLAN.md,Documentation and review files,45493,False
+docs/assistant/CONVERSATION_REVIEW.md,Documentation and review files,12346,False
+docs/assistant/DELIVERY_SUMMARY.md,Documentation and review files,8739,False
+docs/assistant/DEVICE_ACCEPTANCE.md,Documentation and review files,4625,False
+docs/assistant/DICTIONARY_DATA.md,Documentation and review files,6099,False
+docs/assistant/FOCUSED_CHAT_EMULATOR_COMPARISON.json,Documentation and review files,1669,False
+docs/assistant/FOCUSED_CHAT_EXPERIENCES_PLAN.md,Documentation and review files,25259,False
+docs/assistant/FOCUSED_CHAT_IMPLEMENTATION.md,Documentation and review files,12679,False
+docs/assistant/GENERAL_CHAT_IMPLEMENTATION.md,Documentation and review files,8288,False
+docs/assistant/GUIDED_PLANNING.md,Documentation and review files,16363,False
+docs/assistant/MASTER_PLAN.md,Documentation and review files,33783,False
+docs/assistant/OFFLINE_ASSISTANT_IMPLEMENTATION.md,Documentation and review files,15206,False
+docs/assistant/STATUS.md,Documentation and review files,46120,False
+docs/assistant/conversation-continuity.md,Documentation and review files,3823,False
+docs/assistant/implementation/BUBBLE_ICON_PICKER.md,Documentation and review files,1466,False
+docs/assistant/implementation/CHATSCRIPT_REMOVAL.md,Documentation and review files,2883,False
+docs/assistant/implementation/COMPARISON_REASONING.md,Documentation and review files,3462,False
+docs/assistant/implementation/COMPLETION_IMPLEMENTATION.md,Documentation and review files,11203,False
+docs/assistant/implementation/CONVERSATION_QUALITY_CURRENT.md,Documentation and review files,20653,False
+docs/assistant/implementation/CURRENT.md,Documentation and review files,53044,False
+docs/assistant/implementation/NATIVE_TASK_PLANNING.md,Documentation and review files,5554,False
+docs/assistant/implementation/QUALITATIVE_CRITERIA.md,Documentation and review files,3673,False
+docs/assistant/implementation/TRIP_CHECKLIST_CONVERSATION.md,Documentation and review files,25501,False
+docs/assistant/research/GENERAL_CHAT_REVIEW_2026-10-25.md,Documentation and review files,16067,False
+docs/assistant/research/OFFLINE_CONVERSATION_COMPARISON_2026-10-25.csv,Documentation and review files,20853,False
+docs/assistant/research/OFFLINE_CONVERSATION_REUSE_2026-10-25.md,Documentation and review files,42616,False
+docs/assistant/research/OFFLINE_CONVERSATION_SOURCES_2026-10-25.json,Documentation and review files,49951,False
+docs/assistant/research/RUN_RECOMMENDED_STACK_2026-10-25.md,Documentation and review files,9136,False
+docs/audits/PERFORMANCE_BATTERY_NOTIFICATIONS_BUBBLE_2026-11-02.md,Documentation and review files,21659,False
+docs/audits/REMAINING_WORK_2026-11-07.md,Documentation and review files,18866,False
+docs/design/SETTINGS_AUDIT_INVENTORY.json,Documentation and review files,23204,False
+docs/design/SETTINGS_INFORMATION_ARCHITECTURE_AUDIT.md,Documentation and review files,30186,False
+docs/habits/PAUSE.md,Documentation and review files,2024,False
+docs/implementation/ARCHIVE_FLOW_2026-11-13.md,Documentation and review files,7486,False
+docs/implementation/AUTOMATIC_BACKUP_AUDIT.md,Documentation and review files,12601,False
+docs/implementation/AUTOMATIC_BACKUP_SECOND_AUDIT.md,Documentation and review files,9001,False
+docs/implementation/AUTOMATIC_FULL_BACKUPS.md,Documentation and review files,15803,False
+docs/implementation/BACKUP_FLOW_REDESIGN_2026-11-07.md,Documentation and review files,8838,False
+docs/implementation/BATTERY_HEALTH_WIDGET.md,Documentation and review files,4250,False
+docs/implementation/EXAM_WIDGET_EXPANSION.md,Documentation and review files,4930,False
+docs/implementation/EXAM_WIDGET_REVAMP.md,Documentation and review files,5528,False
+docs/implementation/EXAM_WIDGET_TEXT_LAYOUT.md,Documentation and review files,4932,False
+docs/implementation/MANUAL_BACKUP_SESSIONS.md,Documentation and review files,10664,False
+docs/implementation/MEDIA_BACKUP_PROGRESS_2026-11-13.md,Documentation and review files,5451,False
+docs/implementation/ONEPLUS_ANDROID16_STARTUP_INVESTIGATION.md,Documentation and review files,21334,False
+docs/implementation/PERMISSION_HARDENING.md,Documentation and review files,9639,False
+docs/implementation/PRE_RELEASE_HARDENING.md,Documentation and review files,10379,False
+docs/implementation/REMINDER_OVERLAY_QUEUE.md,Documentation and review files,6742,False
+docs/implementation/REMINDER_OVERLAY_VALIDATION.json,Documentation and review files,1373,False
+docs/implementation/RUNTIME_RELIABILITY_FIXES.md,Documentation and review files,8501,False
+docs/implementation/SELECTED_FEATURES.md,Documentation and review files,8329,False
+docs/implementation/SETTINGS_REORGANIZATION.md,Documentation and review files,5917,False
+docs/implementation/SETTINGS_SEARCH_BOUNDARIES.md,Documentation and review files,1568,False
+docs/implementation/VIZAG_APK_SIZE.json,Documentation and review files,92,False
+docs/implementation/VIZAG_BIRD_FRAME_CHECKS.json,Documentation and review files,1632,False
+docs/implementation/VIZAG_BIRD_FRAME_SAMPLES.json,Documentation and review files,5272,False
+docs/implementation/VIZAG_FOOTER_ASSETS.json,Documentation and review files,2118,False
+docs/implementation/VIZAG_LOSSLESS_COMPRESSION.json,Documentation and review files,2309,False
+docs/implementation/VIZAG_LOSSLESS_COMPRESSION.md,Documentation and review files,1475,False
+docs/implementation/VIZAG_MOTION_REGIONS.json,Documentation and review files,1940,False
+docs/implementation/VIZAG_MOTION_SAMPLES.json,Documentation and review files,2918,False
+docs/implementation/VIZAG_NATURAL_MOTION.json,Documentation and review files,2224,False
+docs/implementation/VIZAG_REPLACEMENT_ASSETS.json,Documentation and review files,937,False
+docs/implementation/VIZAG_REPLACEMENT_VERIFICATION.json,Documentation and review files,1536,False
+docs/implementation/VIZAG_SETTINGS_FOOTER.md,Documentation and review files,9737,False
+docs/implementation/VIZAG_VEHICLE_FRAME_CHECKS.json,Documentation and review files,381,False
+docs/implementation/WIDGET_EDITOR_SIMPLIFICATION.md,Documentation and review files,3547,False
+docs/releases/2.0.24.md,Documentation and review files,799,False
+docs/releases/2.0.25.md,Documentation and review files,652,False
+docs/releases/2.0.40.md,Documentation and review files,1689,False
+docs/releases/2.0.41.md,Documentation and review files,1539,False
+docs/releases/2.0.42.md,Documentation and review files,1579,False
+docs/releases/2.0.43.md,Documentation and review files,2462,False
+docs/releases/2.0.44.md,Documentation and review files,2492,False
+docs/releases/2.0.45.md,Documentation and review files,4034,False
+docs/security/APP_SECURITY_DATA_AUDIT_2026_10_29.md,Documentation and review files,27908,False
+docs/security/APP_SECURITY_DATA_AUDIT_PLAN.md,Documentation and review files,19477,False
+docs/security/APP_SECURITY_DATA_AUDIT_RESULTS.json,Documentation and review files,4817,False
+docs/security/APP_SECURITY_REMEDIATION_2026_10_29.md,Documentation and review files,6165,False
+docs/security/APP_SECURITY_REMEDIATION_RESULTS.json,Documentation and review files,10243,False
+docs/security/AYVA_REMEDIATION_PLAN.md,Documentation and review files,30594,False
+docs/security/AYVA_SECURITY_DATA_REVIEW.md,Documentation and review files,32087,False
+docs/security/BACKUP_IMPLEMENTATION_AUDIT_2026-11-06.md,Documentation and review files,9650,False
+docs/security/INDEPENDENT_REVIEW_2026-11-06.md,Documentation and review files,13328,False
+docs/security/README.md,Documentation and review files,2406,False
+docs/security/SCREEN_PROTECTION_AND_LEGACY_MIGRATION.md,Documentation and review files,3957,False
+docs/security/SECURITY_REVIEW_2026_10_30.md,Documentation and review files,5536,False
+docs/security/ayva_review_checks.json,Documentation and review files,1423,False
+docs/security/ayva_review_checks.py,Documentation and review files,1919,False
+docs/security/evidence/2026-10-29/intentional-termination.log,Documentation and review files,485,False
+docs/security/evidence/2026-10-29/native-crypto.log,Documentation and review files,853,False
+docs/security/evidence/2026-10-29/startup-recovery.log,Documentation and review files,811,False
+docs/voice/SPEECH_CONNECTION_RECOVERY.md,Documentation and review files,5841,False
+docs/voice/TRANSCRIPTION_STYLES.md,Documentation and review files,6288,False
+docs/widgets/NOTE_WIDGET_FONT_STABILITY.md,Documentation and review files,2832,False
+fastlane/metadata/android/en-US/full_description.txt,Store metadata,631,False
+fastlane/metadata/android/en-US/images/icon.png,Store metadata,23594,False
+fastlane/metadata/android/en-US/short_description.txt,Store metadata,62,False
+fastlane/metadata/android/en-US/title.txt,Store metadata,4,False
+gradle.properties,Build/config/other,1629,False
+gradle/libs.versions.toml,Build/config/other,5208,False
+gradle/wrapper/gradle-wrapper.jar,Build/config/other,47623,False
+gradle/wrapper/gradle-wrapper.properties,Build/config/other,337,False
+gradlew,Build/config/other,8618,False
+gradlew.bat,Build/config/other,2896,False
+icon.svg,Build/config/other,76613,False
+metadata.json,Build/config/other,196,False
+package.json,Build/config/other,109,False
+scripts/check_audit_coverage.ps1,CI and development tools,10260,False
+settings.gradle.kts,Build/config/other,291,False
+tools/check_chat_boundary.py,CI and development tools,2720,False
+tools/check_dictionary.py,CI and development tools,2586,False
+tools/compress_vizag_animations.py,CI and development tools,2228,False
+tools/data/dictionary_plain_english.json,CI and development tools,5522,False
+tools/enrich_vizag_motion.py,CI and development tools,6017,False
+tools/export_vizag_footer.py,CI and development tools,3409,False
+tools/export_vizag_replacements.py,CI and development tools,8924,False
+tools/fix_vizag_layers.py,CI and development tools,4068,False
+tools/gradle/cloud-test-jvm.gradle,CI and development tools,356,False
+tools/import_dictionary.py,CI and development tools,4470,False
+tools/naturalize_vizag_motion.py,CI and development tools,7346,False
+tools/package_release_apks.py,CI and development tools,3899,False
+tools/refine_vizag_routes.py,CI and development tools,1612,False
+tools/release_intent.py,CI and development tools,1983,False
+tools/summarize_unit_tests.py,CI and development tools,1775,False
+tools/verify_native_data_safety.sh,CI and development tools,3162,False
+tools/verify_vizag_bird_frames.py,CI and development tools,3059,False
+tools/verify_vizag_motion_regions.py,CI and development tools,1371,False
+tools/verify_vizag_natural_motion.cjs,CI and development tools,3320,False
+tools/vizag_replacements/approved.webp,CI and development tools,1132266,False
+tools/vizag_replacements/scenes.js,CI and development tools,28013,False

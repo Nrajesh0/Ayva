@@ -172,7 +172,7 @@ Validation: all 31 focused conversation checks passed (zero failures/errors/skip
 
 Normal Chat uses the existing SmartDateParser before implicit planning/discussion routing. A recognized date or clock time with task text enters the existing task creation, duplicate-check and action-execution path. Date-only input without a selected task opens a title question and retains its due date and composer flags. Explicit slash commands, Talk/Plan/Drill modes, live task questions and recognized task edits/corrections retain their existing handlers. This deliberately makes dated normal-chat text task-oriented; use Talk for discussion or Plan for a draft conversation.
 
-Release validation: all 4 targeted task-routing/correction/duplicate checks passed, production/test compilation passed, and the chat boundary and diff formatting checks passed; prior planning and notes-widget verification is recorded above and in docs/widgets/NOTE_WIDGET_FONT_STABILITY.md. Physical-device verification remains open.
+Release validation: all 4 targeted task-routing/correction/duplicate checks passed, production/test compilation passed, and the chat boundary and diff formatting checks passed; prior planning and notes-widget verification is recorded above and in docs/features/widgets/NOTE_WIDGET_FONT_STABILITY.md. Physical-device verification remains open.
 
 ### v2.0.14 release-gate repair
 

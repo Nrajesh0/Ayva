@@ -40,6 +40,9 @@ It includes all supported CPU architectures, features and offline content.
 
 ## Building from Source
 
+See the [documentation guide](docs/README.md) for setup, test scheduling, security
+reviews and backup/archive implementation records.
+
 To compile the application locally using the Gradle wrapper:
 
 ```bash
