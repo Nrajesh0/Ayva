@@ -172,8 +172,9 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
             title = { Text(if (isPreparing) "Preparing encrypted backup" else "Saving encrypted backup") },
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(if (isPreparing) "If you use the vault, it remains locked. Saved records and attachments are being encrypted and verified before you choose a location."
-                    else "Only the encrypted archive is being copied. The saved file will be read back and checked before success is confirmed.")
+                Text(exportState.message ?: if (isPreparing) "Preparing encrypted backup" else "Saving backup file")
+                Text(if (isPreparing) "Keep RUN open during preparation. Vault protection stays on."
+                    else "Success appears after the saved file verifies.", style = MaterialTheme.typography.bodySmall)
             } },
             confirmButton = {},
             dismissButton = { TextButton(onClick = {
@@ -272,7 +273,7 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
             title = { Text(if (restoreState.phase == RestorePhase.CHECKING) "Checking backup" else "Restoring data") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(if (restoreState.phase == RestorePhase.CHECKING) "Checking the key and every saved file." else "Protecting current data and saving the restored records.")
+                Text(restoreState.message ?: if (restoreState.phase == RestorePhase.CHECKING) "Checking backup contents" else "Restoring saved data")
                 Text("Keep the app open until this finishes.", style = MaterialTheme.typography.bodySmall)
             } }, confirmButton = {},
             dismissButton = { if (restoreState.phase == RestorePhase.CHECKING) TextButton(onClick = { restore.cancel() }) { Text("Cancel") } }

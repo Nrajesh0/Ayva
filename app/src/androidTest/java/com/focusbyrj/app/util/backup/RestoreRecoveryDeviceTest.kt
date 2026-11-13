@@ -82,6 +82,7 @@ class RestoreRecoveryDeviceTest {
         EncryptedMediaStorage.writeEncryptedBytes(media, "synthetic-native-restore-media".toByteArray())
         val publicId = notes.insertNote(NoteEntity(title = "Native restore public fixture", imageUrisJson = org.json.JSONArray(listOf(media.path)).toString()))
         var privateId = 0L
+        var sealedId = 0L
         val archive = File(app.cacheDir, "native-snapshot-restore.focusbackup")
         val ownedMedia = mutableSetOf(media)
         try {
@@ -90,6 +91,17 @@ class RestoreRecoveryDeviceTest {
             try { privateId = notes.insertNote(com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(
                 NoteEntity(title = "Native restore private fixture", isArchived = true), key)) }
             finally { key.fill(0) }
+            val deposit = com.focusbyrj.app.util.crypto.VaultArchiveDeposit
+            deposit.captureAuthorization(app).use { deposit.enable(app, it) }
+            vault.lockVault()
+            val sealed = deposit.encrypt(app, NoteEntity(title = "Native PIN-free fixture", content = "Private sealed body", isArchived = true),
+                checkNotNull(deposit.readCapability(app)))
+            sealedId = notes.insertNote(sealed)
+            assertEquals(com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.VaultLocked,
+                com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(sealed))
+            assertTrue(vault.verifyPasscode(app, pin) is com.focusbyrj.app.data.note.ArchiveVaultSecurity.VerifyResult.Success)
+            assertEquals("Private sealed body", (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(sealed)
+                as com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success).note.content)
             BackupRestoreManager.createEncryptedBackup(app, android.net.Uri.fromFile(archive), "synthetic-native-password").getOrThrow()
             vault.lockVault()
             repeat(2) {
@@ -105,6 +117,8 @@ class RestoreRecoveryDeviceTest {
                 assertEquals(com.focusbyrj.app.data.note.ArchiveVaultSecurity.VaultStatus.ENABLED, vault.getVaultStatus(app))
                 assertTrue(vault.isVaultLocked(app))
                 assertEquals(1, notes.getAllNotesList().count { note -> note.id == privateId })
+                assertEquals(1, notes.getAllNotesList().count { note -> note.id == sealedId })
+                assertTrue(com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(notes.getNoteByIdSync(sealedId)!!))
                 assertEquals(1, notes.getAllNotesList().count { note -> note.id == publicId })
                 assertTrue(com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(notes.getNoteByIdSync(privateId)!!))
                 val restoredMedia = File(notes.getNoteByIdSync(publicId)!!.getImageUris().single())
@@ -117,6 +131,8 @@ class RestoreRecoveryDeviceTest {
                 check(vault.disablePasscode(app))
             }
             notes.getNoteByIdSync(privateId)?.let { notes.deleteNote(it) }
+            notes.getNoteByIdSync(sealedId)?.let { notes.deleteNote(it) }
+            com.focusbyrj.app.util.crypto.VaultArchiveDeposit.disable(app)
             notes.getNoteByIdSync(publicId)?.let { notes.deleteNote(it) }
             ownedMedia.forEach { it.delete() }
             archive.delete(); vault.lockVault()
@@ -131,9 +147,13 @@ class RestoreRecoveryDeviceTest {
         val file = File(app.cacheDir, "native-crypto-fixture.enc")
         EncryptedMediaStorage.writeEncryptedBytes(file, "synthetic-private-bytes".toByteArray())
         assertEquals("synthetic-private-bytes", EncryptedMediaStorage.readDecryptedBytes(file)!!.decodeToString())
+        EncryptedMediaStorage.openDecryptedInputStream(file)!!.use {
+            assertEquals("synthetic-private-bytes", it.readBytes().decodeToString())
+        }
         val tampered = file.readBytes(); tampered[tampered.lastIndex] = (tampered.last().toInt() xor 1).toByte()
         file.writeBytes(tampered)
         assertNull(EncryptedMediaStorage.readDecryptedBytes(file))
+        assertNull(EncryptedMediaStorage.openDecryptedInputStream(file))
         file.delete()
         val stage = File(app.cacheDir, "restore_media_stage_native_fixture/keep_images/old.bin")
         stage.parentFile!!.mkdirs(); stage.writeText("synthetic-legacy-media")

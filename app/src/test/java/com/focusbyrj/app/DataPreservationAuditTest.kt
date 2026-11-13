@@ -44,18 +44,20 @@ class DataPreservationAuditTest {
     }
 
     @Test fun missingCredentialsNeverCreateReplacementForExistingDatabase() {
+        // Initialize the Application before clearing its cached database credentials.
+        val appContext = context.applicationContext
         DatabaseKeyProvider.clearCachedPassphrase()
-        context.getSharedPreferences("focus_notes_vault_security_prefs", 0).edit().clear().commit()
+        appContext.getSharedPreferences("focus_notes_vault_security_prefs", 0).edit().clear().commit()
         for (databaseName in listOf("keep_notes_vault.db", "focus_database_vault.db")) {
-        val file = context.getDatabasePath(databaseName)
+        val file = appContext.getDatabasePath(databaseName)
         file.parentFile!!.mkdirs()
         file.writeText("synthetic-existing-encrypted-database")
         try {
-            DatabaseKeyProvider.getOrCreatePassphrase(context)
+            DatabaseKeyProvider.getOrCreatePassphrase(appContext)
             fail("Existing database must block new key creation")
         } catch (_: IllegalStateException) {
             assertEquals("synthetic-existing-encrypted-database", file.readText())
-            assertFalse(context.getSharedPreferences("focus_notes_vault_security_prefs", 0).contains("enc_db_passphrase"))
+            assertFalse(appContext.getSharedPreferences("focus_notes_vault_security_prefs", 0).contains("enc_db_passphrase"))
         } finally { file.delete(); DatabaseKeyProvider.clearCachedPassphrase() }
         }
     }

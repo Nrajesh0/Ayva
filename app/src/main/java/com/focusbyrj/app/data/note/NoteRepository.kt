@@ -10,6 +10,7 @@ package com.focusbyrj.app.data.note
 import android.util.Log
 import com.focusbyrj.app.util.backup.DataSafetyManager
 import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
+import com.focusbyrj.app.util.crypto.VaultArchiveDeposit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -201,29 +202,40 @@ class NoteRepository(
     /** Destructive cleanup callers must fail closed when the reference set cannot be read. */
     suspend fun getAllNotesListOrThrow(): List<NoteEntity> = noteDao.getAllNotesList()
 
-    suspend fun setArchived(id: Long, isArchived: Boolean) {
-        try {
+    /** Callers must check the result; failed archive writes must never look successful. */
+    suspend fun setArchived(id: Long, isArchived: Boolean): SaveResult {
+        val key = ArchiveVaultSecurity.getActiveVaultSubKey()
+        return try { setArchivedResult(id, isArchived, key) } finally { key?.fill(0) }
+    }
+
+    /** A one-use, already-authorized key allows the vault UI to remain locked. */
+    internal suspend fun setArchivedResult(id: Long, isArchived: Boolean, vaultKey: ByteArray?,
+        deposit: VaultArchiveDeposit.WriteCapability? = null): SaveResult {
+        return try {
             val existing = noteDao.getNoteByIdSync(id)
-            if (existing != null) {
-                if (isArchived && !VaultPayloadEncryptor.isVaultEncrypted(existing)) {
-                    val encrypted = VaultPayloadEncryptor.encryptNotePayload(existing.copy(isArchived = true), context = context)
-                    check(noteDao.compareAndSave(encrypted, existing.updatedAt) != null) { "Note changed while archiving" }
-                } else if (!isArchived && VaultPayloadEncryptor.isVaultEncrypted(existing)) {
-                    // Only unarchive if decryption succeeds. Never leak ciphertext to active notes.
-                    val res = VaultPayloadEncryptor.tryDecryptNotePayload(existing)
-                    if (res is VaultPayloadEncryptor.DecryptionResult.Success) {
-                        check(noteDao.compareAndSave(res.note.copy(isArchived = false), existing.updatedAt) != null) { "Note changed while unarchiving" }
-                    } else {
-                        Log.w(TAG, "Cannot unarchive note $id: vault is locked or decryption failed ($res)")
-                    }
-                } else {
-                    noteDao.updateArchiveStatus(id, isArchived)
+                ?: return SaveResult.Conflict("This note was removed. Refresh your notes and try again.")
+            if (existing.isArchived == isArchived) return SaveResult.Saved(id, existing.updatedAt)
+            if (vaultKey == null && (context == null || ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED) &&
+                !(isArchived && deposit != null && context != null))
+                return SaveResult.Locked("Enter your vault PIN to move this note.")
+            val moved = if (isArchived) {
+                val target = existing.copy(isArchived = true, isPinned = false)
+                if (vaultKey == null && deposit != null) VaultArchiveDeposit.encrypt(requireNotNull(context), target, deposit)
+                else VaultPayloadEncryptor.encryptNotePayload(target, vaultKey, context)
+            } else if (VaultPayloadEncryptor.isVaultEncrypted(existing)) {
+                when (val decrypted = VaultPayloadEncryptor.tryDecryptNotePayload(existing, vaultKey)) {
+                    is VaultPayloadEncryptor.DecryptionResult.Success -> decrypted.note.copy(isArchived = false, isPinned = false)
+                    else -> return SaveResult.Corrupt("This note could not be decrypted. Its saved data was kept.")
                 }
-            } else {
-                noteDao.updateArchiveStatus(id, isArchived)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in setArchived", e)
+            } else existing.copy(isArchived = false, isPinned = false)
+            val saved = noteDao.compareAndSave(moved, existing.updatedAt)
+                ?: return SaveResult.Conflict("This note changed while moving it. Refresh and try again.")
+            SaveResult.Saved(saved.id, saved.updatedAt)
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.e(TAG, "Archive write failed; saved note retained", error)
+            SaveResult.Failure("Could not move the note. Check phone storage and try again.", error)
         }
     }
 

@@ -7,11 +7,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.util.backup.BackupRestoreManager
+import com.focusbyrj.app.util.backup.BackupProgress
 import com.focusbyrj.app.util.backup.ManualBackupFiles
 import com.focusbyrj.app.util.backup.PreparedManualBackup
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 internal enum class ManualBackupPhase { IDLE, PREPARING, READY, PICKER, SAVING, SAVED, MESSAGE }
 internal data class ManualBackupState(
@@ -47,8 +49,10 @@ internal class ManualBackupViewModel(
         val vaultKey = ArchiveVaultSecurity.getActiveVaultSubKey()
         ArchiveVaultSecurity.lockVault()
         val request = ++generation
-        mutable.value = ManualBackupState(ManualBackupPhase.PREPARING)
-        operation = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        mutable.value = ManualBackupState(ManualBackupPhase.PREPARING, message = "Reading saved data")
+        operation = viewModelScope.launch(BackupProgress { message ->
+            mutable.update { if (request == generation && it.phase == ManualBackupPhase.PREPARING) it.copy(message = message) else it }
+        }, start = CoroutineStart.UNDISPATCHED) {
             var result: PreparedManualBackup? = null
             try {
                 result = prepareArchive(getApplication(), password, vaultKey)
@@ -99,8 +103,10 @@ internal class ManualBackupViewModel(
         }
         if (uri == null) { cancel("Save cancelled. The temporary encrypted backup was discarded; your saved data was not changed."); return }
         val request = generation
-        mutable.value = mutable.value.copy(phase = ManualBackupPhase.SAVING)
-        operation = viewModelScope.launch {
+        mutable.value = mutable.value.copy(phase = ManualBackupPhase.SAVING, message = "Saving backup file")
+        operation = viewModelScope.launch(BackupProgress { message ->
+            mutable.update { if (request == generation && it.phase == ManualBackupPhase.SAVING) it.copy(message = message) else it }
+        }) {
             try {
                 ManualBackupFiles.save(getApplication(), value, uri)
                 ensureActive()

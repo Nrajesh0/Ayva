@@ -62,6 +62,7 @@ internal object RestoreJournal {
             checkpoint("prepared")
             val result = block()
             if (result.isFailure) {
+                BackupProgress.report("Recovering previous data")
                 withContext(NonCancellable) { recoverLocked(app) }
             } else {
                 if (!drillOnly) {
@@ -77,6 +78,7 @@ internal object RestoreJournal {
             }
             result
         } catch (error: Exception) {
+            BackupProgress.report("Recovering previous data")
             try { withContext(NonCancellable) { recoverLocked(app) } }
             catch (recovery: Exception) {
                 MaintenanceGate.requireRecovery()

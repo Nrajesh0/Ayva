@@ -102,6 +102,25 @@ object ArchiveVaultSecurity {
     @Volatile
     private var inMemoryLockoutElapsed: Long = 0L
 
+    /** Public write capabilities must be invalidated by any change to authentication metadata.
+     * SharedPreferences.all is one atomic snapshot; no vault/file lock inversion is introduced. */
+    internal fun archiveWriteBinding(context: Context): String {
+        val values = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).all
+        check(values[KEY_STATUS] == "enabled" && values[KEY_KDF_TYPE] == CURRENT_KDF && values[KEY_VAULT_DATA_KEY_VERSION] == 1) {
+            "Vault credentials need attention. Unlock the vault before enabling PIN-free archiving."
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update("RUN/archive-write-binding/v1\u0000".toByteArray(Charsets.UTF_8))
+        for (name in listOf(KEY_SALT, KEY_HASH, KEY_KDF_TYPE, KEY_WRAPPED_VAULT_DATA_KEY, KEY_WRAPPED_VAULT_DATA_KEY_IV)) {
+            val value = values[name] as? String ?: error("Vault credentials are incomplete; existing data was kept.")
+            require(value.isNotEmpty() && value.length <= 8192)
+            val bytes = value.toByteArray(Charsets.UTF_8)
+            digest.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.size).array())
+            digest.update(bytes)
+        }
+        return Base64.encodeToString(digest.digest(), Base64.NO_WRAP)
+    }
+
     /**
      * Retrieves the active in-memory Vault Sub-Key if vault is unlocked, or null if locked.
      * Returns a defensive copy to prevent external callers zeroing the master subkey in-place.

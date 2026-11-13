@@ -82,11 +82,13 @@ internal object ManualBackupFiles {
 
     /** Public-provider success is not enough: compare the read-back ciphertext to the verified source. */
     internal suspend fun copyVerified(value: PreparedManualBackup, output: () -> OutputStream, readBack: () -> InputStream) = withContext(Dispatchers.IO) {
+        BackupProgress.report("Checking prepared backup")
         check(!expired(value)) { "This prepared backup expired. Create a new backup and unlock the vault again if asked." }
         check(value.file.isFile && value.file.inputStream().use { digestBackup(it, value.digest.size) { ensureActive() } } == value.digest) {
             "The prepared backup is missing or changed. Create a new backup; existing backups were not changed."
         }
         currentCoroutineContext().ensureActive()
+        BackupProgress.report("Saving backup file")
         output().use { destination ->
             value.file.inputStream().use { source ->
                 val buffer = ByteArray(64 * 1024)
@@ -104,6 +106,7 @@ internal object ManualBackupFiles {
             }
         }
         currentCoroutineContext().ensureActive()
+        BackupProgress.report("Verifying saved file")
         check(readBack().use { digestBackup(it, value.digest.size) { ensureActive() } } == value.digest) {
             "The saved file did not match the verified backup. Check storage or choose another location."
         }

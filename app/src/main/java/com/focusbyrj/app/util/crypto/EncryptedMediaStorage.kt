@@ -13,6 +13,9 @@ import android.security.keystore.KeyProperties
 import android.util.Log
 import java.io.File
 import java.io.FileInputStream
+import java.io.ByteArrayInputStream
+import java.io.DataInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.KeyStore
@@ -39,6 +42,7 @@ object EncryptedMediaStorage {
     private const val GCM_IV_LENGTH = 12
     private const val MAGIC_HEADER = "FOC_ENC_V1:"
     const val MAX_DECRYPT_BYTES_LIMIT = 50 * 1024 * 1024L // 50MB upper limit for heap ByteArray loading
+    private const val BUFFERED_STREAM_LIMIT = 8 * 1024 * 1024L
 
     private val isUnitTestEnvironment: Boolean get() = com.focusbyrj.app.util.crypto.TestRuntimeKeys.available
 
@@ -138,8 +142,45 @@ object EncryptedMediaStorage {
 
     /** No plaintext or static-key compatibility is accepted. Authenticate before exposing bytes. */
     fun readDecryptedBytes(file: File): ByteArray? {
-        if (!file.exists() || file.length() > MAX_DECRYPT_BYTES_LIMIT) return null
-        return openDecryptedInputStream(file)?.use { it.readBytes() }
+        var plaintext: ByteArray? = null
+        return try {
+            FileInputStream(file).use { plaintext = readAuthenticatedBytes(it, MAX_DECRYPT_BYTES_LIMIT) }
+            val result = plaintext
+            plaintext = null // Transfer only after authentication and descriptor cleanup succeed.
+            result
+        } catch (_: Exception) {
+            Log.e(TAG, "Media could not be authenticated; original file retained")
+            null
+        } finally { plaintext?.fill(0) }
+    }
+
+    /** One bounded read and one GCM operation. doFinal releases bytes only after a valid tag. */
+    private fun readAuthenticatedBytes(source: FileInputStream, limit: Long): ByteArray {
+        val magic = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
+        val length = source.channel.size()
+        val overhead = magic.size + GCM_IV_LENGTH
+        require(length in (overhead + GCM_TAG_LENGTH / 8).toLong()..limit) { "Invalid media size" }
+        val input = DataInputStream(source)
+        val header = ByteArray(magic.size).also(input::readFully)
+        require(header.contentEquals(magic)) { "Unsupported media format; file retained" }
+        val iv = ByteArray(GCM_IV_LENGTH).also(input::readFully)
+        val ciphertext = ByteArray((length - overhead).toInt()).also(input::readFully)
+        require(source.read() == -1) { "Media changed while being read" }
+        return Cipher.getInstance(AES_GCM_TRANSFORMATION).run {
+            init(Cipher.DECRYPT_MODE, readKey(), GCMParameterSpec(GCM_TAG_LENGTH, iv))
+            doFinal(ciphertext)
+        }
+    }
+
+    /** A small authenticated snapshot; release its owned plaintext as soon as the reader closes. */
+    private class AuthenticatedMemoryStream(private val bytes: ByteArray) : InputStream() {
+        private var input: ByteArrayInputStream? = ByteArrayInputStream(bytes)
+        private fun source() = input ?: throw IOException("Media stream is closed")
+        @Synchronized override fun read(): Int = source().read()
+        @Synchronized override fun read(buffer: ByteArray, offset: Int, length: Int): Int = source().read(buffer, offset, length)
+        @Synchronized override fun skip(count: Long): Long = source().skip(count)
+        @Synchronized override fun available(): Int = source().available()
+        @Synchronized override fun close() { if (input != null) { input = null; bytes.fill(0) } }
     }
 
     fun openDecryptedInputStream(file: File): InputStream? {
@@ -147,6 +188,15 @@ object EncryptedMediaStorage {
         var input: FileInputStream? = null
         return try {
             val source = FileInputStream(file); input = source
+            if (source.channel.size() <= BUFFERED_STREAM_LIMIT) {
+                val bytes = readAuthenticatedBytes(source, BUFFERED_STREAM_LIMIT)
+                try {
+                    source.close()
+                    val result = AuthenticatedMemoryStream(bytes)
+                    input = null
+                    return result
+                } catch (error: Throwable) { bytes.fill(0); throw error }
+            }
             val magic = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
             val header = ByteArray(magic.size); val iv = ByteArray(GCM_IV_LENGTH)
             java.io.DataInputStream(source).apply { readFully(header); readFully(iv) }
@@ -166,12 +216,11 @@ object EncryptedMediaStorage {
             }
             verifier.doFinal()?.fill(0)
             source.channel.position((magic.size + GCM_IV_LENGTH).toLong())
-            CipherInputStream(source, decryptor())
+            CipherInputStream(source, decryptor()).also { input = null }
         } catch (_: Exception) {
-            input?.close()
             Log.e(TAG, "Media could not be authenticated; original file retained")
             null
-        }
+        } finally { runCatching { input?.close() } }
     }
 
     /** Atomically install only a successfully completed authenticated stream. */

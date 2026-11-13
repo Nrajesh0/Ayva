@@ -15,8 +15,8 @@ android {
     multiDexEnabled = true
     minSdk = 31 // Android 12 and newer.
     targetSdk = 35
-    versionCode = 145
-    versionName = "2.0.45"
+    versionCode = 146
+    versionName = "2.0.46"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -169,6 +169,8 @@ dependencies {
   ksp(libs.androidx.room.compiler)
   implementation(libs.sqlcipher.android)
   implementation(libs.argon2kt)
+  // RFC 9180 HPKE for write-only archiving; no global JCA provider registration.
+  implementation(libs.bouncycastle.bcprov)
 
   // QR Generation for PC Sync
   implementation(libs.zxing.core)

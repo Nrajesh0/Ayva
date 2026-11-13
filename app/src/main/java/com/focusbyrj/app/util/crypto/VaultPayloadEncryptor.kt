@@ -163,17 +163,7 @@ object VaultPayloadEncryptor {
         }
 
         return try {
-            val jsonPayload = JSONObject().apply {
-                put("title", note.title)
-                put("content", note.content)
-                put("isChecklist", note.isChecklist)
-                put("checklistJson", note.checklistJson)
-                put("labelsJson", note.labelsJson)
-                put("imageUrisJson", note.imageUrisJson)
-                put("audioUrisJson", note.audioUrisJson)
-                put("colorKey", note.colorKey)
-                put("fontKey", note.fontKey)
-            }.toString().toByteArray(StandardCharsets.UTF_8)
+            val jsonPayload = encodePayload(note)
 
             val iv = ByteArray(GCM_IV_LENGTH)
             SecureRandom().nextBytes(iv)
@@ -196,21 +186,32 @@ object VaultPayloadEncryptor {
             // Zero ciphertext bytes from heap after Base64 encoding is complete.
             Arrays.fill(ciphertext, 0.toByte())
 
-            note.copy(
-                title = "🔒 Encrypted Note",
-                content = envelope,
-                isChecklist = false,
-                checklistJson = "[]",
-                colorKey = "default",
-                fontKey = "default",
-                labelsJson = "[]",
-                imageUrisJson = "[]",
-                audioUrisJson = "[]"
-            )
+            protectedNote(note, envelope)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to encrypt note payload", e)
             throw IllegalStateException("Failed to encrypt archived note payload: ${e.message}", e)
         }
+    }
+
+    internal fun encodePayload(note: NoteEntity): ByteArray = JSONObject().apply {
+        put("title", note.title); put("content", note.content); put("isChecklist", note.isChecklist)
+        put("checklistJson", note.checklistJson); put("labelsJson", note.labelsJson)
+        put("imageUrisJson", note.imageUrisJson); put("audioUrisJson", note.audioUrisJson)
+        put("colorKey", note.colorKey); put("fontKey", note.fontKey)
+    }.toString().toByteArray(StandardCharsets.UTF_8)
+
+    internal fun protectedNote(note: NoteEntity, envelope: String): NoteEntity = note.copy(
+        title = "🔒 Encrypted Note", content = envelope, isChecklist = false, checklistJson = "[]",
+        colorKey = "default", fontKey = "default", labelsJson = "[]", imageUrisJson = "[]", audioUrisJson = "[]"
+    )
+
+    internal fun decodePayload(note: NoteEntity, bytes: ByteArray): NoteEntity {
+        val obj = JSONObject(String(bytes, StandardCharsets.UTF_8))
+        return note.copy(title = obj.optString("title", ""), content = obj.optString("content", ""),
+            isChecklist = obj.optBoolean("isChecklist", false), checklistJson = obj.optString("checklistJson", "[]"),
+            colorKey = obj.optString("colorKey", note.colorKey), fontKey = obj.optString("fontKey", note.fontKey),
+            labelsJson = obj.optString("labelsJson", "[]"), imageUrisJson = obj.optString("imageUrisJson", "[]"),
+            audioUrisJson = obj.optString("audioUrisJson", "[]"))
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -251,6 +252,12 @@ object VaultPayloadEncryptor {
                 )
             }
 
+            if (ivAndCipher.startsWith(VaultArchiveDeposit.ENVELOPE_MARKER)) {
+                val plaintext = VaultArchiveDeposit.open(ivAndCipher, vaultSubKey)
+                return try { DecryptionResult.Success(decodePayload(note, plaintext)) }
+                finally { plaintext.fill(0) }
+            }
+
             val parts = ivAndCipher.split(":", limit = 2)
             if (parts.size != 2) {
                 Log.w(TAG, "Malformed encrypted note envelope for note id=${note.id}")
@@ -273,26 +280,8 @@ object VaultPayloadEncryptor {
             cipher.init(Cipher.DECRYPT_MODE, keySpec, GCMParameterSpec(GCM_TAG_LENGTH, iv))
 
             val decryptedBytes = cipher.doFinal(cipherBytes)
-            val obj = try {
-                val jsonStr = String(decryptedBytes, StandardCharsets.UTF_8)
-                JSONObject(jsonStr)
-            } finally {
-                Arrays.fill(decryptedBytes, 0.toByte())
-            }
-
-            DecryptionResult.Success(
-                note.copy(
-                    title = obj.optString("title", ""),
-                    content = obj.optString("content", ""),
-                    isChecklist = obj.optBoolean("isChecklist", false),
-                    checklistJson = obj.optString("checklistJson", "[]"),
-                    colorKey = obj.optString("colorKey", note.colorKey),
-                    fontKey = obj.optString("fontKey", note.fontKey),
-                    labelsJson = obj.optString("labelsJson", "[]"),
-                    imageUrisJson = obj.optString("imageUrisJson", "[]"),
-                    audioUrisJson = obj.optString("audioUrisJson", "[]")
-                )
-            )
+            try { DecryptionResult.Success(decodePayload(note, decryptedBytes)) }
+            finally { decryptedBytes.fill(0) }
         } catch (e: javax.crypto.AEADBadTagException) {
             // GCM auth tag failed — key is wrong or ciphertext is tampered
             Log.e(TAG, "GCM auth tag failure for note ${note.id} — key mismatch or tampered ciphertext", e)

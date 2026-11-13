@@ -7,6 +7,7 @@
 
 package com.focusbyrj.app.ui.screens.notes
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.update
 
 import android.app.Application
@@ -43,6 +44,7 @@ import kotlinx.coroutines.withContext
 import android.util.Log
 import com.focusbyrj.app.util.backup.DataSafetyManager
 import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
+import com.focusbyrj.app.util.crypto.VaultArchiveDeposit
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -98,6 +100,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _vaultStatus = MutableStateFlow(ArchiveVaultSecurity.getVaultStatus(application))
     val vaultStatus: StateFlow<ArchiveVaultSecurity.VaultStatus> = _vaultStatus.asStateFlow()
+    private val _archiveWithoutPin = MutableStateFlow(false)
+    val archiveWithoutPin: StateFlow<Boolean> = _archiveWithoutPin.asStateFlow()
+    data class ArchiveOptionState(val busy: Boolean = false, val message: String? = null, val error: Boolean = false)
+    private val _archiveOption = MutableStateFlow(ArchiveOptionState())
+    val archiveOption: StateFlow<ArchiveOptionState> = _archiveOption.asStateFlow()
 
     /**
      * Set to a non-null note ID when [VaultPayloadEncryptor.tryDecryptNotePayload] returns
@@ -118,8 +125,53 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshVaultStatus() {
         val status = ArchiveVaultSecurity.getVaultStatus(getApplication())
         _vaultStatus.value = status
+        _archiveWithoutPin.value = VaultArchiveDeposit.readCapability(getApplication()) != null
         _isRecoveryPhraseBackedUp.value = ArchiveVaultSecurity.isRecoveryPhraseBackedUp(getApplication())
         _isVaultUnlocked.value = (status == ArchiveVaultSecurity.VaultStatus.ENABLED && !ArchiveVaultSecurity.isVaultLocked(getApplication()))
+    }
+
+    fun verifyArchiveOptionPin(pin: String): ArchiveVaultSecurity.VerifyResult =
+        ArchiveVaultSecurity.verifyPasscode(getApplication(), pin)
+
+    fun dismissArchiveOptionMessage() {
+        if (!_archiveOption.value.busy) _archiveOption.value = ArchiveOptionState()
+    }
+
+    fun setArchiveWithoutPin(enabled: Boolean) {
+        if (_archiveOption.value.busy) return
+        val authorization = try { if (enabled) VaultArchiveDeposit.captureAuthorization(getApplication()) else null }
+        catch (error: Exception) {
+            _archiveOption.value = ArchiveOptionState(message = error.message ?: "Confirm your vault PIN first.", error = true)
+            return
+        }
+        try { lockVault() } catch (error: Exception) {
+            authorization?.close()
+            _archiveOption.value = ArchiveOptionState(message = "The vault could not be locked. Your option was not changed.", error = true)
+            return
+        }
+        _archiveOption.value = ArchiveOptionState(busy = true)
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            withContext(kotlinx.coroutines.NonCancellable) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        if (enabled) VaultArchiveDeposit.enable(getApplication(), checkNotNull(authorization))
+                        else VaultArchiveDeposit.disable(getApplication())
+                    }
+                    refreshVaultStatus()
+                    check(_archiveWithoutPin.value == enabled) { "The archive option could not be verified. Try again." }
+                    _archiveOption.value = ArchiveOptionState(message = if (enabled)
+                        "Archiving no longer asks for a PIN. Viewing and unarchiving still do."
+                        else "Archiving will ask for your PIN.")
+                } catch (error: Exception) {
+                    _archiveOption.value = ArchiveOptionState(message = error.message ?: "The archive option could not be changed.", error = true)
+                } finally {
+                    authorization?.close()
+                    ArchiveVaultSecurity.lockVault()
+                    latestNotesCache.clear()
+                    refreshVaultStatus()
+                }
+            }
+        }
     }
 
     private fun triggerOrphanMediaCleanup() {
@@ -210,7 +262,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun lockVault() {
         val current = _editingState.value
-        if (current != null && current.isArchived) {
+        if (current != null && current.isArchived && _archiveMove.value.phase == ArchiveMovePhase.SAVING) {
+            pendingPlainVaultDraft = current
+            _editingState.value = null
+        } else if (current != null && current.isArchived) {
             if (isNoteModified(current, initialSnapshot) || current.originalId == 0L) pendingPlainVaultDraft = current
             autoSaveJob?.cancel()
             undoPushJob?.cancel()
@@ -281,7 +336,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private fun pendingVaultDraftFile(): File = File(getApplication<Application>().filesDir, "pending_vault_draft.enc")
 
     internal var pendingDraftWriteHook: (() -> Unit)? = null
-    private fun persistPendingVaultDraft(note: NoteEntity) {
+    private fun hasPendingVaultDraftFile(): Boolean = listOf(pendingVaultDraftFile(), pendingVaultFallbackFile()).any { file ->
+        listOf(file, File(file.path + ".bak"), File(file.path + ".new")).any { it.exists() }
+    }
+
+    private fun persistPendingVaultDraft(note: NoteEntity, requireEmpty: Boolean = false) = synchronized(vaultDraftWriteLock) {
+        check(!requireEmpty || !hasPendingVaultDraftFile()) { "An earlier private draft was kept. Unlock Archive to recover it before retrying." }
         pendingDraftWriteHook?.invoke()
         val json = JSONObject().apply {
             put("id", note.id); put("title", note.title); put("content", note.content)
@@ -309,15 +369,19 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private fun recoverPendingVaultDraft() {
         viewModelScope.launch(Dispatchers.IO) {
             val file = pendingVaultDraftFile()
-            if (!file.exists() && !pendingVaultFallbackFile().exists() && pendingVaultDraftInMemory == null && pendingPlainVaultDraft == null) return@launch
+            if (!hasPendingVaultDraftFile() && pendingVaultDraftInMemory == null && pendingPlainVaultDraft == null) return@launch
             try {
                 val memoryDraft = pendingVaultDraftInMemory ?: pendingPlainVaultDraft?.let {
                     VaultPayloadEncryptor.encryptNotePayload(buildEntityFromState(it), context = getApplication())
                 }
                 val note = memoryDraft ?: run {
-                    val bytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
-                        ?: pendingVaultFallbackFile().takeIf { it.isFile }?.readBytes()
-                        ?: throw java.io.IOException("Pending vault draft could not be decrypted")
+                    // Recover an interrupted AtomicFile replacement before authenticating its bytes.
+                    val bytes = runCatching {
+                        androidx.core.util.AtomicFile(file).openRead().close()
+                        com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(file)
+                    }.getOrNull() ?: runCatching {
+                        androidx.core.util.AtomicFile(pendingVaultFallbackFile()).openRead().use { it.readBytes() }
+                    }.getOrNull() ?: throw java.io.IOException("Pending vault draft could not be decrypted")
                     val obj = JSONObject(bytes.toString(Charsets.UTF_8))
                     NoteEntity(
                     id = obj.optLong("id", 0L), title = obj.optString("title", ""), content = obj.optString("content", ""),
@@ -338,8 +402,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 if (!present) repository.saveNote(note.copy(id = 0))
                 pendingVaultDraftInMemory = null
                 pendingPlainVaultDraft = null
-                file.delete()
-                pendingVaultFallbackFile().delete()
+                androidx.core.util.AtomicFile(file).delete()
+                androidx.core.util.AtomicFile(pendingVaultFallbackFile()).delete()
             } catch (e: Exception) {
                 Log.e("NotesViewModel", "Failed to recover pending vault draft; retaining it for retry", e)
             }
@@ -351,6 +415,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
+        private val vaultDraftWriteLock = Any()
         private const val MAX_CACHE_SIZE = 200
         val latestNotesCache: MutableMap<Long, NoteEntity> = java.util.Collections.synchronizedMap(
             object : java.util.LinkedHashMap<Long, NoteEntity>(MAX_CACHE_SIZE, 0.75f, true) {
@@ -459,27 +524,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         clearSelection()
     }
 
-    fun archiveSelectedNotes() {
-        val ids = _selectedNoteIds.value.toList()
-        if (ids.isEmpty()) return
-        ids.forEach { latestNotesCache.remove(it) }
-        viewModelScope.launch(Dispatchers.IO) {
-            ids.forEach { id -> repository.setArchived(id, true) }
-            triggerAutoSync()
-        }
-        clearSelection()
-    }
+    fun archiveSelectedNotes() = requestArchiveMove(true, _selectedNoteIds.value.toList())
 
-    fun unarchiveSelectedNotes() {
-        val ids = _selectedNoteIds.value.toList()
-        if (ids.isEmpty()) return
-        ids.forEach { latestNotesCache.remove(it) }
-        viewModelScope.launch(Dispatchers.IO) {
-            ids.forEach { id -> repository.setArchived(id, false) }
-            triggerAutoSync()
-        }
-        clearSelection()
-    }
+    fun unarchiveSelectedNotes() = requestArchiveMove(false, _selectedNoteIds.value.toList())
 
     fun trashSelectedNotes() {
         val ids = _selectedNoteIds.value.toList()
@@ -996,6 +1043,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openExistingNote(note: NoteEntity) {
+        if (note.isArchived && ArchiveVaultSecurity.getVaultStatus(getApplication()) == ArchiveVaultSecurity.VaultStatus.ENABLED &&
+            ArchiveVaultSecurity.isVaultLocked(getApplication())) return
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
         autoSaveJob?.cancel()
@@ -1004,6 +1053,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         resetUndoHistory()
         val cached = latestNotesCache[note.id]
         val resolvedNote = if (cached != null && cached.updatedAt >= note.updatedAt) cached else note
+        if (resolvedNote.isArchived && ArchiveVaultSecurity.getVaultStatus(getApplication()) == ArchiveVaultSecurity.VaultStatus.ENABLED &&
+            ArchiveVaultSecurity.isVaultLocked(getApplication())) return
 
         // Safely check and decrypt vault-encrypted note payloads
         val decryptedNote = if (VaultPayloadEncryptor.isVaultEncrypted(resolvedNote)) {
@@ -1068,8 +1119,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                         fresh
                     }
                     com.focusbyrj.app.data.note.MediaRetirement.protect(freshDecrypted)
-                    latestNotesCache[freshDecrypted.id] = freshDecrypted
                     withContext(Dispatchers.Main) {
+                        if (freshDecrypted.isArchived && ArchiveVaultSecurity.getVaultStatus(getApplication()) == ArchiveVaultSecurity.VaultStatus.ENABLED &&
+                            ArchiveVaultSecurity.isVaultLocked(getApplication())) return@withContext
+                        latestNotesCache[freshDecrypted.id] = freshDecrypted
                         val curr = _editingState.value
                         // Only refresh from DB if the user has NOT yet made
                         // any edits. If the user started typing in the narrow window between
@@ -1873,13 +1926,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun unarchiveNote(note: NoteEntity) {
-        latestNotesCache.remove(note.id)
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.setArchived(note.id, false)
-            triggerAutoSync()
-        }
-    }
+    fun unarchiveNote(note: NoteEntity) = requestArchiveMove(false, listOf(note.id))
 
     private suspend fun deleteNoteMediaFiles(note: NoteEntity) {
         val allNotes = repository.getAllNotesListOrThrow()
@@ -1958,43 +2005,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun archiveCurrentNote() {
-        audioMemoManager.stopPlayback()
-        audioMemoManager.cancelRecording()
-        autoSaveJob?.cancel()
-        val current = _editingState.value ?: return
-        _editingState.value = null
-        val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
-        pendingNewNoteId = 0L
-        if (effectiveId != 0L) {
-            latestNotesCache.remove(effectiveId)
-            viewModelScope.launch(Dispatchers.IO) {
-                persistMutex.withLock {
-                    repository.setArchived(effectiveId, true)
-                }
-                triggerAutoSync()
-            }
-        }
-    }
+    fun archiveCurrentNote() = requestArchiveMove(true, editor = _editingState.value)
 
-    fun unarchiveCurrentNote() {
-        audioMemoManager.stopPlayback()
-        audioMemoManager.cancelRecording()
-        autoSaveJob?.cancel()
-        val current = _editingState.value ?: return
-        _editingState.value = null
-        val effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId
-        pendingNewNoteId = 0L
-        if (effectiveId != 0L) {
-            latestNotesCache.remove(effectiveId)
-            viewModelScope.launch(Dispatchers.IO) {
-                persistMutex.withLock {
-                    repository.setArchived(effectiveId, false)
-                }
-                triggerAutoSync()
-            }
-        }
-    }
+    fun unarchiveCurrentNote() = requestArchiveMove(false, editor = _editingState.value)
 
     fun toggleArchiveCurrentNote() {
         val current = _editingState.value ?: return
@@ -2198,6 +2211,222 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    enum class ArchiveMovePhase { IDLE, UNLOCK, SAVING, SUCCESS, ERROR }
+    data class ArchiveMoveState(
+        val phase: ArchiveMovePhase = ArchiveMovePhase.IDLE,
+        val archived: Boolean = true,
+        val message: String = "",
+        val editorClosed: Boolean = false
+    )
+    private data class ArchiveMoveRequest(
+        val archived: Boolean, val ids: List<Long>, val editor: EditingNoteState?,
+        val generation: Long = com.focusbyrj.app.data.note.NotesStorageVersion.current()
+    )
+    private val _archiveMove = MutableStateFlow(ArchiveMoveState())
+    val archiveMove: StateFlow<ArchiveMoveState> = _archiveMove.asStateFlow()
+    private var pendingArchiveMove: ArchiveMoveRequest? = null
+
+    private fun sameArchiveDraft(a: EditingNoteState, b: EditingNoteState): Boolean =
+        a.copy(originalId = b.originalId, storageRevision = b.storageRevision, updatedAt = b.updatedAt) == b
+
+    private fun requestArchiveMove(archived: Boolean, ids: List<Long> = emptyList(), editor: EditingNoteState? = null) {
+        if (_archiveMove.value.phase in setOf(ArchiveMovePhase.UNLOCK, ArchiveMovePhase.SAVING)) return
+        if (ids.isEmpty() && editor == null) return
+        if (editor != null && buildEntityFromState(editor).isEmptyNote()) {
+            _archiveMove.value = ArchiveMoveState(ArchiveMovePhase.ERROR, archived, "Add something to the note before moving it.")
+            return
+        }
+        if (hasPendingVaultDraftFile() || pendingVaultDraftInMemory != null || pendingPlainVaultDraft != null) {
+            _archiveMove.value = ArchiveMoveState(ArchiveMovePhase.ERROR, archived,
+                "An earlier private draft needs recovery. Open Archive and unlock it before moving another note.")
+            return
+        }
+        pendingArchiveMove = ArchiveMoveRequest(archived, ids.distinct(), editor)
+        refreshVaultStatus()
+        if (_vaultStatus.value == ArchiveVaultSecurity.VaultStatus.ENABLED && ArchiveVaultSecurity.isVaultLocked(getApplication()) &&
+            !(archived && VaultArchiveDeposit.readCapability(getApplication()) != null)) {
+            _archiveMove.value = ArchiveMoveState(ArchiveMovePhase.UNLOCK, archived)
+        } else continueArchiveMove()
+    }
+
+    fun verifyArchiveMovePin(pin: String): ArchiveVaultSecurity.VerifyResult {
+        if (pendingArchiveMove == null || _archiveMove.value.phase != ArchiveMovePhase.UNLOCK)
+            return ArchiveVaultSecurity.VerifyResult.Error("This request expired. Start the move again.")
+        // Do not navigate to Archive or start unrelated recovery jobs while authorizing this move.
+        return ArchiveVaultSecurity.verifyPasscode(getApplication(), pin)
+    }
+
+    fun cancelArchiveMoveAuthorization() {
+        if (_archiveMove.value.phase != ArchiveMovePhase.UNLOCK) return
+        pendingArchiveMove = null
+        ArchiveVaultSecurity.lockVault()
+        latestNotesCache.clear()
+        refreshVaultStatus()
+        _archiveMove.value = ArchiveMoveState()
+    }
+
+    fun dismissArchiveMoveResult() {
+        if (_archiveMove.value.phase in setOf(ArchiveMovePhase.SUCCESS, ArchiveMovePhase.ERROR))
+            _archiveMove.value = ArchiveMoveState()
+    }
+
+    private fun requireArchiveSaved(result: NoteRepository.SaveResult): NoteRepository.SaveResult.Saved = when (result) {
+        is NoteRepository.SaveResult.Saved -> result
+        is NoteRepository.SaveResult.Locked -> throw IllegalStateException(result.message)
+        is NoteRepository.SaveResult.Conflict -> throw IllegalStateException(result.message)
+        is NoteRepository.SaveResult.Corrupt -> throw IllegalStateException(result.message)
+        else -> throw IllegalStateException("Could not move your notes. Check phone storage and try again.")
+    }
+
+    fun continueArchiveMove() {
+        val queued = pendingArchiveMove ?: return
+        if (_archiveMove.value.phase == ArchiveMovePhase.SAVING) return
+        val latestEditor = _editingState.value
+        if (queued.editor != null && (latestEditor == null || latestEditor.sessionId != queued.editor.sessionId)) {
+            pendingArchiveMove = null
+            ArchiveVaultSecurity.lockVault()
+            latestNotesCache.clear()
+            refreshVaultStatus()
+            _archiveMove.value = ArchiveMoveState(ArchiveMovePhase.ERROR, queued.archived,
+                "The open note changed. Review your note and start the move again.")
+            return
+        }
+        // Include edits/attachment callbacks received while the PIN sheet was open.
+        val request = if (queued.editor != null) queued.copy(editor = latestEditor) else queued
+        val (key, vaultSettings) = synchronized(ArchiveVaultSecurity) {
+            ArchiveVaultSecurity.getActiveVaultSubKey() to getApplication<Application>()
+                .getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE).all
+        }
+        val deposit = if (request.archived && key == null) VaultArchiveDeposit.readCapability(getApplication()) else null
+        if (ArchiveVaultSecurity.getVaultStatus(getApplication()) == ArchiveVaultSecurity.VaultStatus.ENABLED && key == null && deposit == null) {
+            _archiveMove.value = ArchiveMoveState(ArchiveMovePhase.UNLOCK, request.archived)
+            return
+        }
+        // Consume one authorization and keep the global vault locked during the write.
+        ArchiveVaultSecurity.lockVault()
+        latestNotesCache.clear()
+        refreshVaultStatus()
+        _archiveMove.value = ArchiveMoveState(ArchiveMovePhase.SAVING, request.archived)
+        audioMemoManager.stopPlayback()
+        audioMemoManager.cancelRecording()
+        if (request.editor != null) { autoSaveJob?.cancel(); undoPushJob?.cancel() }
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            // Finish the authorized write/recovery and wipe its key even if this screen is destroyed.
+            withContext(kotlinx.coroutines.NonCancellable) {
+                var recoverySaved = false
+                try {
+                    var savedEditor: NoteEntity? = null
+                    withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                        persistMutex.withLock {
+                            check(request.generation == com.focusbyrj.app.data.note.NotesStorageVersion.current()) {
+                                "Notes were restored. Your draft was kept; reopen the latest note before moving it."
+                            }
+                            check(getApplication<Application>().getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE).all == vaultSettings) {
+                                "Vault settings changed. Start the move again; your draft was kept."
+                            }
+                            val editor = request.editor
+                            if (editor != null) {
+                                val active = _editingState.value
+                                check(active != null && sameArchiveDraft(active, editor)) { "The draft changed. Review it and try again." }
+                                val entity = buildEntityFromState(editor).copy(isArchived = request.archived, isPinned = false)
+                                check(!entity.isEmptyNote()) { "Add something to the note before moving it." }
+                                val stored = when {
+                                    request.archived && key == null && deposit != null -> VaultArchiveDeposit.encrypt(getApplication(), entity, deposit)
+                                    request.archived -> VaultPayloadEncryptor.encryptNotePayload(entity, key, getApplication())
+                                    else -> entity
+                                }
+                                savedEditor = saveEditorEntity(stored, editor)
+                            } else {
+                                val db = NoteDatabase.getInstance(getApplication())
+                                // A batch either completes in full or keeps every selected note unchanged.
+                                db.withTransaction {
+                                    check(request.generation == com.focusbyrj.app.data.note.NotesStorageVersion.current()) { "Notes were restored. Refresh and try again." }
+                                    request.ids.forEach { requireArchiveSaved(repository.setArchivedResult(it, request.archived, key, deposit)) }
+                                }
+                            }
+                        }
+                    }
+                    val editor = request.editor
+                    var editorClosed = false
+                    if (editor != null) {
+                        val saved = checkNotNull(savedEditor)
+                        val active = _editingState.value
+                        if (active?.sessionId == editor.sessionId && sameArchiveDraft(active, editor)) {
+                            _editingState.value = null
+                            initialSnapshot = null
+                            pendingNewNoteId = 0L
+                            resetUndoHistory()
+                            editorClosed = true
+                        } else if (active?.sessionId == editor.sessionId) {
+                            // A late attachment callback must not discard edits made after the snapshot.
+                            val later = active.copy(originalId = saved.id, storageRevision = saved.updatedAt,
+                                isArchived = request.archived, isPinned = false)
+                            if (request.archived) {
+                                pendingPlainVaultDraft = later
+                                _editingState.value = null
+                                withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                                    val encrypted = if (key == null && deposit != null)
+                                        VaultArchiveDeposit.encrypt(getApplication(), buildEntityFromState(later), deposit)
+                                    else VaultPayloadEncryptor.encryptNotePayload(buildEntityFromState(later), key, getApplication())
+                                    pendingVaultDraftInMemory = encrypted
+                                    persistPendingVaultDraft(encrypted, requireEmpty = true)
+                                    pendingVaultDraftInMemory = null
+                                    pendingPlainVaultDraft = null
+                                }
+                                recoverySaved = true
+                                throw IllegalStateException("Note archived. Later changes were saved as a recovery draft. Unlock Archive to recover them.")
+                            } else _editingState.value = later
+                        }
+                        if (pendingPlainVaultDraft?.sessionId == editor.sessionId &&
+                            pendingPlainVaultDraft?.let { sameArchiveDraft(it, editor) } == true) pendingPlainVaultDraft = null
+                        latestNotesCache.remove(saved.id)
+                        _saveStatus.value = NoteSaveStatus.Saved(saved.id)
+                    } else {
+                        request.ids.forEach { latestNotesCache.remove(it) }
+                        clearSelection()
+                    }
+                    if (!request.archived && _currentFolder.value == NoteFolder.ARCHIVE) _currentFolder.value = NoteFolder.NOTES
+                    _archiveMove.value = ArchiveMoveState(ArchiveMovePhase.SUCCESS, request.archived,
+                        if (request.archived) "Moved to Archive" else "Moved to Notes", editorClosed)
+                    triggerAutoSync()
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    var message = error.message ?: "Could not move your notes. Your draft and saved notes were kept."
+                    if (request.editor != null && !recoverySaved && (request.editor.isArchived ||
+                        pendingPlainVaultDraft?.let { it.sessionId == request.editor.sessionId && it.isArchived } == true)) {
+                        // On background/lock or a failed unarchive, preserve private edits under encryption.
+                        val draft = pendingPlainVaultDraft?.takeIf { it.sessionId == request.editor.sessionId }
+                            ?: _editingState.value?.takeIf { it.sessionId == request.editor.sessionId } ?: request.editor
+                        pendingPlainVaultDraft = draft
+                        _editingState.value = _editingState.value?.takeUnless { it.sessionId == draft.sessionId }
+                        try {
+                            withContext(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                                val encrypted = if (key == null && deposit != null)
+                                    VaultArchiveDeposit.encrypt(getApplication(), buildEntityFromState(draft), deposit)
+                                else VaultPayloadEncryptor.encryptNotePayload(buildEntityFromState(draft), key, getApplication())
+                                pendingVaultDraftInMemory = encrypted
+                                persistPendingVaultDraft(encrypted, requireEmpty = true)
+                                pendingVaultDraftInMemory = null
+                                pendingPlainVaultDraft = null
+                            }
+                            message += " Your private draft was saved for recovery; unlock Archive to recover it."
+                        } catch (_: Exception) {
+                            message += " Your private draft is retained in memory. Keep Run open and unlock Archive to recover it."
+                        }
+                    }
+                    _archiveMove.value = ArchiveMoveState(ArchiveMovePhase.ERROR, request.archived, message)
+                    if (request.editor != null) _saveStatus.value = NoteSaveStatus.Error(message, request.editor)
+                } finally {
+                    key?.fill(0)
+                    pendingArchiveMove = null
+                    ArchiveVaultSecurity.lockVault()
+                    latestNotesCache.clear()
+                    refreshVaultStatus()
+                }
+            }
+        }
+    }
+
     // Direct card quick actions
     fun togglePin(note: NoteEntity) {
         latestNotesCache.remove(note.id)
@@ -2206,13 +2435,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun archiveNote(note: NoteEntity) {
-        latestNotesCache.remove(note.id)
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.setArchived(note.id, true)
-            triggerAutoSync()
-        }
-    }
+    fun archiveNote(note: NoteEntity) = requestArchiveMove(true, listOf(note.id))
 
     fun trashNote(note: NoteEntity) {
         latestNotesCache.remove(note.id)

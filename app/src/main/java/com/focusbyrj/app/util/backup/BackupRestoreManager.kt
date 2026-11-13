@@ -198,6 +198,7 @@ object BackupRestoreManager {
                 throw IllegalArgumentException("Backup password cannot be empty or blank.")
             }
             val app = context.applicationContext as FocusApplication
+            BackupProgress.report("Reading saved data")
             val focusDb = app.database
             val noteDb = NoteDatabase.getInstance(app)
             val drillDb = DrillDatabase.getDatabase(app)
@@ -234,6 +235,7 @@ object BackupRestoreManager {
                     rawNote
                 }
             }
+            BackupProgress.report("Checking attachments")
             val mediaManifest = buildMediaManifest(app, processedNotes)
             val mediaManifestPaths = mediaManifest.mapTo(hashSetOf()) { it.relativePath }
             val drillSessions = drillDb.drillSessionDao().getAllSessionsSync()
@@ -563,11 +565,14 @@ object BackupRestoreManager {
                             // Package media files: stream decrypted bytes from EncryptedMediaStorage
                             // so that media is encrypted by the backup password and portable across devices.
                             val buffer = ByteArray(32 * 1024)
+                            var packedMedia = 0
                             MEDIA_FOLDERS.forEach { folderName ->
                                 val mediaDir = File(app.filesDir, folderName)
                                 if (mediaDir.exists() && mediaDir.isDirectory) {
                                     mediaDir.listFiles()?.forEach { file ->
                                         if (file.isFile && file.length() > 0 && "$folderName/${file.name}" in mediaManifestPaths) {
+                                            packedMedia++
+                                            BackupProgress.report("Encrypting attachment $packedMedia of ${mediaManifest.size}")
                                             if (EncryptedMediaStorage.isEncrypted(file)) {
                                                 val mediaStream = EncryptedMediaStorage.openDecryptedInputStream(file)
                                                 if (mediaStream != null) {
@@ -702,6 +707,7 @@ object BackupRestoreManager {
                                     }
                                     jsonDataStr = baos.toString(Charsets.UTF_8.name())
                                 } else if (entry.name.startsWith("media/")) {
+                                    BackupProgress.report("Checking attachment ${mediaDestinations.size + 1}")
                                     val normalized = entry.name.removePrefix("media/").replace('\\', '/').trimStart('/')
                                     val topFolder = normalized.substringBefore('/')
                                     if (topFolder !in MEDIA_FOLDERS || normalized.contains("..") || normalized.isEmpty()) {
@@ -747,6 +753,7 @@ object BackupRestoreManager {
                 throw IllegalArgumentException("Backup archive does not contain data.json manifest.")
             }
 
+            BackupProgress.report("Checking saved records")
             val rootJson = BackupArchiveLimits.parseManifest(jsonDataStr!!)
             val version = rootJson.optInt("version", BACKUP_VERSION)
             val createdAt = rootJson.optLong("createdAt", System.currentTimeMillis())
@@ -825,6 +832,7 @@ object BackupRestoreManager {
         try {
             require(password.isNotBlank()) { "Enter the backup password or recovery key." }
             val inStream = try {
+                BackupProgress.report("Opening backup file")
                 app.contentResolver.openInputStream(sourceUri) ?: throw IOException("No backup source stream")
             } catch (error: Exception) { throw BackupSourceUnavailableException(error) }
 
@@ -866,6 +874,7 @@ object BackupRestoreManager {
                                     }
                                     jsonDataStr = baos.toString(Charsets.UTF_8.name())
                                 } else if (entry.name.startsWith("media/")) {
+                                    BackupProgress.report("Checking attachment ${mediaDestinations.size + 1}")
                                     val normalized = entry.name.removePrefix("media/").replace('\\', '/').trimStart('/')
                                     val topFolder = normalized.substringBefore('/')
                                     if (topFolder !in MEDIA_FOLDERS || normalized.contains("..") || normalized.isEmpty()) {
@@ -911,6 +920,7 @@ object BackupRestoreManager {
                 throw IllegalArgumentException("Backup archive does not contain data.json manifest.")
             }
 
+            BackupProgress.report("Checking saved records")
             val rootJson = BackupArchiveLimits.parseManifest(jsonDataStr!!)
             validateRestoreManifest(rootJson)
             validateStagedMedia(rootJson, stagingDir)
@@ -964,6 +974,7 @@ object BackupRestoreManager {
             }
             // One-use authorization: the vault UI remains locked throughout the write.
             ArchiveVaultSecurity.lockVault()
+            BackupProgress.report("Saving recovery point")
             RestoreJournal.mutate(context) {
                 if (context.getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE).all != vaultBefore)
                     Result.failure(SecurityException("Vault settings changed. Start restore again; your data was not changed."))
@@ -998,11 +1009,13 @@ object BackupRestoreManager {
             val appVersion = rootJson.optString("appVersion", "1.0.0")
             val assistantPlanning = rootJson.optJSONObject("assistantPlanning")
             AssistantPlanningArchive.preflight(app, assistantPlanning, cleanRestore)
+            BackupProgress.report("Saving note safety snapshot")
             checkNotNull(DataSafetyManager.writePreOpSnapshot(app, noteDb.noteDao(), "pre_encrypted_restore", focusDb)) {
                 "Could not create the required pre-restore safety snapshot. No data was changed."
             }
 
             // 4. Validate Secret Vault State and Build NoteEntities
+            BackupProgress.report("Restoring notes")
             val notesArray = rootJson.optJSONArray("notes") ?: JSONArray()
             val hasArchivedNotes = (0 until notesArray.length()).any {
                 notesArray.getJSONObject(it).optBoolean("isArchived", false)
@@ -1091,6 +1104,7 @@ object BackupRestoreManager {
             } catch (_: Exception) {}
 
             // 5. Restore Restrictions, Schedules, Tasks, and Habits atomically
+            BackupProgress.report("Restoring tasks and habits")
             val restrArray = rootJson.optJSONArray("restrictions") ?: JSONArray()
             val schedArray = rootJson.optJSONArray("schedules") ?: JSONArray()
             val taskArray = rootJson.optJSONArray("tasks") ?: JSONArray()
@@ -1224,6 +1238,7 @@ object BackupRestoreManager {
 
             RestoreJournal.checkpoint("focus")
             // 9. Restore Drill Sessions
+            BackupProgress.report("Restoring learning history")
             val drillArray = rootJson.optJSONArray("drillSessions") ?: JSONArray()
             drillDb.withTransaction {
                 if (cleanRestore) {
@@ -1327,6 +1342,7 @@ object BackupRestoreManager {
 
             // 12. Restore SharedPreferences
             val prefsObj = rootJson.optJSONObject("preferences")
+            BackupProgress.report("Restoring settings")
             val prefTypesObj = rootJson.optJSONObject("preferenceTypes")
             // Completed history was absent from earlier current-format archives.
             // A clean restore must not retain unrelated local history; a merge may.
@@ -1648,6 +1664,7 @@ object BackupRestoreManager {
         }
         val expectedPaths = mutableSetOf<String>()
         for (i in 0 until manifest.length()) {
+            BackupProgress.report("Verifying attachment ${i + 1} of ${manifest.length()}")
             val obj = manifest.getJSONObject(i)
             val relative = obj.getString("path").replace('\\', '/').trimStart('/')
             require(relative.substringBefore('/') in MEDIA_FOLDERS && !relative.contains("..")) {
@@ -1720,6 +1737,7 @@ object BackupRestoreManager {
             uniqueReferencedFiles["$folder/${normalized.substringAfterLast('/')}"] = File(path)
         }
         uniqueReferencedFiles.forEach { (relativePath, file) ->
+                BackupProgress.report("Checking attachment ${result.size + 1} of ${uniqueReferencedFiles.size}")
                 val stream = if (EncryptedMediaStorage.isEncrypted(file)) {
                     EncryptedMediaStorage.openDecryptedInputStream(file)
                 } else FileInputStream(file)
@@ -1785,6 +1803,7 @@ object BackupRestoreManager {
                     destination.parentFile?.mkdirs()
                     val temp = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.restore")
                     prepared += destination to temp
+                    BackupProgress.report("Restoring attachment ${prepared.size} of ${destinations.size}")
                     // This authenticates the complete GCM tag before any database change.
                     (EncryptedMediaStorage.openDecryptedInputStream(staged)
                         ?: throw IOException("Staged attachment cannot be decrypted")).close()

@@ -141,7 +141,7 @@ internal object AutomaticBackups {
         destinationFactory: (String) -> BackupDestination = { SafBackupDestination(context, it) },
         createArchive: suspend (Context, Uri, String, ByteArray?) -> Result<BackupRestoreManager.BackupMetadata> = BackupRestoreManager::createAutomaticEncryptedBackup,
         requestId: String = "", expectedScope: BackupRequestScope? = null
-    ): Boolean = edit {
+    ): Boolean = withContext(BackupProgress { mutableProgress.value = it }) { edit {
         val app = context.applicationContext
         var config = store.config()
         // Check under the same mutex as key/folder changes, not only in the worker's preflight.
@@ -246,7 +246,7 @@ internal object AutomaticBackups {
             notifyProblem(app)
             false
         } finally { active.value = false }
-    }
+    } }
     fun notifyProblem(context: Context) {
         runCatching {
             val manager = context.getSystemService(NotificationManager::class.java)

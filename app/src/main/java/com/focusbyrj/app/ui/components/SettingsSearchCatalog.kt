@@ -58,6 +58,7 @@ internal object SettingsSearchCatalog {
         SettingsSearchEntry("Notifications", "Android notification access and channels", "Security & permissions", "security", "permissions.notifications", listOf()),
         SettingsSearchEntry("Alarms & reminders", "Exact alarm access for scheduled reminders", "Security & permissions", "security", "permissions.alarms", listOf()),
         SettingsSearchEntry("Private notes vault", "PIN, recovery phrase and private archived notes", "Private notes vault", "settings_vault", "vault.home", listOf("Security Vault", "Biometric login & vaults")),
+        SettingsSearchEntry("Ask for PIN when archiving", "Viewing and unarchiving still require the PIN", "Private notes vault", "settings_vault", "vault.archive_pin", listOf("Archive without PIN", "Archive without password")),
         SettingsSearchEntry("Change vault PIN", "Verify the current PIN before changing it", "Private notes vault", "settings_vault", "vault.change_pin", listOf()),
         SettingsSearchEntry("Disable vault PIN", "Verify the PIN before removing vault protection", "Private notes vault", "settings_vault", "vault.disable", listOf()),
         SettingsSearchEntry("Lock private notes vault", "Discard the in-memory vault key", "Private notes vault", "settings_vault", "vault.lock", listOf("Lock app immediately")),

@@ -363,7 +363,8 @@ fun ArchiveVaultUnlockDialog(
     initialLockoutSeconds: Long = 0L,
     onEmergencyRecoveryClick: (() -> Unit)? = null,
     title: String = "Archive Vault",
-    description: String = "Enter 6-digit passcode to unlock"
+    description: String = "Enter 6-digit passcode to unlock",
+    showCancelButton: Boolean = false
 ) {
     val haptic = LocalHapticFeedback.current
     var pin by remember { mutableStateOf("") }
@@ -552,6 +553,10 @@ fun ArchiveVaultUnlockDialog(
                 },
                 leftActionLabel = if (pin.isNotEmpty()) "Clear" else null
             )
+
+            if (showCancelButton) {
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+            }
 
             if (onEmergencyRecoveryClick != null) {
                 Spacer(modifier = Modifier.height(8.dp))

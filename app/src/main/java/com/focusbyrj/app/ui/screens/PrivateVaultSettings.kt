@@ -9,6 +9,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -44,6 +46,9 @@ private fun PrivateVaultSettingsPanel(viewModel: NotesViewModel) {
     val status by viewModel.vaultStatus.collectAsStateWithLifecycle()
     val unlocked by viewModel.isVaultUnlocked.collectAsStateWithLifecycle()
     val backedUp by viewModel.isRecoveryPhraseBackedUp.collectAsStateWithLifecycle()
+    val withoutArchivePin by viewModel.archiveWithoutPin.collectAsStateWithLifecycle()
+    val archiveOption by viewModel.archiveOption.collectAsStateWithLifecycle()
+    var allowWithoutPin by remember { mutableStateOf(false) }
     val configured = status == ArchiveVaultSecurity.VaultStatus.ENABLED
     var recoveryAvailable by remember { mutableStateOf(viewModel.isVaultRecoveryConfigured()) }
     var setup by remember { mutableStateOf(false) }
@@ -58,6 +63,8 @@ private fun PrivateVaultSettingsPanel(viewModel: NotesViewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) refresh()
             if (event == Lifecycle.Event.ON_STOP) {
+                if (allowWithoutPin) viewModel.lockVault()
+                allowWithoutPin = false
                 phrase = null
                 setup = false
                 changePin = false
@@ -84,6 +91,16 @@ private fun PrivateVaultSettingsPanel(viewModel: NotesViewModel) {
     SettingsMenuRow(Icons.Default.Lock, "Lock private notes vault", Modifier.settingsSearchTarget("vault.lock")) {
         GrantButton(if (unlocked) "Lock" else "Locked", enabled = configured && unlocked, onClick = { viewModel.lockVault(); refresh() })
     }
+    SettingsMenuRow(Icons.Default.Archive, "Ask for PIN when archiving", Modifier.settingsSearchTarget("vault.archive_pin")) {
+        Switch(checked = !withoutArchivePin, enabled = configured && !archiveOption.busy,
+            modifier = Modifier.semantics { contentDescription = "Ask for PIN when archiving" },
+            onCheckedChange = { askPin -> if (askPin) viewModel.setArchiveWithoutPin(false) else allowWithoutPin = true })
+    }
+    Text(if (configured) "Viewing and unarchiving always need your PIN." else "Set up a vault PIN to protect viewing and unarchiving.", Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (!withoutArchivePin && configured) Text("After changing your PIN, confirm PIN-free archiving again.",
+        Modifier.padding(horizontal = 6.dp, vertical = 6.dp), style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
     SettingsMenuSectionHeader("RECOVERY")
     SettingsMenuRow(Icons.Default.Key, "Back up recovery phrase", Modifier.settingsSearchTarget("vault.phrase")) {
         GrantButton(if (backedUp) "View" else "Back up", enabled = configured, onClick = { if (unlocked) exportPhrase() else unlockingForPhrase = true })
@@ -98,6 +115,25 @@ private fun PrivateVaultSettingsPanel(viewModel: NotesViewModel) {
     SettingsMenuRow(Icons.Default.LockOpen, "Disable vault PIN", Modifier.settingsSearchTarget("vault.disable")) {
         GrantButton("Disable", enabled = configured, onClick = { disable = true })
     }
+    LaunchedEffect(archiveOption.message) {
+        if (archiveOption.message != null && !archiveOption.error && !archiveOption.busy) {
+            Toast.makeText(context, archiveOption.message, Toast.LENGTH_LONG).show()
+            viewModel.dismissArchiveOptionMessage()
+        }
+    }
+    if (allowWithoutPin) ArchiveVaultUnlockDialog(
+        onDismiss = { allowWithoutPin = false; viewModel.lockVault() },
+        onVerify = viewModel::verifyArchiveOptionPin,
+        onSuccess = { allowWithoutPin = false; viewModel.setArchiveWithoutPin(true) },
+        initialLockoutSeconds = viewModel.getRemainingLockoutSeconds(),
+        title = "Allow archiving without PIN",
+        description = "Confirm once. Viewing and unarchiving will still need your PIN.",
+        showCancelButton = true)
+    if (archiveOption.busy) AlertDialog(onDismissRequest = {}, title = { Text("Updating archive option") },
+        text = { LinearProgressIndicator(Modifier.fillMaxWidth()) }, confirmButton = {})
+    if (archiveOption.error) AlertDialog(onDismissRequest = viewModel::dismissArchiveOptionMessage,
+        title = { Text("Check archive option") }, text = { Text(archiveOption.message ?: "Try again.") },
+        confirmButton = { TextButton(onClick = viewModel::dismissArchiveOptionMessage) { Text("OK") } })
     if (setup) ArchiveVaultFirstTimeDialog(
         onDismiss = { setup = false }, onSkip = { setup = false },
         onPasscodeSet = { pin, words, confirmed ->

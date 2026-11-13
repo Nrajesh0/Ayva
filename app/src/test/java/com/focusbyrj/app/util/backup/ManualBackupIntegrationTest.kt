@@ -52,6 +52,31 @@ class ManualBackupIntegrationTest {
         Unit
     }
 
+    @Test fun preparationReportsLiveProgressAndCancelledWorkCannotOverwriteTheNextMessage() = runBlocking {
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val finished = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val model = ManualBackupViewModel(app) { _, _, _ ->
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
+                try {
+                    BackupProgress.report("Checking attachment 1 of 2")
+                    release.await()
+                    BackupProgress.report("Late progress from cancelled work")
+                    throw kotlinx.coroutines.CancellationException("Synthetic cancelled preparation")
+                } finally { finished.complete(Unit) }
+            }
+        }
+        try {
+            model.prepare(password)
+            await { model.state.value.message == "Checking attachment 1 of 2" }
+            assertEquals(ManualBackupPhase.PREPARING, model.state.value.phase)
+            model.cancel("Preparation cancelled")
+            release.complete(Unit)
+            await { finished.isCompleted }
+            assertEquals("Preparation cancelled", model.state.value.message)
+            assertTrue(ArchiveVaultSecurity.isVaultLocked(app))
+        } finally { release.complete(Unit); model.cancel() }
+    }
+
     @Test fun aOneTimeAuthorizationPreparesPrivateNotesBeforeThePickerWithoutChangingLiveData() = runBlocking {
         val original = notes.getNoteByIdSync(90210)!!
         val key = ArchiveVaultSecurity.getActiveVaultSubKey()!!

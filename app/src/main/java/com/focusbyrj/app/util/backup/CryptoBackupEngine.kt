@@ -54,6 +54,7 @@ object CryptoBackupEngine {
      * Streaming ensures zero heap memory buffering, preventing OutOfMemoryError crashes on large media archives.
      */
     fun openEncryptingStream(outputStream: OutputStream, passwordChars: CharArray): OutputStream {
+        BackupProgress.report("Preparing encryption")
         val salt = ByteArray(SALT_LENGTH).also { SecureRandom().nextBytes(it) }
         val verifierIv = ByteArray(IV_LENGTH).also { SecureRandom().nextBytes(it) }
         val payloadIv = ByteArray(IV_LENGTH).also { SecureRandom().nextBytes(it) }
@@ -112,6 +113,7 @@ object CryptoBackupEngine {
      * Throws [SecurityException] for authentication failures.
      */
     fun openDecryptingStream(inputStream: InputStream, passwordChars: CharArray): InputStream {
+        BackupProgress.report("Checking backup password")
         val internalChars = passwordChars.clone()
         var derivedKeyBytes: ByteArray? = null
         try {
@@ -178,6 +180,7 @@ object CryptoBackupEngine {
                 }
 
                 // Verifier passed! Initialize payload cipher with full header AAD
+                BackupProgress.report("Checking backup contents")
                 val payloadAad = verifierAad + verifierBlock + payloadIv
                 val payloadCipher = Cipher.getInstance(CIPHER_TRANSFORMATION)
                 payloadCipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, payloadIv))

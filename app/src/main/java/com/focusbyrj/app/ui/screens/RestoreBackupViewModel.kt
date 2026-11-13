@@ -8,9 +8,11 @@ import androidx.lifecycle.viewModelScope
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.util.backup.AutomaticBackupStore
 import com.focusbyrj.app.util.backup.BackupRestoreManager
+import com.focusbyrj.app.util.backup.BackupProgress
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 internal enum class RestorePhase { IDLE, CHECKING, REVIEW, UNLOCK_SAVED_KEY, UNLOCK, SETUP_PIN, APPLYING, SUCCESS, ERROR }
 internal data class RestoreState(
@@ -62,8 +64,10 @@ internal class RestoreBackupViewModel(
     private fun prepareChecked(uri: Uri, credential: String?) {
         val request = generation
         val capability = authorization
-        mutable.value = RestoreState(RestorePhase.CHECKING)
-        operation = viewModelScope.launch {
+        mutable.value = RestoreState(RestorePhase.CHECKING, message = "Checking backup password")
+        operation = viewModelScope.launch(BackupProgress { message ->
+            mutable.update { if (request == generation && it.phase == RestorePhase.CHECKING) it.copy(message = message) else it }
+        }) {
             var owned: BackupRestoreManager.PreparedRestore? = null
             var keyReady = credential != null
             try {
@@ -124,8 +128,11 @@ internal class RestoreBackupViewModel(
         startApply(pin)
     }
     private fun startApply(pin: String?) {
-        mutable.value = mutable.value.copy(phase = RestorePhase.APPLYING)
-        operation = viewModelScope.launch { apply(pin) }
+        val request = generation
+        mutable.value = mutable.value.copy(phase = RestorePhase.APPLYING, message = "Preparing restore")
+        operation = viewModelScope.launch(BackupProgress { message ->
+            mutable.update { if (request == generation && it.phase == RestorePhase.APPLYING) it.copy(message = message) else it }
+        }) { apply(pin) }
     }
 
     private suspend fun apply(pin: String?) {

@@ -75,12 +75,15 @@ internal object AutomaticBackupFiles {
         var pending: BackupDocument? = null
         var fallback: BackupDocument? = null
         fun copy(document: BackupDocument) {
+            BackupProgress.report("Saving backup file")
             source().use { input -> destination.write(document.uri).use { output -> input.copyTo(output, 64 * 1024); output.flush() } }
+            BackupProgress.report("Verifying saved file")
             val actual = destination.read(document.uri).use { digestBackup(it, expected.size) }
             require(actual == expected) { "Destination verification failed; previous backups were kept." }
         }
         try {
             pending = destination.create("$name.incomplete"); copy(pending)
+            BackupProgress.report("Confirming backup file")
             val renamed = destination.rename(pending.uri, name)
             if (renamed != null) {
                 pending = renamed
@@ -107,6 +110,7 @@ internal object AutomaticBackupFiles {
         // Recheck the newest committed copy after bookkeeping. A missing/corrupt retained
         // archive must never cause deletion of the only older recoverable copies.
         val anchor = owned.lastOrNull() ?: return Triple(records, 0, false)
+        BackupProgress.report("Checking latest backup")
         try {
             require(destination.info(anchor.uri)?.name == anchor.name)
             require(destination.read(anchor.uri).use { digestBackup(it, anchor.size) } == EncryptedFileDigest(anchor.size, anchor.sha256))

@@ -192,6 +192,7 @@ fun NotesScreen(
     val recordingState by viewModel.recordingState.collectAsState()
     val playbackState by viewModel.playbackState.collectAsState()
     val economyProfile by FocusEconomyManager.profileFlow.collectAsState()
+    val archiveMove by viewModel.archiveMove.collectAsState()
     val vaultStatus by viewModel.vaultStatus.collectAsState()
     val isVaultUnlocked by viewModel.isVaultUnlocked.collectAsState()
     val vaultKeyMismatchNoteId by viewModel.vaultKeyMismatchNoteId.collectAsState()
@@ -224,12 +225,21 @@ fun NotesScreen(
         viewModel.refreshVaultStatus()
     }
 
+    LaunchedEffect(archiveMove.phase) {
+        if (archiveMove.phase == NotesViewModel.ArchiveMovePhase.SUCCESS) {
+            Toast.makeText(context, archiveMove.message, Toast.LENGTH_SHORT).show()
+            if (archiveMove.editorClosed) viewModel.consumeReturnRoute()?.let { onNavigateToRoute?.invoke(it) }
+            viewModel.dismissArchiveMoveResult()
+        }
+    }
+
     // Auto-lock vault when screen goes into background or is disposed; refresh status on resume
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
                 viewModel.audioMemoManager.pauseRecording()
+                viewModel.cancelArchiveMoveAuthorization()
                 if (viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
                     viewModel.lockVault()
                 }
@@ -241,6 +251,7 @@ fun NotesScreen(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             viewModel.audioMemoManager.pauseRecording()
+            viewModel.cancelArchiveMoveAuthorization()
             if (viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
                 viewModel.lockVault()
             }
@@ -1610,17 +1621,9 @@ fun NotesScreen(
                         },
                         onArchive = {
                             viewModel.archiveCurrentNote()
-                            val returnRoute = viewModel.consumeReturnRoute()
-                            if (returnRoute != null) {
-                                onNavigateToRoute?.invoke(returnRoute)
-                            }
                         },
                         onUnarchive = {
                             viewModel.unarchiveCurrentNote()
-                            val returnRoute = viewModel.consumeReturnRoute()
-                            if (returnRoute != null) {
-                                onNavigateToRoute?.invoke(returnRoute)
-                            }
                         },
                         onDelete = {
                             viewModel.deleteCurrentNote()
@@ -1830,6 +1833,34 @@ fun NotesScreen(
             // =========================================================
             // SECRET ARCHIVE VAULT DIALOGS
             // =========================================================
+            when (archiveMove.phase) {
+                NotesViewModel.ArchiveMovePhase.UNLOCK -> ArchiveVaultUnlockDialog(
+                    onDismiss = viewModel::cancelArchiveMoveAuthorization,
+                    onVerify = viewModel::verifyArchiveMovePin,
+                    onSuccess = viewModel::continueArchiveMove,
+                    initialLockoutSeconds = viewModel.getRemainingLockoutSeconds(),
+                    title = if (archiveMove.archived) "Unlock to archive" else "Unlock to move to Notes",
+                    description = "Enter your vault PIN for this move. The vault stays locked afterward.",
+                    showCancelButton = true
+                )
+                NotesViewModel.ArchiveMovePhase.SAVING -> AlertDialog(
+                    onDismissRequest = {},
+                    title = { Text(if (archiveMove.archived) "Moving to Archive" else "Moving to Notes") },
+                    text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text("Saving your notes. Keep Run open until this finishes.")
+                    } },
+                    confirmButton = {}
+                )
+                NotesViewModel.ArchiveMovePhase.ERROR -> AlertDialog(
+                    onDismissRequest = viewModel::dismissArchiveMoveResult,
+                    title = { Text("Check your note") },
+                    text = { Text(archiveMove.message) },
+                    confirmButton = { TextButton(onClick = viewModel::dismissArchiveMoveResult) { Text("OK") } }
+                )
+                else -> Unit
+            }
+
             if (showVaultUnlockDialog) {
                 ArchiveVaultUnlockDialog(
                     onDismiss = { 
