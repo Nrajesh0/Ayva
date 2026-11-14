@@ -7,6 +7,7 @@ published artifacts. Entry versions, checks and device limits remain as recorded
 
 ## Contents
 
+- [Version 2.0.47 (147)](#version-2047-147)
 - [Release 2.0.45](#version-2-0-45)
 - [Ayva 2.0.44 (144)](#version-2-0-44)
 - [Ayva 2.0.43 (143)](#version-2-0-43)
@@ -15,6 +16,28 @@ published artifacts. Entry versions, checks and device limits remain as recorded
 - [Ayva 2.0.40 (140)](#version-2-0-40)
 - [Ayva 2.0.25 (125)](#version-2-0-25)
 - [Ayva 2.0.24 (124)](#version-2-0-24)
+
+## Version 2.0.47 (147)
+
+- Remove the general dictionary dataset and lookup/import controls. Preserve native
+  idioms/OWS, saved words, bookmarks, learning progress, quizzes and their backups.
+  Games use authored words plus the native vocabulary library; sentence-pattern
+  explanations remain available. Old dictionary actions fail closed.
+- Include the previously committed backup/media improvements: portable preference
+  and note-ID coverage, paused schedules, restore rollback/drill handling, clearer
+  progress/warnings, authenticated image previews and full-photo capture.
+- Allow an authorized private editor to return from media selection within two
+  minutes; screen lock, expiry or session loss requires PIN again.
+- Chat update controls stop disabled automatic cards entering the transcript and
+  unread count; direct replies and existing history remain available.
+- Consolidate archive verification and group artwork maintenance tools.
+
+Selected dictionary-removal regressions cover 563 cases across 23 suites, using
+latest per-class results. Full debug/release lint passed without errors before the
+final one-word game-bank alignment; focused game/vocabulary tests passed again
+for that correction. Versioned build and packaged-asset verification are recorded
+in the [removal record](../assistant/DICTIONARY_DATA.md). Device testing remains
+separate; this entry does not establish GitHub release publication.
 
 <a id="version-2-0-45"></a>
 

@@ -32,7 +32,7 @@ application lives in this repository under the project name **Ayva**.
 | Notes and private archive | Rich notes with attachments, encrypted storage and a PIN-protected private archive. Optional PIN-free archiving lets you add protected notes while the vault stays locked; viewing or unarchiving still requires authorization. |
 | Backup and restore | Password-protected manual backups, scheduled encrypted backups, a portable recovery file, backup verification and restore progress. Snapshot restore replaces backed-up app data after review; importing extra copies is a separate choice. |
 | Ayva assistant | On-device conversation for supported task, habit, focus, routine and settings actions, with clarification, previews and guarded undo where supported. |
-| Learning | Bundled dictionary, vocabulary practice and Drill/Blitz exercises. |
+| Learning | Offline idiom/OWS vocabulary practice and Drill/Blitz exercises. |
 | Widgets and appearance | Home-screen widgets for notes, exams and battery health; themes, launcher icons and animated companion artwork. |
 
 Ayva uses authored content and bounded rules. It is not a general-purpose language
@@ -92,7 +92,7 @@ the same phone does not protect against losing that phone. See the
 
 Download the **universal APK** from [GitHub Releases](https://github.com/Nrajesh0/Ayva/releases/latest).
 It supports **Android 12 and newer (API 31+)** and includes ARM and x86 native
-libraries, bundled dictionary content and artwork. The target SDK is Android 15
+libraries, bundled vocabulary content and artwork. The target SDK is Android 15
 (API 35); a newer Android release can still run the app.
 
 Install the APK through Android's package installer, allowing installation from
@@ -150,7 +150,7 @@ for focused checks, CI scheduling and device-testing limits.
 The project is licensed under the **GNU Affero General Public License v3.0
 (AGPLv3)**. See [LICENSE](LICENSE) for the terms, warranty disclaimer and limitation
 of liability. Bundled dependencies and datasets retain their applicable licences
-and notices; see the relevant source and [dictionary guide](docs/assistant/DICTIONARY_DATA.md).
+and notices; see the relevant source and [vocabulary and dictionary removal record](docs/assistant/DICTIONARY_DATA.md).
 
 The **RuN** name, logo, app icons and visual branding are governed separately by
 [TRADEMARK.md](TRADEMARK.md). The code licence does not grant unrestricted use of

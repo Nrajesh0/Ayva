@@ -24,7 +24,7 @@ internal object ConversationRouting {
         if (nativeRequest(text) && !discussionNeed) candidates += Candidate(Owner.NATIVE, 110, "explicit app request")
         if (Regex("(?i)^i (?:need|want|would like) to (?:decide|think through|talk through|talk about) ").containsMatchIn(text))
             candidates += Candidate(Owner.DISCUSSION, 120, "explicit decision discussion")
-        if (AssistantDictionary.isLookup(text)) candidates += Candidate(Owner.DICTIONARY, 100, "explicit lookup")
+        if (AssistantWordLookup.isLookup(text)) candidates += Candidate(Owner.DICTIONARY, 100, "explicit lookup")
         if (ConversationKnowledge.match(text) != null && Regex("(?i)^(?:what|why|how|explain|tell me about|can you explain|could you explain)\\b").containsMatchIn(text))
             candidates += Candidate(Owner.KNOWLEDGE, 90, "supported concept explanation")
         if (ConversationReasoning.explicit(text)) candidates += Candidate(Owner.REASONING, 125, "explicit premises or conditional reasoning")

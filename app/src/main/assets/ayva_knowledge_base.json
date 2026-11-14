@@ -1178,12 +1178,12 @@
   },
   {
     "id": "offline_dictionary",
-    "title": "Offline Dictionary",
-    "directExplanation": "Ayva bundles about 108,000 Wordset source entries with multiple senses and source examples where available. Ask what a word means, choose another meaning, or save a sense to vocabulary bookmarks. Selected senses have separately written simple-English wording and examples. Whole-sentence explanations support named grammar/idiom patterns; they cannot reliably explain arbitrary sentences or sarcasm. No runtime data or model download is needed. Say dictionary credits for source and license.",
-    "whereToGo": "Use chat: what does reluctant mean?",
+    "title": "Vocabulary Library",
+    "directExplanation": "Ayva uses its existing offline vocabulary library for idioms, one-word substitutions, bookmarks and practice. The full English dictionary is no longer bundled. Previously saved words and progress remain available. Games use a small authored word list and the vocabulary library. Fixed sentence-pattern explanations remain available.",
+    "whereToGo": "Use chat: look up break the ice.",
     "whatToClick": [
       "Ask for a word meaning.",
-      "Choose a sense, ask for an example, or review saving the word.",
+      "Review a matching vocabulary entry or its bookmark.",
       "Use quiz me on saved words to open the native vocabulary quiz."
     ],
     "keywords": [

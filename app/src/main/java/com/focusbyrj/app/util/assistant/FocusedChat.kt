@@ -35,7 +35,7 @@ internal object FocusedChat {
             root.put("pausedSocial", JSONObject(social.toString()).put("pausedAt", System.currentTimeMillis()))
         }
     }
-    fun answer(context: Context, state: AssistantSession, input: String): AyvaTalkEngine.TalkResponse? {
+    suspend fun answer(context: Context, state: AssistantSession, input: String): AyvaTalkEngine.TalkResponse? {
         if (ChatModeStore.get(context) == ChatMode.PLAN || state.topic == "planning" || state.expected != null || state.pending.isNotEmpty()) return null
         var text = input.trim().lowercase(Locale.ROOT).replace('’', '\'').trimEnd('.', '!', '?')
         val root = state.featureState ?: JSONObject().also { state.featureState = it }
@@ -145,7 +145,7 @@ internal object FocusedChat {
         }
         if (kind == null && !active) return null
         // Explicit app requests leave the activity untouched so it can be resumed later.
-        if (kind == null && text !in setOf("start over", "new round") && (ConversationRouting.nativeRequest(text) || AssistantDictionary.isLookup(text) || ConversationReasoning.explicit(text))) return null
+        if (kind == null && text !in setOf("start over", "new round") && (ConversationRouting.nativeRequest(text) || AssistantWordLookup.isLookup(text) || ConversationReasoning.explicit(text))) return null
         if (kind != null) {
             if (frame?.optString("kind") != kind) archive(frame)
             if (socialActive) root.put("pausedSocial", JSONObject(social!!.toString()).put("pausedAt", System.currentTimeMillis()))
@@ -171,7 +171,8 @@ internal object FocusedChat {
         if (text in setOf("restart", "start over", "new round")) {
             root.optJSONObject("experienceSeen")?.remove(f.optString("kind"))
             rotation.edit().putString("focused", root.optJSONObject("experienceSeen").toString()).apply()
-            return answer(context, state, start.entries.first { it.value == f.optString("kind") }.key)
+            val restartKind = f.optString("kind")
+            return answer(context, state, start.entries.first { it.value == restartKind }.key)
         }
         if (text in setOf("easy", "harder", "hard", "longer", "shorter") && f.optString("kind") in setOf("chain", "anagram")) {
             if (text in setOf("easy", "hard", "harder")) f.put("hard", text != "easy")
@@ -185,13 +186,13 @@ internal object FocusedChat {
         when (current) {
             "chain" -> {
                 val used = values(f, "used").toMutableList()
-                if (kind != null) { val opening = listOf("cat", "river", "moon", "garden")[rotation.getInt("chain", 0) % 4]; rotation.edit().putInt("chain", (rotation.getInt("chain", 0) + 1) % 4).apply(); used += opening; f.put("used", JSONArray(used)).put("word", opening); return say("**WORD CHAIN**\n\n**$opening** → **${opening.last().uppercaseChar()}**\n\n Five rounds; dictionary words only, no repeats. Say ‘hint’, ‘longer’ or ‘stop’.", listOf("Hint" to "hint", "Stop" to "stop")) }
+                if (kind != null) { val opening = listOf("cat", "river", "moon", "garden")[rotation.getInt("chain", 0) % 4]; rotation.edit().putInt("chain", (rotation.getInt("chain", 0) + 1) % 4).apply(); used += opening; f.put("used", JSONArray(used)).put("word", opening); return say("**WORD CHAIN**\n\n**$opening** → **${opening.last().uppercaseChar()}**\n\n Five rounds; words from the built-in game list or vocabulary library, no repeats. Say ‘hint’, ‘longer’ or ‘stop’.", listOf("Hint" to "hint", "Stop" to "stop")) }
                 val last = f.optString("word", "cat").takeIf { it.matches(Regex("[a-z]{2,24}")) } ?: return say("This saved round is incompatible. Restart for a fresh game.", listOf("Restart" to "restart"))
                 if (text == "rules") return say(ExperienceContent.WORD_RULES)
                 if (text in setOf("score", "progress")) return say("${f.optInt("score")} of ${f.optInt("limit", 5)} valid words. Your next letter is ${last.last().uppercaseChar()}.")
                 val candidates = ExperienceContent.chainByLetter[last.last()].orEmpty().filter { it !in used && (!f.optBoolean("hard") || it.length >= 5) }
                 if (text in setOf("meaning", "definition", "what does it mean")) {
-                    val meaning = runCatching { AssistantDictionaryStore.lookup(context, last).firstOrNull()?.definition }.getOrNull()
+                    val meaning = runCatching { AssistantGameWords.meaning(context, last) }.getOrNull()
                     return say(meaning?.let { "**$last**: $it" } ?: "I don't have a stored definition for this word.", listOf("Hint" to "hint", "Skip" to "skip"))
                 }
                 if (text in hints) {
@@ -206,8 +207,8 @@ internal object FocusedChat {
                 if (!text.matches(Regex("[a-z]{2,24}"))) return say("For this game, use one alphabetic word, without spaces or hyphens. Your letter is ${last.last().uppercaseChar()}.")
                 if (text.first() != last.last()) return say("Start with ${last.last().uppercaseChar()}, the last letter of ‘$last’.", listOf("Hint" to "hint", "Skip" to "skip"))
                 if (text in used) return say("We already used ‘$text’. Try another word.")
-                val senses = runCatching { AssistantDictionaryStore.lookup(context, text) }.getOrDefault(emptyList())
-                if (senses.isEmpty() || senses.all { sense -> sense.labels.any { it.contains("proper", true) } }) return say("‘$text’ isn't in my game dictionary. You can try another word or skip; I won't count it as a wrong answer.", listOf("Skip" to "skip", "Hint" to "hint"))
+                val accepted = AssistantGameWords.accepts(context, text)
+                if (!accepted) return say("‘$text’ isn't in the available game word list. You can try another word or skip; I won't count it as a wrong answer.", listOf("Skip" to "skip", "Hint" to "hint"))
                 if (f.optBoolean("hard") && text.length < 5) return say("Hard mode uses words of at least five letters. Try again or say ‘easy’.")
                 used += text; f.put("score", f.optInt("score") + 1)
                 if (f.optInt("score") >= f.optInt("limit", 5)) { f.put("finished", true); return say("Round complete: ${f.optInt("score")} valid words. Nicely done. Restart for a fresh game or stop.", listOf("Restart" to "restart", "Stop" to "stop")) }
@@ -232,13 +233,13 @@ internal object FocusedChat {
                 if (text in hints) { val n = f.optInt("hints") + 1; f.put("hints", n); return say(if (n == 1) puzzle.clue else "Starts with ${word.take(minOf(n, word.length - 1)).uppercase()}.", listOf("Reveal" to "reveal", "Skip" to "skip")) }
                 if (text in setOf("reveal", "answer", "show answer")) { f.put("solved", true); return say("One answer is **$word**: ${puzzle.clue}.") }
                 if (text.toList().sorted() != word.toList().sorted()) return say("Use exactly the puzzle's letters, including repeated letters. You can ask for a hint.", listOf("Hint" to "hint", "Reveal" to "reveal"))
-                val senses = runCatching { AssistantDictionaryStore.lookup(context, text) }.getOrDefault(emptyList())
-                if (text != word && senses.isEmpty()) return say("That arrangement isn't in my game dictionary. Try another or reveal the stored answer.")
+                val accepted = AssistantGameWords.accepts(context, text)
+                if (text != word && !accepted) return say("That arrangement isn't in the available game word list. Try another or reveal the stored answer.")
                 f.put("solved", true).put("score", f.optInt("score") + 1)
                 val streak = if (f.optInt("hints") == 0) f.optInt("unassisted") + 1 else 0
                 f.put("unassisted", streak)
                 val offerHarder = streak >= 3 && !f.optBoolean("hard")
-                return say("Correct: **$text**. ${senses.firstOrNull()?.definition ?: puzzle.clue}" + if (offerHarder) " Three without hints—try longer words?" else "",
+                return say("Correct: **$text**. ${AssistantGameWords.meaning(context, text) ?: puzzle.clue}" + if (offerHarder) " Three without hints—try longer words?" else "",
                     if (offerHarder) listOf("Harder" to "harder", "Next" to "next", "Stop" to "stop") else listOf("Next" to "next", "Stop" to "stop"))
             }
             "facts" -> {

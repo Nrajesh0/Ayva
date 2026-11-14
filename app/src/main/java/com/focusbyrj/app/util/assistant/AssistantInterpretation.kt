@@ -29,7 +29,7 @@ object AssistantInterpretation {
         if (Regex("(?i)^(?:actually|instead|i meant|no[, ])\\b").containsMatchIn(text)) return Interpretation(UtteranceKind.CORRECTION, text)
         if (OfflineNluEngine.isExplicitCreation(text)) return Interpretation(UtteranceKind.REQUEST, text)
         if (OfflineNluEngine.isQuestion(text)) return Interpretation(UtteranceKind.QUESTION, text)
-        if (AssistantDictionary.isLookup(text)) return Interpretation(UtteranceKind.QUESTION, text)
+        if (AssistantWordLookup.isLookup(text)) return Interpretation(UtteranceKind.QUESTION, text)
         if (OfflineNluEngine.isConversationalStatement(text) ||
             Regex("(?i)^(?:we should talk|let's chat|lets chat|talk to me|tell me a story|tell me a joke|just listen|be serious|i've been|i have been|i had|my day|my exam|my trip)\\b").containsMatchIn(text))
             return Interpretation(UtteranceKind.CONVERSATION, text)

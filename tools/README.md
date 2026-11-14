@@ -5,10 +5,9 @@ the [build guide](../docs/development/BUILD_AND_TEST.md).
 
 | Purpose | Files |
 | --- | --- |
-| CI source checks | `check_chat_boundary.py`, `check_dictionary.py`, and `../docs/security/ayva_review_checks.py` |
+| CI source checks | `check_chat_boundary.py` and `../docs/security/ayva_review_checks.py` |
 | Test reporting and device checks | `summarize_unit_tests.py`, `verify_native_data_safety.sh` |
 | Release packaging and intent | `package_release_apks.py`, `release_intent.py` |
-| Dictionary regeneration | `import_dictionary.py`, with editorial input in `data/`; see the [dictionary guide](../docs/assistant/DICTIONARY_DATA.md) |
 | Optional diagnosed cloud test-JVM workaround | `gradle/cloud-test-jvm.gradle`; see the build guide before using it |
 | Artwork authoring, export and verification | `vizag/`, described below |
 

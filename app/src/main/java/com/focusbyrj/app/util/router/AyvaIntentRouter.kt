@@ -55,7 +55,7 @@ object AyvaIntentRouter {
             return RouterDestination.DirectCommand("/tasks")
         }
 
-        if (com.focusbyrj.app.util.assistant.AssistantDictionary.isLookup(trimmed)) return RouterDestination.TalkQuery(trimmed)
+        if (com.focusbyrj.app.util.assistant.AssistantWordLookup.isLookup(trimmed)) return RouterDestination.TalkQuery(trimmed)
 
         // 2. Explicit Task Creation Syntax (e.g. "add buy groceries tomorrow", "remind me to call mom 5pm")
         if (OfflineNluEngine.isExplicitCreation(trimmed)) {

@@ -28,7 +28,7 @@ internal object ChatExperiences {
         }
     }
     val capabilities = listOf(
-        Capability("chain", "Play", "Word chain", "Link dictionary words; hints, scoring and short rounds.", "play word chain"),
+        Capability("chain", "Play", "Word chain", "Link words from the built-in game list and vocabulary library; hints, scoring and short rounds.", "play word chain"),
         Capability("anagram", "Play", "Anagrams", "Unscramble a word with progressive hints.", "play anagrams"),
         Capability("riddle", "Play", "Riddles", "Guess, ask for a hint, or reveal the explanation.", "give me a riddle"),
         Capability("vocabulary", "Discover", "Vocabulary practice", "Open the existing word-learning and saved-word quizzes.", "practice vocabulary"),

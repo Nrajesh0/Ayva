@@ -13,7 +13,7 @@ planned capability exists.
 | Conversation quality and trip-checklist follow-ups | [Conversation quality](implementation/CONVERSATION_QUALITY_CURRENT.md) and [trip checklist](implementation/TRIP_CHECKLIST_CONVERSATION.md) |
 | General/focused chat and guided planning contracts | [Chat experience implementation records](implementation/CHAT_EXPERIENCES.md) |
 | On-device acceptance requirements | [Device acceptance](DEVICE_ACCEPTANCE.md) |
-| Dictionary data, licensing and reproducibility | [Dictionary guide](DICTIONARY_DATA.md) |
+| Vocabulary preservation and dictionary removal | [Dictionary guide](DICTIONARY_DATA.md) |
 | Build/test commands and CI scheduling | [Build guide](../development/BUILD_AND_TEST.md) |
 | Development and handoff workflow | [Assistant workflow](../development/ASSISTANT_WORKFLOW.md) |
 

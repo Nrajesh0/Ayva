@@ -1,51 +1,81 @@
-# Bundled dictionary: source, licensing and measurements
+# General dictionary removal and vocabulary preservation
 
-The dictionary is packaged text data, not a language model. No runtime download, model, embedding service or inference request was added.
+The general Wordset dictionary is no longer bundled. Its 256 compressed shards,
+manifest, editorial data, runtime lookup store and import/check scripts are removed.
+The removed asset directory occupied 9,541,647 bytes before APK packaging. Current
+CI no longer invokes its deleted checker. This does not measure the APK saving.
 
-## Source and obligations
+## Preserved data and features
 
-- Source: [Wordset Dictionary](https://github.com/wordset/wordset-dictionary), commit `4503bfafbe4556361a296b9d368c18168dfb56c3`.
-- Reviewed actual upstream `LICENSE`: Wordset by Wordset, Inc. is **CC BY-SA 4.0**, with the underlying Princeton WordNet 3.0 notice/disclaimer retained. This is not an MIT-licensed dataset.
-- Pinned digest of the sorted `data/*.json` filenames/content plus LICENSE: `ed4403906e2ba3afd5bc075611999b44afc513546e160f1fe4391e80f6ecc14c`.
-- Source entry contributor/editor credits, definitions, senses, examples and labels remain in the adapted shards. Wordset/WordNet attribution, license links, modification notice and the original upstream notice are bundled in `assets/dictionary/LICENSE.txt`, accessible through `dictionary credits` in chat.
-- The normalized/sharded dictionary data and the plain-English sense adaptations/examples are distributed under CC BY-SA 4.0. This does not change the license of independent application code. The JSON adaptation file credits Ayva separately; its examples are labelled Ayva examples, not attributed to the source.
-- Upstream describes a historical, discontinued collaborative dictionary. Coverage and sense order are not claims of contemporary usage frequency. Source labels are shown where supplied; the app does not infer missing usage labels.
+- `assets/vocab.db` is byte-identical. The native 1,773 idioms and 2,027 OWS entries,
+  learning, mastery, missed-word flags and quizzes remain.
+- Room entities, schema versions and migrations are unchanged. Existing saved
+  dictionary words are ordinary native OWS rows; their bookmarks, progress and
+  source links remain. Backup/restore still exports and remaps those records.
+- Existing native vocabulary lookups and reviewed bookmark/undo actions remain.
+  General meaning-query aliases search this vocabulary rather than inventing a
+  definition. Unknown words get a bounded unavailable response.
+- Word-chain and anagram games use authored game words plus native vocabulary.
+  Their coverage is smaller. Rules explain this; unknown words remain unscored and
+  users can skip. Native queries suspend rather than blocking the UI thread.
+- Authored sentence-pattern explanations remain independent of dictionary data.
+- Old dictionary controls and persisted save actions fail closed without accessing
+  deleted assets or modifying vocabulary. Old saved rows are not removed.
 
-The existing vocabulary asset has 1,773 idioms and 2,027 OWS entries. No separate provenance/license documentation for that historical bundled asset was found during this inventory. Its redistribution provenance remains an existing documentation gap; this new source's license is not asserted to cover the old asset. Original rows are preserved. Native vocabulary exact lookups retain priority for the existing `look up` command; a matching existing OWS definition can be reused on import rather than duplicated.
+## Retained attribution
 
-## Reproduce and verify
+A small `assets/licenses/Wordset-NOTICE.txt` notice remains for previously saved
+Wordset entries; `dictionary credits` can show it. Wordset data uses CC BY-SA 4.0,
+with the underlying WordNet notice. This notice is not a bundled lookup dataset or
+an additional app capability. It does not relicense independent application code.
+The historical `vocab.db` has no separate redistribution-provenance record in
+this repository; that existing documentation gap is unchanged. The Wordset notice
+does not assert a licence for the original vocabulary asset. Historical audits
+refer to the dataset available at their dated checkpoints.
 
-Clone the upstream repository at the pinned commit, then run:
+## Validation
 
-```sh
-python3 tools/import_dictionary.py --source /path/to/wordset-dictionary
-```
+Latest per-class results cover **563 focused tests across 23 suites, with no
+failures, errors or skips**. A broad run passed 562 cases and exposed one assertion
+for the previous capability-help wording. The updated capability and vocabulary
+suites passed all 37 cases on rerun; the total uses each suite's latest report,
+without counting repeats twice. Earlier integration checks also caught a helper
+name collision and an obsolete dictionary-producing isolation fixture; both were
+corrected before this final regression result.
 
-The importer verifies the reviewed source/license digest, normalizes keys using Unicode NFKC/lowercase, preserves colliding source entries/senses, and assigns a SHA-256 two-hex-digit bucket. It writes 256 deterministic gzip-compressed `.dict` assets, a manifest with hashes/counts and the attribution notice. It also validates/copies the sense-specific editorial data from `tools/data/dictionary_plain_english.json`.
+Coverage includes native asset row counts, saved-word bookmarks/mastery/timestamps,
+quiz access and undo; retired controls/action validation; authored and native game
+words; sentence patterns, assistant routing/permissions, task/planning behavior,
+Notes isolation and saved-word backup/restore. The vocabulary asset and original
+request grammar were also compared byte-for-byte with the prior commit. No Room
+schema, backup implementation, crypto dependency or blocking-service changes were
+made. Test workers used the documented cloud C1 workaround; assertions were not
+skipped. This is selected regression coverage, not a physical-device certification.
 
-The `.dict` extension is intentional: Android's asset merger automatically expands source `.gz` files and strips their suffix. An initial integration run caught that behavior. The renamed opaque assets retain gzip contents through packaging, and the runtime uses `GZIPInputStream`. There is no installed unpacked dictionary database or duplicated extracted copy.
+Evidence outside the repository: `/workspace/scratch/dictionary-removal-regressions.log`,
+`/workspace/scratch/dictionary-removal-final-recheck.log`,
+`/workspace/scratch/dictionary-removal-final-results.json`, and
+`/workspace/scratch/dictionary-removal-final-inputs.json` (829 frozen build/app/tool
+inputs). Source guards pass, and workflows no longer reference deleted tools.
+Full `lintDebug`/`lintRelease` passed with zero errors/fatal findings (245/243
+warnings and 57 informational findings each). That scan preceded the final
+one-word authored-bank correction and version metadata bump. The correction
+aligns the legacy bot word “easy” with the accepted game bank; 27 focused game and
+vocabulary cases passed again, preserving the 563-case latest-per-class total.
+The versioned build subsequently reran release-vital checks and R8 optimization.
 
-`tools/check_dictionary.py` verifies the packaged-source manifest, every compressed shard, sense references, counts, expansion bounds and notices. The importer uses only Python's standard library and is a build/development tool; no network call or importer executes in the app.
+Debug, optimized unsigned release and device-test APK assembly passed for
+**2.0.47 (147)**. APK metadata and packaged manifests both report this version.
+Debug is 53,679,687 bytes; release is 34,931,012 bytes. These are final artifact
+sizes, not an isolated before/after benchmark. Both production APKs have no
+`assets/dictionary/` entries, retain the exact original `assets/vocab.db` and source
+notice, and request no camera, network or broad storage/media permission (15
+permissions total). Debug DEX also has no old dictionary/store classes.
 
-## Storage comparison and chosen budget
-
-Measured locally from the same pinned source:
-
-| Candidate | Normalized headwords | Source entries | Senses | Compressed shards | Largest expanded shard |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Compact prototype: ASCII keys of at most six characters | 14,618 | 14,713 | 40,430 | 2,210,053 bytes | 40,654 bytes |
-| Chosen broader library | 107,945 | 108,128 | 163,274 | 9,513,126 bytes | 142,361 bytes |
-
-The compact selection is a reproducible size comparison, not a curated common-word list; length is not word frequency. The broader candidate retains useful longer words and multiword entries without a frequency dataset of uncertain license.
-
-Import budgets: compressed shards at most **10,000,000 bytes**; any expanded shard at most **262,144 bytes**. Editorial text, notice and manifest add a small amount beyond the shard total. The runtime keeps at most four parsed shards, reads at most 262,145 bytes before rejecting an oversized asset and never loads the complete dictionary. Approximate parsed-object memory must still be measured on Android; serialized byte counts are not heap measurements.
-
-The host prototype's first object parse for a sample lookup was about 0.4 ms for the compact dataset and 6.9 ms for the broader candidate. These Python measurements have uncontrolled OS caching and are not Android cold-start latency guarantees. Physical-device cold/warm lookup latency, heap and battery impact remain unmeasured. See STATUS.md for actual final APK sizes and comparison against the B2 artifacts; do not substitute gzip size for APK measurement.
-
-## Meaning and sentence limits
-
-Senses use stable upstream IDs. Several meanings are shown without pretending source order is frequency ranking. Follow-ups select the actual current sense. Examples come from that sense or separately labelled editorial examples. Nineteen senses currently have separately written simple-English wording; other entries use the source definition and explicitly acknowledge when a simpler alternative/example is unavailable.
-
-Inflection suggestions are bounded, exact-checked dictionary entries and require the user to choose a form. Unknown words never become task creation. No arbitrary synonym replacement is presented as an accurate sentence paraphrase. Supported whole-sentence patterns and counterexamples are listed in [OFFLINE_ASSISTANT_IMPLEMENTATION.md](history/FOUNDATION_DELIVERY.md#b3-b11-continuation).
-
-Saving a word imports/links the selected sense in the existing native vocabulary bookmark/learning store. It does not save to Notes or mark the word learned. The source link survives unbookmarking, and the bundled credits remain accessible. Native quizzes can explicitly filter bookmarked words or a selected saved OWS entry; they keep their existing test window.
+All 829 final source/build/tool fingerprints match. No device/emulator was
+connected; device-test assembly does not establish physical-device execution.
+Evidence: `/workspace/scratch/dictionary-removal-final-lint.log`,
+`/workspace/scratch/dictionary-removal-game-final.log`,
+`/workspace/scratch/dictionary-removal-2.0.47-build.log` and
+`/workspace/scratch/dictionary-removal-2.0.47-apks.json`. The working tree contains
+926 nonignored files after removal, compared with 1,187 at the prior checkpoint.

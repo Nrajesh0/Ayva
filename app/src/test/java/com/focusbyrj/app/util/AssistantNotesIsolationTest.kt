@@ -216,14 +216,16 @@ class AssistantNotesIsolationTest {
         assertFalse(file.exists())
         assertNoNoteAccess()
     }
-    @Test fun dictionaryPlanningAndSocialPathsNeverTouchNotes() = runBlocking {
+    @Test fun vocabularyAndRetiredDictionaryPlanningAndSocialPathsNeverTouchNotes() = runBlocking {
         val app = context.applicationContext as FocusApplication
         val vocab = Room.inMemoryDatabaseBuilder(context, com.focusbyrj.app.data.VocabDatabase::class.java).allowMainThreadQueries().build()
         app.javaClass.getDeclaredField("vocabDatabase\$delegate").apply { isAccessible = true; set(app, lazyOf(vocab)) }
         try {
-            say("define reluctant"); say("simpler")
-            val bookmark = say("save this word").actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }
+            val wordId = vocab.vocabDao().insertDictionaryOws(com.focusbyrj.app.data.Ows(term="isolationword", definition="A saved vocabulary entry")).toInt()
+            say("define isolationword")
+            val bookmark = say("bookmark ows id:$wordId").actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }
             say(bookmark.query)
+            assertTrue(say("/ayva dictionary b2xk old-sense save").formattedText.contains("removed"))
             say("plan my trip"); say("Review my notes; Pack charger"); say("skip")
             val review = say("skip"); val save = review.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva plan-save ") }
             say(save.query); say("undo"); say("tell me a joke"); say("I had a rough day"); say("just listen")

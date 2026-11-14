@@ -57,7 +57,7 @@ internal object AssistantSocial {
         return interestRequest?.groupValues?.get(1)?.let { topic -> interests.entries.firstOrNull { topic in it.value.aliases } }
     }
 
-    fun answer(context: Context, state: AssistantSession, input: String, original: String = input, appMode: Boolean = false): AyvaTalkEngine.TalkResponse? {
+    suspend fun answer(context: Context, state: AssistantSession, input: String, original: String = input, appMode: Boolean = false): AyvaTalkEngine.TalkResponse? {
         val rotation = context.getSharedPreferences("ayva_content_rotation", Context.MODE_PRIVATE)
         for (key in listOf("seenJokes", "seenRiddles")) if (!features(state).has(key))
             features(state).put(key, runCatching { JSONArray(rotation.getString(key, "[]")!!) }.getOrDefault(JSONArray()))
@@ -156,7 +156,7 @@ internal object AssistantSocial {
         if (text in setOf("play word chain", "word chain")) return speak(state, "chain", "Word chain, up to five rounds. Start with the last letter of my word: **cat**. Your word should start with T. Say ‘stop’ to finish.", extra = JSONObject().put("last", "cat").put("round", 0).put("used", JSONArray().put("cat")))
         if (active && previous!!.optString("family") == "chain" && text.matches(Regex("[a-z]{2,24}")) && !newRequest(text)) {
             val last = previous.optString("last"); val used = previous.optJSONArray("used")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
-            if (text.first() != last.last() || text in used || AssistantDictionaryStore.lookup(context, text).isEmpty()) return speak(state, "chain", "Choose a new dictionary word starting with ${last.last().uppercaseChar()}. No repeats in this game.", extra = previous)
+            if (text.first() != last.last() || text in used || !AssistantGameWords.accepts(context, text)) return speak(state, "chain", "Choose a word from the built-in game list or vocabulary library starting with ${last.last().uppercaseChar()}. No repeats in this game.", extra = previous)
             val next = chain.firstOrNull { it.first() == text.last() && it !in used && it != text }
             val round = previous.optInt("round") + 1
             if (next == null || round >= 5) return speak(state, "chat", "Nice chain. ${if (next == null) "I don't have an unused reply for that letter in this small game pack." else "That's our five-round finish."} Thanks for playing.")
@@ -223,7 +223,7 @@ internal object AssistantSocial {
         return null
     }
 
-    private fun newRequest(text: String) = ConversationRouting.nativeRequest(text) || OfflineNluEngine.isQuestion(text) || text in setOf("help", "settings", "features", "capabilities", "permissions", "status", "routines", "habits", "my tasks") || AssistantPreferences.find(text) != null || AssistantDictionary.isLookup(text) || OfflineNluEngine.isExplicitCreation(text) || AssistantFeatureLanguage.isRequest(text) || Regex("^(?:show|list|set|change|complete|delete|reschedule|lock|unlock|open|start|stop focus|undo|/talk|/create)\\b").containsMatchIn(text)
+    private fun newRequest(text: String) = ConversationRouting.nativeRequest(text) || OfflineNluEngine.isQuestion(text) || text in setOf("help", "settings", "features", "capabilities", "permissions", "status", "routines", "habits", "my tasks") || AssistantPreferences.find(text) != null || AssistantWordLookup.isLookup(text) || OfflineNluEngine.isExplicitCreation(text) || AssistantFeatureLanguage.isRequest(text) || Regex("^(?:show|list|set|change|complete|delete|reschedule|lock|unlock|open|start|stop focus|undo|/talk|/create)\\b").containsMatchIn(text)
     private fun simple(text: String) = AyvaTalkEngine.TalkResponse(text, topicId = "conversation")
     private fun speak(state: AssistantSession, family: String, text: String, tone: String? = null, choices: List<Pair<String, String>> = emptyList(), extra: JSONObject? = null, otherActions: List<TalkAction> = emptyList()): AyvaTalkEngine.TalkResponse {
         val previous = frame(state)

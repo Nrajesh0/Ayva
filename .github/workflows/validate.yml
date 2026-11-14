@@ -35,7 +35,6 @@ jobs:
       - name: Check chat data boundary
         run: |
           python3 tools/check_chat_boundary.py
-          python3 tools/check_dictionary.py
       - name: Check source security contracts
         run: python3 docs/security/ayva_review_checks.py
       - name: Run Android lint

@@ -1,3 +1,6 @@
+> Current update: the general dictionary dataset/lookup feature has been removed.
+> Native vocabulary, saved words/progress and games remain; see [details](DICTIONARY_DATA.md).
+
 # Assistant status and handoff
 
 This is the single entry point for assistant delivery status. It replaces the
@@ -12,7 +15,7 @@ remain available in Git history.
 The assistant is an on-device, bounded system using authored content and rules,
 not an unrestricted hosted language model. Implemented areas include shared
 command contracts, reviewed task actions, repair/undo, settings/help, routines,
-learning/dictionary integration, explicit memory/personality preferences and
+native vocabulary learning and supported sentence patterns, explicit memory/personality preferences and
 conversational planning. Do not treat historical batch completion as proof of
 unrestricted conversation quality or whole-device acceptance.
 

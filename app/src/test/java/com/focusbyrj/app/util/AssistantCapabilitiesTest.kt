@@ -159,7 +159,10 @@ class AssistantCapabilitiesTest {
             assertNull(pending().confirmationId)
         }
         assertTrue(say("/talk capabilities planning").formattedText.contains("No invented syllabus"))
-        assertTrue(say("/talk capabilities learning").formattedText.contains("not arbitrary sentences"))
+        val learning = say("/talk capabilities learning").formattedText
+        assertTrue(learning.contains("Fixed authored patterns only"))
+        assertTrue(learning.contains("removed"))
+        assertFalse(learning.contains("108,000"))
         say(old)
         assertFalse(db.taskDao().getTaskById(id)!!.isTrashed)
     }

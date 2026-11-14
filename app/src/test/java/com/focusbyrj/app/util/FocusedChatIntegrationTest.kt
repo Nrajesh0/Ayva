@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.focusbyrj.app.util.assistant.*
 import org.junit.Assert.*
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -14,10 +15,10 @@ import org.robolectric.annotation.Config
 class FocusedChatIntegrationTest {
     private val context = ApplicationProvider.getApplicationContext<Application>()
     @org.junit.Before fun clearRotation() { context.getSharedPreferences("ayva_content_rotation", 0).edit().clear().commit() }
-    @Test fun anagramHintsAnswersResumeAndExhaustionRemainCoherent() {
+    @Test fun anagramHintsAnswersResumeAndExhaustionRemainCoherent() = runBlocking {
         ChatModeStore.set(context, ChatMode.CHAT)
         val state = AssistantSession()
-        fun say(text: String) = FocusedChat.answer(context, state, text)!!.formattedText
+        suspend fun say(text: String) = FocusedChat.answer(context, state, text)!!.formattedText
         assertTrue(say("play anagrams").contains("Unscramble"))
         assertTrue(say("hint").contains("orbiting"))
         assertTrue(say("planet").contains("Correct"))
@@ -37,7 +38,7 @@ class FocusedChatIntegrationTest {
         assertTrue(say("stop").contains("Finished"))
         assertNull(state.featureState?.optJSONObject("focusedChat"))
     }
-    @Test fun oldButtonsCannotAdvanceANewRoundAndRelatedFactsStayInTheirTrail() {
+    @Test fun oldButtonsCannotAdvanceANewRoundAndRelatedFactsStayInTheirTrail() = runBlocking {
         ChatModeStore.set(context, ChatMode.CHAT)
         val state = AssistantSession()
         val first = FocusedChat.answer(context, state, "play anagrams")!!
@@ -52,7 +53,7 @@ class FocusedChatIntegrationTest {
         assertTrue(EntertainmentPack.jokes.map { it.id }.distinct().size == EntertainmentPack.jokes.size)
         assertTrue(ExperienceContent.facts.all { f -> f.relatedIds.all { id -> ExperienceContent.facts.any { it.id == id && it.category == f.category } } })
     }
-    @Test fun clearedSessionsRotateAndStoryWordingAdvancesTheBranch() {
+    @Test fun clearedSessionsRotateAndStoryWordingAdvancesTheBranch() = runBlocking {
         ChatModeStore.set(context, ChatMode.CHAT)
         val first = AssistantSession()
         FocusedChat.answer(context, first, "play anagrams")
@@ -69,10 +70,10 @@ class FocusedChatIntegrationTest {
         val riddle = AssistantSocial.answer(context, AssistantSession(), "give me a riddle")!!.formattedText
         assertNotEquals(riddle, AssistantSocial.answer(context, AssistantSession(), "give me a riddle")!!.formattedText)
     }
-    @Test fun factsHaveSpecificFollowupsAndDeclineUnsupportedQuestions() {
+    @Test fun factsHaveSpecificFollowupsAndDeclineUnsupportedQuestions() = runBlocking {
         ChatModeStore.set(context, ChatMode.CHAT)
         val state = AssistantSession()
-        fun say(text: String) = FocusedChat.answer(context, state, text)!!.formattedText
+        suspend fun say(text: String) = FocusedChat.answer(context, state, text)!!.formattedText
         assertTrue(say("explore facts").contains("Venus"))
         assertTrue(say("why").contains("243"))
         assertTrue(say("example").contains("Earth"))
@@ -85,7 +86,7 @@ class FocusedChatIntegrationTest {
         assertNull(FocusedChat.answer(context, state, "explore facts"))
         ChatModeStore.set(context, ChatMode.CHAT)
     }
-    @Test fun storiesEndAndAllPackReferencesAreValid() {
+    @Test fun storiesEndAndAllPackReferencesAreValid() = runBlocking {
         for (story in ExperienceContent.stories) {
             assertTrue(story.nodes.containsKey("start"))
             val reachable = mutableSetOf<String>()

@@ -49,45 +49,59 @@ class AssistantOfflineExpansionTest {
     private suspend fun select(id: Long) { say("let's work on id:$id") }
     private fun confirm(response: AyvaTalkEngine.TalkResponse) = response.actions.filterIsInstance<TalkAction.AskQuery>().first { it.query.startsWith("/ayva confirm ") }.query
 
-    @Test fun dictionarySensesPlainEnglishAndExamplesRemainSourceTied() = runBlocking {
-        val definition = say("what does reluctant mean?")
-        assertTrue(definition.formattedText, definition.formattedText.contains("not eager"))
-        assertTrue(say("simpler").formattedText.contains("Not eager"))
-        val first = say("give an example").formattedText
-        val second = say("another example").formattedText
-        assertNotEquals(first, second)
-        assertTrue(say("other meaning").formattedText.contains("disinclined"))
+    @Test fun generalDictionaryIsAbsentAndNativeMeaningQueriesRemainReadOnly() = runBlocking {
+        assertFalse(context.assets.list("").orEmpty().contains("dictionary"))
+        vocab.vocabDao().insertDictionaryOws(com.focusbyrj.app.data.Ows(term="testword", definition="A stored vocabulary meaning", isBookmarked=0))
+        val definition = say("what does testword mean?")
+        assertTrue(definition.formattedText, definition.formattedText.contains("A stored vocabulary meaning"))
+        assertFalse(definition.actions.any { it.label == "Save word" || it.label == "Other meaning" })
+        assertTrue(say("define zzznonwordxyz").formattedText.contains("can't identify"))
         assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
-        assertTrue(AssistantDictionaryStore.relatedForms(context, "jogging").contains("jog"))
-        assertEquals(3, AssistantDictionaryStore.lookup(context, "reluctant").size)
     }
-    @Test fun dictionaryBookmarkUsesNativeStoreAndQuizAndDoesNotClaimLearning() = runBlocking {
-        say("define reluctant")
-        val preview = say("save this word"); assertTrue(vocab.vocabDao().getAllOws().isEmpty())
-        val token = confirm(preview); say(token); say(token)
-        val saved = vocab.vocabDao().getAllOws().single()
-        assertEquals(1, saved.isBookmarked); assertNull(saved.learnedAt)
-        assertEquals(saved.id, vocab.dictionaryBookmarkDao().get("8a983f858b")!!.owsId)
-        val launch = say("quiz me on it"); assertEquals("/vocab_quiz saved ows:${saved.id}", launch.cliCommandRedirect)
-        val words = com.focusbyrj.app.data.VocabRepository(vocab.vocabDao()).getQuizWords(bookmarksOnly = true, bookmarkId = saved.id)
-        assertEquals(listOf(saved.id), words.second.map { it.id })
-        say("undo"); assertEquals(0, vocab.vocabDao().getOwsById(saved.id!!)!!.isBookmarked)
+    @Test fun previouslyImportedWordsKeepBookmarksProgressAndNativeQuizAccess() = runBlocking {
+        val id = vocab.vocabDao().insertDictionaryOws(com.focusbyrj.app.data.Ows(term="savedword", definition="Previously saved meaning", isBookmarked=1)).toInt()
+        vocab.dictionaryBookmarkDao().insert(com.focusbyrj.app.data.DictionaryBookmark("old-source-sense", "savedword", id))
+        assertTrue(say("look up savedword").formattedText.contains("Previously saved meaning"))
+        val words = com.focusbyrj.app.data.VocabRepository(vocab.vocabDao()).getQuizWords(bookmarksOnly=true, bookmarkId=id)
+        assertEquals(listOf(id),words.second.map { it.id })
+        assertNull(vocab.vocabDao().getOwsById(id)!!.learnedAt)
+        vocab.vocabDao().setOwsMastery(id,1,123456L)
+        say(confirm(say("unbookmark ows id:$id")))
+        assertEquals(0,vocab.vocabDao().getOwsById(id)!!.isBookmarked)
+        say("undo")
+        assertEquals(1,vocab.vocabDao().getOwsById(id)!!.isBookmarked)
+        assertEquals(id,vocab.dictionaryBookmarkDao().get("old-source-sense")!!.owsId)
+        assertEquals(1,vocab.vocabDao().getOwsById(id)!!.isMastered)
+        assertEquals(123456L,vocab.vocabDao().getOwsById(id)!!.learnedAt)
     }
-    @Test fun staleDictionaryButtonsCannotSaveDifferentWordAndUnknownsCannotCreateTasks() = runBlocking {
-        val first = say("define reluctant").actions.filterIsInstance<TalkAction.AskQuery>().first { it.label == "Save word" }
-        say("define witty"); say(first.query); assertNull(state().confirmationId)
+    @Test fun oldDictionaryControlsAndPersistedSaveActionsCannotWrite() = runBlocking {
+        val response=say("/ayva dictionary cmVsdWN0YW50 8a983f858b save")
+        assertTrue(response.formattedText.contains("removed")); assertNull(state().confirmationId)
+        val old=AssistantAction.SaveDictionaryWord("reluctant","8a983f858b",null,null)
+        assertEquals(false,AssistantCapabilities.availability(context,"dictionary.save").available)
+        assertTrue(runCatching { AssistantCapabilities.validate(old) }.isFailure)
+        assertTrue(runCatching { AssistantFeatureActions.execute(context,context.applicationContext as FocusApplication,old) }.isFailure)
         assertTrue(vocab.vocabDao().getAllOws().isEmpty())
-        val unknown = say("what does zzznonwordxyz mean")
-        assertTrue(unknown.formattedText.contains("don't have an entry"))
         assertTrue(AyvaIntentRouter.route("define zzznonwordxyz") is RouterDestination.TalkQuery)
         assertTrue(db.taskDao().getAllActiveTasksList().isEmpty())
+    }
+    @Test fun gamesUseAuthoredAndNativeVocabularyWordsWithoutDictionaryAssets() = runBlocking {
+        assertTrue(AssistantGameWords.accepts(context,"planet"))
+        assertTrue(AssistantGameWords.accepts(context,"cat"))
+        assertTrue(AssistantGameWords.accepts(context,"easy"))
+        assertFalse(AssistantGameWords.accepts(context,"zzzxnonword"))
+        assertFalse(AssistantGameWords.accepts(context,"two words"))
+        vocab.vocabDao().insertDictionaryOws(com.focusbyrj.app.data.Ows(term="testgameword",definition="A saved game meaning"))
+        assertTrue(AssistantGameWords.accepts(context,"testgameword"))
+        assertEquals("A saved game meaning",AssistantGameWords.meaning(context,"testgameword"))
+        assertTrue(ExperienceContent.WORD_RULES.contains("unscored"))
     }
     @Test fun meaningsOfCommandsAreInertAndCancelOldActionAuthority() = runBlocking {
         val id = add("Keep me"); val old = confirm(say("delete all tasks"))
         say("what does delete all tasks mean?"); say("yes"); say(old)
         assertFalse(task(id).isTrashed)
         val definition = say("define delete").formattedText
-        assertTrue(definition.contains("delete", true))
+        assertTrue(definition.contains("saved vocabulary", true))
         assertFalse(definition.contains("Wordset")); assertFalse(definition.contains("WordNet")); assertFalse(definition.contains("dictionary credits"))
         assertFalse(task(id).isTrashed)
     }

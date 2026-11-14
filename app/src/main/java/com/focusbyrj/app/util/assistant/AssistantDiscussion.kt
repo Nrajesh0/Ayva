@@ -308,7 +308,7 @@ internal object AssistantDiscussion {
         // Within an explicit discussion these are requirements, not implicit task-creation authority.
         if (Regex("^i (?:need|have|want|would like) to\\b").containsMatchIn(key)) return false
         return text.startsWith("/") || OfflineNluEngine.isExplicitCreation(text) || AssistantFeatureLanguage.isRequest(text) ||
-            AssistantDictionary.isLookup(text) || AssistantPreferences.find(text) != null || AssistantTaskLanguage.request(text) != null ||
+            AssistantWordLookup.isLookup(text) || AssistantPreferences.find(text) != null || AssistantTaskLanguage.request(text) != null ||
             AssistantDialogue.isClockRequest(text) || AssistantAppKnowledge.legacyFeature(text) ||
             key in setOf("help", "settings", "features", "capabilities", "permissions", "status", "routines", "habits", "my tasks", "my habits", "my agenda", "what do i have today", "what do i have tomorrow", "timer status", "time remaining", "cancel", "never mind", "nevermind", "forget it", "undo", "undo that") ||
             Regex("^(?:show|list|set|change|complete|delete|remove|reschedule|lock|unlock|block|unblock|open|start|stop|log|edit|rename|pause|resume|enable|disable|focus|remind me|drill|blitz|quiz|practice|calculate|solve|convert|how many \\d+|what(?: is|'s) \\d+)\\b").containsMatchIn(key) ||

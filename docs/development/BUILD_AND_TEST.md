@@ -1,7 +1,6 @@
 # Build and test guide
 
-The [tools index](../../tools/README.md) separates CI/release utilities, dictionary
-generation and optional artwork tooling.
+The [tools index](../../tools/README.md) separates CI/release utilities and optional artwork tooling.
 
 Use the existing checkout; inspect AGENTS.md and `git status` before work. Preserve
 uncommitted files. Never create a worktree as part of routine environment setup.
@@ -104,6 +103,9 @@ Resource-limited cloud sessions can additionally use
 `-Pkotlin.compiler.execution.strategy=in-process -Pkotlin.incremental=false`
 and lower worker counts. Do not silently change app behavior to fix tooling.
 
-## Dictionary artifact integrity
+## Vocabulary and language data
 
-Run `python3 tools/check_dictionary.py` alongside `python3 tools/check_chat_boundary.py`. Both non-publishing validation and release workflows run these before tests/builds. The dictionary check validates the pinned source identity, all 256 compressed `.dict` assets, manifest counts/hashes, editorial sense IDs, notices and byte budgets. It does not fetch the source or a model at runtime/build validation. To reproduce data intentionally, use tools/import_dictionary.py as described in the [dictionary guide](../assistant/DICTIONARY_DATA.md).
+The full dictionary and its import/check scripts have been removed. Run the
+assistant boundary/security guards and relevant vocabulary/backup tests. The native
+`vocab.db`, Room schemas, user progress and saved-word backup paths remain intact.
+See the [removal record](../assistant/DICTIONARY_DATA.md).

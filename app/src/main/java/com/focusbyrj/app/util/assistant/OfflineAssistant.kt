@@ -387,7 +387,7 @@ object OfflineAssistant {
         ConversationRegistry.answer(state, text)?.let { return reply(it) }
         AssistantGuidedPlanning.answer(context, state, text)?.let { return it }
         if (ConversationRouting.winner(text, state) == ConversationRouting.Owner.KNOWLEDGE) GeneralConversation.answer(context, state, text)?.let { return it }
-        AssistantDictionary.answer(context, app, state, text)?.let { return featureTurn(context, app, state, it) }
+        AssistantWordLookup.answer(context, app, state, text)?.let { return featureTurn(context, app, state, it) }
         AssistantPersonalization.handle(context, text)?.let { result ->
             if (result.forgetConversation) {
                 ConversationPlanStore.clearAll(context); ChatModeStore.set(context, ChatMode.CHAT)
@@ -1258,7 +1258,7 @@ object OfflineAssistant {
         } ?: reply("That activity choice is unavailable while another operation needs your attention.")
         if (command.startsWith("suggestion ")) return AssistantInitiative.dismiss(context, state, "/ayva $command") ?: reply("That suggestion is no longer active.")
         if (command.startsWith("social ")) return AssistantSocial.answer(context, state, "/ayva $command") ?: reply("That conversation choice expired.")
-        if (command.startsWith("dictionary ")) return AssistantDictionary.answer(context, app, state, "/ayva $command")?.let { featureTurn(context, app, state, it) } ?: reply("That dictionary action is unavailable.")
+        if (command.startsWith("dictionary ")) return AssistantWordLookup.answer(context, app, state, "/ayva $command")?.let { featureTurn(context, app, state, it) } ?: reply("That dictionary action is unavailable.")
         if (command.startsWith("plan ") || command.startsWith("plan-save ")) return AssistantGuidedPlanning.answer(context, state, "/ayva $command") ?: reply("That planning action is unavailable.")
         val parts = command.split(Regex("\\s+"))
         return when (parts.firstOrNull()) {
