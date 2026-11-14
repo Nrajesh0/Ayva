@@ -31,6 +31,13 @@ Do not disable TLS, checksum verification or tests to overcome download failures
 Keep tests and APK optimization in separate invocations to avoid competing for
 CPU/memory while native lifecycle tests await asynchronous operations.
 
+Kotlin compiles inside the Gradle JVM, with a shared 4 GiB heap configured in
+`gradle.properties`. Cold release compilation exhausted the former separate
+2 GiB Kotlin daemon during CI lint. Keep CI worker counts at one and avoid
+running lint, tests and APK optimization concurrently in the same checkout.
+Debug compilation alone does not verify release compilation or Android's
+bytecode verifier; retain the release and native emulator checks.
+
 No release signing secrets are needed. Debug assembly honors a local root
 `debug.keystore` when present; otherwise AGP uses its standard generated debug key.
 Release verification is unsigned when a release keystore is absent. Never commit
@@ -100,8 +107,9 @@ Only for that diagnosed environment issue, append
 This limits test-worker JIT to C1 without removing tests/assertions or changing
 production compilation. Record its use; normal CI does not enable it by default.
 Resource-limited cloud sessions can additionally use
-`-Pkotlin.compiler.execution.strategy=in-process -Pkotlin.incremental=false`
-and lower worker counts. Do not silently change app behavior to fix tooling.
+`-Pkotlin.incremental=false` and lower worker counts. In-process Kotlin
+compilation is already the project default. Do not silently change app behavior
+to fix tooling.
 
 ## Vocabulary and language data
 

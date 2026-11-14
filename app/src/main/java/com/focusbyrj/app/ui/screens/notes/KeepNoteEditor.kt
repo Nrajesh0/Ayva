@@ -40,7 +40,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -728,7 +730,7 @@ fun KeepNoteEditor(
         sdf.format(Date(state.updatedAt))
     }
 
-    Box(
+    KeepEditorSurface(
         modifier = Modifier
             .fillMaxSize()
             .background(bgColor)
@@ -748,7 +750,7 @@ fun KeepNoteEditor(
             )
         }
 
-        Column(modifier = Modifier.fillMaxSize()) {
+        KeepEditorColumn {
             // ==========================================
             // TOP ACTION BAR (Google Keep & Article Style)
             // ==========================================
@@ -3249,6 +3251,18 @@ fun KeepNoteEditor(
             )
         }
     }
+}
+
+/** Non-inline layout boundaries keep the editor below Android's high-register verifier path.
+ * State, effects and callbacks continue to be owned by KeepNoteEditor. */
+@Composable
+private fun KeepEditorSurface(modifier: Modifier, content: @Composable BoxScope.() -> Unit) {
+    Box(modifier = modifier, content = content)
+}
+
+@Composable
+private fun KeepEditorColumn(content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier = Modifier.fillMaxSize(), content = content)
 }
 
 @Composable
