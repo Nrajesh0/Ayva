@@ -45,7 +45,7 @@ fun AyvaCompactHeader(onClose: () -> Unit, onSearch: () -> Unit, onColors: () ->
             IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreHoriz, "Chat controls", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text("Bubble icon") }, leadingIcon = { Icon(Icons.Default.Face, null) }, onClick = { menu = false; onBubbleIcon() })
-                DropdownMenuItem(text = { Text("Notification Colors") }, leadingIcon = { Icon(Icons.Default.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { menu = false; onColors() })
+                DropdownMenuItem(text = { Text("Chat updates & colors") }, leadingIcon = { Icon(Icons.Default.AutoFixHigh, null, tint = MaterialTheme.colorScheme.primary) }, onClick = { menu = false; onColors() })
                 DropdownMenuItem(text = { Text("Text Size") }, leadingIcon = { Icon(Icons.Default.FormatSize, null) }, onClick = { menu = false; onTextSize() })
                 DropdownMenuItem(text = { Text("Clear History", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onClear() })
                 DropdownMenuItem(text = { Text("Open Settings") }, onClick = { menu = false; onSettings() })

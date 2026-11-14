@@ -121,6 +121,15 @@ enum class AyvaAlertCategory(
         description = "Strict app block alerts, daily usage limits reached, and emergency focus"
     ),
 
+    REWARDS(
+        categoryKey = "rewards", channelId = "ayva_rewards_channel",
+        channelName = "Ayva Quest & Reward Prompts", defaultTitle = "Ayva Reward",
+        defaultBgHex = "#C2410C", defaultStrokeHex = "#F97316",
+        defaultHeaderTextHex = "#FFEDD5", defaultBodyTextHex = "#FFFFFF",
+        defaultAccentNotificationHex = "#EA580C", iconName = "Redeem",
+        description = "Automatic quest and mystery-box prompts; earned rewards remain available"
+    ),
+
     GENERAL(
         categoryKey = "general",
         channelId = "ayva_bubble_fg_channel",
@@ -137,12 +146,21 @@ enum class AyvaAlertCategory(
 
     fun isEnabled(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean("alert_enabled_$categoryKey", true)
+        val practice = context.getSharedPreferences("bubble_prefs", Context.MODE_PRIVATE)
+        return updatesEnabled(context) && prefs.getBoolean("alert_enabled_$categoryKey", true) &&
+            (this != DRILL_PRACTICE || practice.getBoolean("streak_notification_enabled", practice.getBoolean("random_drills_notification_enabled", true)))
     }
 
     fun setEnabled(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("alert_enabled_$categoryKey", enabled).apply()
+        check(prefs.edit().putBoolean("alert_enabled_$categoryKey", enabled).commit()) { "Could not save chat update setting" }
+        if (this == DRILL_PRACTICE) {
+            check(context.getSharedPreferences("bubble_prefs", 0).edit().putBoolean("streak_notification_enabled", enabled)
+                .putBoolean("random_drills_notification_enabled", enabled).commit()) { "Could not save practice update setting" }
+            if (isEnabled(context)) com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(context)
+            else com.focusbyrj.app.service.AptitudeReminderReceiver.cancelAllReminders(context)
+        }
+        if (this == BRIEFING) com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(context)
     }
 
     fun getBgHex(context: Context): String {
@@ -188,6 +206,9 @@ enum class AyvaAlertCategory(
             .remove("alert_accent_$categoryKey")
             .remove("alert_enabled_$categoryKey")
             .apply()
+        // Practice shares its opt-out with the older settings/assistant commands.
+        // Reset must update both stores and their alarms, not just the color dialog.
+        setEnabled(context, true)
     }
 
     fun getParsedBgColor(context: Context): Int = try {
@@ -228,6 +249,13 @@ enum class AyvaAlertCategory(
     val composeNotificationAccent: ComposeColor get() = ComposeColor(parsedNotificationAccent)
 
     companion object {
+        fun updatesEnabled(context: Context): Boolean = context.getSharedPreferences(PREFS_NAME, 0).getBoolean("chat_updates_enabled", true)
+        fun setUpdatesEnabled(context: Context, enabled: Boolean) {
+            check(context.getSharedPreferences(PREFS_NAME, 0).edit().putBoolean("chat_updates_enabled", enabled).commit()) { "Could not save chat update setting" }
+            if (enabled) com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(context)
+            else com.focusbyrj.app.service.AptitudeReminderReceiver.cancelAllReminders(context)
+            com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(context)
+        }
         const val PREFS_NAME = "ayva_alert_color_prefs"
 
         /**
@@ -240,7 +268,7 @@ enum class AyvaAlertCategory(
                     val importance = when (category) {
                         CRITICAL_LIMIT -> android.app.NotificationManager.IMPORTANCE_HIGH
                         EXCESSIVE_USAGE, BEDTIME_SLEEP -> android.app.NotificationManager.IMPORTANCE_HIGH
-                        DRILL_PRACTICE, BRIEFING -> android.app.NotificationManager.IMPORTANCE_DEFAULT
+                        DRILL_PRACTICE, BRIEFING, REWARDS -> android.app.NotificationManager.IMPORTANCE_DEFAULT
                         GENERAL -> android.app.NotificationManager.IMPORTANCE_MIN
                     }
                     val channel = android.app.NotificationChannel(category.channelId, category.channelName, importance).apply {
@@ -265,6 +293,9 @@ enum class AyvaAlertCategory(
             messageId: String = ""
         ): AyvaAlertCategory {
             val lower = text.lowercase()
+            if (messageId.startsWith("auto_reward_")) return REWARDS
+            if (messageId.startsWith("usage_reminder_bedtime_sleep_")) return BEDTIME_SLEEP
+            if (messageId.startsWith("usage_reminder_excessive_usage_")) return EXCESSIVE_USAGE
 
             if (isDrill || isStreakPrompt || messageId.startsWith("drill_") || messageId.startsWith("arithmetic_") ||
                 messageId.startsWith("streak_prompt_") || lower.contains("brain workout") || lower.contains("arithmetic practice") ||

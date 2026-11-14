@@ -152,6 +152,7 @@ class BubbleService : Service() {
         const val ACTION_SHOW_ALERT_PREVIEW = "com.focusbyrj.app.SHOW_ALERT_PREVIEW"
         const val ACTION_VERIFY_BUBBLE_STATE = "com.focusbyrj.app.VERIFY_BUBBLE_STATE"
         const val EXTRA_ALERT_TEXT = "extra_alert_text"
+        const val EXTRA_ALERT_CATEGORY = "extra_alert_category"
 
         const val PREFS_KEY_SNOOZED_UNTIL = "bubble_snoozed_until"
         private const val KEY_SNOOZE_ELAPSED = "bubble_snoozed_elapsed"
@@ -314,7 +315,7 @@ class BubbleService : Service() {
                 ACTION_ICON_CHANGED -> {
                     bubbleIconView?.setImageResource(BubbleIconManager.currentIconRes(this@BubbleService))
                 }
-                ACTION_SHOW_ALERT_PREVIEW -> showAlertPreview(intent.getStringExtra(EXTRA_ALERT_TEXT))
+                ACTION_SHOW_ALERT_PREVIEW -> showAlertPreview(intent.getStringExtra(EXTRA_ALERT_TEXT), intent.getStringExtra(EXTRA_ALERT_CATEGORY))
             }
         }
     }
@@ -342,7 +343,7 @@ class BubbleService : Service() {
                 }
             }
             ACTION_SNOOZE_EXPIRED -> restoreSnoozeTimer()
-            ACTION_SHOW_ALERT_PREVIEW -> showAlertPreview(intent?.getStringExtra(EXTRA_ALERT_TEXT))
+            ACTION_SHOW_ALERT_PREVIEW -> showAlertPreview(intent?.getStringExtra(EXTRA_ALERT_TEXT), intent?.getStringExtra(EXTRA_ALERT_CATEGORY))
             null -> { restoreSnoozeTimer(); addBubbleToWindowManager() }
         }
         return START_STICKY
@@ -429,11 +430,14 @@ class BubbleService : Service() {
         }
     }
 
-    private fun showAlertPreview(text: String?) {
+    private fun showAlertPreview(text: String?, categoryKey: String? = null) {
         if (text.isNullOrBlank() || !mayShowBubble()) return
+        val category = com.focusbyrj.app.util.AyvaAlertCategory.entries.firstOrNull { it.categoryKey == categoryKey }
+            ?: com.focusbyrj.app.util.AyvaAlertCategory.infer(text)
+        if (!category.isEnabled(this)) return
         addBubbleToWindowManager()
         unpeekBubble(animate = false)
-        showNotificationPreviewPill(text)
+        showNotificationPreviewPill(text, category)
         resetHideTimer()
         BubbleChatManager.getMessages(this).lastOrNull { !it.isUser }?.let { lastPreviewedMessageId = it.id }
     }

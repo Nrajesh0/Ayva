@@ -1,5 +1,5 @@
 """Isolate vehicles and make bird flights leave the viewport before looping.
-Usage: python tools/fix_vizag_layers.py natural-gallery.html output-directory
+Usage: python tools/vizag/fix_vizag_layers.py natural-gallery.html output-directory
 """
 from pathlib import Path
 import re,sys

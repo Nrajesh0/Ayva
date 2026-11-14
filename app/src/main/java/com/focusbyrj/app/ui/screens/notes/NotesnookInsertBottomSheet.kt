@@ -979,7 +979,7 @@ fun NotesnookImageOptionsSheet(
                 )
                 NotesnookInsertRow(
                     icon = Icons.Outlined.Image,
-                    title = "Choose from gallery",
+                    title = "Image (optimized size)",
                     hasChevron = false,
                     textColor = textPrimary,
                     iconColor = textSecondary,
@@ -1029,7 +1029,7 @@ fun NotesnookAttachmentOptionsSheet(
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp, top = 6.dp)) {
             NotesnookInsertRow(
                 icon = Icons.Outlined.AttachFile,
-                title = "Upload file / document",
+                title = "Original file (no compression)",
                 hasChevron = false,
                 textColor = textPrimary,
                 iconColor = textSecondary,

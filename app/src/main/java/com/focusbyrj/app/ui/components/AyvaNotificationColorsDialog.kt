@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,6 +40,12 @@ fun AyvaNotificationColorsDialog(
 ) {
     val context = LocalContext.current
     var refreshKey by remember { mutableStateOf(0) }
+    DisposableEffect(context) {
+        val prefs = context.getSharedPreferences(AyvaAlertCategory.PREFS_NAME, 0)
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> refreshKey++ }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -85,12 +92,12 @@ fun AyvaNotificationColorsDialog(
                         }
                         Column {
                             Text(
-                                text = "Notification Themes",
+                                text = "Chat updates & colors",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Alert delivery & jewel colors",
+                                text = "Automatic cards in chat & bubble previews",
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -114,30 +121,42 @@ fun AyvaNotificationColorsDialog(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Organized Category List
-                key(refreshKey) {
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        itemsIndexed(AyvaAlertCategory.entries, key = { _, it -> it.categoryKey }) { index, category ->
-                            CategoryCompactRow(
-                                category = category,
-                                onStateChanged = { refreshKey++ }
-                            )
+                val updatesEnabled = key(refreshKey) { AyvaAlertCategory.updatesEnabled(context) }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Automatic chat updates", style = MaterialTheme.typography.bodyMedium)
+                        Text("Off stops new updates. Existing chat and direct replies stay available.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(modifier = Modifier.testTag("chat_updates_master"), checked = updatesEnabled, onCheckedChange = {
+                        AyvaAlertCategory.setUpdatesEnabled(context, it); refreshKey++
+                    })
+                }
 
-                            if (index < AyvaAlertCategory.entries.size - 1) {
-                                HorizontalDivider(
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f),
-                                    modifier = Modifier.padding(start = 44.dp, end = 6.dp)
-                                )
-                            }
+                // Organized Category List
+                Text("Task and habit reminders are managed in Settings.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .fillMaxWidth().testTag("chat_update_categories"),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    itemsIndexed(AyvaAlertCategory.entries, key = { _, it -> it.categoryKey }) { index, category ->
+                        CategoryCompactRow(
+                            category = category,
+                            updatesEnabled = updatesEnabled,
+                            revision = refreshKey,
+                            onStateChanged = { refreshKey++ }
+                        )
+
+                        if (index < AyvaAlertCategory.entries.size - 1) {
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f),
+                                modifier = Modifier.padding(start = 44.dp, end = 6.dp)
+                            )
                         }
                     }
                 }
-
                 Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 Spacer(modifier = Modifier.height(10.dp))
@@ -151,6 +170,7 @@ fun AyvaNotificationColorsDialog(
                     TextButton(
                         onClick = {
                             AyvaAlertCategory.entries.forEach { it.resetToDefault(context) }
+                            AyvaAlertCategory.setUpdatesEnabled(context, true)
                             refreshKey++
                         },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -192,11 +212,13 @@ fun AyvaNotificationColorsDialog(
 @Composable
 private fun CategoryCompactRow(
     category: AyvaAlertCategory,
+    updatesEnabled: Boolean,
+    revision: Int,
     onStateChanged: () -> Unit
 ) {
     val context = LocalContext.current
-    val isEnabled = category.isEnabled(context)
-    val currentBgHex = category.getBgHex(context)
+    val isEnabled = remember(category, revision) { category.isEnabled(context) }
+    val currentBgHex = remember(category, revision) { category.getBgHex(context) }
 
     val currentPreset = remember(currentBgHex) {
         AyvaColorPresets.getPresetByBgHex(currentBgHex)
@@ -244,7 +266,11 @@ private fun CategoryCompactRow(
         // Title and Subtitle
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = category.channelName.removePrefix("Ayva "),
+                text = when (category) {
+                    AyvaAlertCategory.GENERAL -> "Other automatic updates"
+                    AyvaAlertCategory.CRITICAL_LIMIT -> "Focus alert previews"
+                    else -> category.channelName.removePrefix("Ayva ")
+                },
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp
@@ -372,6 +398,7 @@ private fun CategoryCompactRow(
         // Toggle Switch
         Switch(
             checked = isEnabled,
+            enabled = updatesEnabled,
             onCheckedChange = { checked ->
                 category.setEnabled(context, checked)
                 onStateChanged()
@@ -380,7 +407,7 @@ private fun CategoryCompactRow(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = activeColor
             ),
-            modifier = Modifier.scale(0.72f)
+            modifier = Modifier.scale(0.72f).testTag("chat_category_${category.categoryKey}")
         )
     }
 }
@@ -393,16 +420,18 @@ private fun getCategoryIcon(category: AyvaAlertCategory): ImageVector {
         AyvaAlertCategory.BEDTIME_SLEEP -> Icons.Filled.Bedtime
         AyvaAlertCategory.CRITICAL_LIMIT -> Icons.Filled.Block
         AyvaAlertCategory.GENERAL -> Icons.Filled.ChatBubble
+        AyvaAlertCategory.REWARDS -> Icons.Filled.Redeem
     }
 }
 
 private fun getCategorySubtitle(category: AyvaAlertCategory): String {
     return when (category) {
-        AyvaAlertCategory.BRIEFING -> "Morning & evening digests"
-        AyvaAlertCategory.DRILL_PRACTICE -> "Flashcards & math challenges"
+        AyvaAlertCategory.BRIEFING -> "Morning, evening & vocabulary cards"
+        AyvaAlertCategory.DRILL_PRACTICE -> "Practice prompts; paused in Vacation Mode"
         AyvaAlertCategory.EXCESSIVE_USAGE -> "Continuous screen nudges"
         AyvaAlertCategory.BEDTIME_SLEEP -> "Late-night & wind-down rest"
-        AyvaAlertCategory.CRITICAL_LIMIT -> "Strict locks & app limits"
-        AyvaAlertCategory.GENERAL -> "General assistant alerts"
+        AyvaAlertCategory.CRITICAL_LIMIT -> "Alert previews; blocking stays active"
+        AyvaAlertCategory.GENERAL -> "Welcome & other automatic updates"
+        AyvaAlertCategory.REWARDS -> "Optional quest & mystery-box prompts"
     }
 }

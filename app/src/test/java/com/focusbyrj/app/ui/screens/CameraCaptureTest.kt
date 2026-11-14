@@ -2,7 +2,7 @@ package com.focusbyrj.app.ui.screens
 
 import android.app.Application
 import android.content.ActivityNotFoundException
-import com.focusbyrj.app.ui.screens.notes.launchCameraPreview
+import com.focusbyrj.app.ui.screens.notes.launchCameraCapture
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -18,14 +18,14 @@ class CameraCaptureTest {
         val app = RuntimeEnvironment.getApplication()
         assertEquals(android.content.pm.PackageManager.PERMISSION_DENIED, app.checkSelfPermission(android.Manifest.permission.CAMERA))
         var launches = 0
-        launchCameraPreview(app) { launches++ }
+        launchCameraCapture(app) { launches++ }
         assertEquals(1, launches)
     }
 
     @Test fun missingCameraAndPolicyDenialsOfferGalleryFallbackWithoutCrashing() {
         val app = RuntimeEnvironment.getApplication()
         for (failure in listOf(ActivityNotFoundException("No handler"), SecurityException("Device policy"), IllegalStateException("Launcher unavailable"))) {
-            launchCameraPreview(app) { throw failure }
+            launchCameraCapture(app) { throw failure }
             assertTrue(ShadowToast.getTextOfLatestToast().toString().contains("gallery", ignoreCase = true))
         }
     }

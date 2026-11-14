@@ -1,11 +1,11 @@
 """Verify rightward flight in the actual packaged WebP frames, not only SVG state.
-Usage: python tools/verify_vizag_bird_frames.py bird-regions.json
+Usage: python tools/vizag/verify_vizag_bird_frames.py bird-regions.json
 Regions contain the expected scene-space locations transformed to gallery pixels.
 """
 from pathlib import Path
 import json,sys,numpy as np
 from PIL import Image
-root=Path(__file__).resolve().parents[1]
+root=Path(__file__).resolve().parents[2]
 assets=json.loads((root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').read_text())
 regions=json.loads(Path(sys.argv[1]).read_text());result=[]
 for r in regions:

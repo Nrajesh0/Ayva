@@ -195,8 +195,7 @@ object UsageBreakTracker {
                 if (lastAlert > now || now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val appName = getAppFriendlyName(context, trackedAppPackage)
                     val message = AyvaDialogueEngine.getNightSleepSuggestion(context, appName)
-                    sendBubbleReminder(context, message)
-                    prefs.edit().putLong(KEY_LAST_NIGHT_ALERT_TIME, now).apply()
+                    if (sendBubbleReminder(context, message, AyvaAlertCategory.BEDTIME_SLEEP)) prefs.edit().putLong(KEY_LAST_NIGHT_ALERT_TIME, now).apply()
                 }
             }
         } else {
@@ -210,9 +209,10 @@ object UsageBreakTracker {
                 if (lastAlert > now || now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val appName = getAppFriendlyName(context, trackedAppPackage)
                     val message = AyvaDialogueEngine.getDaySingleAppBreakSuggestion(context, appName)
-                    sendBubbleReminder(context, message)
-                    prefs.edit().putLong(KEY_LAST_DAY_SINGLE_ALERT_TIME, now).apply()
-                    alertTriggered = true
+                    if (sendBubbleReminder(context, message, AyvaAlertCategory.EXCESSIVE_USAGE)) {
+                        prefs.edit().putLong(KEY_LAST_DAY_SINGLE_ALERT_TIME, now).apply()
+                        alertTriggered = true
+                    }
                 }
             }
 
@@ -221,8 +221,7 @@ object UsageBreakTracker {
                 val lastAlert = prefs.getSafeLong(KEY_LAST_DAY_TOTAL_ALERT_TIME, 0L)
                 if (lastAlert > now || now - lastAlert >= ALERT_COOLDOWN_MS) {
                     val message = AyvaDialogueEngine.getDayTotalScreenBreakSuggestion(context)
-                    sendBubbleReminder(context, message)
-                    prefs.edit().putLong(KEY_LAST_DAY_TOTAL_ALERT_TIME, now).apply()
+                    if (sendBubbleReminder(context, message, AyvaAlertCategory.EXCESSIVE_USAGE)) prefs.edit().putLong(KEY_LAST_DAY_TOTAL_ALERT_TIME, now).apply()
                 }
             }
         }
@@ -231,19 +230,20 @@ object UsageBreakTracker {
     /**
      * Emits the gentle break reminder directly into the floating bubble preview pill and chat log.
      *
-     * NOTE: Callers are responsible for checking the relevant [AyvaAlertCategory.isEnabled]
-     * BEFORE calling this method. This function itself is intentionally unguarded so that
-     * future callers with different category semantics can reuse it cleanly.
+     * Keep an explicit category through chat storage and preview delivery, including quotes
+     * whose wording does not identify the source. Only delivered updates start a cooldown.
      */
-    private fun sendBubbleReminder(context: Context, text: String) {
+    private fun sendBubbleReminder(context: Context, text: String, category: AyvaAlertCategory): Boolean {
+        if (!category.isEnabled(context)) return false
+        val expectedGeneration = BubbleChatManager.generation
         val chatMessage = PersistedChatMessage(
-            id = "usage_reminder_${System.currentTimeMillis()}",
+            id = "usage_reminder_${category.categoryKey}_${System.currentTimeMillis()}",
             text = text,
             isUser = false,
             timestamp = System.currentTimeMillis()
         )
         // Add message to chat repository and increment unread badge so bubble previews it
-        BubbleChatManager.addMessage(context, chatMessage, incrementBadge = true, updateActivity = false)
+        if (!BubbleChatManager.addMessage(context, chatMessage, incrementBadge = true, updateActivity = false, expectedGeneration = expectedGeneration)) return false
 
         // Make sure BubbleService is running and displays the notification preview
         BubbleService.startIfEnabled(context, ignoreSnooze = false)
@@ -252,8 +252,10 @@ object UsageBreakTracker {
         val intent = Intent(BubbleService.ACTION_SHOW_ALERT_PREVIEW).apply {
             setPackage(context.packageName)
             putExtra(BubbleService.EXTRA_ALERT_TEXT, text)
+            putExtra(BubbleService.EXTRA_ALERT_CATEGORY, category.categoryKey)
         }
         context.sendBroadcast(intent)
+        return true
     }
 
     private fun getAppFriendlyName(context: Context, packageName: String?): String {

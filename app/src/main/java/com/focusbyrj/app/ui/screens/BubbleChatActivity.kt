@@ -156,7 +156,8 @@ data class DrillSession(
     val markedForReview: MutableSet<Int> = mutableSetOf(),
     var highestSeenIndex: Int = 0,
     val isSettled: java.util.concurrent.atomic.AtomicBoolean = java.util.concurrent.atomic.AtomicBoolean(false),
-    val sessionId: String = java.util.UUID.randomUUID().toString()
+    val sessionId: String = java.util.UUID.randomUUID().toString(),
+    val storageGeneration: Long = com.focusbyrj.app.data.drill.DrillSessionRepository.storageGeneration
 )
 
 data class AppInfo(val name: String, val packageName: String, val category: AppCategory = AppCategory.OTHERS)
@@ -489,11 +490,19 @@ fun ChatInterface() {
     var showBubbleIconPicker by rememberSaveable { mutableStateOf(false) }
     var chatFontSizeSp by remember { mutableStateOf(prefs.getFloat("chat_font_size_sp", 15f)) }
     var activeDrillSession by remember { mutableStateOf<DrillSession?>(null) }
+    val restoredDrillGeneration by com.focusbyrj.app.data.drill.DrillSessionRepository.restoreGenerationFlow.collectAsStateWithLifecycle()
+    LaunchedEffect(restoredDrillGeneration) {
+        if (activeDrillSession?.storageGeneration != restoredDrillGeneration) activeDrillSession = null
+    }
     var drillSaveError by remember { mutableStateOf<String?>(null) }
     var finishingDrill by remember { mutableStateOf(false) }
     val vocabQuizWriter = remember(context) { com.focusbyrj.app.data.VocabQuizWriter(context) }
     suspend fun saveDrill(session: DrillSession): ChatMessage? {
         if (finishingDrill) return null
+        if (session.storageGeneration != com.focusbyrj.app.data.drill.DrillSessionRepository.storageGeneration) {
+            activeDrillSession = null; drillSaveError = null
+            return null
+        }
         finishingDrill = true
         return try {
             vocabQuizWriter.flush().getOrThrow()
@@ -523,10 +532,10 @@ fun ChatInterface() {
                     com.focusbyrj.app.util.GamificationHaptics.playCelebration(context)
                     val summaryMsg = saveDrill(session) ?: break
                     val questState = com.focusbyrj.app.util.DailyQuestManager.stateFlow.value
-                    val hasMysteryBox = questState.isEarlyBirdAvailable || questState.isNightOwlAvailable
+                    val hasMysteryBox = (questState.isEarlyBirdAvailable || questState.isNightOwlAvailable) && com.focusbyrj.app.util.AyvaAlertCategory.REWARDS.isEnabled(context)
                     val boxMsg = if (hasMysteryBox) {
                         ChatMessage(
-                            id = "mystery_box_${System.currentTimeMillis()}",
+                            id = "auto_reward_${System.currentTimeMillis()}",
                             text = "Daily Mystery Box Unlocked",
                             isUser = false,
                             timestamp = System.currentTimeMillis(),
@@ -731,6 +740,13 @@ fun ChatInterface() {
         if (chatLoaded) {
             val local = messages.map { it.recordForChat(visible = false) }
             val generation = BubbleChatManager.generation
+            if (persistedGeneration.get() != generation) {
+                if (activeDrillSession?.storageGeneration != com.focusbyrj.app.data.drill.DrillSessionRepository.storageGeneration) activeDrillSession = null
+                showDrillSummaryMessage = null
+                showSolutionsJson = null
+                showMysteryChestDialog = false
+                drillSaveError = null
+            }
             val projected = if (persistedGeneration.get() == generation)
                 BubbleChatManager.mergeChanges(persistedFlowMessages, persistedBaseline.get(), local)
                 else persistedFlowMessages
@@ -1643,10 +1659,10 @@ fun ChatInterface() {
             if (!session.isBlitz && session.targetQuestions != -1 && session.total >= session.targetQuestions) {
                 val summaryMsg = saveDrill(session) ?: return@let
                 val questState = com.focusbyrj.app.util.DailyQuestManager.stateFlow.value
-                val hasMysteryBox = questState.isEarlyBirdAvailable || questState.isNightOwlAvailable
+                val hasMysteryBox = (questState.isEarlyBirdAvailable || questState.isNightOwlAvailable) && com.focusbyrj.app.util.AyvaAlertCategory.REWARDS.isEnabled(context)
                 val boxMsg = if (hasMysteryBox) {
                     ChatMessage(
-                        id = "mystery_box_${System.currentTimeMillis()}",
+                        id = "auto_reward_${System.currentTimeMillis()}",
                         text = "Daily Mystery Box Unlocked",
                         isUser = false,
                         timestamp = System.currentTimeMillis(),
@@ -1749,10 +1765,10 @@ fun ChatInterface() {
         activeDrillSession?.let { session ->
             val summaryMsg = saveDrill(session) ?: return@let
             val questState = com.focusbyrj.app.util.DailyQuestManager.stateFlow.value
-            val hasMysteryBox = questState.isEarlyBirdAvailable || questState.isNightOwlAvailable
+            val hasMysteryBox = (questState.isEarlyBirdAvailable || questState.isNightOwlAvailable) && com.focusbyrj.app.util.AyvaAlertCategory.REWARDS.isEnabled(context)
             val boxMsg = if (hasMysteryBox) {
                 ChatMessage(
-                    id = "mystery_box_${System.currentTimeMillis()}",
+                    id = "auto_reward_${System.currentTimeMillis()}",
                     text = "Daily Mystery Box Unlocked",
                     isUser = false,
                     timestamp = System.currentTimeMillis(),
@@ -2110,7 +2126,8 @@ fun ChatInterface() {
                         chatMode = ChatMode.CHAT
                         com.focusbyrj.app.util.AyvaTalkEngine.resetConversation()
                         val welcome = ChatMessage("welcome_${System.currentTimeMillis()}", com.focusbyrj.app.util.AyvaDialogueEngine.getHelloWelcomeMessage(context), false, isWelcome = true)
-                        messages = listOf(welcome); replyToMessage = null; assistantChatState = AssistantChatState(); referenceRevision++
+                        messages = if (com.focusbyrj.app.util.AyvaAlertCategory.GENERAL.isEnabled(context)) listOf(welcome) else emptyList()
+                        replyToMessage = null; assistantChatState = AssistantChatState(); referenceRevision++
                         persistMessages(context, messages.map { it.recordForChat() })
                         BubbleChatManager.clearUnread(context)
                     }

@@ -1,5 +1,5 @@
 """Make vehicle fronts and direction unambiguous; use the entire Kailasagiri cable.
-Usage: python tools/refine_vizag_routes.py corrected-gallery.html output-directory
+Usage: python tools/vizag/refine_vizag_routes.py corrected-gallery.html output-directory
 """
 from pathlib import Path
 import sys

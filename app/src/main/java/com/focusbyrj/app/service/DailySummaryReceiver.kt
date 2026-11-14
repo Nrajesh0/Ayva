@@ -39,8 +39,16 @@ class DailySummaryReceiver : BroadcastReceiver() {
             val morningTimeStr = prefs.getString("morning_brief_time", "08:00 AM") ?: "08:00 AM"
             val eveningTimeStr = prefs.getString("evening_brief_time", "08:00 PM") ?: "08:00 PM"
 
-            scheduleSingleSummary(context, morningTimeStr, ACTION_MORNING_SUMMARY, REQUEST_CODE_MORNING)
-            scheduleSingleSummary(context, eveningTimeStr, ACTION_EVENING_SUMMARY, REQUEST_CODE_EVENING)
+            if (com.focusbyrj.app.util.AyvaAlertCategory.BRIEFING.isEnabled(context)) {
+                scheduleSingleSummary(context, morningTimeStr, ACTION_MORNING_SUMMARY, REQUEST_CODE_MORNING)
+                scheduleSingleSummary(context, eveningTimeStr, ACTION_EVENING_SUMMARY, REQUEST_CODE_EVENING)
+            } else {
+                val alarms = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                for ((action, code) in listOf(ACTION_MORNING_SUMMARY to REQUEST_CODE_MORNING, ACTION_EVENING_SUMMARY to REQUEST_CODE_EVENING)) {
+                    PendingIntent.getBroadcast(context, code, Intent(context, DailySummaryReceiver::class.java).setAction(action),
+                        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let { alarms?.cancel(it); it.cancel() }
+                }
+            }
             scheduleSingleSummary(context, "00:00 AM", ACTION_MIDNIGHT_PURGE, REQUEST_CODE_MIDNIGHT)
         }
 
@@ -179,6 +187,8 @@ class DailySummaryReceiver : BroadcastReceiver() {
     }
 
     private suspend fun handleMorningSummary(context: Context, app: FocusApplication) {
+        if (!com.focusbyrj.app.util.AyvaAlertCategory.BRIEFING.isEnabled(context)) return
+        val expectedGeneration = BubbleChatManager.generation
         val vocabRepo = app.vocabRepository
         val newIdiom = vocabRepo.getNextIdiomToLearn()
         val newOws = vocabRepo.getNextOwsToLearn()
@@ -225,10 +235,12 @@ class DailySummaryReceiver : BroadcastReceiver() {
             isVocabBrief = true,
             vocabJson = vocabObj.toString()
         )
-        com.focusbyrj.app.util.BubbleChatManager.addMessage(context, message, incrementBadge = true)
+        com.focusbyrj.app.util.BubbleChatManager.addMessage(context, message, incrementBadge = true, expectedGeneration = expectedGeneration)
     }
 
     private suspend fun handleEveningSummary(context: Context, app: FocusApplication) {
+        if (!com.focusbyrj.app.util.AyvaAlertCategory.BRIEFING.isEnabled(context)) return
+        val expectedGeneration = BubbleChatManager.generation
         val vocabRepo = app.vocabRepository
         val newIdiom = vocabRepo.getNextIdiomToLearn()
         val newOws = vocabRepo.getNextOwsToLearn()
@@ -275,6 +287,6 @@ class DailySummaryReceiver : BroadcastReceiver() {
             isVocabBrief = true,
             vocabJson = vocabObj.toString()
         )
-        com.focusbyrj.app.util.BubbleChatManager.addMessage(context, message, incrementBadge = true)
+        com.focusbyrj.app.util.BubbleChatManager.addMessage(context, message, incrementBadge = true, expectedGeneration = expectedGeneration)
     }
 }

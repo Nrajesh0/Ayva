@@ -17,7 +17,7 @@ object DrillSummaryHelper {
             attemptedIndices = session.attemptedIndices.toMutableSet(),
             markedForReview = session.markedForReview.toMutableSet()
         )
-        return com.focusbyrj.app.data.drill.DrillSessionRepository.settleOnce(submitted.sessionId,
+        return com.focusbyrj.app.data.drill.DrillSessionRepository.settleOnceAtGeneration(submitted.sessionId, submitted.storageGeneration,
             existing = { summary -> message(summary) }, create = { createSummaryMessage(submitted) })
             .also { session.isSettled.set(true) }
     }

@@ -158,6 +158,15 @@ fun AccountScreen(
             ?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
         mutableStateOf(initial)
     }
+    DisposableEffect(pinnedPrefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+            if (key == null || key == "profile_pinned_ids") {
+                profilePinnedIds = prefs.getStringSet("profile_pinned_ids", emptySet()).orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+            }
+        }
+        pinnedPrefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { pinnedPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
 
     // Navigation & Tab state
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Overview, 1: Achievements

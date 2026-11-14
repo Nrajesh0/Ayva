@@ -5,7 +5,7 @@ import android.content.Context
 import android.widget.Toast
 
 /** Capture remains delegated to the camera app; a failed launch never changes the note. */
-internal fun launchCameraPreview(context: Context, launch: () -> Unit) {
+internal fun launchCameraCapture(context: Context, launch: () -> Unit) {
     val message = try {
         launch()
         return

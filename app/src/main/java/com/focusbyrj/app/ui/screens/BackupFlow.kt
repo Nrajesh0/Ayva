@@ -173,6 +173,7 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(exportState.message ?: if (isPreparing) "Preparing encrypted backup" else "Saving backup file")
+                BackupElapsedLabel()
                 Text(if (isPreparing) "Keep RUN open during preparation. Vault protection stays on."
                     else "Success appears after the saved file verifies.", style = MaterialTheme.typography.bodySmall)
             } },
@@ -274,6 +275,7 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
                 Text(restoreState.message ?: if (restoreState.phase == RestorePhase.CHECKING) "Checking backup contents" else "Restoring saved data")
+                BackupElapsedLabel()
                 Text("Keep the app open until this finishes.", style = MaterialTheme.typography.bodySmall)
             } }, confirmButton = {},
             dismissButton = { if (restoreState.phase == RestorePhase.CHECKING) TextButton(onClick = { restore.cancel() }) { Text("Cancel") } }
@@ -299,9 +301,12 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
         RestorePhase.SUCCESS -> AlertDialog(
             onDismissRequest = { pendingRestoreUri = null; restore.cancel() },
             title = { Text("Restore complete") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (restoreState.replace) "Your data now matches the backup." else "Additional copies were imported.")
-                restoreState.metadata?.let { Text("${it.noteCount} notes · ${it.taskCount} tasks · ${it.habitCount} habits") }
+                restoreState.metadata?.let {
+                    Text("${it.noteCount} notes · ${it.taskCount} tasks · ${it.habitCount} habits")
+                    it.warnings.forEach { warning -> Text(warning, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                }
                 Text("Your backup file was kept.", style = MaterialTheme.typography.bodySmall)
             } },
             confirmButton = { Button(onClick = { pendingRestoreUri = null; restore.cancel() }) { Text("Done") } }
@@ -347,8 +352,19 @@ internal fun RestoreReviewDialog(state: RestoreState, onConfirm: () -> Unit, onD
                 Text(if (state.replace) "Current records and settings will match this backup. Later changes will be replaced."
                     else "Adds extra records and applies backed-up settings.")
                 Text("Current notes and tasks get a safety snapshot first.", style = MaterialTheme.typography.bodySmall)
+                Text("Running drills will end. Only completed drill results are restored.", style = MaterialTheme.typography.bodySmall)
             } },
             confirmButton = { Button(onClick = onConfirm) { Text(if (state.replace) "Restore backup" else "Import copies") } },
             dismissButton = { TextButton(onClick = { onDismiss() }) { Text("Cancel") } }
         )
+}
+
+/** A running clock, never a guessed ETA or percentage. No content/credentials collected. */
+@androidx.compose.runtime.Composable
+internal fun BackupElapsedLabel() {
+    val start = androidx.compose.runtime.remember { android.os.SystemClock.elapsedRealtime() }
+    val elapsed = androidx.compose.runtime.produceState(0L) {
+        while (true) { value = (android.os.SystemClock.elapsedRealtime() - start) / 1000; kotlinx.coroutines.delay(1000) }
+    }
+    Text("This step: ${elapsed.value / 60}m ${elapsed.value % 60}s", style = MaterialTheme.typography.bodySmall)
 }

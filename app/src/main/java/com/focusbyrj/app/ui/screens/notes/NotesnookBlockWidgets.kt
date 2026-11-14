@@ -93,7 +93,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 
 // ==========================================
 // 1. NOTESNOOK CODE BLOCK WIDGET
@@ -1101,8 +1100,9 @@ fun NotesnookImageBlockWidget(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
         ) {
-            AsyncImage(
-                model = block.uri,
+            NotePreviewImage(
+                uri = block.uri,
+                maxEdge = 960,
                 contentDescription = block.caption.ifBlank { "Article image" },
                 modifier = Modifier
                     .fillMaxWidth()

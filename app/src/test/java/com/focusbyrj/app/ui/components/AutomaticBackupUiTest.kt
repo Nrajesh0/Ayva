@@ -39,13 +39,23 @@ class AutomaticBackupUiTest {
             androidx.work.WorkManager.initialize(app,androidx.work.Configuration.Builder().build())
         }
     }
-    private fun page(fontScale: Float = 1f) { compose.setContent { FocusByRjTheme {
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)) {
-            val nav = rememberNavController()
-            NavHost(nav, startDestination = "automatic") { composable("automatic") { AutomaticBackupsScreen(nav) } }
+    /** IO resumes through Android's main queue, which Robolectric must drain while polling. */
+    private fun waitForCondition(timeoutMillis: Long, condition: () -> Boolean) {
+        compose.waitUntil(timeoutMillis) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            condition()
         }
-    } } }
+    }
+    private fun page(fontScale: Float = 1f) {
+        compose.setContent { FocusByRjTheme {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale)) {
+                val nav = rememberNavController()
+                NavHost(nav, startDestination = "automatic") { composable("automatic") { AutomaticBackupsScreen(nav) } }
+            }
+        } }
+        waitForCondition(10_000) { compose.onAllNodesWithTag("automatic_backup_loaded").fetchSemanticsNodes().isNotEmpty() }
+    }
     private fun capture(name:String) {
         compose.runOnIdle {
             val view=compose.activity.window.decorView;val image=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888)
@@ -75,7 +85,7 @@ class AutomaticBackupUiTest {
         compose.onNode(hasText("Save") and hasAnyAncestor(isDialog())).assertIsNotEnabled()
         compose.onNode(hasSetTextAction()).performTextReplacement("3")
         compose.onNode(hasText("Save") and hasAnyAncestor(isDialog())).performClick();compose.waitForIdle()
-        compose.waitUntil(5000){store.config().keep==3}
+        waitForCondition(5000){store.config().keep==3}
         assertTrue(store.config().keyAcknowledged);assertTrue(store.records().isEmpty())
     }
     @Test fun calendarFrequencyOffersAllFourUnitsAndSavesTheSelectedInterval() {
@@ -85,7 +95,7 @@ class AutomaticBackupUiTest {
         compose.onNodeWithText("Months").performClick()
         compose.onNode(hasSetTextAction()).performTextReplacement("2")
         compose.onNode(hasText("Save") and hasAnyAncestor(isDialog())).performClick();compose.waitForIdle()
-        compose.waitUntil(5000){AutomaticBackupStore(app).config().frequency.unit=="MONTHS"}
+        waitForCondition(5000){AutomaticBackupStore(app).config().frequency.unit=="MONTHS"}
         assertEquals(2,AutomaticBackupStore(app).config().frequency.every)
         compose.onNodeWithText("Edit").performScrollTo().performClick()
         compose.onNode(hasSetTextAction()).assertTextContains("2")
@@ -178,7 +188,7 @@ class AutomaticBackupUiTest {
         assertTrue(store.hasVaultAuthorization())
         compose.onNodeWithText("Revoke").performScrollTo().performClick()
         compose.onNodeWithText("Revoke access").performClick()
-        compose.waitUntil(5000) { !store.hasVaultAuthorization() }
+        waitForCondition(5000) { !store.hasVaultAuthorization() }
         assertNull(store.staged())
     }
 
@@ -205,7 +215,7 @@ class AutomaticBackupUiTest {
         compose.onNodeWithText("Save recovery PDF").assertDoesNotExist()
         capture("automatic-backup-recovery-file")
         compose.runOnIdle { store.save(store.config().copy(keyExported = true)) }
-        compose.waitUntil(5000) { compose.onAllNodesWithText("STEP 3 OF 3").fetchSemanticsNodes().isNotEmpty() }
+        waitForCondition(5000) { compose.onAllNodesWithText("STEP 3 OF 3").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Turn on automatic backups").assertIsEnabled()
         assertFalse(store.config().enabled)
         assertFalse(store.config().keyAcknowledged)
@@ -234,7 +244,7 @@ class AutomaticBackupUiTest {
             BackupRecoveryKey.generate().use { store.install(it) }
             store.save(store.config().copy(tree = "content://test/tree/folder", keyExported = true, keyAcknowledged = true))
         }
-        compose.waitUntil(5000) { compose.onAllNodesWithText("Restore backup").fetchSemanticsNodes().isNotEmpty() }
+        waitForCondition(5000) { compose.onAllNodesWithText("Restore backup").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Restore backup").performScrollTo().performClick()
         val activity = org.robolectric.Shadows.shadowOf(compose.activity)
         val picker = activity.nextStartedActivityForResult
@@ -254,11 +264,14 @@ class AutomaticBackupUiTest {
             config.stream, config.keyId, created, 4096, "a".repeat(64))))
         val originalKey = app.getSharedPreferences("automatic_full_backups_v1", 0).getString("wrapped_key", null)
         page()
+        // Configuration/ownership loads on IO. Compose idleness alone does not
+        // establish that a configured restore control has reached the screen.
+        waitForCondition(10_000) { compose.onAllNodesWithText("Restore backup").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Restore backup").performScrollTo().performClick()
         compose.onNodeWithText("Choose backup").assertExists()
         compose.onNodeWithText("Latest", substring = true).assertExists()
         compose.onNodeWithTag("automatic_restore_$created").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Restore not completed").fetchSemanticsNodes().isNotEmpty() }
+        waitForCondition(10_000) { compose.onAllNodesWithText("Restore not completed").fetchSemanticsNodes().isNotEmpty() }
         assertNull(org.robolectric.Shadows.shadowOf(compose.activity).nextStartedActivityForResult)
         compose.onNodeWithText("This backup needs its original recovery file.").assertExists()
         compose.onNodeWithText("Try again").performClick()

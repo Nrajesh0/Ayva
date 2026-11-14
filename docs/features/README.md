@@ -16,6 +16,8 @@ changed. For build and CI instructions use the [build guide](../development/BUIL
 | Appearance | [Smoke-paw mystery boxes](appearance/SMOKE_PAW_MYSTERY_BOXES.md) | Runtime artwork is retained. |
 | Offline assistant | [Assistant guide](../assistant/README.md) | Separate maintained status, implementation, plans and historical records. |
 
+See the [14 November backup/media review and implementation follow-up](../audits/BACKUP_AND_MEDIA_REVIEW_2026-11-14.md) for the latest improvements and verification limits.
+
 ## Evidence and older reviews
 
 Security findings are indexed in the [security guide](../security/README.md).

@@ -23,6 +23,23 @@ object NoteImageHelper {
     const val COMPRESSION_QUALITY: Int = 80
 
     fun processAndSaveImage(context: Context, contentUri: Uri): String? {
+        val ownCapture = contentUri.authority == "${context.packageName}.fileprovider" && contentUri.pathSegments.firstOrNull() == "note_capture"
+        if (!ownCapture) return processImage(context, contentUri, false)
+        val name = contentUri.lastPathSegment ?: return null
+        if (!name.matches(Regex("[a-f0-9-]{36}\\.jpg"))) return null
+        val file = File(File(context.cacheDir, "note_capture"), name)
+        return try { processCapturedImage(context, file) } catch (_: Exception) { null } finally { file.delete() }
+    }
+
+    internal fun processCapturedImage(context: Context, file: File): String? {
+        val root = File(context.cacheDir, "note_capture").canonicalFile
+        require(file.canonicalFile.parentFile == root && file.isFile)
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        return processImage(context, uri, true)
+    }
+
+    @Synchronized
+    private fun processImage(context: Context, contentUri: Uri, trustedCapture: Boolean): String? {
         var rawBitmap: Bitmap? = null
         var orientedBitmap: Bitmap? = null
         var finalBitmap: Bitmap? = null
@@ -33,7 +50,7 @@ object NoteImageHelper {
                 return null
             }
             val authority = contentUri.authority?.lowercase().orEmpty()
-            if (authority.contains("focusbyrj") && authority.contains("fileprovider")) {
+            if (!trustedCapture && authority.contains("focusbyrj") && authority.contains("fileprovider")) {
                 android.util.Log.w("NoteImageHelper", "Rejected self-referential FileProvider URI: $contentUri")
                 return null
             }
@@ -44,6 +61,8 @@ object NoteImageHelper {
                 android.util.Log.w("NoteImageHelper", "Rejected non-image MIME type: $mimeType")
                 return null
             }
+            // Do not silently flatten an animation into a still image.
+            if (mimeType == "image/gif") return null
             val descriptorSize = try {
                 context.contentResolver.openFileDescriptor(contentUri, "r")?.use { it.statSize } ?: -1L
             } catch (_: Throwable) { -1L }
@@ -53,7 +72,6 @@ object NoteImageHelper {
             }
 
             val imagesDir = File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
-            val outputFile = File(imagesDir, "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg")
 
             // 1. Read EXIF orientation before decoding
             val orientation = try {
@@ -76,6 +94,8 @@ object NoteImageHelper {
                 BitmapFactory.decodeStream(input, null, boundsOptions)
             }
 
+            if (boundsOptions.outMimeType == "image/gif") return null
+            val lossless = boundsOptions.outMimeType in setOf("image/png", "image/webp")
             val origWidth = boundsOptions.outWidth
             val origHeight = boundsOptions.outHeight
             if (origWidth <= 0 || origHeight <= 0 || origWidth > 12000 || origHeight > 12000) {
@@ -110,6 +130,8 @@ object NoteImageHelper {
                 ExifInterface.ORIENTATION_ROTATE_270 -> rotateBitmap(nonNullRaw, 270f)
                 ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> flipBitmap(nonNullRaw, horizontal = true)
                 ExifInterface.ORIENTATION_FLIP_VERTICAL -> flipBitmap(nonNullRaw, horizontal = false)
+                ExifInterface.ORIENTATION_TRANSPOSE -> transformBitmap(nonNullRaw, 270f, true)
+                ExifInterface.ORIENTATION_TRANSVERSE -> transformBitmap(nonNullRaw, 90f, true)
                 else -> nonNullRaw
             }
 
@@ -124,9 +146,11 @@ object NoteImageHelper {
                 nonNullOriented
             }
 
-            // 5. Save as balanced high-quality compressed JPEG (80%) encrypted with AES-256-GCM
+            // Photos use JPEG; alpha and PNG/WebP imports use lossless PNG. Both are encrypted.
+            val usePng = lossless || finalBitmap!!.hasAlpha()
+            val outputFile = File(imagesDir, "img_${UUID.randomUUID()}.${if (usePng) "png" else "jpg"}")
             val byteStream = java.io.ByteArrayOutputStream()
-            finalBitmap!!.compress(Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream)
+            check(finalBitmap!!.compress(if (usePng) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream))
             val imageBytes = byteStream.toByteArray()
 
             try {
@@ -137,30 +161,28 @@ object NoteImageHelper {
 
             outputFile.absolutePath
         } catch (t: Throwable) {
-            t.printStackTrace()
+            android.util.Log.w("NoteImageHelper", "Image import failed; original retained")
             null
         } finally {
-            if (rawBitmap != null && rawBitmap != orientedBitmap && rawBitmap != finalBitmap) {
-                rawBitmap?.recycle()
-            }
-            if (orientedBitmap != null && orientedBitmap != rawBitmap && orientedBitmap != finalBitmap) {
-                orientedBitmap?.recycle()
-            }
-            if (finalBitmap != null) {
-                finalBitmap?.recycle()
-            }
+            // Release every owned bitmap once, including the common raw==oriented,
+            // resized-final case. Input bitmaps in processAndSaveBitmap remain caller-owned.
+            finalBitmap?.recycle()
+            if (orientedBitmap !== finalBitmap) orientedBitmap?.recycle()
+            if (rawBitmap !== finalBitmap && rawBitmap !== orientedBitmap) rawBitmap?.recycle()
         }
     }
 
     /**
      * Processes and compresses a raw in-memory Bitmap (e.g., from camera or sketch pad)
-     * using the same 1920px max dimension, 80% compression standard, and AES-256-GCM disk encryption.
+     * using the 1920px limit, lossless PNG for alpha or JPEG quality 80 for opaque images,
+     * and AES-256-GCM disk encryption.
      */
+    @Synchronized
     fun processAndSaveBitmap(context: Context, bitmap: Bitmap, prefix: String = "img"): String? {
         var scaledBitmap: Bitmap? = null
         return try {
             val imagesDir = File(context.filesDir, "keep_images").apply { if (!exists()) mkdirs() }
-            val outputFile = File(imagesDir, "${prefix}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.jpg")
+            val outputFile = File(imagesDir, "${prefix}_${UUID.randomUUID()}.${if (bitmap.hasAlpha()) "png" else "jpg"}")
 
             val maxDim = MAX_IMAGE_DIMENSION
             val finalBitmap = if (bitmap.width > maxDim || bitmap.height > maxDim) {
@@ -174,7 +196,7 @@ object NoteImageHelper {
             }
 
             val byteStream = java.io.ByteArrayOutputStream()
-            finalBitmap.compress(Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream)
+            check(finalBitmap.compress(if (bitmap.hasAlpha()) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, COMPRESSION_QUALITY, byteStream))
             val imageBytes = byteStream.toByteArray()
 
             try {
@@ -185,13 +207,18 @@ object NoteImageHelper {
 
             outputFile.absolutePath
         } catch (t: Throwable) {
-            t.printStackTrace()
+            android.util.Log.w("NoteImageHelper", "Image import failed; original retained")
             null
         } finally {
             if (scaledBitmap != null && scaledBitmap != bitmap) {
                 scaledBitmap.recycle()
             }
         }
+    }
+
+    internal fun transformBitmap(src: Bitmap, degrees: Float, mirror: Boolean): Bitmap {
+        val matrix = Matrix().apply { if (mirror) postScale(-1f, 1f); postRotate(degrees) }
+        return Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
     }
 
     private fun rotateBitmap(src: Bitmap, degrees: Float): Bitmap {

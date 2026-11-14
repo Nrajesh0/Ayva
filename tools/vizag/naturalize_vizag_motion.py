@@ -1,5 +1,5 @@
 """Refine the approved animation gallery: calm motion and selective vehicle fills.
-Usage: python tools/naturalize_vizag_motion.py living-gallery.html output-directory
+Usage: python tools/vizag/naturalize_vizag_motion.py living-gallery.html output-directory
 """
 from pathlib import Path
 import sys,re

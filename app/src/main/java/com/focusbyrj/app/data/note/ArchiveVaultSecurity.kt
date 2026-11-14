@@ -98,6 +98,86 @@ object ArchiveVaultSecurity {
     @Volatile
     private var ephemeralVaultSubKey: ByteArray? = null
 
+    internal const val MEDIA_RETURN_TIMEOUT_MS = 120_000L
+    private class MediaReturn(val context: Context, val nonce: String, val noteId: Long, val epoch: Long,
+                              val binding: String, val started: Long, val key: ByteArray) {
+        var rowHash: String? = null
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var receiver: android.content.BroadcastReceiver? = null
+        var expiry: Runnable? = null
+    }
+    private var mediaReturn: MediaReturn? = null
+
+    /** One process-local operation, never saved. Normal locks revoke it; background locks keep its deadline. */
+    @Synchronized
+    internal fun beginMediaReturn(context: Context, nonce: String, noteId: Long, epoch: Long) {
+        clearMediaReturn()
+        val key = checkNotNull(ephemeralVaultSubKey).copyOf()
+        try {
+            val app = context.applicationContext
+            val lease = MediaReturn(app, nonce, noteId, epoch, archiveWriteBinding(app), android.os.SystemClock.elapsedRealtime(), key)
+            mediaReturn = lease
+            val receiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: android.content.Intent) { lockVault() }
+            }
+            val filter = android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF)
+            if (android.os.Build.VERSION.SDK_INT >= 33) app.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            // SCREEN_OFF is a protected system broadcast; other apps cannot send it on older Android versions.
+            else app.registerReceiver(receiver, filter)
+            lease.receiver = receiver
+            lease.expiry = Runnable { synchronized(this) { if (mediaReturn === lease) clearMediaReturn() } }
+            check(lease.handler.postDelayed(checkNotNull(lease.expiry), MEDIA_RETURN_TIMEOUT_MS)) { "Media return timer unavailable" }
+        } catch (error: Exception) { clearMediaReturn(); key.fill(0); throw error }
+    }
+
+    @Synchronized
+    internal fun bindMediaReturn(nonce: String, rowHash: String) {
+        mediaReturn?.takeIf { it.nonce == nonce }?.rowHash = rowHash
+    }
+
+    @Synchronized
+    internal fun cancelMediaReturn(nonce: String? = null) {
+        if (nonce == null || mediaReturn?.nonce == nonce) clearMediaReturn()
+    }
+
+    private fun clearMediaReturn() {
+        val lease = mediaReturn ?: return
+        mediaReturn = null
+        lease.key.fill(0)
+        lease.expiry?.let(lease.handler::removeCallbacks)
+        lease.receiver?.let { runCatching { lease.context.unregisterReceiver(it) } }
+    }
+
+    private fun screenAllowsMediaReturn(context: Context): Boolean {
+        val power = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager ?: return false
+        val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager ?: return false
+        return power.isInteractive && !keyguard.isDeviceLocked && !keyguard.isKeyguardLocked
+    }
+
+    @Synchronized
+    internal fun consumeMediaReturn(context: Context, nonce: String, noteId: Long, epoch: Long, rowHash: String): Boolean {
+        val lease = mediaReturn ?: return false
+        try {
+            if (lease.nonce != nonce || lease.noteId != noteId || lease.epoch != epoch || lease.rowHash != rowHash ||
+                NotesStorageVersion.current() != epoch ||
+                android.os.SystemClock.elapsedRealtime() - lease.started !in 0 until MEDIA_RETURN_TIMEOUT_MS ||
+                !screenAllowsMediaReturn(context) || archiveWriteBinding(context) != lease.binding) return false
+            ephemeralVaultSubKey?.fill(0)
+            ephemeralVaultSubKey = lease.key.copyOf()
+            return true
+        } catch (_: Exception) { return false }
+        finally { clearMediaReturn() }
+    }
+
+    @Synchronized
+    fun lockForBackground() {
+        ephemeralVaultSubKey?.fill(0)
+        ephemeralVaultSubKey = null
+        val lease = mediaReturn
+        if (lease != null && (android.os.SystemClock.elapsedRealtime() - lease.started !in 0 until MEDIA_RETURN_TIMEOUT_MS ||
+                    !screenAllowsMediaReturn(lease.context))) clearMediaReturn()
+    }
+
     // Monotonic clock lockout timestamp (immune to device clock manipulation)
     @Volatile
     private var inMemoryLockoutElapsed: Long = 0L
@@ -133,6 +213,7 @@ object ArchiveVaultSecurity {
      */
     @Synchronized
     fun lockVault() {
+        clearMediaReturn()
         ephemeralVaultSubKey?.let { Arrays.fill(it, 0.toByte()) }
         ephemeralVaultSubKey = null
     }
@@ -201,6 +282,7 @@ object ArchiveVaultSecurity {
         mnemonicWords: List<String>? = null,
         isPhraseBackedUp: Boolean = true
     ): Boolean {
+        clearMediaReturn()
         if (pin.length != 6 || !pin.all { it.isDigit() }) {
             Log.e(TAG, "Invalid PIN format: must be exactly 6 digits")
             return false
@@ -323,6 +405,7 @@ object ArchiveVaultSecurity {
      */
     @Synchronized
     fun verifyPasscode(context: Context, inputPin: String): VerifyResult {
+        clearMediaReturn()
         val appContext = context.applicationContext
         val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
@@ -433,6 +516,7 @@ object ArchiveVaultSecurity {
      */
     @Synchronized
     fun disablePasscode(context: Context): Boolean {
+        clearMediaReturn()
         val activeSubKey = ephemeralVaultSubKey?.copyOf()
         val appContext = context.applicationContext
         val status = getVaultStatus(context)
@@ -510,6 +594,7 @@ object ArchiveVaultSecurity {
      */
     @Synchronized
     fun recoverVaultWithMnemonic(context: Context, words: List<String>, newPin: String): Boolean {
+        clearMediaReturn()
         if (newPin.length != 6 || !newPin.all { it.isDigit() }) {
             Log.e(TAG, "Invalid new PIN format: must be exactly 6 digits")
             return false

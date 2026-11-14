@@ -227,6 +227,7 @@ fun KeepNoteEditor(
     onMoveChecklistItem: (Int, Int) -> Unit,
     onAddImageUri: (Uri) -> Unit,
     onAddAttachmentUri: (Uri) -> Unit = {},
+    onPrivateMediaRequest: ((String, String) -> Unit)? = null,
     onAddDrawing: (Bitmap) -> Unit,
     onRemoveImage: (String) -> Unit,
     onAddLabel: (String) -> Unit,
@@ -620,18 +621,30 @@ fun KeepNoteEditor(
         }
     }
 
+    val latestEditorSession by rememberUpdatedState(state.sessionId)
+    val currentInsertBlock by rememberUpdatedState<(NotesnookBlock) -> Unit>({ insertBlockItem(it) })
+    fun importArticleImage(uri: Uri) {
+        val owner = state.sessionId
+        coroutineScope.launch(Dispatchers.IO) {
+            val path = NoteImageHelper.processAndSaveImage(context, uri)
+            var accepted = false
+            try {
+                withContext(Dispatchers.Main) {
+                    if (owner != latestEditorSession) return@withContext
+                    if (path != null) {
+                        currentInsertBlock(NotesnookBlock.Image(uri = path, caption = ""))
+                        accepted = true
+                    } else Toast.makeText(context, "Image could not be imported. Try again, or attach the original as a file.", Toast.LENGTH_LONG).show()
+                }
+            } finally { if (!accepted && path != null) java.io.File(path).delete() }
+        }
+    }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(),
         onResult = { uris ->
             if (isArticleMode) {
-                coroutineScope.launch(Dispatchers.IO) {
-                    uris.forEach { uri ->
-                        val localPath = NoteImageHelper.processAndSaveImage(context, uri) ?: uri.toString()
-                        withContext(Dispatchers.Main) {
-                            insertBlockItem(NotesnookBlock.Image(uri = localPath, caption = ""))
-                        }
-                    }
-                }
+                uris.forEach { importArticleImage(it) }
             } else {
                 uris.forEach { uri ->
                     onAddImageUri(uri)
@@ -643,47 +656,45 @@ fun KeepNoteEditor(
     val documentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents(),
         onResult = { uris ->
-            uris.forEach { uri ->
-                val mimeType = context.contentResolver.getType(uri)
-                if (mimeType?.startsWith("image/") == true) {
-                    if (isArticleMode) {
-                        coroutineScope.launch(Dispatchers.IO) {
-                            val localPath = NoteImageHelper.processAndSaveImage(context, uri) ?: uri.toString()
-                            withContext(Dispatchers.Main) {
-                                insertBlockItem(NotesnookBlock.Image(uri = localPath, caption = ""))
-                            }
-                        }
-                    } else {
-                        onAddImageUri(uri)
-                    }
-                } else {
-                    onAddAttachmentUri(uri)
-                }
-            }
+            // File attachments preserve original bytes, including animation and resolution.
+            uris.forEach { onAddAttachmentUri(it) }
         }
     )
 
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview(),
-        onResult = { bitmap ->
-            if (bitmap != null) {
-                if (isArticleMode) {
-                    coroutineScope.launch(Dispatchers.IO) {
-                        val localPath = NoteImageHelper.processAndSaveBitmap(context, bitmap, "photo")
-                        if (localPath != null) {
-                            withContext(Dispatchers.Main) {
-                                insertBlockItem(NotesnookBlock.Image(uri = localPath, caption = ""))
-                            }
-                        }
-                    }
-                } else {
-                    onPhotoTaken(bitmap)
-                }
+    var captureUri by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    var captureOwner by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val saved = captureUri; val owner = captureOwner
+        captureUri = null; captureOwner = null
+        if (saved != null) {
+            val uri = Uri.parse(saved)
+            runCatching { context.revokeUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+            if (success && owner == latestEditorSession) {
+                if (isArticleMode) importArticleImage(uri) else onAddImageUri(uri)
+            } else {
+                java.io.File(java.io.File(context.cacheDir, "note_capture"), uri.lastPathSegment.orEmpty()).delete()
+                if (success) Toast.makeText(context, "Photo was not added because the note changed. Take it again.", Toast.LENGTH_LONG).show()
             }
         }
-    )
+    }
 
-    fun takePhoto() = launchCameraPreview(context) { cameraLauncher.launch(null) }
+    fun chooseImages() {
+        if (state.isArchived && onPrivateMediaRequest != null && com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultStatus(context) == com.focusbyrj.app.data.note.ArchiveVaultSecurity.VaultStatus.ENABLED) onPrivateMediaRequest("image", state.sessionId)
+        else photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+    fun takePhoto() {
+        if (state.isArchived && onPrivateMediaRequest != null && com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultStatus(context) == com.focusbyrj.app.data.note.ArchiveVaultSecurity.VaultStatus.ENABLED) { onPrivateMediaRequest("camera", state.sessionId); return }
+        val directory = java.io.File(context.cacheDir, "note_capture").apply { mkdirs() }
+        directory.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 86_400_000L }?.forEach { it.delete() }
+        val file = java.io.File(directory, "${java.util.UUID.randomUUID()}.jpg")
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        com.focusbyrj.app.data.note.CaptureCleanupWorker.enqueue(context)
+        captureUri = uri.toString(); captureOwner = state.sessionId
+        launchCameraCapture(context) {
+            try { cameraLauncher.launch(uri) }
+            catch (error: Exception) { captureUri = null; captureOwner = null; file.delete(); throw error }
+        }
+    }
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
@@ -2664,9 +2675,7 @@ fun KeepNoteEditor(
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 showMoreMenu = false
-                                photoPickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
+                                chooseImages()
                             }
                         )
 
@@ -3021,9 +3030,7 @@ fun KeepNoteEditor(
                 onDismiss = { showImageOptionsSheet = false },
                 onTakePhoto = { takePhoto() },
                 onPickGallery = {
-                    photoPickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                    )
+                    chooseImages()
                 },
                 onInsertUrl = { url, altCaption ->
                     insertBlockItem(
@@ -3041,7 +3048,7 @@ fun KeepNoteEditor(
             NotesnookAttachmentOptionsSheet(
                 onDismiss = { showAttachmentOptionsSheet = false },
                 onPickDocument = {
-                    documentPickerLauncher.launch("*/*")
+                    if (state.isArchived && onPrivateMediaRequest != null && com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultStatus(context) == com.focusbyrj.app.data.note.ArchiveVaultSecurity.VaultStatus.ENABLED) onPrivateMediaRequest("file", state.sessionId) else documentPickerLauncher.launch("*/*")
                 },
                 onRecordAudio = {
                     onStartVoiceRecording()
@@ -3081,9 +3088,7 @@ fun KeepNoteEditor(
                         title = "Add image",
                         onClick = {
                             showAddSheet = false
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
+                            chooseImages()
                         }
                     )
 

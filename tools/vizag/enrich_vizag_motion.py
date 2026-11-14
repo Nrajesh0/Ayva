@@ -1,6 +1,6 @@
 from pathlib import Path
 import re,json,sys
-# Usage: python tools/enrich_vizag_motion.py approved-gallery.html output-directory
+# Usage: python tools/vizag/enrich_vizag_motion.py approved-gallery.html output-directory
 ROOT=Path(sys.argv[2]);ROOT.mkdir(parents=True,exist_ok=True)
 h=Path(sys.argv[1]).read_text()
 extra_defs=[]; extra_js=[];inventory={}

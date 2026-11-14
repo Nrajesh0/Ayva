@@ -30,6 +30,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
         return ImageLoader.Builder(this)
             .components {
                 add(com.focusbyrj.app.util.crypto.EncryptedMediaFetcher.Factory())
+                add(com.focusbyrj.app.util.crypto.NoteThumbnailFetcher.Factory())
             }
             .respectCacheHeaders(false)
             .build()
@@ -37,6 +38,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
     
     override fun onCreate() {
         super.onCreate()
+        runCatching { com.focusbyrj.app.data.note.CaptureCleanupWorker.clean(this) }
         com.focusbyrj.app.util.diagnostics.AppLogger.init(this)
         com.focusbyrj.app.util.diagnostics.CrashHandler.init(this)
         try {

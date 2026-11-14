@@ -261,6 +261,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun lockVault() {
+        lockVaultInternal(false)
+    }
+
+    internal fun lockVaultForBackground() { lockVaultInternal(true) }
+
+    private fun lockVaultInternal(preserveMediaReturn: Boolean) {
         val current = _editingState.value
         if (current != null && current.isArchived && _archiveMove.value.phase == ArchiveMovePhase.SAVING) {
             pendingPlainVaultDraft = current
@@ -322,7 +328,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             pendingNewNoteId = 0L
         }
 
-        ArchiveVaultSecurity.lockVault()
+        if (preserveMediaReturn) ArchiveVaultSecurity.lockForBackground() else ArchiveVaultSecurity.lockVault()
         latestNotesCache.clear()
         _isVaultUnlocked.value = false
         if (_currentFolder.value == NoteFolder.ARCHIVE) {
@@ -1188,11 +1194,93 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         return com.focusbyrj.app.data.note.NoteImageHelper.processAndSaveImage(context, contentUri)
     }
 
+    /** Capture identity only, then seal/close the private editor before another app opens. */
+    internal suspend fun preparePrivateMediaInput(expectedSession: String): String {
+        val current = checkNotNull(_editingState.value) { "Open the note again." }
+        check(current.sessionId == expectedSession) { "The note changed. Choose media again." }
+        check(current.isArchived && current.originalId > 0L) { "Save and reopen this note before choosing media." }
+        check(current.storageGeneration == com.focusbyrj.app.data.note.NotesStorageVersion.current()) { "Your data changed. Reopen the note." }
+        check(!ArchiveVaultSecurity.isVaultLocked(getApplication())) { "Unlock the note first." }
+        val nonce = UUID.randomUUID().toString()
+        ArchiveVaultSecurity.beginMediaReturn(getApplication(), nonce, current.originalId, current.storageGeneration)
+        return try {
+            lockVaultForBackground()
+            setFolder(NoteFolder.ARCHIVE)
+            check(pendingPlainVaultDraft == null && !hasPendingVaultDraftFile()) { "Your draft needs recovery. Unlock the vault before choosing media." }
+            withContext(Dispatchers.IO) {
+                val row = checkNotNull(NoteDatabase.getInstance(getApplication()).noteDao().getNoteByIdSync(current.originalId)) { "This note was removed." }
+                check(row.isArchived && !row.isTrashed && VaultPayloadEncryptor.isVaultEncrypted(row)) { "This private note is unavailable." }
+                val hash = privateMediaHash(row)
+                ArchiveVaultSecurity.bindMediaReturn(nonce, hash)
+                org.json.JSONObject().put("id", row.id).put("hash", hash)
+                    .put("epoch", current.storageGeneration).put("created", android.os.SystemClock.elapsedRealtime())
+                    .put("nonce", nonce).toString()
+            }
+        } catch (error: Throwable) { ArchiveVaultSecurity.cancelMediaReturn(nonce); throw error }
+    }
+
+    private fun privateMediaHash(row: NoteEntity): String = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(row.toString().toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
+    internal fun unlockPrivateMediaInputIfRecent(target: String): Boolean {
+        val request = org.json.JSONObject(target)
+        if (_editingState.value != null) return false
+        val unlocked = ArchiveVaultSecurity.consumeMediaReturn(getApplication(), request.getString("nonce"),
+            request.getLong("id"), request.getLong("epoch"), request.getString("hash"))
+        if (unlocked) refreshVaultStatus()
+        return unlocked
+    }
+
+    /** Requires a live scoped return grant or a fresh PIN; the saved token itself grants no access. */
+    internal suspend fun resumePrivateMediaInput(target: String, ownedImages: List<String>): Boolean {
+        val request = org.json.JSONObject(target)
+        check(android.os.SystemClock.elapsedRealtime() - request.getLong("created") in 0..86_400_000L) { "Media selection expired. Choose it again." }
+        check(ArchiveVaultSecurity.getVaultStatus(getApplication()) == ArchiveVaultSecurity.VaultStatus.ENABLED &&
+            !ArchiveVaultSecurity.isVaultLocked(getApplication())) { "Confirm your vault PIN first." }
+        check(_editingState.value == null) { "Another note is open. Finish it before adding these files." }
+        val id = request.getLong("id")
+        val row = withContext(Dispatchers.IO) {
+            ownedImages.forEach { path ->
+                val file = File(path)
+                check(com.focusbyrj.app.data.note.NoteMediaManager.isAllowedMediaFile(file, getApplication())) { "Selected media is unavailable. Choose it again." }
+                checkNotNull(com.focusbyrj.app.util.crypto.EncryptedMediaStorage.openDecryptedInputStream(file)) { "Selected media could not be verified. Your saved data was kept." }.close()
+            }
+            checkNotNull(NoteDatabase.getInstance(getApplication()).noteDao().getNoteByIdSync(id)) { "This note was removed." }
+        }
+        check(request.getLong("epoch") == com.focusbyrj.app.data.note.NotesStorageVersion.current()) { "Your data was restored. Choose media again." }
+        check(row.isArchived && !row.isTrashed && !ArchiveVaultSecurity.isVaultLocked(getApplication())) { "Unlock this private note again." }
+        if (privateMediaHash(row) != request.getString("hash")) {
+            // A restored Activity can replay an already committed selection. Never append it twice.
+            val key = checkNotNull(ArchiveVaultSecurity.getActiveVaultSubKey())
+            val already = try {
+                val result = VaultPayloadEncryptor.tryDecryptNotePayload(row, key)
+                result is VaultPayloadEncryptor.DecryptionResult.Success && ownedImages.isNotEmpty() &&
+                    result.note.getImageUris().containsAll(ownedImages)
+            } finally { key.fill(0) }
+            check(already) { "This note changed. Your saved data was kept; choose media again." }
+            return false
+        }
+        check(_editingState.value == null) { "Another note is open. Your draft was kept." }
+        latestNotesCache.remove(id)
+        setFolder(NoteFolder.ARCHIVE)
+        openExistingNote(row)
+        val opened = checkNotNull(_editingState.value) { "The private note could not be opened." }
+        check(opened.originalId == id && opened.isArchived) { "The private note changed. Choose media again." }
+        if (ownedImages.isNotEmpty()) {
+            _editingState.value = opened.copy(imageUris = (opened.imageUris + ownedImages).distinct(), updatedAt = System.currentTimeMillis())
+            persistCurrentEditorState()
+        }
+        return true
+    }
+
     fun addImageUriToEditor(contentUri: android.net.Uri) {
         val ownerSession = _editingState.value?.sessionId ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>()
-            val localPath = processAndSaveImage(context, contentUri) ?: return@launch
+            val localPath = processAndSaveImage(context, contentUri) ?: run {
+                withContext(Dispatchers.Main) { android.widget.Toast.makeText(context, "Image could not be imported. Try again, or attach the original as a file.", android.widget.Toast.LENGTH_LONG).show() }
+                return@launch
+            }
             kotlinx.coroutines.withContext(Dispatchers.Main) {
                 val current = _editingState.value
                 if (current == null || current.sessionId != ownerSession) {

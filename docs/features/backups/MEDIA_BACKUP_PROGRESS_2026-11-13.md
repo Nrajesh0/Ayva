@@ -90,3 +90,11 @@ build and full lint passes with no errors; see the archive review for exact scop
 existing warnings, and the final dependency-catalog-only verification.
 
 The completed changes are included in version 2.0.46 (146) for the requested GitHub push.
+
+
+## Later coverage and media follow-up
+
+The [14 November backup/media review](../../audits/BACKUP_AND_MEDIA_REVIEW_2026-11-14.md#coverage-media-return-and-chat-control-implementation-follow-up)
+records the subsequent portable preference/schedule/pin/widget fixes, committed
+restore drill reset, encrypted previews and bounded private-picker return policy.
+Its final verification supersedes the historical counts in this document.

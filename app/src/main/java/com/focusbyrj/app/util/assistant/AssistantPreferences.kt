@@ -143,7 +143,8 @@ object AssistantPreferences {
                 com.focusbyrj.app.service.BubbleService.clearSnooze(context)
                 com.focusbyrj.app.service.BubbleService.startIfEnabled(context, ignoreSnooze = true)
             } else com.focusbyrj.app.service.BubbleService.disable(context)
-            "streak_notification_time", "streak_notification_enabled" -> com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(context)
+            "streak_notification_time" -> com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(context)
+            "streak_notification_enabled" -> com.focusbyrj.app.util.AyvaAlertCategory.DRILL_PRACTICE.setEnabled(context, validated.toBooleanStrict())
             "morning_brief_time", "evening_brief_time" -> com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(context)
         }
         if (key == "default_start_tab") context.getSharedPreferences("focus_app_prefs", 0).edit().putString(key, validated).apply()

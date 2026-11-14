@@ -1,7 +1,7 @@
 from pathlib import Path
 import json,numpy as np
 from PIL import Image
-root=Path(__file__).resolve().parents[1]
+root=Path(__file__).resolve().parents[2]
 assets=json.loads((root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').read_text())
 regions=json.loads((root/'docs/implementation/VIZAG_MOTION_SAMPLES.json').read_text())
 results=[]

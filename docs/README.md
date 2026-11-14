@@ -10,8 +10,9 @@ device-acceptance results.
 | Build, test commands and when CI runs | [Build and test guide](development/BUILD_AND_TEST.md) |
 | Backup, archive, widgets, settings and other feature behavior | [Feature guide](features/README.md) |
 | Offline assistant scope, implementation and plans | [Assistant guide](assistant/README.md), starting with its [status](assistant/STATUS.md) |
+| Backup/restore and image-handling deep dive | [14 November review](audits/BACKUP_AND_MEDIA_REVIEW_2026-11-14.md) |
 | Security findings, evidence and verification limits | [Security guide](security/README.md) |
-| Repository inventory, cleanup and outstanding findings | [13 November repository review](audits/REPOSITORY_REVIEW_2026-11-13.md) and its [baseline inventory](audits/REPOSITORY_FILE_INVENTORY_2026-11-13.csv) |
+| Repository inventory, cleanup and outstanding findings | [Cleanup review and follow-up](audits/CODE_CLEANUP_REVIEW.md), [13 November repository review](audits/REPOSITORY_REVIEW_2026-11-13.md) and its [baseline inventory](audits/REPOSITORY_FILE_INVENTORY_2026-11-13.csv) |
 | Historical release changes | [Recorded release notes](releases/CHANGELOG.md) |
 | Historical visual/source map | [Visual guide](app-atlas/README.md), pinned to its older source snapshot |
 

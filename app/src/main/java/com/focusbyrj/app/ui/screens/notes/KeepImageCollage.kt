@@ -29,6 +29,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -226,15 +230,7 @@ fun KeepCardImageCollage(
                                     .weight(weight)
                                     .fillMaxHeight()
                             ) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(uri)
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = "Note attachment ${imgIndex + 1}",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
+                                NotePreviewImage(uri = uri, modifier = Modifier.fillMaxSize())
 
                                 if (isLastDisplayedItem) {
                                     Surface(
@@ -276,10 +272,12 @@ fun KeepEditorImageCollage(
 ) {
     if (imageUris.isEmpty()) return
 
-    val rows = buildGoogleKeepCollageRows(
-        totalImages = imageUris.size,
-        isCardPreview = false
-    )
+    var page by remember(imageUris.firstOrNull()) { mutableIntStateOf(0) }
+    val pageSize = 12
+    val safePage = page.coerceIn(0, (imageUris.size - 1).coerceAtLeast(0) / pageSize)
+    val first = safePage * pageSize
+    val visibleImages = imageUris.drop(first).take(pageSize)
+    val rows = buildGoogleKeepCollageRows(totalImages = visibleImages.size, isCardPreview = false)
 
     Column(
         modifier = modifier
@@ -287,6 +285,13 @@ fun KeepEditorImageCollage(
             .padding(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        if (imageUris.size > pageSize) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                androidx.compose.material3.TextButton(onClick = { page = safePage - 1 }, enabled = safePage > 0) { Text("Previous") }
+                Text("${first + 1}–${first + visibleImages.size} of ${imageUris.size}")
+                androidx.compose.material3.TextButton(onClick = { page = safePage + 1 }, enabled = first + pageSize < imageUris.size) { Text("Next") }
+            }
+        }
         rows.forEach { rowConfig ->
             Row(
                 modifier = Modifier
@@ -296,8 +301,8 @@ fun KeepEditorImageCollage(
             ) {
                 for (i in 0 until rowConfig.itemsInRow) {
                     val imgIndex = rowConfig.startIndex + i
-                    if (imgIndex < imageUris.size) {
-                        val uri = imageUris[imgIndex]
+                    if (imgIndex < visibleImages.size) {
+                        val uri = visibleImages[imgIndex]
                         val weight = rowConfig.weights.getOrElse(i) { 1f }
 
                         EditorImageTile(
@@ -327,15 +332,7 @@ private fun EditorImageTile(
             .clip(RoundedCornerShape(14.dp))
             .clickable { onImageClick(uri) }
     ) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(uri)
-                .crossfade(true)
-                .build(),
-            contentDescription = "Attached image",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
+        NotePreviewImage(uri = uri, modifier = Modifier.fillMaxSize(), maxEdge = 960)
 
         // Google Keep Translucent Remove Action Button
         Surface(
@@ -357,5 +354,29 @@ private fun EditorImageTile(
                 )
             }
         }
+    }
+}
+
+@Composable
+internal fun NotePreviewImage(uri: String, modifier: Modifier = Modifier, maxEdge: Int = 480, contentDescription: String = "Note image", contentScale: ContentScale = ContentScale.Crop) {
+    var failed by remember(uri) { androidx.compose.runtime.mutableStateOf(false) }
+    var loading by remember(uri) { androidx.compose.runtime.mutableStateOf(true) }
+    var retry by remember(uri) { mutableIntStateOf(0) }
+    Box(modifier, contentAlignment = Alignment.Center) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(if (uri.startsWith("/")) com.focusbyrj.app.util.crypto.NoteThumbnail(java.io.File(uri), maxEdge) else uri)
+                .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
+                .diskCachePolicy(coil.request.CachePolicy.DISABLED)
+                .setParameter("previewRetry", retry)
+                .build(),
+            contentDescription = contentDescription,
+            modifier = if (contentScale == ContentScale.FillWidth) Modifier.fillMaxWidth() else Modifier.fillMaxSize(), contentScale = contentScale,
+            onLoading = { loading = true; failed = false },
+            onSuccess = { loading = false; failed = false },
+            onError = { loading = false; failed = true }
+        )
+        if (loading) androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+        if (failed) androidx.compose.material3.TextButton(onClick = { retry++; failed = false; loading = true }) { Text("Retry image") }
     }
 }

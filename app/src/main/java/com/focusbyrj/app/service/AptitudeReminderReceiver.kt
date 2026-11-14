@@ -32,7 +32,7 @@ class AptitudeReminderReceiver : BroadcastReceiver() {
             val isEnabled = prefs.getBoolean("streak_notification_enabled", prefs.getBoolean("random_drills_notification_enabled", true))
             val isVacationMode = AptitudeManager.isVacationMode(context)
             
-            if (!isEnabled || isVacationMode) {
+            if (!isEnabled || isVacationMode || !com.focusbyrj.app.util.AyvaAlertCategory.DRILL_PRACTICE.isEnabled(context)) {
                 cancelAllReminders(context)
                 return
             }
@@ -216,6 +216,7 @@ class AptitudeReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
+        val expectedGeneration = BubbleChatManager.generation
         
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
         val wakeLock = powerManager?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "FocusByRJ:AptitudeWakeLock")
@@ -226,7 +227,7 @@ class AptitudeReminderReceiver : BroadcastReceiver() {
             val isEnabled = prefs.getBoolean("streak_notification_enabled", prefs.getBoolean("random_drills_notification_enabled", true))
             val isVacationMode = AptitudeManager.isVacationMode(context)
             
-            if (!isEnabled || isVacationMode) return
+            if (!isEnabled || isVacationMode || !com.focusbyrj.app.util.AyvaAlertCategory.DRILL_PRACTICE.isEnabled(context)) return
 
             AptitudeManager.init(context)
             val profile = AptitudeManager.profileFlow.value
@@ -267,7 +268,7 @@ class AptitudeReminderReceiver : BroadcastReceiver() {
         )
 
         // Post directly into chat bubble and increment bubble unread badge (like morning briefings)
-        BubbleChatManager.addMessage(context, message, incrementBadge = true)
+        BubbleChatManager.addMessage(context, message, incrementBadge = true, expectedGeneration = expectedGeneration)
 
         // Reschedule next occurrence
         val exactTime = prefs.getString("streak_notification_time", "") ?: ""

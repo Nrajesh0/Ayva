@@ -49,6 +49,37 @@ class RestoreFlowSafetyTest {
         assertTrue("Timed out waiting for restore state", condition())
     }
 
+    @Test fun repeatedPortableRestoresWithLongOriginalNamesKeepAttachmentNamesBoundedAndBytesIntact() = runBlocking {
+        val bytes = "Synthetic original attachment bytes".toByteArray()
+        val original = File(app.filesDir, "keep_images/${"x".repeat(220)}.jpg")
+        EncryptedMediaStorage.writeEncryptedBytes(original, bytes)
+        notes.insertNote(NoteEntity(title = "Long attachment", imageUrisJson = JSONArray(listOf(original.path)).toString()))
+        repeat(3) {
+            val file = archive()
+            BackupRestoreManager.restoreEncryptedBackup(app, Uri.fromFile(file), password, cleanRestore = true).getOrThrow()
+            val restored = File(JSONArray(notes.getAllNotesList().single().imageUrisJson).getString(0))
+            assertTrue("Restore must not accumulate the old basename", restored.name.length < 80)
+            assertArrayEquals(bytes, EncryptedMediaStorage.readDecryptedBytes(restored))
+        }
+    }
+
+    @Test fun emptyChatSnapshotClearsCurrentChatsOnlyInReplacementMode() = runBlocking {
+        val chat = com.focusbyrj.app.data.chat.AyvaChatDatabase.getDatabase(app).chatDao()
+        chat.clearAllMessages()
+        var verificationOpenings = 0
+        val file = kotlinx.coroutines.withContext(BackupProgress { if (it == "Checking backup password") verificationOpenings++ }) { archive() }
+        assertEquals("One full verifier must replace the two previous passes", 1, verificationOpenings)
+        assertEquals(com.focusbyrj.app.BuildConfig.VERSION_NAME,
+            BackupRestoreManager.prepareRestore(app, Uri.fromFile(file), password).getOrThrow().use { it.manifest!!.getString("appVersion") })
+        chat.insertMessages(listOf(com.focusbyrj.app.data.chat.AyvaChatMessageEntity(id = "later", text = "Keep for merge", isUser = true)))
+        BackupRestoreManager.restoreEncryptedBackup(app, Uri.fromFile(file), password, cleanRestore = false).getOrThrow()
+        assertEquals(1, chat.getAllMessagesSync().size)
+        repeat(2) {
+            BackupRestoreManager.restoreEncryptedBackup(app, Uri.fromFile(file), password, cleanRestore = true).getOrThrow()
+            assertTrue(chat.getAllMessagesSync().isEmpty())
+        }
+    }
+
     @Test fun snapshotRestoreRepeatedOnTheSameDataDoesNotDuplicateRecordsOrRelationships() = runBlocking {
         val note = notes.insertNote(NoteEntity(title = "Original note"))
         val task = app.database.taskDao().insertTask(Task(title = "Original task"))

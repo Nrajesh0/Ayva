@@ -1,6 +1,6 @@
 """Export the approved footer frames as transparent, lossless animated WebP.
 
-Usage: python tools/export_vizag_footer.py /path/to/recorded-frames
+Usage: python tools/vizag/export_vizag_footer.py /path/to/recorded-frames
 Input is the approved 1920x900 nine-scene gallery at 24 fps.
 Optional second argument is loop duration in seconds (default 8).
 Captions are excluded; Android renders accessible, theme-aware text separately.
@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-root=Path(__file__).resolve().parents[1]
+root=Path(__file__).resolve().parents[2]
 frames=Path(sys.argv[1])
 loop_seconds=float(sys.argv[2]) if len(sys.argv)>2 else 8
 source_frames=round(loop_seconds*24)
@@ -51,7 +51,7 @@ for i,name in enumerate(names):
   assert np.any(first[:,:,3]==0)
  report[name]={'frames':len(shots),'duration_ms':sum(durations),'crop_box':list(map(int,box)),'size':list(shots[0].size),'changed_pixels':changed,'bytes':out.stat().st_size}
  print(name,report[name],flush=True)
-subprocess.run([sys.executable,str(root/'tools/compress_vizag_animations.py'),intermediate.name],check=True)
+subprocess.run([sys.executable,str(root/'tools/vizag/compress_vizag_animations.py'),intermediate.name],check=True)
 for name,item in report.items():
  item['bytes']=(root/'app/src/main/res/raw'/f'vizag_{name}.webp').stat().st_size
  item['encoding']='lossless animated WebP'

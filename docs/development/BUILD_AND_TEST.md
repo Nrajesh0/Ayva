@@ -1,5 +1,8 @@
 # Build and test guide
 
+The [tools index](../../tools/README.md) separates CI/release utilities, dictionary
+generation and optional artwork tooling.
+
 Use the existing checkout; inspect AGENTS.md and `git status` before work. Preserve
 uncommitted files. Never create a worktree as part of routine environment setup.
 

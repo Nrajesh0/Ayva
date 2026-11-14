@@ -1,10 +1,10 @@
 """Losslessly replace packaged GIFs with animated WebP; validate every frame.
-Usage: python tools/compress_vizag_animations.py [source-gif-directory]
+Usage: python tools/vizag/compress_vizag_animations.py [source-gif-directory]
 """
 from pathlib import Path
 from PIL import Image
 import numpy as np,json,sys,hashlib
-root=Path(__file__).resolve().parents[1]
+root=Path(__file__).resolve().parents[2]
 src=Path(sys.argv[1]) if len(sys.argv)>1 else root/'app/src/main/res/raw'
 raw=root/'app/src/main/res/raw';report={};digests={}
 for source in sorted(src.glob('vizag_*.gif')):

@@ -279,7 +279,8 @@ object BubbleChatManager {
             }
             try { loadLocked(context.applicationContext) }
             catch (error: Exception) { initLatch.set(false); throw error }
-            getUnreadCount(context)
+            val unread = _messagesFlow.value.count { !it.isUser && it.firstViewedTimestamp == 0L }
+            changeUnread(context) { unread }
         }
         context.sendBroadcast(Intent(ACTION_MESSAGES_CHANGED).setPackage(context.packageName))
         context.sendBroadcast(Intent(ACTION_UNREAD_COUNT_CHANGED).setPackage(context.packageName))
@@ -374,15 +375,19 @@ object BubbleChatManager {
     }
 
     fun ensureWelcomeIfEmpty(context: Context, welcome: PersistedChatMessage) = mutate(context) { list ->
+        if (!AssistantUpdateDelivery.allows(context, welcome)) return@mutate list
         if (list.isEmpty()) listOf(welcome) else list
     }
 
     fun addMessage(context: Context, message: PersistedChatMessage, incrementBadge: Boolean = false,
-                   updateActivity: Boolean = !incrementBadge) {
+                   updateActivity: Boolean = !incrementBadge, expectedGeneration: Long? = null): Boolean {
         synchronized(stateLock) {
+            if (expectedGeneration != null && expectedGeneration != generation) return false
+            if (incrementBadge && !AssistantUpdateDelivery.allows(context, message)) return false
             mutate(context, updateActivity) { list -> list.filterNot { it.id == message.id } + message }
             if (incrementBadge) incrementUnread(context)
         }
+        return true
     }
 
     fun updateMessage(context: Context, updatedMessage: PersistedChatMessage) = mutate(context) { list ->
@@ -401,10 +406,12 @@ object BubbleChatManager {
 
     fun saveActiveDrill(context: Context, drill: ActiveDrillStateEntity) {
         val appContext = context.applicationContext
+        val expectedGeneration = generation
         scope.launch {
             try {
-                val db = AyvaChatDatabase.getDatabase(appContext)
-                db.chatDao().saveActiveDrill(drill)
+                com.focusbyrj.app.util.backup.RestoreJournal.consistent(appContext) {
+                    if (expectedGeneration == generation) AyvaChatDatabase.getDatabase(appContext).chatDao().saveActiveDrill(drill)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("BubbleChatManager", "Failed to save active drill state", e)
             }
@@ -422,10 +429,12 @@ object BubbleChatManager {
 
     fun clearActiveDrills(context: Context) {
         val appContext = context.applicationContext
+        val expectedGeneration = generation
         scope.launch {
             try {
-                val db = AyvaChatDatabase.getDatabase(appContext)
-                db.chatDao().clearActiveDrills()
+                com.focusbyrj.app.util.backup.RestoreJournal.consistent(appContext) {
+                    if (expectedGeneration == generation) AyvaChatDatabase.getDatabase(appContext).chatDao().clearActiveDrills()
+                }
             } catch (e: Exception) {
                 android.util.Log.e("BubbleChatManager", "Failed to clear active drill states", e)
             }

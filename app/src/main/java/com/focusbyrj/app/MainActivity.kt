@@ -277,8 +277,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
-        // Zero-Knowledge security: securely wipe vault sub-key from volatile memory when app backgrounds
-        kotlin.runCatching { com.focusbyrj.app.data.note.ArchiveVaultSecurity.lockVault() }
+        // Global vault access locks immediately. A scoped picker-return grant has its own short deadline.
+        kotlin.runCatching { com.focusbyrj.app.data.note.ArchiveVaultSecurity.lockForBackground() }
     }
 }
 

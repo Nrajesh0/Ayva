@@ -56,7 +56,7 @@ class AyvaConversationUiTest {
         compose.onNodeWithContentDescription("Search conversation").performClick()
         compose.runOnIdle { assertTrue(searched) }
         compose.onNodeWithContentDescription("Chat controls").performClick()
-        for (label in listOf("Notification Colors", "Text Size", "Clear History", "Open Settings")) compose.onNodeWithText(label).assertExists()
+        for (label in listOf("Chat updates & colors", "Text Size", "Clear History", "Open Settings")) compose.onNodeWithText(label).assertExists()
         compose.onNodeWithText("Text Size").performClick()
         compose.runOnIdle { assertTrue(textSize) }
     }

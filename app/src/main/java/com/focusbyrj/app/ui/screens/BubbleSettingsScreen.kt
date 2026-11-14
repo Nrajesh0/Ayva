@@ -549,6 +549,7 @@ fun BubbleSettingsScreen(navController: NavController) {
                         checked = streakNotificationEnabled,
                         onCheckedChange = { enabled ->
                             streakNotificationEnabled = enabled
+                            com.focusbyrj.app.util.AyvaAlertCategory.DRILL_PRACTICE.setEnabled(context, enabled)
                             prefs.edit()
                                 .putBoolean("streak_notification_enabled", enabled)
                                 .putBoolean("random_drills_notification_enabled", enabled)

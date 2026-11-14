@@ -1,6 +1,6 @@
 """Build compact native layer atlases for the five approved Settings replacements.
 
-Usage: python tools/export_vizag_replacements.py OUTPUT [--install]
+Usage: python tools/vizag/export_vizag_replacements.py OUTPUT [--install]
 Requires Pillow, numpy, Playwright and Chromium. Only the explicit five-scene
 allowlist is installed; the four retained scenes and their manifests stay intact.
 """
@@ -10,8 +10,8 @@ import numpy as np
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
-ROOT=Path(__file__).resolve().parents[1]
-SOURCE=ROOT/'tools/vizag_replacements'
+ROOT=Path(__file__).resolve().parents[2]
+SOURCE=ROOT/'tools/vizag/source'
 SCENES={'rk_beach':(66,354),'kailasagiri':(366,652),'dolphins_nose':(663,936),'tenneti_park':(945,1221),'rushikonda':(1255,1579)}
 LABELS=[(0,122,215,43),(0,385,165,50),(0,685,280,50),(0,969,235,44),(0,1255,230,48)]
 

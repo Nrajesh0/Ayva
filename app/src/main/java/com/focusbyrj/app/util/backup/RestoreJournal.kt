@@ -37,21 +37,22 @@ internal object RestoreJournal {
         block()
     }
 
-    suspend fun <T> mutate(context: Context, block: suspend () -> Result<T>): Result<T> = try {
-        mutateLocked(context, block = block)
+    suspend fun <T> mutate(context: Context, invalidateDrills: Boolean = false, block: suspend () -> Result<T>): Result<T> = try {
+        mutateLocked(context, invalidateDrills = invalidateDrills, block = block)
     } catch (error: Exception) {
         if (error is kotlinx.coroutines.CancellationException) throw error
         Result.failure(error)
     }
 
     suspend fun <T> mutateDrill(context: Context, sessionId: String, block: suspend () -> Result<T>): Result<T> = try {
-        mutateLocked(context, true, sessionId, block)
+        mutateLocked(context, true, sessionId, block = block)
     } catch (error: Exception) {
         if (error is kotlinx.coroutines.CancellationException) throw error
         Result.failure(error)
     }
 
-    private suspend fun <T> mutateLocked(context: Context, drillOnly: Boolean = false, drillSessionId: String? = null, block: suspend () -> Result<T>): Result<T> = MaintenanceGate.exclusively {
+    private suspend fun <T> mutateLocked(context: Context, drillOnly: Boolean = false, drillSessionId: String? = null,
+                                       invalidateDrills: Boolean = false, block: suspend () -> Result<T>): Result<T> = MaintenanceGate.exclusively {
         val app = context.applicationContext as FocusApplication
         recoverLocked(app)
         if (drillOnly) requireNotNull(drillSessionId).also { java.util.UUID.fromString(it) }
@@ -73,6 +74,7 @@ internal object RestoreJournal {
                 val output = marker(app).startWrite()
                 try { output.write(before.getString("id").toByteArray()); output.fd.sync(); marker(app).finishWrite(output) }
                 catch (error: Throwable) { marker(app).failWrite(output); throw error }
+                if (invalidateDrills) com.focusbyrj.app.data.drill.DrillSessionRepository.invalidateAfterRestore()
                 checkpoint("committed")
                 cleanup(app)
             }
@@ -202,6 +204,10 @@ internal object RestoreJournal {
         if (!drillOnly) runCatching { com.focusbyrj.app.util.BubbleChatManager.reloadAfterRestore(app) }
         runCatching { com.focusbyrj.app.util.AptitudeManager.init(app) }
         runCatching { com.focusbyrj.app.util.DailyQuestManager.init(app) }
+        if (!drillOnly) runCatching {
+            com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(app)
+            com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(app)
+        }.onFailure { RestoreRefreshWorker.enqueue(app) }
         checkpoint("recovered")
         cleanup(app)
     }

@@ -89,7 +89,19 @@ authenticated attachment bytes.
 Unsupported older development vault credentials remain fail-closed and unchanged;
 this feature neither resets them nor reintroduces credential migrations.
 
-## Verification
+## Camera and picker return
+
+A private editor seals its draft before opening a camera, gallery or file picker.
+Returning within two minutes can reopen that same unchanged note with a one-use,
+memory-only authorization; the global vault remains locked while the picker is
+open. Screen-off/device lock, an explicit vault lock, expiry, process loss,
+credential changes or a restore revoke this convenience and require a fresh PIN.
+Saved selection metadata contains no key or PIN and cannot authorize a replay.
+Quick cancellation also returns to the same note; expired selections show the
+existing PIN flow. See the [current backup and media review](../../audits/BACKUP_AND_MEDIA_REVIEW_2026-11-14.md#coverage-media-return-and-chat-control-implementation-follow-up)
+for the security boundaries and current verification.
+
+## Archive implementation verification (13 November)
 
 Focused tests cover both modes, settings/PIN UI, small-screen cancellation, wrong
 PINs, stale callbacks, new/edited notes, screen destruction, revision conflicts,
@@ -99,7 +111,7 @@ changes, separate automatic-backup authorization, and repeat restore with media.
 The native restore fixture retains its original private-note assertions and adds
 a sealed private note through backup/restore and lock checks.
 
-Latest per-class results cover **389 selected regression executions across 24
+That implementation recorded **389 selected regression executions across 24
 classes**, with zero failures, errors or skips. The broad run executed 387 cases;
 one recovery fixture checked before cleanup finished. Its wait now includes the
 main recovery file, retaining its original assertions. The affected three classes

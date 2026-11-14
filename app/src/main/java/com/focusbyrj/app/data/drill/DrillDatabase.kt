@@ -67,6 +67,10 @@ abstract class DrillDatabase : RoomDatabase() {
 /** Cache entries are published only after Room acknowledges a durable write. */
 object DrillSessionRepository {
     private const val MAX_CACHE_ENTRIES = 50
+    private val restoreGeneration = java.util.concurrent.atomic.AtomicLong(0L)
+    val storageGeneration: Long get() = restoreGeneration.get()
+    private val _restoreGenerationFlow = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val restoreGenerationFlow: kotlinx.coroutines.flow.StateFlow<Long> = _restoreGenerationFlow
     private val memoryCache = java.util.Collections.synchronizedMap(
         object : java.util.LinkedHashMap<String, DrillSummary>(MAX_CACHE_ENTRIES, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DrillSummary>?) = size > MAX_CACHE_ENTRIES
@@ -82,6 +86,10 @@ object DrillSessionRepository {
         if (database == null) database = DrillDatabase.getDatabase(context)
     }
     fun invalidateCache() { memoryCache.clear() }
+    internal fun invalidateAfterRestore() {
+        _restoreGenerationFlow.value = restoreGeneration.incrementAndGet()
+        invalidateCache()
+    }
     private fun db() = checkNotNull(database) { "Drill storage is not ready" }
 
     suspend fun saveSummary(summary: DrillSummary, context: Context? = null) = withContext(Dispatchers.IO) {
@@ -105,11 +113,17 @@ object DrillSessionRepository {
 
     /** One durable identity guards both reward settlement and summary persistence. */
     suspend fun <T> settleOnce(sessionId: String, existing: (DrillSummary) -> T, create: suspend () -> T): T {
+        return settleOnceAtGeneration(sessionId, storageGeneration, existing, create)
+    }
+
+    internal suspend fun <T> settleOnceAtGeneration(sessionId: String, storageGeneration: Long,
+                                                    existing: (DrillSummary) -> T, create: suspend () -> T): T {
         settlementMutex.lock()
         try {
             val context = checkNotNull(appContext) { "Drill storage is not ready" }
             val result = com.focusbyrj.app.util.backup.RestoreJournal.mutateDrill(context, sessionId) {
                 runCatching {
+                    check(storageGeneration == this@DrillSessionRepository.storageGeneration) { "Data was restored. This older drill cannot change it." }
                     val saved = db().drillSessionDao().getSessionById(sessionId)
                     if (saved != null) existing(DrillSummary.fromJson(saved.summaryJson).copy(isClaimed = saved.isClaimed)) else create()
                 }

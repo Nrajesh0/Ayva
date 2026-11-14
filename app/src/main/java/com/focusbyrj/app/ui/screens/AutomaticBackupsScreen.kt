@@ -39,6 +39,7 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
     val store = remember { AutomaticBackupStore(context) }
     val revision by AutomaticBackupStore.revision.collectAsStateWithLifecycle()
     var config by remember { mutableStateOf(AutomaticBackupConfig()) }
+    var configurationLoaded by remember { mutableStateOf(false) }
     var hasKey by remember { mutableStateOf(false) }
     var vaultAuthorized by remember { mutableStateOf(false) }
     var vaultConfigured by remember { mutableStateOf(false) }
@@ -75,6 +76,7 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(60_000) } }
     LaunchedEffect(revision) {
+        configurationLoaded = false
         hasKey = store.hasKey()
         vaultConfigured = ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED
         try {
@@ -83,7 +85,9 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
             val ownership = records.size
             recentBackups = records.asReversed().take(30)
             config = loaded; count = ownership; vaultAuthorized = store.hasVaultAuthorization(); ownershipLimit = store.ownershipLimitReached(); configurationDamaged = false
-        } catch (_: Exception) { configurationDamaged = true; error = "Backup setup needs repair. Existing backup files are kept." }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { configurationDamaged = true; error = "Backup setup needs repair. Existing backup files are kept." }
+        configurationLoaded = true
     }
     fun perform(action: suspend () -> Unit) {
         if (busy) return
@@ -155,16 +159,17 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
 
     BackupFlow(onRestored, automaticRestore = true) { backupActions ->
       SettingsMenuPage("Automatic backups", nav) {
-        val controlsEnabled = !busy && !backgroundBusy && !backupActions.busy
+        val controlsEnabled = configurationLoaded && !busy && !backgroundBusy && !backupActions.busy
         val ready = hasKey && config.tree.isNotBlank() && config.keyExported && config.keyAcknowledged && (!vaultConfigured || vaultAuthorized)
         val step = when { config.tree.isBlank() -> 1; !hasKey || !config.keyExported -> 2; else -> 3 }
         Surface(shape = MaterialTheme.shapes.large,
             color = if (config.problem.isNotBlank()) MaterialTheme.colorScheme.errorContainer.copy(alpha = .4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).testTag(if (configurationLoaded) "automatic_backup_loaded" else "automatic_backup_loading")) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (backgroundBusy) backupProgress else if (config.problem.isNotBlank()) "Needs attention" else if (pendingBackup) "Backup queued" else if (!ready) "Set up automatic backups" else backupHealth(config, now), style = MaterialTheme.typography.titleMedium)
+                if (backgroundBusy) BackupElapsedLabel()
+                Text(if (!configurationLoaded) "Loading backup settings" else if (backgroundBusy) backupProgress else if (config.problem.isNotBlank()) "Needs attention" else if (pendingBackup) "Backup queued" else if (!ready) "Set up automatic backups" else backupHealth(config, now), style = MaterialTheme.typography.titleMedium)
                 Text("Encrypted · Saved data and attachments", style = MaterialTheme.typography.bodySmall)
-                Text("Last backup: ${backupTime(config.lastSuccess)}", style = MaterialTheme.typography.bodySmall)
+                if (configurationLoaded) Text("Last backup: ${backupTime(config.lastSuccess)}", style = MaterialTheme.typography.bodySmall)
                 if (config.tree.isNotBlank()) Text("Folder: ${Uri.parse(config.tree).lastPathSegment.orEmpty().substringAfterLast('/').substringAfter(':')}", style = MaterialTheme.typography.bodySmall)
                 if (config.enabled) Text("Next backup: ${backupTime(config.nextDue)}", style = MaterialTheme.typography.bodySmall)
             }
@@ -173,7 +178,9 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp)) }
         if (reconnectRecovery) TextButton(enabled = controlsEnabled, onClick = { launchPicker { importPicker.launch(arrayOf("*/*")) } }) { Text("Reconnect recovery file") }
         info?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp)) }
-        if (configurationDamaged) {
+        if (!configurationLoaded) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+        } else if (configurationDamaged) {
             Text("Backup setup needs repair. Existing backup files are kept.")
             if (hasKey) Button(enabled = controlsEnabled, onClick = { perform { AutomaticBackups.repairConfiguration(context) } }) { Text("Repair setup") }
         } else if (!ready) {

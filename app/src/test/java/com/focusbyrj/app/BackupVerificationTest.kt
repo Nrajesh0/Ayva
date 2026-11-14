@@ -30,6 +30,11 @@ class BackupVerificationTest {
         } }
         return f
     }
+    private fun assertNoVerificationStaging(context: Context) {
+        assertFalse(context.cacheDir.listFiles().orEmpty().any {
+            it.name.startsWith("verify_backup_") || it.name.startsWith("restore_media_stage_")
+        })
+    }
     @Test fun verificationReadsWithoutRestoringOrChangingPreferences() = runBlocking {
         val c = ApplicationProvider.getApplicationContext<Context>()
         c.getSharedPreferences("focus_prefs", 0).edit().putString("sentinel", "keep").commit()
@@ -39,7 +44,7 @@ class BackupVerificationTest {
             assertTrue(result.exceptionOrNull()?.stackTraceToString(), result.isSuccess)
             assertTrue(result.getOrThrow().contains("tasks: 1"))
             assertEquals("keep", c.getSharedPreferences("focus_prefs", 0).getString("sentinel", null))
-            assertFalse(c.cacheDir.listFiles().orEmpty().any { it.name.startsWith("verify_backup_") })
+            assertNoVerificationStaging(c)
         } finally { f.delete() }
     }
     @Test fun rejectsWrongPasswordTruncationAndMissingAttachments() = runBlocking {
@@ -50,6 +55,7 @@ class BackupVerificationTest {
             assertTrue(BackupRestoreManager.verifyEncryptedBackup(c, Uri.fromFile(missing), "password123").isFailure)
             val bytes = f.readBytes(); f.writeBytes(bytes.copyOf(bytes.size - 8))
             assertTrue(BackupRestoreManager.verifyEncryptedBackup(c, Uri.fromFile(f), "password123").isFailure)
+            assertNoVerificationStaging(c)
         } finally { f.delete(); missing.delete() }
     }
 }

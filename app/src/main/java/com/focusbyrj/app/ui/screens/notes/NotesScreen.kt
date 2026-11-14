@@ -194,6 +194,7 @@ fun NotesScreen(
     val economyProfile by FocusEconomyManager.profileFlow.collectAsState()
     val archiveMove by viewModel.archiveMove.collectAsState()
     val vaultStatus by viewModel.vaultStatus.collectAsState()
+    val privateMediaRequest = rememberPrivateMediaInput(viewModel)
     val isVaultUnlocked by viewModel.isVaultUnlocked.collectAsState()
     val vaultKeyMismatchNoteId by viewModel.vaultKeyMismatchNoteId.collectAsState()
     val isRecoveryPhraseBackedUp by viewModel.isRecoveryPhraseBackedUp.collectAsState()
@@ -241,7 +242,7 @@ fun NotesScreen(
                 viewModel.audioMemoManager.pauseRecording()
                 viewModel.cancelArchiveMoveAuthorization()
                 if (viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
-                    viewModel.lockVault()
+                    viewModel.lockVaultForBackground()
                 }
             } else if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.refreshVaultStatus()
@@ -1588,6 +1589,7 @@ fun NotesScreen(
                 editingState?.let { state ->
                     KeepNoteEditor(
                         state = state,
+                        onPrivateMediaRequest = privateMediaRequest,
                         allLabels = allLabels,
                         canUndo = canUndo,
                         canRedo = canRedo,

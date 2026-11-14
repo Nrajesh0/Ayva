@@ -154,8 +154,25 @@ object EncryptedMediaStorage {
         } finally { plaintext?.fill(0) }
     }
 
+    /** Plaintext and fingerprint are derived from the same authenticated byte snapshot. */
+    internal class AuthenticatedMedia(val bytes: ByteArray, val cipherSha256: ByteArray) : AutoCloseable {
+        override fun close() { bytes.fill(0); cipherSha256.fill(0) }
+        override fun toString() = "Authenticated media snapshot"
+    }
+
+    internal fun readAuthenticatedMedia(file: File): AuthenticatedMedia {
+        var bytes: ByteArray? = null
+        var digest: ByteArray? = null
+        try {
+            FileInputStream(file).use { source -> bytes = readAuthenticatedBytes(source, MAX_DECRYPT_BYTES_LIMIT) { digest = it } }
+            val result = AuthenticatedMedia(checkNotNull(bytes), checkNotNull(digest))
+            bytes = null; digest = null
+            return result
+        } finally { bytes?.fill(0); digest?.fill(0) }
+    }
+
     /** One bounded read and one GCM operation. doFinal releases bytes only after a valid tag. */
-    private fun readAuthenticatedBytes(source: FileInputStream, limit: Long): ByteArray {
+    private fun readAuthenticatedBytes(source: FileInputStream, limit: Long, authenticatedDigest: ((ByteArray) -> Unit)? = null): ByteArray {
         val magic = MAGIC_HEADER.toByteArray(Charsets.UTF_8)
         val length = source.channel.size()
         val overhead = magic.size + GCM_IV_LENGTH
@@ -166,10 +183,16 @@ object EncryptedMediaStorage {
         val iv = ByteArray(GCM_IV_LENGTH).also(input::readFully)
         val ciphertext = ByteArray((length - overhead).toInt()).also(input::readFully)
         require(source.read() == -1) { "Media changed while being read" }
-        return Cipher.getInstance(AES_GCM_TRANSFORMATION).run {
+        val plaintext = Cipher.getInstance(AES_GCM_TRANSFORMATION).run {
             init(Cipher.DECRYPT_MODE, readKey(), GCMParameterSpec(GCM_TAG_LENGTH, iv))
             doFinal(ciphertext)
         }
+        try {
+            authenticatedDigest?.invoke(java.security.MessageDigest.getInstance("SHA-256").apply {
+                update(header); update(iv); update(ciphertext)
+            }.digest())
+            return plaintext
+        } catch (error: Throwable) { plaintext.fill(0); throw error }
     }
 
     /** A small authenticated snapshot; release its owned plaintext as soon as the reader closes. */
