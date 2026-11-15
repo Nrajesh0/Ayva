@@ -80,6 +80,13 @@ failure conditions and assertions; file-count reduction alone is not a reason.
 
 ## Checks and evidence
 
+Use four-space Kotlin indentation for new helpers and tests. The structural
+cleanup used `ktfmt` 0.54 with `--kotlinlang-style` on those files; it is optional
+development tooling, not an application dependency. Keep formatting changes
+limited to the intended files and separate from behavior changes when practical.
+Preserve license headers and comments explaining security, recovery or platform
+constraints. Current source ownership is mapped in the [module guide](../../app/README.md).
+
 CI reports are uploaded even on failures. Only a completed Actions run for the
 actual commit establishes hosted success. On push, release publication requires
 a version-name/code change; ordinary source work does not overwrite the current
@@ -117,3 +124,29 @@ The full dictionary and its import/check scripts have been removed. Run the
 assistant boundary/security guards and relevant vocabulary/backup tests. The native
 `vocab.db`, Room schemas, user progress and saved-word backup paths remain intact.
 See the [removal record](../assistant/DICTIONARY_DATA.md).
+
+
+## Working on the app
+
+Read `AGENTS.md`, the current request, Git status, the affected source and the
+relevant current guide before editing. Preserve existing uncommitted changes.
+Use the source and actual commit/CI state to distinguish implemented behavior
+from proposals; do not replay old batch plans or environment-specific commands.
+
+Work in bounded changes with a concrete user outcome, data/authority risks and
+acceptance conditions. Finish persistence, cancellation and failure paths with
+the happy path. For consequential decisions, record the invariant and reason in
+the owning guide; put remaining work in OPEN_FINDINGS instead of opening parallel
+status/roadmap documents. A recognizer/parser accepting a sentence is not proof
+that the native action or UI completes it.
+
+Run only checks warranted by the actual change. Documentation consolidation needs
+reference, tooling and source-preservation checks, not another Android test run.
+Keep existing CI and distinct security/data regressions. Never remove assertions,
+disable checks, clear data or weaken encryption to make a result pass. Record
+which failures were fixed, which classes were rerun, and unavailable device work.
+
+For handoff, record the actual branch/revision, local changes, completed checks,
+concrete unresolved state and any running process. Do not leave an old test count
+or a vague instruction to continue a roadmap as the current project status.
+Version bumps, signing, pushes and publication follow the applicable user request.

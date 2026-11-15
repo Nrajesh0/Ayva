@@ -30,7 +30,7 @@ for source in sorted(src.glob('vizag_*.gif')):
  digests[source.stem]=hashes
  print(source.stem,source.stat().st_size,'->',dest.stat().st_size,flush=True)
  if source.parent.resolve()==raw.resolve():source.unlink()
-(root/'docs/implementation/VIZAG_LOSSLESS_COMPRESSION.json').write_text(json.dumps(report,indent=2)+'\n')
+(root/'tools/vizag/evidence/VIZAG_LOSSLESS_COMPRESSION.json').write_text(json.dumps(report,indent=2)+'\n')
 tests=root/'app/src/test/resources';tests.mkdir(parents=True,exist_ok=True)
 (tests/'vizag-frame-digests.json').write_text(json.dumps(digests)+'\n')
 print('Total bytes:',sum(v['gif_bytes'] for v in report.values()),'->',sum(v['webp_bytes'] for v in report.values()),flush=True)

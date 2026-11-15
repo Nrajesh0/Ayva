@@ -1,880 +1,286 @@
-# ðŸ›¡ï¸ Ayva Security & Bug Audit Tracker
+# Historical audit coverage
 
-> **Context Anchor for AI Agents & Engineers**:
-> This file is the single source of truth for the batch-by-batch adversarial security and bug audit of the **Ayva** Android application.
-> Read this file first at the start of any session to understand current progress, active batch, open findings, and the methodology being used.
+This is the compact input for `scripts/check_audit_coverage.ps1`. File states
+preserve the former tracker's classifications; they are historical coverage,
+not proof that the current file or working tree has been re-audited. Current
+follow-ups live in [open findings](docs/security/OPEN_FINDINGS.md), and release
+evidence belongs to the actual revision. Detailed old findings remain in Git
+history and the pre-consolidation documentation archive.
 
----
+## Critical architectural invariants
 
-## ðŸ”¬ Audit Methodology
+Preserve the direct WindowManager blocking mechanism in `AGENTS.md`. Never
+delete/reset unreadable user stores, regenerate missing read keys or weaken
+authentication to resolve a test/build failure.
 
-Every finding follows this strict TDD workflow â€” no exceptions:
+## File Coverage Map
 
-1. **Red-team the code** â€” Read each file adversarially, assuming every shortcut is a bug.
-2. **Write a failing test first** â€” A test that reproduces the bug on the current code. If a test cannot be written (e.g., crash-window race), document the manual verification path.
-3. **Apply minimal patch** â€” Only the targeted fix, nothing more.
-4. **Confirm test turns green** â€” The test suite must pass. Compilation alone is NOT verification.
-5. **Mark Verified** â€” Only then is the finding promoted to âœ… Resolved.
-
-> An issue that cannot be unit-tested must include a documented manual verification scenario.
-
----
-
-## ðŸ“Œ Critical Architectural Invariants (Do Not Violate)
-
-- **App Blocking Mechanism (Android 14+ / 16 BAL Restriction)**:
-  - `BlockOverlayManager.kt` and `FocusBlockerService.kt` **MUST** use `WindowManager.addView` direct overlay (`TYPE_APPLICATION_OVERLAY`) to block apps.
-  - **NEVER** convert app blocking to `startActivity` launches or Jetpack Compose Activities. UI changes to the block screen must be made programmatically within `BlockOverlayManager.kt`.
-  - Violating this will trigger Background Activity Launch (BAL) fatal restrictions on modern Android devices.
-
----
-
-## ðŸ“Š Audit Progress Dashboard
-
-| Batch | Domain | Status | Findings |
+| File | Batch | Status | Last Audit |
 |:---|:---|:---|:---|
-| **Batch 1** | Cryptography, Key Derivation & Vault Storage | 🔄 Completed (Pass 8 Deep Audit) | 40 Found → 40 Fixed ✅ |
-| **Batch 2** | Cloud Sync, Auth & Network Security | ðŸ”„ Completed (Pass 3 Deep Dive) | 34 Found â†’ 34 Fixed âœ… |
-| **Batch 3** | Android Components, IPC, Intents & Permissions | ðŸ”„ Completed (Pass 2 Deep Dive) | 15 Found â†’ 15 Fixed âœ… |
-| **Batch 4** | System Services, App Blocking & Overlays | 🔄 Completed (Pass 3 Deep Dive) | 23 Found → 23 Fixed ✅ |
-| **Batch 5** | Databases, Migrations & Backup/Export Pipeline | ðŸ”„ Completed (Pass 3 Deep Dive) | 23 Found â†’ 23 Fixed âœ… |
-| **Batch 6** | Rich Content, Note Engine & Media Processing | ðŸ”„ Completed (Pass 4 Deep Dive) | 28 Found â†’ 28 Fixed âœ… |
-| **Batch 7** | AI / Dialogue Engines, Math Logic & Parsing | ðŸ”„ Completed (Pass 2 Deep Dive) | 18 Found â†’ 18 Fixed âœ… |
-| **Batch 8** | UI Screens, ViewModels, State & Edge Cases | 🔄 Completed (Pass 2 Deep Dive) | 18 Found → 18 Fixed ✅ |
-| **Batch 9** | New Code, Chat Architecture & UI Screens (v1.9.8) | 🔄 Completed (Pass 3 Deep Dive) | 48 Found → 48 Fixed ✅ |
-| **Batch 10** | Background Workers, Schedulers, Diagnostics & Core Data | 🔄 Completed (Pass 2 Deep Dive) | 15 Found → 15 Fixed ✅ |
-| **Batch 11** | Note Editor Helpers, Share Parsers & Export Dialogs | 🔄 Completed (Pass 2 Deep Dive) | 16 Found → 16 Fixed ✅ |
-| **Batch 12** | Quiz, Drill Runners & Settings Screens | 🔄 Completed (Pass 2 Deep Dive) | 16 Found → 16 Fixed ✅ |
-| **Batch 13** | Presentation Cards, Theme & Design Tokens | 🔄 Completed (Pass 1 Deep Dive) | 8 Found → 8 Fixed ✅ |
+| `AccountScreen.kt` | Historical | Historical record | Prior tracker |
+| `ActiveDrillStateEntity.kt` | Historical | Historical record | Prior tracker |
+| `AddRestrictionScreen.kt` | Historical | Historical record | Prior tracker |
+| `AnalyticsComponents.kt` | Historical | Historical record | Prior tracker |
+| `AppIconManager.kt` | Historical | Historical record | Prior tracker |
+| `AppLogger.kt` | Historical | Historical record | Prior tracker |
+| `AppModeSection.kt` | Historical | Historical record | Prior tracker |
+| `AppRepository.kt` | Historical | Historical record | Prior tracker |
+| `AppRestriction.kt` | Historical | Historical record | Prior tracker |
+| `AppRestrictionDao.kt` | Historical | Historical record | Prior tracker |
+| `AppThemeManager.kt` | Historical | Historical record | Prior tracker |
+| `AptitudeCardHelper.kt` | Historical | Historical record | Prior tracker |
+| `AptitudeManager.kt` | Historical | Historical record | Prior tracker |
+| `AptitudeProfileCard.kt` | Historical | Historical record | Prior tracker |
+| `AptitudeReminderHelper.kt` | Historical | Historical record | Prior tracker |
+| `AptitudeReminderReceiver.kt` | Historical | Historical record | Prior tracker |
+| `ArchiveVaultDialogs.kt` | Historical | Historical record | Prior tracker |
+| `ArchiveVaultSecurity.kt` | Historical | Historical record | Prior tracker |
+| `Argon2idKdf.kt` | Historical | Historical record | Prior tracker |
+| `ArithmeticCard.kt` | Historical | Historical record | Prior tracker |
+| `ArithmeticEngine.kt` | Historical | Historical record | Prior tracker |
+| `ArticleDocxGenerator.kt` | Historical | Historical record | Prior tracker |
+| `ArticleEditorialBottomSheet.kt` | Historical | Historical record | Prior tracker |
+| `ArticleExportBottomSheet.kt` | Historical | Historical record | Prior tracker |
+| `ArticleExporter.kt` | Historical | Historical record | Prior tracker |
+| `ArticleExporterHelper.kt` | Historical | Historical record | Prior tracker |
+| `ArticlePdfGenerator.kt` | Historical | Historical record | Prior tracker |
+| `ArticleTocHelper.kt` | Historical | Historical record | Prior tracker |
+| `AudioMemoManager.kt` | Historical | Historical record | Prior tracker |
+| `AudioPlayerWidget.kt` | Historical | Historical record | Prior tracker |
+| `AutoBackupScheduler.kt` | Historical | Historical record | Prior tracker |
+| `AutoBackupWorker.kt` | Historical | Historical record | Prior tracker |
+| `AutoSyncManager.kt` | Historical | Historical record | Prior tracker |
+| `AutoSyncWorker.kt` | Historical | Historical record | Prior tracker |
+| `AyvaAlertTheme.kt` | Historical | Historical record | Prior tracker |
+| `AyvaCatPeekingHost.kt` | Historical | Historical record | Prior tracker |
+| `AyvaChatDao.kt` | Historical | Historical record | Prior tracker |
+| `AyvaChatDatabase.kt` | Historical | Historical record | Prior tracker |
+| `AyvaChatMessageEntity.kt` | Historical | Historical record | Prior tracker |
+| `AyvaChatTimeline.kt` | Historical | Historical record | Prior tracker |
+| `AyvaComposerBar.kt` | Historical | Historical record | Prior tracker |
+| `AyvaCompoundCommandHandler.kt` | Historical | Historical record | Prior tracker |
+| `AyvaContextEngine.kt` | Historical | Historical record | Prior tracker |
+| `AyvaDialogueEngine.kt` | Historical | Historical record | Prior tracker |
+| `AyvaIcon.kt` | Historical | Historical record | Prior tracker |
+| `AyvaIntentRouter.kt` | Historical | Historical record | Prior tracker |
+| `AyvaNotificationColorsDialog.kt` | Historical | Historical record | Prior tracker |
+| `AyvaTalkEngine.kt` | Historical | Historical record | Prior tracker |
+| `BackupDialogs.kt` | Historical | Historical record | Prior tracker |
+| `BackupRestoreManager.kt` | Historical | Historical record | Prior tracker |
+| `Batch10SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch11SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch12SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch13SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch1SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch2Pass3SecurityTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch2SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch3SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch4SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch5SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch6SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch7SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch8SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `Batch9SecurityAuditTest.kt` | Historical | Historical record | Prior tracker |
+| `BlockActivity.kt` | Historical | Historical record | Prior tracker |
+| `BlockOverlayManager.kt` | Historical | Historical record | Prior tracker |
+| `BootReceiver.kt` | Historical | Historical record | Prior tracker |
+| `BubbleChatActivity.kt` | Historical | Historical record | Prior tracker |
+| `BubbleChatManager.kt` | Historical | Historical record | Prior tracker |
+| `BubbleService.kt` | Historical | Historical record | Prior tracker |
+| `BubbleSettingsHelper.kt` | Historical | Historical record | Prior tracker |
+| `BubbleSettingsScreen.kt` | Historical | Historical record | Prior tracker |
+| `CameraQrScannerDialog.kt` | Historical | Historical record | Prior tracker |
+| `CategoryEditorHelper.kt` | Historical | Historical record | Prior tracker |
+| `CatMagicRiveView.kt` | Historical | Historical record | Prior tracker |
+| `ChatTextSizeDialog.kt` | Historical | Historical record | Prior tracker |
+| `Color.kt` | Historical | Historical record | Prior tracker |
+| `CompletedTaskHistoryManager.kt` | Historical | Historical record | Prior tracker |
+| `CrashHandler.kt` | Historical | Historical record | Prior tracker |
+| `CryptoBackupEngine.kt` | Historical | Historical record | Prior tracker |
+| `CustomCategoryEditor.kt` | Historical | Historical record | Prior tracker |
+| `CustomCategoryManager.kt` | Historical | Historical record | Prior tracker |
+| `CustomRestrictionSection.kt` | Historical | Historical record | Prior tracker |
+| `DailyQuestManager.kt` | Historical | Historical record | Prior tracker |
+| `DailyQuestsCard.kt` | Historical | Historical record | Prior tracker |
+| `DailySummaryReceiver.kt` | Historical | Historical record | Prior tracker |
+| `DashboardScreen.kt` | Historical | Historical record | Prior tracker |
+| `DatabaseKeyProvider.kt` | Historical | Historical record | Prior tracker |
+| `DataIntegrityPhase3Test.kt` | Historical | Historical record | Prior tracker |
+| `DataSafetyManager.kt` | Historical | Historical record | Prior tracker |
+| `DeviceStatsHelper.kt` | Historical | Historical record | Prior tracker |
+| `DeviceSyncScreen.kt` | Historical | Historical record | Prior tracker |
+| `DiagnosticManager.kt` | Historical | Historical record | Prior tracker |
+| `DndHelper.kt` | Historical | Historical record | Prior tracker |
+| `DocumentStatsDialog.kt` | Historical | Historical record | Prior tracker |
+| `DrillBottomActionRow.kt` | Historical | Historical record | Prior tracker |
+| `DrillDatabase.kt` | Historical | Historical record | Prior tracker |
+| `DrillModels.kt` | Historical | Historical record | Prior tracker |
+| `DrillPaletteHelper.kt` | Historical | Historical record | Prior tracker |
+| `DrillQuestionPaletteModal.kt` | Historical | Historical record | Prior tracker |
+| `DrillStreakHelper.kt` | Historical | Historical record | Prior tracker |
+| `DrillSummaryCard.kt` | Historical | Historical record | Prior tracker |
+| `DrillSummaryHelper.kt` | Historical | Historical record | Prior tracker |
+| `DrillSummaryMathHelper.kt` | Historical | Historical record | Prior tracker |
+| `DrillTopBar.kt` | Historical | Historical record | Prior tracker |
+| `DrillTopBarHelper.kt` | Historical | Historical record | Prior tracker |
+| `DuolingoComponents.kt` | Historical | Historical record | Prior tracker |
+| `DuolingoMysteryChestDialog.kt` | Historical | Historical record | Prior tracker |
+| `EditLabelsDialog.kt` | Historical | Historical record | Prior tracker |
+| `EncryptedMediaFetcher.kt` | Historical | Historical record | Prior tracker |
+| `EncryptedMediaStorage.kt` | Historical | Historical record | Prior tracker |
+| `ExplanationSection.kt` | Historical | Historical record | Prior tracker |
+| `FocusApplication.kt` | Historical | Historical record | Prior tracker |
+| `FocusBlockerService.kt` | Historical | Historical record | Prior tracker |
+| `FocusBottomBar.kt` | Historical | Historical record | Prior tracker |
+| `FocusDatabase.kt` | Historical | Historical record | Prior tracker |
+| `FocusDatabaseMigrationHelper.kt` | Historical | Historical record | Prior tracker |
+| `FocusDeviceAdminReceiver.kt` | Historical | Historical record | Prior tracker |
+| `FocusEconomyManager.kt` | Historical | Historical record | Prior tracker |
+| `FocusExitTracker.kt` | Historical | Historical record | Prior tracker |
+| `FocusQuotes.kt` | Historical | Historical record | Prior tracker |
+| `FocusSchedule.kt` | Historical | Historical record | Prior tracker |
+| `FocusStatsManager.kt` | Historical | Historical record | Prior tracker |
+| `FocusViewModel.kt` | Historical | Historical record | Prior tracker |
+| `FullscreenDrillHelper.kt` | Historical | Historical record | Prior tracker |
+| `FullscreenDrillSummaryView.kt` | Historical | Historical record | Prior tracker |
+| `FullscreenDrillView.kt` | Historical | Historical record | Prior tracker |
+| `FullscreenSolutionsView.kt` | Historical | Historical record | Prior tracker |
+| `GamificationHaptics.kt` | Historical | Historical record | Prior tracker |
+| `Habit.kt` | Historical | Historical record | Prior tracker |
+| `HabitActionReceiver.kt` | Historical | Historical record | Prior tracker |
+| `HabitAlarmScheduler.kt` | Historical | Historical record | Prior tracker |
+| `HabitDao.kt` | Historical | Historical record | Prior tracker |
+| `HabitFloatingOverlayManager.kt` | Historical | Historical record | Prior tracker |
+| `HabitMicroCopyProvider.kt` | Historical | Historical record | Prior tracker |
+| `HabitReceiver.kt` | Historical | Historical record | Prior tracker |
+| `HabitRepository.kt` | Historical | Historical record | Prior tracker |
+| `HabitsChatCard.kt` | Historical | Historical record | Prior tracker |
+| `HabitsScreen.kt` | Historical | Historical record | Prior tracker |
+| `HabitViewModel.kt` | Historical | Historical record | Prior tracker |
+| `HkdfUtil.kt` | Historical | Historical record | Prior tracker |
+| `ImageUtils.kt` | Historical | Historical record | Prior tracker |
+| `KeepColorDialog.kt` | Historical | Historical record | Prior tracker |
+| `KeepColorPalette.kt` | Historical | Historical record | Prior tracker |
+| `KeepFontPalette.kt` | Historical | Historical record | Prior tracker |
+| `KeepImageCollage.kt` | Historical | Historical record | Prior tracker |
+| `KeepNoteCard.kt` | Historical | Historical record | Prior tracker |
+| `KeepNoteEditor.kt` | Historical | Historical record | Prior tracker |
+| `KeepNoteShareParser.kt` | Historical | Historical record | Prior tracker |
+| `KeepSketchDialog.kt` | Historical | Historical record | Prior tracker |
+| `KeepThemeIllustration.kt` | Historical | Historical record | Prior tracker |
+| `LicenseManager.kt` | Historical | Historical record | Prior tracker |
+| `MainActivity.kt` | Historical | Historical record | Prior tracker |
+| `McqTextParser.kt` | Historical | Historical record | Prior tracker |
+| `MysteryBoxChatCard.kt` | Historical | Historical record | Prior tracker |
+| `NoteDao.kt` | Historical | Historical record | Prior tracker |
+| `NoteDatabase.kt` | Historical | Historical record | Prior tracker |
+| `NoteDatabaseMigrationHelper.kt` | Historical | Historical record | Prior tracker |
+| `NoteEntity.kt` | Historical | Historical record | Prior tracker |
+| `NoteImageHelper.kt` | Historical | Historical record | Prior tracker |
+| `NoteLabelsDialog.kt` | Historical | Historical record | Prior tracker |
+| `NoteMediaManager.kt` | Historical | Historical record | Prior tracker |
+| `NoteRepository.kt` | Historical | Historical record | Prior tracker |
+| `NotesnookBlockModel.kt` | Historical | Historical record | Prior tracker |
+| `NotesnookBlockWidgets.kt` | Historical | Historical record | Prior tracker |
+| `NotesnookEditorDrawer.kt` | Historical | Historical record | Prior tracker |
+| `NotesnookFormattingHelper.kt` | Historical | Historical record | Prior tracker |
+| `NotesnookInsertBottomSheet.kt` | Historical | Historical record | Prior tracker |
+| `NotesnookTableWidget.kt` | Historical | Historical record | Prior tracker |
+| `NotesScreen.kt` | Historical | Historical record | Prior tracker |
+| `NotesSpeedDialFab.kt` | Historical | Historical record | Prior tracker |
+| `NotesViewModel.kt` | Historical | Historical record | Prior tracker |
+| `NoteWidgetActionReceiver.kt` | Historical | Historical record | Prior tracker |
+| `NoteWidgetConfig.kt` | Historical | Historical record | Prior tracker |
+| `NoteWidgetConfigureActivity.kt` | Historical | Historical record | Prior tracker |
+| `NoteWidgetDrawableGenerator.kt` | Historical | Historical record | Prior tracker |
+| `NoteWidgetProvider.kt` | Historical | Historical record | Prior tracker |
+| `NoteWidgetService.kt` | Historical | Historical record | Prior tracker |
+| `OfflineNluEngine.kt` | Historical | Historical record | Prior tracker |
+| `PackageChangeReceiver.kt` | Historical | Historical record | Prior tracker |
+| `PermissionsDialog.kt` | Historical | Historical record | Prior tracker |
+| `PermissionUtils.kt` | Historical | Historical record | Prior tracker |
+| `PreferencesHubHelper.kt` | Historical | Historical record | Prior tracker |
+| `PreferencesHubScreen.kt` | Historical | Historical record | Prior tracker |
+| `ProfessionalSlider.kt` | Historical | Historical record | Prior tracker |
+| `ProfileAvatarManager.kt` | Historical | Historical record | Prior tracker |
+| `QuickAddNoteItemActivity.kt` | Historical | Historical record | Prior tracker |
+| `QuickAddTaskActivity.kt` | Historical | Historical record | Prior tracker |
+| `QuickEditNoteActivity.kt` | Historical | Historical record | Prior tracker |
+| `RichTextEngine.kt` | Historical | Historical record | Prior tracker |
+| `SafePrefsExtensions.kt` | Historical | Historical record | Prior tracker |
+| `ScheduleDao.kt` | Historical | Historical record | Prior tracker |
+| `SchedulesScreen.kt` | Historical | Historical record | Prior tracker |
+| `SecurityScreen.kt` | Historical | Historical record | Prior tracker |
+| `SettingsScreen.kt` | Historical | Historical record | Prior tracker |
+| `SettingsScreenHelper.kt` | Historical | Historical record | Prior tracker |
+| `ShareToNoteActivity.kt` | Historical | Historical record | Prior tracker |
+| `SmartDateParser.kt` | Historical | Historical record | Prior tracker |
+| `SolutionCardItem.kt` | Historical | Historical record | Prior tracker |
+| `SolutionsTopBar.kt` | Historical | Historical record | Prior tracker |
+| `SolutionsViewHelper.kt` | Historical | Historical record | Prior tracker |
+| `StreakManager.kt` | Historical | Historical record | Prior tracker |
+| `SubscriptionScreen.kt` | Historical | Historical record | Prior tracker |
+| `SummaryQuotes.kt` | Historical | Historical record | Prior tracker |
+| `SupabaseAuthManager.kt` | Historical | Historical record | Prior tracker |
+| `SupabaseAuthScreen.kt` | Historical | Historical record | Prior tracker |
+| `SupabaseConfig.kt` | Historical | Historical record | Prior tracker |
+| `SupabaseKeyManager.kt` | Historical | Historical record | Prior tracker |
+| `SupabaseStorageEngine.kt` | Historical | Historical record | Prior tracker |
+| `SupabaseSyncEngine.kt` | Historical | Historical record | Prior tracker |
+| `SyncAndConflictResolutionTest.kt` | Historical | Historical record | Prior tracker |
+| `TalkAction.kt` | Historical | Historical record | Prior tracker |
+| `TalkActionChips.kt` | Historical | Historical record | Prior tracker |
+| `Task.kt` | Historical | Historical record | Prior tracker |
+| `TaskActionReceiver.kt` | Historical | Historical record | Prior tracker |
+| `TaskDao.kt` | Historical | Historical record | Prior tracker |
+| `TaskReminderHelper.kt` | Historical | Historical record | Prior tracker |
+| `TaskReminderOverlayManager.kt` | Historical | Historical record | Prior tracker |
+| `TaskReminderPopupActivity.kt` | Historical | Historical record | Prior tracker |
+| `TaskReminderReceiver.kt` | Historical | Historical record | Prior tracker |
+| `TaskRepository.kt` | Historical | Historical record | Prior tracker |
+| `TaskViewModel.kt` | Historical | Historical record | Prior tracker |
+| `TemporaryUnlockManager.kt` | Historical | Historical record | Prior tracker |
+| `Theme.kt` | Historical | Historical record | Prior tracker |
+| `TimeScreen.kt` | Historical | Historical record | Prior tracker |
+| `TodosScreen.kt` | Historical | Historical record | Prior tracker |
+| `TodoWidgetActionReceiver.kt` | Historical | Historical record | Prior tracker |
+| `TodoWidgetConfigureActivity.kt` | Historical | Historical record | Prior tracker |
+| `TodoWidgetProvider.kt` | Historical | Historical record | Prior tracker |
+| `TodoWidgetService.kt` | Historical | Historical record | Prior tracker |
+| `Type.kt` | Historical | Historical record | Prior tracker |
+| `UnifiedOverlayCoordinator.kt` | Historical | Historical record | Prior tracker |
+| `UsageBreakTracker.kt` | Historical | Historical record | Prior tracker |
+| `UsageStatsHelper.kt` | Historical | Historical record | Prior tracker |
+| `VaultCryptoEngine.kt` | Historical | Historical record | Prior tracker |
+| `VaultPayloadEncryptor.kt` | Historical | Historical record | Prior tracker |
+| `VaultSyncManager.kt` | Historical | Historical record | Prior tracker |
+| `VocabBriefContent.kt` | Historical | Historical record | Prior tracker |
+| `VocabDao.kt` | Historical | Historical record | Prior tracker |
+| `VocabDatabase.kt` | Historical | Historical record | Prior tracker |
+| `VocabEntities.kt` | Historical | Historical record | Prior tracker |
+| `VocabRepository.kt` | Historical | Historical record | Prior tracker |
+| `VocabRetentionHubChatCard.kt` | Historical | Historical record | Prior tracker |
+| `VoiceRecordDialog.kt` | Historical | Historical record | Prior tracker |
+| `WidgetConfig.kt` | Historical | Historical record | Prior tracker |
+| `WidgetDrawableGenerator.kt` | Historical | Historical record | Prior tracker |
 
-**Active Batch**: **None — Full Codebase Audit 100% Complete! 🎉**
+## Pending Audit Queue
 
----
-
-## ðŸ“‚ File Coverage Map
-
-> Updated after each audit session. Run `.\scripts\check_audit_coverage.ps1 -Since <commit>` to find unaudited new files.
-
-| File | Batch(es) | Status | Last Audited |
-|:---|:---|:---|:---|
-| `Argon2idKdf.kt` | 1 | âœ… Audited | 2026-09-22 |
-| `HkdfUtil.kt` | 1 | âœ… Audited | 2026-09-22 |
-| `VaultPayloadEncryptor.kt` | 1 | âœ… Audited | 2026-09-22 |
-| `EncryptedMediaStorage.kt` | 1 | âœ… Audited | 2026-09-22 |
-| `EncryptedMediaFetcher.kt` | 1 | âœ… Audited | 2026-09-22 |
-| `VaultCryptoEngine.kt` | 1 | âœ… Audited | 2026-09-22 |
-| `ArchiveVaultSecurity.kt` | 1, 5 | âœ… Audited | 2026-09-24 |
-| `DatabaseKeyProvider.kt` | 1 | âœ… Audited | 2026-09-22 |
-| `CryptoBackupEngine.kt` | 1 | âœ… Audited | 2026-09-22 |
-| `NoteRepository.kt` | 1 | âœ… Audited | 2026-09-22 |
-| `SupabaseConfig.kt` | 2 | âœ… Audited | 2026-09-22 |
-| `SupabaseAuthManager.kt` | 2 | âœ… Audited | 2026-09-23 |
-| `SupabaseKeyManager.kt` | 2 | âœ… Audited | 2026-09-23 |
-| `SupabaseStorageEngine.kt` | 2 | âœ… Audited | 2026-09-23 |
-| `SupabaseSyncEngine.kt` | 2, 5 | âœ… Audited | 2026-09-24 |
-| `AutoSyncManager.kt` | 2 | âœ… Audited | 2026-09-23 |
-| `VaultSyncManager.kt` | 2, 5 | âœ… Audited | 2026-09-24 |
-| `AndroidManifest.xml` | 3 | âœ… Audited | 2026-09-22 |
-| `file_paths.xml` | 3 | âœ… Audited | 2026-09-22 |
-| `BootReceiver.kt` | 3 | âœ… Audited | 2026-09-22 |
-| `ShareToNoteActivity.kt` | 3 | âœ… Audited | 2026-09-22 |
-| `NoteWidgetProvider.kt` | 3 | âœ… Audited | 2026-09-22 |
-| `TodoWidgetProvider.kt` | 3 | âœ… Audited | 2026-09-22 |
-| `TaskReminderHelper.kt` | 3 | âœ… Audited | 2026-09-22 |
-| `FocusBlockerService.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `BlockOverlayManager.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `BubbleService.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `HabitFloatingOverlayManager.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `TaskReminderOverlayManager.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `UnifiedOverlayCoordinator.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `HabitReceiver.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `TemporaryUnlockManager.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `UsageBreakTracker.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `UsageStatsHelper.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `DndHelper.kt` | 4 | ✅ Audited | 2026-10-01 |
-| `FocusDatabase.kt` | 5 | âœ… Audited | 2026-09-22 |
-| `NoteDatabase.kt` | 1, 5 | âœ… Audited | 2026-09-24 |
-| `BackupRestoreManager.kt` | 1, 5 | âœ… Audited | 2026-09-24 |
-| `NoteMediaManager.kt` | 5, 6 | âœ… Audited | 2026-09-24 |
-| `DataSafetyManager.kt` | 5 | âœ… Audited | 2026-09-24 |
-| `ArticlePdfGenerator.kt` | 5 | âœ… Audited | 2026-09-24 |
-| `ArticleDocxGenerator.kt` | 5 | âœ… Audited | 2026-09-24 |
-| `ArticleExporter.kt` | 5, 6 | âœ… Audited | 2026-09-24 |
-| `RichTextEngine.kt` | 6 | âœ… Audited | 2026-09-24 |
-| `NotesnookBlockModel.kt` | 6 | âœ… Audited | 2026-09-24 |
-| `KeepNoteEditor.kt` | 6 | âœ… Audited | 2026-09-24 |
-| `AudioMemoManager.kt` | 6 | âœ… Audited | 2026-09-24 |
-| `NoteImageHelper.kt` | 6 | âœ… Audited | 2026-09-24 |
-| `ArithmeticEngine.kt` | 7 | âœ… Audited | 2026-09-25 |
-| `AyvaTalkEngine.kt` | 7 | âœ… Audited | 2026-09-25 |
-| `SmartDateParser.kt` | 7 | âœ… Audited | 2026-09-25 |
-| `DailyQuestManager.kt` | 7 | âœ… Audited | 2026-09-25 |
-| `FocusEconomyManager.kt` | 7 | âœ… Audited | 2026-09-25 |
-| `AptitudeManager.kt` | 7 | âœ… Audited | 2026-09-25 |
-| `NotesViewModel.kt` | 6, 8 | âœ… Audited | 2026-09-24 |
-| `TaskViewModel.kt` | 8 | âœ… Audited | 2026-09-24 |
-| `HabitViewModel.kt` | 8 | âœ… Audited | 2026-09-24 |
-| `FocusViewModel.kt` | 8 | âœ… Audited | 2026-09-24 |
-| `AppIconManager.kt` | 8 | âœ… Audited | 2026-09-24 |
-| `MainActivity.kt` | 8, 9 | ✅ Audited | 2026-09-29 |
-| `SafePrefsExtensions.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AccountScreen.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `HabitsScreen.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `HabitRepository.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `FocusApplication.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `SecurityScreen.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `NotesScreen.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `FocusBottomBar.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `BubbleChatManager.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `FocusStatsManager.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AutoBackupScheduler.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `ActiveDrillStateEntity.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AyvaChatDao.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AyvaChatDatabase.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AyvaChatMessageEntity.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AyvaCatPeekingHost.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AyvaChatTimeline.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AyvaComposerBar.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `ChatTextSizeDialog.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `NotesSpeedDialFab.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `NotesnookEditorDrawer.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `BackupDialogs.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `DrillSummaryHelper.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AyvaCompoundCommandHandler.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AyvaContextEngine.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AyvaIntentRouter.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `NoteWidgetConfig.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `NoteWidgetConfigureActivity.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `NoteWidgetDrawableGenerator.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `TodoWidgetActionReceiver.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `TodoWidgetConfigureActivity.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `WidgetConfig.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `WidgetDrawableGenerator.kt` | 9 | ✅ Audited | 2026-09-29 |
-| `AutoBackupWorker.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `HabitAlarmScheduler.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `BlockActivity.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `CompletedTaskHistoryManager.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `CrashHandler.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `AppLogger.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `DiagnosticManager.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `LicenseManager.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `CameraQrScannerDialog.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `DrillDatabase.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `DrillModels.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `VocabDatabase.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `VocabDao.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `VocabEntities.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `VocabRepository.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `ScheduleDao.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `FocusSchedule.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `AppRestriction.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `Habit.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `NoteEntity.kt` | 10 | ✅ Audited | 2026-09-29 |
-| `KeepNoteShareParser.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `ArticleTocHelper.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `ArticleExporterHelper.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `ImageUtils.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `KeepNoteCard.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `EditLabelsDialog.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `NoteLabelsDialog.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `NotesnookInsertBottomSheet.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `KeepSketchDialog.kt` | 6, 11 | ✅ Audited | 2026-10-01 |
-| `AudioPlayerWidget.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `KeepColorDialog.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `KeepColorPalette.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `KeepFontPalette.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `KeepImageCollage.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `KeepThemeIllustration.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `ArticleExportBottomSheet.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `ArticleEditorialBottomSheet.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `DocumentStatsDialog.kt` | 11 | ✅ Audited | 2026-10-01 |
-| `FullscreenDrillView.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `FullscreenDrillHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `FullscreenDrillSummaryView.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `FullscreenSolutionsView.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `SolutionsViewHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `DrillSummaryCard.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `DrillTopBar.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `DrillBottomActionRow.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `DrillQuestionPaletteModal.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `ExplanationSection.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `SolutionCardItem.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `SolutionsTopBar.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `SettingsScreen.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `BubbleSettingsScreen.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `BubbleSettingsHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `PreferencesHubScreen.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `PreferencesHubHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `CustomCategoryEditor.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `CategoryEditorHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `SubscriptionScreen.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `AptitudeProfileCard.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `AptitudeCardHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `AptitudeReminderReceiver.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `AptitudeReminderHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `SettingsScreenHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `DrillPaletteHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `DrillStreakHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `DrillSummaryMathHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `DrillTopBarHelper.kt` | 12 | ✅ Audited | 2026-10-01 |
-| `AddRestrictionScreen.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `AppModeSection.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `CustomRestrictionSection.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `CustomCategoryManager.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `ArithmeticCard.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `HabitsChatCard.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `MysteryBoxChatCard.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `VocabBriefContent.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `VocabRetentionHubChatCard.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `PermissionsDialog.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `PermissionUtils.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `DeviceStatsHelper.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `AnalyticsComponents.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `AppThemeManager.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `Color.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `Theme.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `Type.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `AyvaAlertTheme.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `AyvaIcon.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `CatMagicRiveView.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `DuolingoComponents.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `ProfessionalSlider.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `ProfileAvatarManager.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `GamificationHaptics.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `TalkActionChips.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `AyvaNotificationColorsDialog.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `FocusQuotes.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `HabitMicroCopyProvider.kt` | 13 | ✅ Audited | 2026-09-29 |
-| `SummaryQuotes.kt` | 13 | ✅ Audited | 2026-09-29 |
-
----
-
-## âš ï¸ Pending Audit Queue
-
-Files added or significantly changed since the last audit session.
-Run `.\scripts\check_audit_coverage.ps1 -Since a752be3` to refresh this list.
+Use the helper for changed/missing files. An empty queue is not current acceptance.
 
 | File | Reason | Changed In |
 |:---|:---|:---|
-| _None_ | All detected files have been audited and verified | 2026-09-29 |
-
----
-
-## ðŸ”¬ Manual Verification Register
-
-Findings that cannot be covered by automated unit tests. Verify on a physical device before each major release.
-
-| ID | Description | File | Last Verified |
-|:---|:---|:---|:---|
-| B1-F-003 | Crash window between `ephemeralVaultSubKey` set and `editor.commit()` on PIN change | `ArchiveVaultSecurity.kt` | 2026-09-22 |
-| B1-F-022 | Power-cut window during async `.apply()` in PBKDF2â†’Argon2id auto-upgrade | `ArchiveVaultSecurity.kt` | 2026-09-22 |
-| BATCH-4-002 | Foreground service type `specialUse` doesn't crash on Android 10â€“13 | `BubbleService.kt` | 2026-09-22 |
-| BATCH-7-015 | Outer `DailyQuestsCard` tap does not prematurely claim Night Owl chest | `DailyQuestsCard.kt` | 2026-09-25 |
-| BATCH-8-005 | Granting Usage Stats in Settings updates `TimeScreen` without relaunch | `TimeScreen.kt` | 2026-09-24 |
-| BATCH-8-018 | Dialog state survives screen rotation (schedules, todos) | `SchedulesScreen.kt`, `TodosScreen.kt` | 2026-09-24 |
-| BATCH-9-007 | Widget click launches Todo list activity from background | `TodoWidgetActionReceiver.kt`, `TodoWidgetProvider.kt` | 2026-09-29 |
-
----
-
-## ðŸ” Batch 1: Cryptography, Key Derivation & Vault Storage
-
-**Audit Session**: Fresh adversarial re-audit (Pass 8 Deep Adversarial Audit).
-**Methodology**: Adversarial read → Failing test written → Fix applied → Test verified green.
-**Test file**: [`Batch1SecurityAuditTest.kt`](file:///app/src/test/java/com/focusbyrj/app/Batch1SecurityAuditTest.kt)
-
-### Files Audited
-
-| File | Link |
-|:---|:---|
-| `Argon2idKdf.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/util/crypto/Argon2idKdf.kt) |
-| `HkdfUtil.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/util/crypto/HkdfUtil.kt) |
-| `VaultPayloadEncryptor.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/util/crypto/VaultPayloadEncryptor.kt) |
-| `EncryptedMediaStorage.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/util/crypto/EncryptedMediaStorage.kt) |
-| `EncryptedMediaFetcher.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/util/crypto/EncryptedMediaFetcher.kt) |
-| `VaultCryptoEngine.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/util/sync/VaultCryptoEngine.kt) |
-| `ArchiveVaultSecurity.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/data/note/ArchiveVaultSecurity.kt) |
-| `DatabaseKeyProvider.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/data/note/DatabaseKeyProvider.kt) |
-| `CryptoBackupEngine.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/util/backup/CryptoBackupEngine.kt) |
-| `NoteRepository.kt` | [`link`](file:///app/src/main/java/com/focusbyrj/app/data/note/NoteRepository.kt) |
-
-### Findings & Resolutions
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| B1-F-001 | ðŸ”´ High | `CryptoBackupEngine.kt` | `openEncryptingStream` / `openDecryptingStream` zeroized **caller's** `passwordChars` via `Arrays.fill` on the parameter reference â€” any direct API caller got their array silently wiped | `openEncryptingStreamMustNotMutateCallerPasswordChars` | âœ… Fixed |
-| B1-F-002 | ðŸŸ  Medium | `CryptoBackupEngine.kt` | Backup engine used `Parameters.LOGIN` (32MB Argon2id) for both encrypt and decrypt; spec and comment said BACKUP (64MB). Parameters.BACKUP was defined but never used. Upgraded to V4 format (0x04, 64MB + Instant Canary Verifier & AAD header binding). V2 and V3 preserved for backward-compatible read-only decryption. | `newBackupMustUseV4FormatHeader`, `legacyV3BackupStillDecrypts`, `legacyV2BackupStillDecrypts`, `v3BackupRoundTrip` | âœ… Fixed |
-| B1-F-003 | ðŸš¨ Critical | `ArchiveVaultSecurity.kt` | `ephemeralVaultSubKey` was set at line 206 **before** `editor.commit()` at line 271. Crash window between those lines: notes re-encrypted with new key but prefs still held old hash â†’ permanent vault lockout on next launch | Manual verification (crash window is not unit-testable) | âœ… Fixed |
-| B1-F-004 | ðŸŸ  Medium | `ArchiveVaultSecurity.kt` | `remainingAttempts = 5 - currentAttempts` goes negative (âˆ’1, âˆ’2â€¦) after 5+ failed PIN attempts when lockout threshold not yet hit | `remainingAttemptsNeverGoesNegative` | âœ… Fixed |
-| B1-F-005 | ðŸŸ  Medium | `VaultCryptoEngine.kt` | `deriveKeyFromMnemonic` created `PBEKeySpec` from the 12-word mnemonic but never called `clearPassword()` â€” the mnemonic phrase lingered in heap memory until GC | `deriveKeyFromMnemonicIsDeterministicAnd32Bytes` | âœ… Fixed |
-| B1-F-006 | ðŸ”´ High | `EncryptedMediaStorage.kt` | `writeEncryptedBytes` used a temp-file atomic write pattern but had no cleanup on failure. A `cipher.doFinal()` throw or disk-full during write left an orphaned `.tmp` file on disk permanently | `writeEncryptedBytesLeavesNoTempFile`, `writeEncryptedBytesRoundTrip` | âœ… Fixed |
-| B1-F-007 | ðŸŸ¡ Low | `VaultPayloadEncryptor.kt` | AES-GCM `ciphertext` byte array not zeroized after being Base64-encoded into the vault envelope string â€” residual ciphertext stayed in heap | Covered by `encryptNotePayload` round-trip tests | âœ… Fixed |
-| B1-F-008 | ðŸš¨ Critical | `ArchiveVaultSecurity.kt` | Re-encryption & Recovery data loss vulnerability: `decryptNotePayload` silently returned unencrypted notes on failure in `setPasscode()`, `recoverVaultWithMnemonic()`, and `verifyPasscode()` auto-upgrades. Failed notes were silently skipped while new credentials were committed to prefs, permanently stranding user notes. | Covered by `Batch1SecurityAuditTest` & fail-closed `tryDecryptNotePayload` validation | âœ… Fixed |
-| B1-F-009 | ðŸ”´ High | `EncryptedMediaStorage.kt` | `readDecryptedBytes` checked file length before checking `MAGIC_HEADER`. A truncated/corrupted encrypted file (<24 bytes) was returned as raw plaintext bytes to Coil, leaking header/IV and breaking rendering. | `truncatedEncryptedMediaReturnsNullNeverPlaintext` | âœ… Fixed |
-| B1-F-010 | ðŸ”´ High | `DatabaseKeyProvider.kt`, `ArchiveVaultSecurity.kt`, `EncryptedMediaStorage.kt` | `cipher.iv ?: ByteArray(12)...` generated a random IV that was never passed to `Cipher`, returning a detached IV. Decryption with this IV guaranteed failure. Fixed by re-initializing cipher with `GCMParameterSpec` on null IV. | Verified in cipher initialization pipelines | âœ… Fixed |
-| B1-F-011 | ðŸŸ  Medium | `DatabaseKeyProvider.kt` | Unbounded heap memory retention of SQLCipher master database passphrase. `cachedPassphrase` was retained indefinitely in memory with no way to wipe it. Added `@Synchronized fun clearCachedPassphrase()`. | `databaseKeyProviderClearCachedPassphraseWipesMemory` | âœ… Fixed |
-| B1-F-012 | ðŸŸ  Medium | `CryptoBackupEngine.kt` | `encrypt()` and `decrypt()` called `Arrays.fill(passwordChars, '\u0000')` in finally, zeroing caller's array directly. Fixed by zeroing only internal clone. | `encryptMustNotMutateCallerPasswordChars`, `decryptMustNotMutateCallerPasswordChars` | âœ… Fixed |
-| B1-F-013 | ðŸ”´ High | `DatabaseKeyProvider.kt`, `EncryptedMediaStorage.kt`, `ArchiveVaultSecurity.kt` | Fallthrough to key generation when alias exists in AndroidKeyStore destroyed existing encryption keys and permanently orphaned encrypted databases, media, and vault notes if entry retrieval returned null. Fixed by throwing `SecurityException` instead of generating a new key over an existing alias. | `keyStoreAliasExistsRefusesOverwrite` | âœ… Fixed |
-| B1-F-014 | ðŸŸ  Medium | `VaultCryptoEngine.kt` | `validateMnemonic` compared raw tokens against `BIP39_WORDLIST` without `trim().lowercase()`. Mobile soft-keyboards often capitalize first words or add trailing spaces, causing valid recovery phrases to fail checksum and validation. Fixed by normalizing each word token. | `validateMnemonicAcceptsCapitalizedWordsAndWhitespace` | âœ… Fixed |
-| B1-F-015 | ðŸš¨ Critical | `ArchiveVaultSecurity.kt` | `skipPasscodeSetup()` allowed execution when vault status was already `VaultStatus.ENABLED`. Calling it on an enabled vault silently changed prefs to `"disabled"` without decrypting notes, stranding user notes as unrecoverable ciphertext. Fixed by aborting with `false` if `getVaultStatus() == VaultStatus.ENABLED`. | `skipPasscodeSetupRefusesWhenVaultIsEnabled` | âœ… Fixed |
-| B1-F-016 | ðŸŸ  Medium | `HkdfUtil.kt` | RFC 5869 Â§2.2 compliance & memory hygiene: passing empty salt (`ByteArray(0)`) failed to substitute `HashLen` zeros (only `null` did). In `expand()`, intermediate step buffer `okm` and `t` were not zeroized in `finally`. Fixed. | `hkdfExtractWithEmptySaltMatchesNullSalt` | âœ… Fixed |
-| B1-F-017 | ðŸŸ¡ Low | `Argon2idKdf.kt` | Parameter validation hardening: `deriveKey()` had no salt size check. Passing salt < 8 bytes violates Argon2 RFC (`ARGON2_MIN_SALT = 8`) and can crash native Argon2 JNI. Fixed with `require(salt.size >= 8)`. | `argon2idRejectsSaltShorterThan8Bytes` | âœ… Fixed |
-| B1-F-018 | ðŸ”´ High | `ArchiveVaultSecurity.kt` | Plaintext note leak in locked vault: notes archived while vault was locked were stored unencrypted. Unlocking vault never scanned or encrypted plaintext notes. Fixed by auto-encrypting all plaintext notes upon successful PIN unlock in `verifyPasscode()`. | `unlockVaultAutoEncryptsPlaintextArchivedNotes` | âœ… Fixed |
-| B1-F-019 | ðŸ”´ High | `NoteRepository.kt` | Corrupted ciphertext leak on locked unarchive: calling `setArchived(id, false)` on an encrypted note while vault was locked wrote `"ðŸ”’ Encrypted Note"` and raw ciphertext into active notes. Fixed by validating decryption via `tryDecryptNotePayload()` and refusing unarchive on failure. | `unarchiveWhileLockedRefusesAndDoesNotLeakCiphertext` | âœ… Fixed |
-| B1-F-020 | ðŸ”´ High | `ArchiveVaultSecurity.kt` | Mutable internal key reference leak: `getActiveVaultSubKey()` returned the direct array reference of `ephemeralVaultSubKey`. An external caller zeroing their local copy for memory hygiene wiped the cached master subkey in-place, causing subsequent notes to be encrypted with an all-zero key and permanently corrupted. | `getActiveVaultSubKeyDefensiveCopyPreventsExternalMutation` | âœ… Fixed |
-| B1-F-021 | ðŸ”´ High | `NoteRepository.kt` | Undecrypted trashed vault notes in `getTrashedNotesSync()`: `NotesViewModel.emptyTrash()` relies on `getTrashedNotesSync()` to delete media attachments. Because undecrypted vault notes contain blank `[]` media lists, local and cloud attachments were orphaned and leaked forever upon emptying trash. | `getTrashedNotesSyncDecryptsVaultNotes` | âœ… Fixed |
-| B1-F-022 | ðŸŸ  Medium | `ArchiveVaultSecurity.kt` | Asynchronous `.apply()` in `verifyPasscode()` PBKDF2-to-Argon2id auto-upgrade: SharedPreferences write occurred on background thread after SQLite transaction committed. Power cut or process termination during the async write window left SQLite notes re-encrypted with Argon2id but preferences on disk holding legacy PBKDF2 hash, permanently stranding vault notes. | Code inspection & replaced with synchronous `.commit()` | âœ… Fixed |
-| B1-F-023 | ðŸŸ  Medium | `EncryptedMediaStorage.kt` | Ignored `tempFile.renameTo(file)` return value in `writeEncryptedBytes()`: on filesystem errors or locks, `renameTo` returns false without throwing, causing silent write failure, leaving destination empty and temp file abandoned on disk. Fixed by falling back to `tempFile.copyTo(file, overwrite = true)` and deleting temp file. | Verified via media storage pipeline | âœ… Fixed |
-| B1-F-024 | ðŸŸ¡ Low | `ArchiveVaultSecurity.kt` | Plaintext recovery phrase byte array residue in `encryptRecoveryPhrase()`: anonymous allocation of `phraseText.toByteArray(Charsets.UTF_8)` was not captured or zeroized in `finally`. Fixed by capturing and zeroing array. | Code inspection & memory zeroing verification | âœ… Fixed |
-| B1-F-025 | ðŸŸ  Medium | `ArchiveVaultSecurity.kt` | Malformed PIN (<6 digits or non-digits) reset `remainingAttempts` to 5 in UI response, masking previous failed attempts. Transient hardware KeyStore decryption failure in `verifyPasscode()` fell back to raw ciphertext (`storedHashPayload`), guaranteeing false PIN mismatch and unfair escalation of lockout timer (30sâ€“300s). Fixed by calculating `maxOf(0, 5 - currentAttempts)` on malformed PIN, adding a 3-attempt retry loop on hardware KeyStore decryption, and returning `VerifyResult.Error(...)` without incrementing lockout counters on failure. | `malformedPinReflectsActualRemainingAttempts`, `keyStoreDecryptionFailureReturnsErrorWithoutLockoutEscalation` | âœ… Fixed |
-| B1-F-026 | ðŸ”´ High | `NotesViewModel.kt` | Trashed vault note permanent deletion media leak: `deletePermanently(note)` received encrypted notes with empty media lists (`imageUrisJson = "[]"`), failing to purge local media files or record cloud deletions in Supabase storage, resulting in orphaned storage leaks. Fixed by decrypting the note payload via `VaultPayloadEncryptor.decryptNotePayload(note)` before purging local media files and recording cloud deletions. | Tested via TDD inspection & viewmodel media cleanup pipeline | âœ… Fixed |
-| B1-F-027 | ðŸš¨ Critical | `ArchiveVaultSecurity.kt` | Auto-upgrade path (PBKDF2 â†’ Argon2id) re-encrypted Room notes under `realArgon2idHash` and updated `KEY_HASH`, but failed to re-wrap the stored recovery envelope (`rec_ciphertext`) or re-encrypt the phrase (`rec_phrase_ciphertext`). Subsequent mnemonic recovery failed with `AEADBadTagException`, causing permanent vault lockout. Fixed by re-wrapping recovery envelope and phrase with Argon2id hash in both auto-upgrade branches. | `autoUpgradeFromPbkdf2ReWrapsRecoveryEnvelopeSoMnemonicRecoverySucceeds` | âœ… Fixed |
-| B1-F-028 | ðŸš¨ Critical | `BackupRestoreManager.kt` | Encrypted backup creation exported locked vault notes as raw ciphertext while omitting device-bound KeyStore vault preferences (`enc_salt`, recovery envelope). Restoring on a new device or reinstall made all vault notes permanently unrecoverable. Fixed by refusing backup if vault notes are locked without an active subkey, decrypting notes into the backup archive (AES-GCM encrypted under backup password), and re-encrypting them on restore when vault is unlocked/active. | `createEncryptedBackupFailsWhenVaultIsLockedWithEncryptedNotes` | âœ… Fixed |
-| B1-F-029 | ðŸ”´ High | `DatabaseKeyProvider.kt`, `EncryptedMediaStorage.kt`, `ArchiveVaultSecurity.kt` | KeyStore alias collision exceptions (`SecurityException`) thrown when an alias exists but cannot be loaded as a SecretKeyEntry were caught by outer `catch (e: Exception)` and silently fell back to an insecure, hardcoded software seed (`focus_..._software_seed_v1`). Fixed by rethrowing `SecurityException`. | `databaseKeyProviderPropagatesSecurityException` | âœ… Fixed |
-| B1-F-030 | ðŸŸ  Medium | `NoteRepository.kt` | `renameLabel` and `deleteLabel` operated on `note.getLabels()` without decrypting vault notes (which store `labelsJson = "[]"` when locked), silently skipping label changes on vault notes. Fixed by checking `getActiveVaultSubKey()`, decrypting, modifying labels, and re-encrypting. | `labelRenameAndDeleteUpdatesVaultEncryptedNotesWhenUnlocked` | âœ… Fixed |
-| B1-F-031 | ðŸŸ  Medium | `EncryptedMediaStorage.kt` | `writeEncryptedBytes()` failed to ensure parent directory existed prior to creating `FileOutputStream`, crashing when writing to nested or newly created subdirectories. Fixed by calling `file.parentFile?.mkdirs()`. | `encryptedMediaStorageCreatesMissingParentDirectory` | âœ… Fixed |
-| B1-F-032 | 🟡 Low | `EncryptedMediaFetcher.kt` | `fetch()` failed to zeroize `decryptedBytes` after buffer write, leaving private photos in JVM heap until garbage collection. Fixed with `try ... finally { Arrays.fill(decryptedBytes, 0.toByte()) }`. | `encryptedMediaFetcherDecodesEncryptedImage` | ✅ Fixed |
-| BATCH-1-033 | 🔴 High | `VaultPayloadEncryptor.kt` | Custom `colorKey` and `fontKey` leaked in plaintext in Room SQLite, in sync payloads, and visually on the locked vault screen because `encryptNotePayload` omitted them from `jsonPayload` and didn't reset them on the encrypted entity. Decryption also failed to restore them. Fixed by serializing `colorKey` and `fontKey` into encrypted payload, resetting them to `"default"`, and restoring them backward-compatibly on decryption. | `b1_033_vaultPayloadEncryptorMasksAndRestoresColorAndFontKeys` | ✅ Fixed |
-| BATCH-1-034 | 🚨 Critical | `ArchiveVaultSecurity.kt` | Data loss on passcode disable / key rotation / mnemonic recovery: `disablePasscode()`, `setPasscode()`, auto-upgrades, and `recoverVaultWithMnemonic()` queried `getArchivedNotesSync()` (`WHERE isArchived = 1`). Any encrypted note with `isArchived = 0` (e.g., from unarchive failure, trash restore, or restored backup) was completely skipped, permanently stranding the note as unrecoverable ciphertext when keys were wiped or rotated. Fixed by querying `getAllNotesList().filter { it.isArchived || isVaultEncrypted(it) }` across all re-key, auto-encrypt, and disable operations. | `b1_034_disablePasscodeAndSetPasscodeCapturesEncryptedNotesWithArchivedFalse` | ✅ Fixed |
-| BATCH-1-035 | 🟠 Medium | `ArchiveVaultSecurity.kt` | Device clock tampering / skew lockout overflow: In `verifyPasscode()` and `getRemainingLockoutSeconds()`, `lockoutUntil - now` was not clamped to the maximum lockout window of 300 seconds. If device time was shifted backwards after a lockout, lockout could last days or years. Fixed by clamping `remainingSec` to `minOf(300L, max(1L, (lockoutUntil - now + 999L) / 1000L))`. | `b1_035_lockoutDurationClampedToMax300SecondsUnderClockSkew` | ✅ Fixed |
-| BATCH-1-036 | 🟠 Medium | `EncryptedMediaStorage.kt` | False-positive encryption detection on truncated files: `isEncrypted(file)` only checked `file.length() < magicBytes.size` (11 bytes). A truncated or corrupted file with 12 to 38 bytes (lacking IV or GCM tag) was falsely detected as valid encrypted media. Fixed by enforcing `minEncryptedLen = MAGIC_HEADER.size + GCM_IV_LENGTH + 16` (39 bytes). | `b1_036_isEncryptedRejectsTruncatedFilesShorterThanHeaderPlusIvPlusTag` | ✅ Fixed |
-| BATCH-1-037 | 🟠 Medium | `EncryptedMediaStorage.kt` | Missing streaming decryption and memory exhaustion hazard: Lacked `openDecryptedInputStream(file: File): InputStream?`, forcing callers to load whole files into memory via `readDecryptedBytes`. Also, `readDecryptedBytes` had no upper-bound file size check, risking `OutOfMemoryError` on files >50MB. Fixed by implementing `openDecryptedInputStream(file: File)` returning `CipherInputStream` for encrypted media or `FileInputStream` for legacy plaintext, and adding a 50MB size guard to `readDecryptedBytes`. | `b1_037_encryptedMediaStorageStreamingDecryptionAndSizeLimit` | ✅ Fixed |
-| BATCH-1-038 | 🟠 Medium | `CryptoBackupEngine.kt` | Identical IV reuse hazard between verifier and payload: In `openEncryptingStream` and `openDecryptingStream`, `verifierIv` and `payloadIv` lacked validation ensuring `!verifierIv.contentEquals(payloadIv)`. In AES-GCM, reusing IV with the same key across two ciphertexts destroys authenticity and leaks the authentication key. Fixed by ensuring `!verifierIv.contentEquals(payloadIv)` during generation and throwing `SecurityException` during decryption. | `b1_038_cryptoBackupEngineRejectsIdenticalVerifierAndPayloadIv` | ✅ Fixed |
-| BATCH-1-039 | 🟠 Medium | `VaultCryptoEngine.kt` | Sub-block truncated payload crypto exception crash and memory leakage: In `decryptBytesWithRawKey`, the size guard was `encryptedData.size < IV_BYTES` (12 bytes). If an encrypted array had 13–27 bytes (less than IV + 16-byte GCM tag), `cipher.doFinal` threw unhandled crypto exceptions. Also, `ciphertext` buffer was not zeroized. Fixed by guarding with `encryptedData.size < IV_BYTES + 16`, returning `IllegalArgumentException` on truncation, and zeroizing `ciphertext` in `finally`. | `b1_039_decryptBytesWithRawKeyRejectsSubBlockTruncationAndZeroizes` | ✅ Fixed |
-| BATCH-1-040 | 🟠 Medium | `BackupRestoreManager.kt` | Cross-device hardware-bound media backup & restore decryption failure: In `createEncryptedBackup`, files in `MEDIA_FOLDERS` were zipped as raw bytes directly from flash storage without decrypting them from `EncryptedMediaStorage`. Because `EncryptedMediaStorage` uses AndroidKeyStore hardware-backed keys bound to that specific physical device, restoring this backup on a new device caused 100% of media attachments to fail decryption with `AEADBadTagException`. Fixed by streaming media using `EncryptedMediaStorage.openDecryptedInputStream(file)` into the backup archive, and writing decrypted media on restore using `EncryptedMediaStorage.openEncryptedOutputStream(destFile)` to re-encrypt under the new device's KeyStore key. | `b1_040_backupRestoreManagerDecodesAndReEncodesMediaForCrossDevicePortability` | ✅ Fixed |
-
-**Batch 1 Result**: 6 Critical, 12 High, 18 Medium, 4 Low — **All 40 fixed** ✅
-**Pass 8 (Deep Adversarial Re-Audit) Summary**: Uncovered 8 additional security, data loss, and cryptographic flaws (BATCH-1-033 through BATCH-1-040). Added 8 automated TDD reproduction tests in `Batch1SecurityAuditTest.kt` (40 total unit tests passing). Applied targeted hardening across `VaultPayloadEncryptor.kt`, `ArchiveVaultSecurity.kt`, `EncryptedMediaStorage.kt`, `CryptoBackupEngine.kt`, `VaultCryptoEngine.kt`, and `BackupRestoreManager.kt`. Verified 100% test pass rate across Batch 1 and cross-batch regression suites (Batches 9, 10, 11, 12, 13).
-**Status**: Batch 1 complete (40/40 fixed). Ready for commit.
-
-
----
-
-
-
-### â˜ï¸ Batch 2: Cloud Sync, Authentication & Network Security
-- **Target Files**:
-  - [`SupabaseConfig.kt`](file:///app/src/main/java/com/focusbyrj/app/util/sync/supabase/SupabaseConfig.kt)
-  - [`SupabaseAuthManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/sync/supabase/SupabaseAuthManager.kt)
-  - [`SupabaseKeyManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/sync/supabase/SupabaseKeyManager.kt)
-  - [`SupabaseStorageEngine.kt`](file:///app/src/main/java/com/focusbyrj/app/util/sync/supabase/SupabaseStorageEngine.kt)
-  - [`SupabaseSyncEngine.kt`](file:///app/src/main/java/com/focusbyrj/app/util/sync/supabase/SupabaseSyncEngine.kt)
-  - [`AutoSyncManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/sync/supabase/AutoSyncManager.kt)
-  - [`VaultSyncManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/sync/VaultSyncManager.kt)
-  - [`DeviceSyncScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/sync/DeviceSyncScreen.kt)
-- **Key Inspection Focus**:
-  - Authentication tokens (JWT / refresh tokens): safe persistence, automatic token revocation, refresh race conditions.
-  - Zero-Knowledge cloud architecture: verifying no unencrypted payload ever touches Supabase buckets or tables.
-  - Network transport security: TLS enforcement, cleartext restrictions, MitM exposure.
-  - Sync race conditions: concurrent writes, merge conflicts, clock-skew vulnerabilities, and replay attacks.
-  - Signed URL lifecycle and storage bucket ACLs.
-
-#### Pre-Audit Hardened Findings
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| B2-PRE-001 | ðŸ”´ High | `SupabaseKeyManager.kt` | KeyStore alias collision overwrite fallback & IV handling: if alias existed but entry retrieval returned null, code fell through to `generateKey()`, overwriting master hardware keys and permanently stranding Supabase session tokens. Also hardened `encryptWithKeyStore` against null cipher IV. Fixed by throwing `SecurityException` and explicitly re-initializing cipher with `GCMParameterSpec`. | Code inspection & KeyStore lifecycle verification | âœ… Fixed |
-
-#### Adversarial Audit Findings & Resolutions (Pass 1 Deep Dive)
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| B2-F-001 | ðŸš¨ Critical | `SupabaseKeyManager.kt` | **Catastrophic note/task duplication upon re-login**: `clearSession()` wiped `focus_supabase_sync_id_mapping` and `focus_media_cloud_manifest`, destroying local-to-cloud ID mappings on logout while SQLite database retained the notes. Re-logging in caused 100% item duplication and storage re-upload. Fixed by preserving user-namespaced sync mappings and manifest across logouts. | `testClearSessionPreservesUserNamespacedSyncMapAndManifest` | âœ… Fixed |
-| B2-F-002 | ðŸš¨ Critical | `SupabaseSyncEngine.kt` | **Mutating query side-effects in `isMatchingItem`**: querying cloud matches invoked `getOrCreateSyncId()`, assigning random UUIDs and permanently rebinding unmapped local notes to arbitrary non-matching cloud items during query loops. Fixed by introducing read-only `getExistingSyncId()` lookup in `isMatchingItem()`. | `testIsMatchingItemHasNoSideEffects` | âœ… Fixed |
-| B2-F-003 | ðŸ”´ High | `SupabaseSyncEngine.kt` | **Remote tombstone media leak**: when processing remote deletion tombstones, `deleteNoteMediaFiles()` received an encrypted vault note payload directly where `imageUrisJson = "[]"`, leaving physical files and storage attachments orphaned on disk. Fixed by decrypting the note payload into `cleanNote` before purging attachments. | `testNoteMediaDeletionOnSyncTombstone` | âœ… Fixed |
-| B2-F-004 | ðŸŸ  Medium | `SupabaseSyncEngine.kt` | **Missing `trashedAt` serialization/deserialization**: notes pushed and pulled via sync omitted `trashedAt`, causing cloud-restored trashed notes to have null timestamps and breaking the 30-day auto-purge retention policy. Fixed by explicitly serializing and parsing `trashedAt`. | `testNoteTrashedAtPreservedInNoteEntity` | âœ… Fixed |
-| B2-F-005 | ðŸŸ  Medium | `SupabaseSyncEngine.kt` | **Non-deterministic PostgREST pagination**: `queryCloudEndpoint()` executed paginated requests (`limit`/`offset`) without an `order` clause. Under database row updates or concurrent writes, PostgREST returned rows out of order, skipping rows between pages. Fixed by appending `&order=id.asc`. | Code inspection & API verification | âœ… Fixed |
-| B2-F-006 | ðŸŸ  Medium | `SupabaseSyncEngine.kt` | **Content & timestamp deduplication fallback**: cloud restore when sync mapping was lost or after cross-device sync relied solely on syncId. For unmapped notes and tasks, added deterministic deduplication fallback: `createdAt` + `title` for notes, and `title` + `dueDate` for tasks. | Unit test & deduplication validation | âœ… Fixed |
-| B2-F-007 | ðŸŸ  Medium | `SupabaseSyncEngine.kt` | **Cross-device unscoped legacy ID collision**: `isMatchingItem` matched legacy cloud IDs formatted as `"localId"` without checking tenant userId scoping, potentially linking a new user's items to another device's local IDs. Fixed by scoping legacy ID match validation. | Unit test validation | âœ… Fixed |
-| B2-F-008 | ðŸŸ¡ Low | `SupabaseSyncEngine.kt` | **Offline deletion loss on blank memory session**: `recordLocalDeletion()` checked only `session.userId` in memory; if token was expired or cleared, local deletions were discarded and never synced as tombstones. Fixed by falling back to persistent `focus_supabase_zk_prefs` user ID before aborting. | Unit test validation | âœ… Fixed |
-
-| B2-F-009 | ðŸš¨ Critical | `SupabaseSyncEngine.kt` | **Remote tombstone wipes offline note media attachments**: when an offline-edited note was preserved as a `[Restored]` copy during remote tombstone processing, `deleteNoteMediaFiles(cleanNote)` was still unconditionally invoked, wiping physical attachment files from disk that the restored copy referenced. Fixed by only deleting media files if no restored copy was created. | `tombstoneWithOfflineEditsPreservesMediaAttachments` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-| B2-F-010 | ðŸš¨ Critical | `SupabaseSyncEngine.kt` | **Mass-drop anomaly snapshot captured after data destruction**: the >40% sync anomaly check captured an emergency snapshot *after* SQLite records had already been deleted and attachments wiped. Fixed by capturing a pre-sync safety snapshot of all notes and tasks before any pull or delete operations begin. | `preSyncSnapshotCapturesStateBeforeSyncOperations` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-| B2-F-011 | ðŸ”´ High | `AutoSyncWorker.kt`, `SupabaseSyncEngine.kt` | **Sync execution during Offline Mode**: `isOfflineMode` toggle in session preferences was ignored by background `AutoSyncWorker` and `SupabaseSyncEngine.performSync()`, leaking encrypted sync requests over the network even when offline mode was toggled on. Fixed by guarding sync execution in both worker and engine when `isOfflineMode == true`. | `offlineModeBlocksSyncEngineExecution` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-| B2-F-012 | ðŸ”´ High | `SupabaseKeyManager.kt`, `SupabaseAuthManager.kt`, `SupabaseSyncEngine.kt` | **Non-positive expiry validation & stale cached token return on 401/403**: `isTokenExpiring` returned false when `expiresAt <= 0L`, and `refreshSession()` returned cached tokens without hitting network if local clock hadn't reached `expiresAt - 120s`. On HTTP 401/403 or token revocation, retry used the same invalid token. Fixed by treating `expiresAt <= 0L` as expiring and adding `force: Boolean = false` to `refreshSession()` to force network refresh on auth failure. | `tokenExpiryHandlesNonPositiveAndForcedRefresh` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-| B2-F-013 | ðŸ”´ High | `NotesViewModel.kt` | **Undecrypted vault note media deletion leak in batch delete**: `deleteSelectedNotes()` called `recordNoteMediaDeletions()` and `deleteNoteMediaFiles()` directly on raw notes. For encrypted vault notes, `imageUrisJson` is blank, leaving physical media on disk and in Supabase Storage permanently. Fixed by decrypting vault notes via `decryptNotePayload()` before attachment cleanup. | `vaultNoteDecryptedBeforeExtractingMediaUris` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-| B2-F-014 | ðŸŸ  Medium | `SupabaseSyncEngine.kt`, `VaultSyncManager.kt` | **Missing `deletedAt` task serialization & fingerprint omission**: tasks soft-deleted in Phase 2 omitted `deletedAt` from sync JSON envelopes, backup payloads, and sync fingerprints. Restored or synced tasks lost soft-deletion retention timestamps, and local changes to `deletedAt` failed to trigger cloud push. Fixed by serializing, deserializing, and including `deletedAt` in all task fingerprints and payloads. | `taskDeletedAtFieldPreservedInSyncPayloadAndFingerprint` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-| B2-F-015 | ðŸŸ  Medium | `SupabaseSyncEngine.kt` | **Task concurrent conflict detection blind to subtasks, due date, and completion**: `hasTaskDiverged` only checked `title` and `details`. If a user modified subtasks, changed due dates, or toggled completion offline while remote made changes, `hasTaskDiverged` returned false and silently overwrote local edits without preserving a `[Conflict]` copy. Fixed by including `dueDate`, `isCompleted`, `subtasksJson`, and `isTrashed` in divergence checks. | `taskConflictDetectsSubtasksDueDateAndStatusDivergence` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-| B2-F-016 | ðŸŸ  Medium | `SupabaseKeyManager.kt` | **KeyStore alias collision swallowed into plaintext storage**: in `saveSession()`, `catch (e: Exception)` caught KeyStore alias collision `SecurityException` and degraded session tokens to insecure plaintext fallback preferences (`KEY_ACCESS_TOKEN`). Fixed by rethrowing `SecurityException` to prevent silent security degradation. | Code inspection & fail-closed verification | âœ… Fixed |
-| B2-F-017 | ðŸŸ  Medium | `VaultSyncManager.kt` | **Stale sync ID mappings on clean vault restore**: in `restoreVaultFromJson(mergeMode = false)`, local notes and tasks were purged but `focus_supabase_sync_ids` retained old local-to-cloud ID mappings. Restored items with recycled row IDs inherited obsolete cloud IDs. Fixed by clearing `focus_supabase_sync_ids` on clean restore. | `cleanVaultRestorePurgesStaleSyncMappings` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-| B2-F-018 | ðŸŸ¡ Low | `SupabaseSyncEngine.kt`, `VaultSyncManager.kt` | **Case-sensitive TaskType and RecurrencePattern parsing**: incoming cloud or backup JSON payloads with lowercase or mixed-case enum values threw `IllegalArgumentException` in `valueOf()`, defaulting to fallback values. Fixed with `.trim().uppercase()` before resolution. | `caseInsensitiveTaskTypeAndRecurrence` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-| B2-F-019 | ðŸŸ¡ Low | `AutoSyncManager.kt` | **Redundant immediate sync execution on recent completion**: `triggerImmediateSync()` awaited `debouncedJob?.join()`, but if that job completed 1ms earlier, a new sync ran immediately anyway. Fixed by checking `System.currentTimeMillis() - lastSyncCompletedTime < 5000L` before launching a new sync run. | `triggerImmediateSyncDebounceCheck` in `Batch2SecurityAuditTest.kt` | âœ… Fixed |
-
-**Batch 2 Result**: 4 Critical, 5 High, 8 Medium, 3 Low â€” **All 20 fixed** âœ…
-**Pass 2 Deep Dive Summary**: Uncovered and resolved 11 critical and high-severity data loss and security vulnerabilities (B2-F-009 through B2-F-019), wrote comprehensive regression tests in `Batch2SecurityAuditTest.kt`, hardened `AutoSyncWorker.kt`, `AutoSyncManager.kt`, `SupabaseKeyManager.kt`, `SupabaseAuthManager.kt`, `SupabaseSyncEngine.kt`, `VaultSyncManager.kt`, and `NotesViewModel.kt`, ensuring zero data loss during sync edge cases, offline operations, and token refresh scenarios.
-**Status**: Batch 2 Pass 2 complete (20/20 fixed). Ready for commit & proceeding to Batch 3.
-
----
-
-### ðŸ“± Batch 3: Android Component Security, IPC, Intents & Permissions
-- **Target Files**:
-  - [`AndroidManifest.xml`](file:///app/src/main/AndroidManifest.xml)
-  - [`file_paths.xml`](file:///app/src/main/res/xml/file_paths.xml)
-  - Broadcast Receivers: [`BootReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/service/BootReceiver.kt), [`PackageChangeReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/service/PackageChangeReceiver.kt), [`FocusDeviceAdminReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/service/FocusDeviceAdminReceiver.kt), [`DailySummaryReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/service/DailySummaryReceiver.kt), [`AptitudeReminderReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/service/AptitudeReminderReceiver.kt), [`HabitReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/service/HabitReceiver.kt), [`HabitActionReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/service/HabitActionReceiver.kt), [`TaskReminderReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/service/TaskReminderReceiver.kt), [`TaskActionReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/service/TaskActionReceiver.kt)
-  - Exported Activities & Providers: [`ShareToNoteActivity.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/ShareToNoteActivity.kt), [`QuickAddTaskActivity.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/QuickAddTaskActivity.kt), [`TaskReminderPopupActivity.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/TaskReminderPopupActivity.kt)
-  - Widgets: [`NoteWidgetProvider.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/NoteWidgetProvider.kt), [`TodoWidgetProvider.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/TodoWidgetProvider.kt), [`NoteWidgetService.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/NoteWidgetService.kt), [`TodoWidgetService.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/TodoWidgetService.kt)
-- **Key Inspection Focus**:
-  - Exported components audit: checking for missing permissions on exported activities, receivers, and widget providers.
-  - FileProvider path configuration: reviewing `file_paths.xml` (`cache-path`, `files-path`, `external-path`) for potential file leakage or arbitrary file overwrite.
-  - PendingIntent flags: ensuring `FLAG_IMMUTABLE` is enforced everywhere unless mutability is explicitly required.
-  - Intent extras sanitization: untrusted input validation, malicious payload handling from `android.intent.action.SEND`.
-  - Device Administrator policy scope and uninstallation protection bypasses.
-
-#### Adversarial Audit Findings & Resolutions (Deep Dive)
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| B3-F-001 | ðŸš¨ Critical | `TaskReminderHelper.kt` | **Task Destruction on Reminder Completion**: `completeTask()` called `taskDao.deleteTask(existing)` and `SupabaseSyncEngine.recordLocalDeletion()`. Marking a task complete via notification action or reminder overlay permanently purged it from Room and synced a tombstone to Supabase instead of marking `isCompleted = true`. Fixed by marking task completed, recording `completedAt`, and preserving the row. | `testTaskReminderHelperCompleteTaskMarksCompletedDoesNotDelete` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-| B3-F-002 | ðŸ”´ High | `QuickEditNoteActivity.kt` | **Note & Media Destruction on Blank Content**: When `candidate.isEmptyNote()` was true, `QuickEditNoteActivity` hard-deleted the note from Room, erased attached media files on disk, and recorded a local deletion tombstone, completely bypassing the 30-day trash retention safety net and pre-op snapshot. Also permitted editing trashed notes. Fixed by rejecting editing trashed notes and replacing hard delete with `writePreOpSnapshot` and `softDeleteNote()`. | Code inspection & manual verification | âœ… Fixed |
-| B3-F-003 | ðŸ”´ High | `TaskReminderReceiver.kt`, `TaskReminderHelper.kt`, `BootReceiver.kt` | **Reminder Alarm & Notification Leak for Trashed Tasks**: Tasks soft-deleted into the trash still triggered notifications and floating reminder overlays upon alarm trigger because `TaskReminderReceiver` and `scheduleReminder()` only checked `task.isCompleted`, omitting `task.isTrashed`. Furthermore, `BootReceiver` rescheduled alarms for trashed tasks after reboot. Fixed by adding `isTrashed` guards to cancel reminders and abort notification posting. | `testTaskReminderIgnoresAndCancelsForTrashedTasks` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-| B3-F-004 | ðŸ”´ High | `DailySummaryReceiver.kt`, `TaskDao.kt` | **Midnight Purge Tombstone Omission & Trash Purge Absence**: `ACTION_MIDNIGHT_PURGE` hard-deleted completed tasks older than 30 days without generating cloud synchronization tombstones via `SupabaseSyncEngine.recordLocalDeletion()`, causing purged tasks to resurrect from cloud sync on other devices. In addition, expired 30-day trash was never purged. Fixed by recording sync tombstones for all expired tasks and invoking `DataSafetyManager.purgeExpiredTrash()`. | Code inspection & query verification | âœ… Fixed |
-| B3-F-005 | ðŸŸ  Medium | `NoteImageHelper.kt` | **Double-Decryption & Plaintext Heap Residue in Widget Image Loading**: `loadBitmapForWidget()` opened and decrypted the encrypted image stream twice (once for bounds calculation and again for full bitmap decoding). Decrypted intermediate byte buffers in `loadBitmapForWidget`, `processAndSaveImage`, and `processAndSaveBitmap` were not zeroized in memory. Fixed with single-pass byte array decode, zeroizing buffers in `finally`, and capping batch image processing at 20 items. | `testNoteImageHelperWidgetBitmapDecode`, `testProcessAndSaveMultipleImagesCapsAtSafeLimit` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-| B3-F-006 | ðŸŸ  Medium | `QuickAddNoteItemActivity.kt`, `NoteWidgetActionReceiver.kt` | **Trashed Note Mutation via Widget Actions & Quick Add**: `QuickAddNoteItemActivity` and `NoteWidgetActionReceiver` checked `note.isArchived` but allowed appending checklist items or toggling checkmarks on notes currently in the trash, reviving or modifying trashed content out of band. Fixed by adding `!note.isTrashed` validation. | `testNoteWidgetActionReceiverRefusesModifyingTrashedNotes` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-| B3-F-007 | ðŸŸ  Medium | `NoteWidgetService.kt`, `NotesnookBlockModel.kt` | **Raw JSON Blocks Leaked in App Widget RemoteViews**: `NoteWidgetService` split raw note text by newline `\n`, displaying raw `<!--BLOCKS_START-->` JSON tags in widget views. `NotesnookBlockManager.toPlainText()` did not support `<!--BLOCKS_START-->` tag formats. Fixed by supporting both block formats and parsing notes through `NotesnookBlockManager.toPlainText()` before displaying on widgets. | `testNoteWidgetExtractsCleanPlainTextFromNotesnookBlocks` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-| B3-F-008 | ðŸŸ  Medium | `TodoWidgetProvider.kt`, `TodoWidgetService.kt`, `QuickAddTaskActivity.kt` | **Unsafe FocusApplication Casts & Trashed Task Inclusion in Widgets**: `context.applicationContext as FocusApplication` caused fatal `ClassCastException` in non-standard app contexts or instrumentation runners. Moreover, widget counts and task lists did not exclude trashed tasks. Fixed by using safe casts (`as? FocusApplication ?: return`) and adding `!it.isTrashed` filters. | Code inspection & verification | âœ… Fixed |
-| B3-F-009 | ðŸŸ  Medium | `TaskReminderHelper.kt`, `TaskActionReceiver.kt` | **PendingResult Broadcast Leak & ANR Risk**: `completeTask`, `rescheduleTask`, and `toggleTaskById` returned early on null application context or uncaught exceptions without invoking `onDone`, stranding `goAsync().finish()` in `TaskActionReceiver` and triggering Android ANR warnings. Fixed by guaranteeing `onDone` invocation in `finally` and wrapping receiver dispatch in `try-catch`. | Code inspection & TDD verification | âœ… Fixed |
-| B3-F-010 | ðŸŸ  Medium | `TaskReminderHelper.kt` | **Trashed Task Toggling via TaskReminderHelper**: `toggleTaskById()` only checked `if (existing != null)` without checking `!existing.isTrashed`, permitting external reminder intents or widgets to toggle trashed tasks back to completed/active states. Fixed by guarding with `!existing.isTrashed`. | `testTaskReminderHelperToggleTaskRefusesTrashedTask` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-| B3-F-011 | ðŸŸ¡ Low | `NoteImageHelper.kt` | **Unbounded Batch Image Extraction Denial of Service**: `processAndSaveMultipleImages()` accepted unbounded lists of URIs without limit, which could cause massive memory spikes and UI thread freezes during large image shares. Fixed by enforcing a strict cap of 20 images (`uris.take(20)`). | `testProcessAndSaveMultipleImagesCapsAtSafeLimit` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-| B3-F-012 | ðŸ”´ High | `HabitActionReceiver.kt` | **Stale Notification Progress & Alarm Mutation on Archived Habits**: In `ACTION_INCREMENT_HABIT` and `ACTION_SNOOZE_HABIT`, `app.habitRepository.getHabitById(habitId)` did not verify `habit.isArchived` or `!habit.isReminderEnabled`. If a habit was archived while a notification remained in the system tray, tapping "+1" logged progress to Room, granted EXP/Gold, and rescheduled alarms for an archived habit. Fixed by guarding both actions and cancelling lingering reminders and notifications. | `testHabitActionReceiverRefusesIncrementingArchivedHabits` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-| B3-F-013 | ðŸŸ  Medium | `TaskReminderPopupActivity.kt` | **Popup Displaying & Mutating Completed or Trashed Tasks**: `LaunchedEffect(taskId)` queried `dbTask` from Room but only checked `if (dbTask != null)`. If a task was completed or trashed elsewhere (via widget, notification, or sync), the popup still rendered the completed/trashed task and allowed re-completing/rescheduling it. Fixed by calling `onDismiss()` and aborting if `dbTask.isCompleted || dbTask.isTrashed`. | Verified via regression inspection & lifecycle dismissal | âœ… Fixed |
-| B3-F-014 | ðŸŸ¡ Low | `TaskReminderPopupActivity.kt` | **Case-Sensitive & Untrimmed Enum Parsing Exception**: `TaskType.valueOf(initialTypeStr)` and `RecurrencePattern.valueOf(initialRecurrenceStr)` threw `IllegalArgumentException` on lowercase or untrimmed intent strings, falling back to default values. Fixed by adding `.trim().uppercase(Locale.ROOT)` normalization. | `testTaskReminderPopupActivityCaseInsensitiveParsing` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-| B3-F-015 | ðŸŸ  Medium | `NoteWidgetProvider.kt`, `NoteWidgetService.kt` | **Stale Trashed/Archived Note Display in App Widgets**: When resolving `currentNote` and `resolvedNote`, both components checked `latestNotesCache` and unconditionally used `cached` if `cached.updatedAt >= note.updatedAt` without verifying `!cached.isTrashed && !cached.isArchived`. If a note was recently trashed or archived in the UI, the widget rendered the trashed note and bound `QuickEditNoteActivity` click intents for it. Fixed by filtering `allMatchingNotes` and validating `!isTrashed && !isArchived` before resolving cached notes. | `testNoteWidgetFiltersOutTrashedOrArchivedCachedNotes` in `Batch3SecurityAuditTest.kt` | âœ… Fixed |
-
-**Batch 3 Result**: 1 Critical, 4 High, 8 Medium, 2 Low â€” **All 15 fixed** âœ…
-**Deep Dive Summary**: Conducted an exhaustive, two-pass adversarial audit across all Android components, IPC receivers, exported activities, widget providers, services, and intent handlers. Uncovered and patched 15 vulnerabilities ranging from destructive task hard-deletion on reminder completion to trashed entity mutations, archived habit mutation via notification actions, double-decryption heap residue, broadcast PendingResult leaks, case-sensitive enum parsing, and widget rendering flaws. Wrote automated regression tests in `Batch3SecurityAuditTest.kt` and verified 100% test pass rate (10/10 tests green).
-**Status**: Batch 3 complete (15/15 fixed). Ready for commit & proceeding to Batch 4.
-
----
-
-### ðŸ›¡ï¸ Batch 4: System Services, App Blocking & Background Execution
-- **Target Files**:
-  - [`FocusBlockerService.kt`](file:///app/src/main/java/com/focusbyrj/app/service/FocusBlockerService.kt)
-  - [`BlockOverlayManager.kt`](file:///app/src/main/java/com/focusbyrj/app/service/BlockOverlayManager.kt)
-  - [`BubbleService.kt`](file:///app/src/main/java/com/focusbyrj/app/service/BubbleService.kt)
-  - [`HabitFloatingOverlayManager.kt`](file:///app/src/main/java/com/focusbyrj/app/service/HabitFloatingOverlayManager.kt)
-  - [`TaskReminderOverlayManager.kt`](file:///app/src/main/java/com/focusbyrj/app/service/TaskReminderOverlayManager.kt)
-  - [`UnifiedOverlayCoordinator.kt`](file:///app/src/main/java/com/focusbyrj/app/service/UnifiedOverlayCoordinator.kt)
-  - Helpers: [`TemporaryUnlockManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/TemporaryUnlockManager.kt), [`UsageBreakTracker.kt`](file:///app/src/main/java/com/focusbyrj/app/util/UsageBreakTracker.kt), [`UsageStatsHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/util/UsageStatsHelper.kt), [`DndHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/util/DndHelper.kt)
-- **Key Inspection Focus**:
-  - Adherence to BAL restriction rules: ensuring zero activity launches in background blocking flows.
-  - WindowManager overlay lifecycle: `WindowManager.BadTokenException`, leaked views on service kill or configuration change.
-  - Overlay security: `FLAG_NOT_TOUCH_MODAL` tapjacking protections, secure overlay flags (`setHideOverlayWindows` / untrusted touch filtering).
-  - Android 14+ Foreground Service types (`specialUse`, requirements, notification synchronization).
-  - Exact alarm quota exhaustion (`SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM`) and battery saver survival.
-
-#### Adversarial Audit Findings & Resolutions (Pass 1 & Pass 2 Deep Dive)
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-4-001 | 🔴 High | `BubbleService.kt` | **Unexported Receiver Flag Missing on Android 13+**: `BroadcastReceiver` registered dynamically without `RECEIVER_NOT_EXPORTED` on API 33+, leaving service control open to external apps. Remediated with `ContextCompat.registerReceiver` using `RECEIVER_NOT_EXPORTED`. | `batch4_001_bubbleServiceReceiverMustBeNotExportedOnApi33` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-002 | 🔴 High | `BubbleService.kt` | **Foreground Service Type Guard Targeting API 29 Instead of 34**: `startForeground` called with `FOREGROUND_SERVICE_TYPE_SPECIAL_USE` under `Build.VERSION_CODES.Q` (29) instead of `UPSIDE_DOWN_CAKE` (34), risking runtime crashes on Android 10-13. Remediated by guarding with `Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE`. | `batch4_002_bubbleServiceStartForegroundGuardTargetsApi34` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-003 | 🟠 Medium | `FocusExitTracker.kt` | **Stale Exit Package State Retention**: `lastExitedPackage` and `exitTimestamp` retained stale foreground package after exit detected, risking false positive re-triggers. Remediated by clearing state on exit detection. | `batch4_003_focusExitTrackerClearsStalePackageOnExit` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-004 | 🟠 Medium | `FocusBlockerService.kt` | **Session Flag Wipe on Task Removal**: `onTaskRemoved` wiped `isSessionActive` in SharedPreferences, terminating active focus sessions on swipe-to-kill. Remediated by preserving session state across task removal. | `batch4_004_focusBlockerServiceOnTaskRemovedPreservesSessionState` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-005 | 🟠 Medium | `FocusBlockerService.kt` | **Redundant Room DB Queries on Unrestricted App Launch**: Every package poll queried Room even for unrestricted apps. Remediated by caching restrictions in-memory (`cachedRestrictions`). | `batch4_005_focusBlockerServiceUsesCachedRestrictions` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-006 | 🟠 Medium | `UnifiedOverlayCoordinator.kt` | **Watchdog Runnable Leak on Natural Dismissal**: Watchdog fallback runnable was not cancelled when an overlay dismissed naturally, causing false-positive queue advancement. Remediated by cancelling watchdog on dismiss. | `batch4_006_coordinatorWatchdogCancelledOnNaturalDismiss` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-007 | 🟠 Medium | `HabitActionReceiver.kt` | **WakeLock Leak on Exception**: WakeLock was not released in a `finally` block if an unhandled exception occurred in habit processing. Remediated with try-finally release pattern. | `batch4_007_habitReceiverReleasesWakeLockInFinally` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-008 | 🔴 High | `FocusBlockerService.kt` | **Shadowed Package Scoping Drops Watchdog Broadcast & Receiver Export Flags**: In `checkAndBlockApp(packageName: String)`, parameter shadowed `Context.packageName`. `sendBroadcast(Intent(BubbleService.ACTION_VERIFY_BUBBLE_STATE).setPackage(packageName))` set intent package to third-party blocked app (e.g. `com.instagram.android`), dropping broadcast and breaking bubble self-healing. Also dynamically registered system broadcasts (`screenReceiver`, `packageReceiver`) lacked `RECEIVER_EXPORTED` on API 33+. Remediated by using `this@FocusBlockerService.packageName` and `RECEIVER_EXPORTED`. | `batch4_008_verifyBubbleStateIntentMustBeScopedToAppPackageNotBlockedApp` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-009 | 🔴 High | `UnifiedOverlayCoordinator.kt` | **Concurrent Delayed Runnable Race on Rapid Overlay Dismissals**: In `onOverlayDismissed`, an untracked anonymous 280ms runnable was posted to the main handler. Rapid consecutive dismissals posted duplicate runnables, popping multiple overlays from queue and rendering two floating overlay cards stacked on top of each other. Remediated with tracked `pendingAdvanceRunnable` and cancellation on dismiss. | `batch4_009_coordinatorRapidDismissalDoesNotAdvanceQueueTwice` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-010 | 🔴 High | `UnifiedOverlayCoordinator.kt` | **Orphaned Overlay Advance After Queue Clear**: `clearQueue()` cleared `queue` and reset `isAnyOverlayShowing = false`, but failed to cancel `pendingAdvanceRunnable`. An in-flight 280ms runnable would fire post-clear, attempt to pop from queue, or corrupt coordinator state. Remediated by cancelling `pendingAdvanceRunnable` in `clearQueue()`. | `batch4_010_coordinatorClearQueueCancelsPendingAdvanceRunnable` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-011 | 🔴 High | `HabitFloatingOverlayManager.kt` | **Overlay View Replacement Race in 180ms Fade Animation**: In `dismissOverlayInternal(animated = true)`, `onAnimationEnd` unconditionally cleared `overlayCard = null` and notified `UnifiedOverlayCoordinator`. If a new habit card was shown during 180ms fade-out, callback nulled newly created view reference, stranding it on screen. Remediated by verifying `if (overlayCard === card)` and cancelling existing animations on dismiss. | Code inspection & regression test | ✅ Fixed |
-| BATCH-4-012 | 🔴 High | `TaskReminderOverlayManager.kt` | **Async removeView Queue Stall & WindowManager Crash**: Used asynchronous `removeView()` instead of synchronous `removeViewImmediate()`, risking crash under rapid state changes. If `overlayView` was null on failure, `appContext` remained null and `UnifiedOverlayCoordinator.onOverlayDismissed` was never called, permanently stalling queue. Remediated by using `removeViewImmediate()` with fallback, and adding `fallbackContext` parameter to `hideOverlayDirect`. | Code inspection & regression test | ✅ Fixed |
-| BATCH-4-013 | 🟠 Medium | `BubbleService.kt` | **BAL Activity Launch Crash & Coroutine/Animator Leak in onDestroy**: `openChatWindow()` invoked `startActivity` without catching `SecurityException` / BAL restrictions, risking service crash. `serviceScope` and `peekAnimator` were not cancelled in `onDestroy()`. `dismissPreviewPill()` used async `removeView`. Remediated by adding try-catch, cancelling `serviceScope` and `peekAnimator` in `onDestroy()`, and using `removeViewImmediate()`. | Code inspection & regression test | ✅ Fixed |
-| BATCH-4-014 | 🔴 High | `BlockOverlayManager.kt` | **Tapjacking & Event Leakage via FLAG_NOT_TOUCH_MODAL**: Full-screen blocking overlay had `FLAG_NOT_TOUCH_MODAL`, allowing touch events around notches, cutouts, or navigation bars to leak through to underlying blocked application. Remediated by removing `FLAG_NOT_TOUCH_MODAL` ensuring strict modal capture, and passing context to `hideOverlay(context)`. | `batch4_014_blockOverlayMustNotIncludeFlagNotTouchModal` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-015 | 🟠 Medium | `UsageStatsHelper.kt`, `UsageBreakTracker.kt`, `TemporaryUnlockManager.kt`, `DndHelper.kt` | **Concurrency, Division & Double-Alert Hazards in Background Helpers**: (1) `homePackagesCache` in `UsageStatsHelper` was non-thread-safe `mutableSetOf`, risking `ConcurrentModificationException`; added `CopyOnWriteArraySet`. (2) `UsageBreakTracker` Day Rule 2 fired simultaneously with Day Rule 1 without checking `!alertTriggered`, double-alerting unread badges. (3) `TemporaryUnlockManager` unclamped minutes and used async `.apply()`; clamped to `1..1440` with synchronous `.commit()`. (4) `DndHelper` lacked safe casts and exception handling around notification policy checks. Remediated across all helpers. | `batch4_015_usageStatsHelperHomePackagesConcurrentSafety` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-016 | 🔴 High | `BlockOverlayManager.kt`, `TaskReminderOverlayManager.kt`, `HabitFloatingOverlayManager.kt` | **Zombie Overlay Window Leak on Rapid Pre-Attachment Removal**: When an overlay was dismissed rapidly (before first traversal dispatch/layout pass), guarding `removeViewImmediate` with `view.isAttachedToWindow || view.windowToken != null` evaluated false. The view was skipped from removal, while `overlayView` was nulled out in `finally`, permanently stranding an undeletable zombie window in WindowManagerGlobal. Remediated by unconditionally invoking `removeViewImmediate` with `removeView` fallback. | `batch4_016_blockOverlaySafeClampingAndModalProperties` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-017 | 🔴 High | `BubbleService.kt` | **Double-Add WindowManager Crash & Orphaned Preview Pill**: (1) `addBubbleToWindowManager()` only checked `bv.isAttachedToWindow || bv.windowToken != null`, causing duplicate `addView` calls and `IllegalStateException` crashes on rapid invocations before view attachment. (2) `dismissPreviewPill` returned early if `pill.windowToken == null`, stranding pending preview pills. (3) 200ms pill exit animation nulled `previewPillView` even if a new pill was presented. Remediated with `isBubbleAdded` guard, unconditional pill removal, and identity verification (`previewPillView === pill`). | `batch4_017_bubbleServiceSnoozeStateAndIdempotence` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-018 | 🔴 High | `FocusBlockerService.kt` | **Unilateral Focus Session Wipe on Service Destruction & Concurrent Home Packages**: `FocusBlockerService.onDestroy()` unilaterally executed `prefs.edit().putBoolean("isSessionActive", false)`, wiping the user's active focus session whenever the service was destroyed under memory pressure or recreated by `START_STICKY`. Also `homePackages` was a non-thread-safe `mutableSetOf`. Remediated by removing session wipe in `onDestroy()` and upgrading to `CopyOnWriteArraySet`. | `batch4_018_focusBlockerServiceOnDestroyPreservesSessionActive` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-019 | 🔴 High | `BlockActivity.kt` | **Fallback BlockActivity Deaf to Dismissal While Paused**: Fallback `BlockActivity` registered `closeReceiver` in `onResume()` and unregistered in `onPause()`. When `BlockOverlayManager` successfully displayed a floating overlay, `BlockActivity` was paused in the background, dropping the `CLOSE_BLOCK_SCREEN` broadcast and causing `BlockActivity` to pop up on top of home when the overlay was closed. Remediated by registering in `onCreate()` and unregistering in `onDestroy()`. | Code inspection & lifecycle test | ✅ Fixed |
-| BATCH-4-020 | 🔴 High | `UnifiedOverlayCoordinator.kt` | **Asynchronous clearQueue Delay, Thread Insecurity & Unbounded FIFO Queue Flood**: `clearQueue()` unconditionally used `handler.post`, causing delayed execution when called from main thread; `onOverlayDismissed` lacked main looper verification; `queue` was unbounded, allowing rapid notifications to queue dozens of overlays. Remediated by running synchronously on main thread in `clearQueue()`, ensuring main looper in `onOverlayDismissed()`, and capping `queue` with `MAX_QUEUE_SIZE = 10`. | `batch4_020_coordinatorSynchronousClearAndMaxQueueCap` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-021 | 🟠 Medium | `BlockOverlayManager.kt` | **Duration Bounds Coercion & Context Fallback Propagation**: `soft_lock_duration` and `soft_unlock_duration` lacked bounds clamping, allowing 0 or negative values to bypass pause countdowns; `tryShowOverlay` exception handler did not pass `context` to `hideOverlay(context)`, omitting fallback Activity dismissal signal. Remediated by coercing lock duration to `5..120`, unlock duration to `1..60`, and passing `context` to `hideOverlay(context)`. | `batch4_016_blockOverlaySafeClampingAndModalProperties` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-022 | 🟠 Medium | `UsageBreakTracker.kt` | **Stale Tracked App Package Retention After Long Screen-Off & Backward Clock Drift Lockout**: (1) `onScreenOn()` did not reset `trackedAppPackage = null` when screen was off for > 2 mins (e.g. overnight 8-hour sleep), resuming usage of yesterday's app. (2) If device clock jumped backwards, `now - lastAlert` produced negative duration, permanently locking out sleep/break alerts. Remediated by clearing `trackedAppPackage = null` on prolonged screen-off and resetting cooldown on negative drift. | `batch4_022_usageBreakTrackerScreenOffResetsTrackedApp` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-4-023 | 🟠 Medium | `UsageStatsHelper.kt`, `TemporaryUnlockManager.kt` | **Unchecked AppOps Cast, Unhandled Intent Start & Expired Unlock Pruning**: (1) `hasUsageStatsPermission()` used direct `as AppOpsManager` cast; (2) `requestUsageStatsPermission()` lacked `runCatching` around `startActivity`; (3) `TemporaryUnlockManager.revokeUnlock()` used async `.apply()` instead of `.commit()`; added `pruneExpiredUnlocks` to prevent unbounded growth of `temporary_unlock_prefs.xml`. Remediated across both helpers. | `batch4_023_temporaryUnlockManagerRevokeCommitAndCleanExpired` in `Batch4SecurityAuditTest.kt` | ✅ Fixed |
-
-**Batch 4 Result**: 0 Critical + 13 High + 10 Medium = **23 Total — All 23 fixed** ✅  
-**Test Suite**: `Batch4SecurityAuditTest.kt` (22 automated regression tests, 100% passing).  
-**BAL Compliance**: Strict direct `WindowManager.addView` (`TYPE_APPLICATION_OVERLAY`) blocking preserved — zero `startActivity` blocking calls.  
-**Deep Dive Summary**: Conducted an exhaustive, 3-pass adversarial deep dive over System Services, App Blocking & Background Execution (`FocusBlockerService.kt`, `BlockOverlayManager.kt`, `BubbleService.kt`, `HabitFloatingOverlayManager.kt`, `TaskReminderOverlayManager.kt`, `UnifiedOverlayCoordinator.kt`, `BlockActivity.kt`, and utility helpers). Remediated 23 vulnerabilities across three passes, including zombie view leaks from premature attachment checks, double `addView` WindowManager crashes, unilateral focus session destruction in `onDestroy()`, background receiver deafness in `BlockActivity`, unbounded coordinator queue floods, negative clock drift lockouts, and duration bound corruptions.  
-**Status**: Batch 4 complete (23/23 fixed). Fully hardened and regression tested.
-
----
-
-### ðŸ’¾ Batch 5: Databases, Migrations & Backup/Export Pipeline
-- **Target Files**:
-  - Room Databases: [`FocusDatabase.kt`](file:///app/src/main/java/com/focusbyrj/app/data/FocusDatabase.kt), [`FocusDatabaseMigrationHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/data/FocusDatabaseMigrationHelper.kt), [`NoteDatabase.kt`](file:///app/src/main/java/com/focusbyrj/app/data/note/NoteDatabase.kt), [`NoteDatabaseMigrationHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/data/note/NoteDatabaseMigrationHelper.kt), [`VocabDatabase.kt`](file:///app/src/main/java/com/focusbyrj/app/data/VocabDatabase.kt)
-  - DAOs & Repositories: [`NoteDao.kt`](file:///app/src/main/java/com/focusbyrj/app/data/note/NoteDao.kt), [`NoteRepository.kt`](file:///app/src/main/java/com/focusbyrj/app/data/note/NoteRepository.kt), [`HabitDao.kt`](file:///app/src/main/java/com/focusbyrj/app/data/HabitDao.kt), [`HabitRepository.kt`](file:///app/src/main/java/com/focusbyrj/app/data/HabitRepository.kt), [`TaskDao.kt`](file:///app/src/main/java/com/focusbyrj/app/data/TaskDao.kt), [`TaskRepository.kt`](file:///app/src/main/java/com/focusbyrj/app/data/TaskRepository.kt), [`AppRestrictionDao.kt`](file:///app/src/main/java/com/focusbyrj/app/data/AppRestrictionDao.kt), [`AppRepository.kt`](file:///app/src/main/java/com/focusbyrj/app/data/AppRepository.kt)
-  - Backup & Export: [`BackupRestoreManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/backup/BackupRestoreManager.kt), [`CryptoBackupEngine.kt`](file:///app/src/main/java/com/focusbyrj/app/util/backup/CryptoBackupEngine.kt), [`ArticleExporter.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleExporter.kt), [`ArticlePdfGenerator.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticlePdfGenerator.kt), [`ArticleDocxGenerator.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleDocxGenerator.kt)
-- **Key Inspection Focus**:
-  - SQL injection in dynamic Room raw queries (`SimpleSQLiteQuery`).
-  - Database schema migration safety (data loss or corrupt migrations from older versions).
-  - Backup archive security: **Zip Slip vulnerability check** (preventing directory traversal attacks when unpacking `.zip` / `.tar` archives).
-  - Export document generators: memory consumption on large files, HTML/script injection into PDF webview rendering.
-
----
-
-### ðŸ“ Batch 6: Rich Content, Note Engine & Media Processing
-- **Target Files**:
-  - Editors & Widgets: [`KeepNoteEditor.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepNoteEditor.kt), [`NotesnookBlockModel.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookBlockModel.kt), [`NotesnookBlockWidgets.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookBlockWidgets.kt), [`NotesnookTableWidget.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookTableWidget.kt), [`NotesnookFormattingHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookFormattingHelper.kt), [`RichTextEngine.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/RichTextEngine.kt)
-  - Media & Audio: [`AudioMemoManager.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/AudioMemoManager.kt), [`VoiceRecordDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/VoiceRecordDialog.kt), [`KeepSketchDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepSketchDialog.kt), [`NoteImageHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/data/note/NoteImageHelper.kt), [`NoteMediaManager.kt`](file:///app/src/main/java/com/focusbyrj/app/data/note/NoteMediaManager.kt)
-- **Key Inspection Focus**:
-  - Media file privacy: preventing unencrypted media caching in globally accessible directories.
-  - Sketch canvas: bitmap allocation OOM errors, missing bitmap recycle calls.
-  - Audio recording: unclosed `MediaRecorder` or `AudioRecord` sessions holding hardware microphones open.
-  - Rich text parser resilience: pathological inputs, deeply nested markdown blocks causing stack overflows or UI freezes.
-
----
-
-### ðŸ§  Batch 7: AI/Dialogue Engines, Math Logic & Parsing
-- **Target Files**:
-  - Assistant & Natural Language: [`AyvaDialogueEngine.kt`](file:///app/src/main/java/com/focusbyrj/app/util/AyvaDialogueEngine.kt), [`AyvaTalkEngine.kt`](file:///app/src/main/java/com/focusbyrj/app/util/AyvaTalkEngine.kt), [`OfflineNluEngine.kt`](file:///app/src/main/java/com/focusbyrj/app/util/OfflineNluEngine.kt), [`TalkAction.kt`](file:///app/src/main/java/com/focusbyrj/app/util/TalkAction.kt)
-  - Arithmetic & Date: [`ArithmeticEngine.kt`](file:///app/src/main/java/com/focusbyrj/app/util/ArithmeticEngine.kt), [`SmartDateParser.kt`](file:///app/src/main/java/com/focusbyrj/app/util/SmartDateParser.kt)
-  - Economy & Gamification: [`FocusEconomyManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/FocusEconomyManager.kt), [`DailyQuestManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/DailyQuestManager.kt), [`AptitudeManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/AptitudeManager.kt), [`StreakManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/StreakManager.kt)
-- **Key Inspection Focus**:
-  - Math parser crashes: division by zero, floating-point precision flaws, stack overflows on complex nested parentheses.
-  - ReDoS (Regular Expression Denial of Service) in `SmartDateParser` and NLU string matching.
-  - Economy manipulation / integer overflow in focus tokens, streak calculation edge cases around timezones and daylight saving time.
-  - Talk engine intent execution validation (preventing unexpected state corruption via parsed voice commands).
-  - Ayva Talk Chat Window zero-knowledge note isolation and task data safety invariants.
-
-#### Adversarial Audit Findings & Resolutions (Deep Dive)
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-7-001 | ðŸŸ  Medium | `ArithmeticEngine.kt` | **Duplicate Wrong Number Series Options & Quadratic Options Out of Bounds**: Quadratic equation options generated out-of-bounds negative roots or identical roots. Wrong number series generator produced fewer than 5 unique choices. Remediated by computing clean distinct quadratic bounds and ensuring exactly 5 unique options. | `testArithmeticEngineQuadraticOptionsDistinctAndValid` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-002 | ðŸš¨ Critical | `AyvaTalkEngine.kt` | **Task Destruction on Voice/Chat Completion**: In `AyvaTalkEngine.kt`, completing a task invoked `taskDao.deleteTask(task)` and queued a local deletion tombstone via `SupabaseSyncEngine.recordLocalDeletion()`. This permanently purged completed tasks from SQLite and propagated deletions across devices instead of marking `isCompleted = true` and updating `completedAt`. Remediated by marking `isCompleted = true` and preserving the row. | `testAyvaTalkCompleteTaskMarksCompletedDoesNotDelete` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-003 | ðŸ”´ High | `AyvaTalkEngine.kt` | **Stale Timestamp on Task Reschedule via Talk Engine**: Rescheduling tasks via voice/chat updated `dueDate` but did not update `updatedAt = System.currentTimeMillis()`. Supabase LWW conflict resolution discarded the rescheduled task during sync. Remediated by setting monotonic `updatedAt`. | `testAyvaTalkRescheduleTaskUpdatesMonotonicTimestamp` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-004 | ðŸŸ  Medium | `SmartDateParser.kt` | **Regex Word Boundary Substring False Positives ("am"/"pm")**: Regex matched "am" substrings inside ordinary words like "team", "exam", "stream", misinterpreting them as 12-hour AM time markers. Remediated by tightening word boundary matching `\b(am|pm)\b`. | `testSmartDateParserNoFalsePositiveAmPmInWords` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-005 | ðŸŸ  Medium | `SmartDateParser.kt` | **Immediate Overdue Timestamp for "Today" Tasks Created in Afternoon**: When "today" had no explicit time specified, `SmartDateParser` defaulted to 8:00 AM, creating tasks that were instantly marked overdue when created in the afternoon. Remediated by setting default time to 9:00 PM (or 11:59 PM if after 9:00 PM) for same-day tasks. | `testSmartDateParserTodayInAfternoonNotImmediateOverdue` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-006 | ðŸ”´ High | `DailyQuestManager.kt` | **Chest Key Collision & Hijacked Night Owl Chest**: Claiming the Early Bird morning chest unintentionally marked the Night Owl evening chest as claimed due to shared preference keys. Remediated by separating preference keys `morning_chest_claimed_date` and `evening_chest_claimed_date`. | `testDailyQuestManagerEarlyBirdDoesNotClaimNightOwl` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-007 | ðŸŸ¡ Low | `ArithmeticEngine.kt` | **Fraction Simplification Division Inaccuracy**: Random denominators without common factor validation caused fractional simplification questions to generate inaccurate or unsimplified integer choices. Remediated by guaranteeing common divisor multiplication. | `testArithmeticEngineFractionSimplificationGeneratesValidOptions` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-008 | ðŸ”´ High | `FocusEconomyManager.kt`, `AptitudeManager.kt` | **Desynchronized Streak Freeze Counts Across Economy Systems**: `AptitudeManager` and `FocusEconomyManager` maintained independent streak freeze preference files, leading to divergent counts and inconsistent consumption. Remediated with bidirectional synchronization upon purchase and consumption. | `testEconomyStreakFreezeSyncWithAptitudeManager` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-009 | ðŸš¨ Critical | `AyvaTalkEngine.kt`, `OfflineNluEngine.kt` | **Zero-Knowledge Privacy Violation in Ayva Chat Window**: Ayva Chat allowed querying, creating, and searching private notes from the chat window without PIN vault authentication, breaching zero-knowledge architecture. Remediated by completely decoupling note operations from Ayva Chat and redirecting users securely to Notes Vault. | `testAyvaTalkDecoupledFromNotesZeroKnowledge` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-010 | ðŸš¨ Critical | `AyvaTalkEngine.kt`, `OfflineNluEngine.kt` | **Unconfirmed Bulk Task Deletion**: Voice/chat commands like "delete all tasks" immediately purged all tasks without confirmation or safety backups. Remediated by requiring 2-step confirmation, taking an automatic pre-op backup snapshot, and moving tasks safely to Trash (`moveToTrash`). | `testAyvaTalkBulkDeleteRequiresConfirmationAndMovesToTrash` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-011 | ðŸ”´ High | `AyvaTalkEngine.kt` | **Permanent Hard Delete for Single Tasks via Chat/Voice**: Deleting an individual task via Ayva Talk called `deleteTask()` directly. Remediated by soft-deleting via `moveToTrash` with `trashedAt` timestamp. | `testAyvaTalkSingleTaskDeleteSoftDeletesToTrash` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-012 | ðŸ”´ High | `AyvaTalkEngine.kt`, `OfflineNluEngine.kt` | **Overdue Task Clean Misclassification & Unbacked Bulk Deletion**: "Clean overdue tasks" was erroneously treated as a new task creation command, or if executed, permanently erased overdue tasks without pre-op backup. Remediated with explicit command recognition, 2-step confirmation, pre-op snapshot, and soft deletion to Trash. | `testAyvaTalkCleanOverdueTasksRequiresConfirmationAndSoftDeletes` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-013 | ðŸ”´ High | `AptitudeManager.kt`, `FocusEconomyManager.kt` | **Incomplete Bidirectional Streak Freeze Sync & Missing Cap**: Consuming streak freezes or awarding them via mystery chests in `AptitudeManager` did not sync back to `FocusEconomyManager`, and purchases could exceed the 3-shield maximum cap. Remediated with bidirectional sync, `consumeStreakFreeze()`, `setStreakFreezes()`, and 3-shield cap enforcement. | `testStreakFreezeBidirectionalSyncAndConsumption` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-014 | ðŸŸ  Medium | `AptitudeManager.kt` | **Daylight Saving Time (DST) Drift in `getDaysBetween`**: Timezone local calendar day difference calculations produced 23-hour or 25-hour day intervals across DST transitions, causing streak calculation discrepancies. Remediated by enforcing UTC timezone normalization for day difference calculations. | `testAptitudeManagerDaysBetweenDstSafe` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-015 | ðŸŸ  Medium | `DailyQuestsCard.kt` | **Premature Night Owl Chest Claiming on Outer Card Tap**: The clickable container around `DailyQuestsCard` prematurely claimed the evening chest before the user explicitly tapped the chest button. Remediated by removing premature click handler from the outer layout container. | Code inspection & manual verification | âœ… Fixed |
-| BATCH-7-016 | ðŸ”´ High | `AyvaTalkEngine.kt` | **Strict Routine Cancellation Bypass via Voice/Chat**: When strict/HARD focus mode was active, users could bypass blocking rules by commanding Ayva Talk to "stop routine <name>". Remediated by checking active strict schedule mode and refusing routine cancellation during active focus sessions. | `testAyvaTalkStopRoutineRefusesWhenStrictActive` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-017 | ðŸŸ¡ Low | `ArithmeticEngine.kt` | **Invalid Remainder Question Options ($\ge$ Divisor)**: Modulo questions generated distractor options that were greater than or equal to the divisor, or duplicated options resulting in fewer than 5 unique choices. Remediated by clamping options to `0 until divisor` and guaranteeing 5 distinct choices. | `testArithmeticEngineRemainderOptionsValid` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-7-018 | ðŸŸ  Medium | `SmartDateParser.kt` | **Natural Command Prefix Stripping Failure**: Natural phrases such as "Schedule a reminder to buy groceries", "add a task call dentist", and "I need to submit report" failed to strip prefixes cleanly, leaving awkward titles. Remediated by enhancing `prefixRegex` in `SmartDateParser.kt`. | `testSmartDateParserPrefixStripping` in `Batch7SecurityAuditTest.kt` | âœ… Fixed |
-
-**Batch 7 Result**: 3 Critical, 7 High, 6 Medium, 2 Low â€” **All 18 fixed** âœ…  
-**Deep Dive Summary**: Conducted an exhaustive audit of dialogue engines, math/quiz logic, natural language parsing, and gamification economy. Identified and fixed critical data-loss vulnerabilities in Ayva Talk task operations, eliminated zero-knowledge privacy bypasses, prevented strict focus mode circumvention, corrected DST streak drift, synchronized economy streak freezes, and hardened math and date parsing logic. All 18 automated regression tests in `Batch7SecurityAuditTest.kt` passed with 100% green status.  
-**Status**: Batch 7 complete (18/18 fixed). Ready to proceed to Batch 4.
-
----
-
-### ðŸ–¥ï¸ Batch 8: UI Screens, ViewModels, State & Edge Cases
-- **Target Files**:
-  - Application & Main: [`FocusApplication.kt`](file:///app/src/main/java/com/focusbyrj/app/FocusApplication.kt), [`MainActivity.kt`](file:///app/src/main/java/com/focusbyrj/app/MainActivity.kt)
-  - ViewModels: [`FocusViewModel.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/viewmodels/FocusViewModel.kt), [`HabitViewModel.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/viewmodels/HabitViewModel.kt), [`TaskViewModel.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/viewmodels/TaskViewModel.kt), [`NotesViewModel.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesViewModel.kt)
-  - Core Screens: [`DashboardScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/DashboardScreen.kt), [`TodosScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/TodosScreen.kt), [`HabitsScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/HabitsScreen.kt), [`SchedulesScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/SchedulesScreen.kt), [`BubbleChatActivity.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/BubbleChatActivity.kt), [`SettingsScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt), [`SecurityScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt)
-  - Dynamic Icons: [`AppIconManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/AppIconManager.kt)
-- **Key Inspection Focus**:
-  - Compose recomposition loops, memory retention in state collectors, missing key parameters in LazyColumn items.
-  - Coroutine leaks: unmanaged background jobs, operations running on Dispatchers.Main that cause ANR (Application Not Responding).
-  - Security screens: authentication bypass on PIN/Biometric lock, timing attacks on PIN checks.
-  - Activity alias toggling for dynamic launcher icons (preventing launcher crash loops or icon disappearing on Android 12+).
-
-#### Adversarial Audit Findings & Resolutions (Pass 1 Deep Dive)
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-8-001 | ðŸŸ¡ Low | `NotesViewModel.kt` | **Unbounded Cache Memory Growth in NotesViewModel (Deferred BATCH-6-022)**: `latestNotesCache: ConcurrentHashMap<Long, NoteEntity>` had no eviction policy, retaining heap objects indefinitely. Remediated with a synchronized bounded LRU cache (capacity = 200). | `testLatestNotesCacheBoundedCapacity` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-002 | ðŸ”´ High | `TaskViewModel.kt`, `TaskDao.kt`, `TaskRepository.kt` | **Premature Task Deletion & Missing Cloud Tombstones**: SQL query in `TaskDao` checked `(completedAt < :threshold OR completedAt IS NULL)`. Any task with `completedAt == null` was immediately deleted on launch regardless of when it was completed. Additionally, deleted tasks did not register local tombstones for Supabase sync. Fixed by falling back to `updatedAt < threshold` when `completedAt IS NULL` and recording tombstones via `SupabaseSyncEngine.recordLocalDeletion`. | `testTaskDaoCompletedTasksDeletionPreservesRecentlyCompletedNullTimestamp` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-003 | ðŸŸ  Medium | `HabitViewModel.kt`, `HabitActionReceiver.kt`, `HabitFloatingOverlayManager.kt` | **Infinite XP/Gold Farming Exploit**: `incrementProgress()` checked `completedCount >= targetPerDay`, continuously awarding 25 XP and 15 Gold on every single extra tap past target. Fixed by capping rewards when exceeding target and awarding goal bonus strictly upon reaching target (`completedCount == targetPerDay`). | `testHabitIncrementDoesNotAwardInfiniteXpOrGoldOverTarget` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-004 | ðŸŸ  Medium | `NotesViewModel.kt`, `KeepNoteEditor.kt` | **Editor Undo/Redo UI Desynchronization**: Internal editor compose states were keyed by `remember(state.sessionId)`. `undo()` and `redo()` updated state while preserving `sessionId`, preventing the compose editor from updating displayed text/blocks and causing edits to overwrite undone state. Remediated by generating a new `sessionId = UUID.randomUUID().toString()` on `undo()` and `redo()`. | `testNotesViewModelUndoRedoUpdatesSessionId` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-005 | ðŸŸ  Medium | `TimeScreen.kt` | **Permanent Permission Lock on Settings Return**: `hasPermission` was a static `remember { ... }` Boolean without `mutableStateOf` and was never re-checked in `ON_RESUME`. Returning after granting permission left the screen permanently locked on "Permission Required". Remediated by switching to `mutableStateOf` and re-checking on `Lifecycle.Event.ON_RESUME`. | Code inspection & compose lifecycle verification | âœ… Fixed |
-| BATCH-8-006 | ðŸŸ  Medium | `TodosScreen.kt` | **Stale Closure in Task Deletion**: `DisposableEffect(Unit)` captured initial `pendingDeleteTask` (`null`). Navigating away during the 4-second undo countdown caused `onDispose` to execute with stale `null`, failing to commit the pending deletion. Remediated by using `rememberUpdatedState(pendingDeleteTask)`. | Code inspection & compose lifecycle verification | âœ… Fixed |
-| BATCH-8-007 | ðŸŸ  Medium | `QuickAddTaskActivity.kt`, `TaskReminderPopupActivity.kt` | **DatePicker Day-Shift in Negative UTC Offsets**: Material3 `DatePickerState.selectedDateMillis` is UTC midnight. Interpreting it with local `Calendar.getInstance()` shifted the picked date backward by 1 full day in UTC-1 to UTC-12. Remediated by parsing `selectedDateMillis` using `Calendar.getInstance(TimeZone.getTimeZone("UTC"))`. | `testDatePickerUtcToLocalCalendarInterpretation` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-008 | ðŸŸ¡ Low | `MainActivity.kt` | **Unhandled Navigation Route Crash**: `navController.navigate(route)` inside `LaunchedEffect(pendingRoute)` threw unhandled `IllegalArgumentException` on invalid or malformed routes. Remediated by wrapping navigation in `try-catch` with `clearNavigation()` in `finally`. | Code inspection & navigation graph verification | âœ… Fixed |
-| BATCH-8-009 | ðŸŸ  Medium | `TaskViewModel.kt` | **Stale `updatedAt` Timestamp on Task Edit**: `updateTask(task)` did not update `task.updatedAt` to current epoch time, causing Supabase LWW conflict resolution to discard offline edits as stale. Remediated by updating `task.copy(updatedAt = System.currentTimeMillis())`. | `testTaskViewModelUpdateTaskEnforcesCurrentUpdatedAtTimestamp` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-010 | ðŸŸ¡ Low | `TodosScreen.kt` | **Configuration/Orientation Dialog State Loss**: `selectedTab` and `showAddDialog` used `remember` instead of `rememberSaveable`, resetting tab selection and dismissing add dialog on screen rotation or activity recreation. Remediated by migrating to `rememberSaveable`. | Code inspection & state restoration verification | âœ… Fixed |
-
-#### Adversarial Audit Findings & Resolutions (Pass 2 Deep Dive)
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-8-011 | ðŸš¨ Critical | `NotesViewModel.kt`, `ArchiveVaultSecurity.kt` | **Unzeroized Ephemeral Vault Key in NotesViewModel.lockVault() Bypasses PIN Challenge on Re-entry**: `NotesViewModel.lockVault()` flipped UI boolean `_isVaultUnlocked.value = false` but never called `ArchiveVaultSecurity.lockVault()`. `ephemeralVaultSubKey` remained in memory unzeroized. A user or background service calling `ArchiveVaultSecurity.isVaultLocked(context)` received `false`, and re-entering the Archive folder bypassed the PIN prompt. Remediated by calling `ArchiveVaultSecurity.lockVault(context)` in `lockVault()`, `setFolder()`, and `onCleared()`, and syncing `_isVaultUnlocked` in `refreshVaultStatus()`. | `testNotesViewModelLockVaultClearsEphemeralVaultSubKey` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-012 | ðŸ”´ High | `TaskViewModel.kt`, `TaskRepository.kt` | **Cold StateFlow Reads in TaskViewModel.emptyTrash() Suppress Cloud Sync Tombstones**: `emptyTrash()` read `trashedTasks.value` to queue tombstones for cloud sync. If `trashedTasks` had no active collectors (cold `SharingStarted.WhileSubscribed`), `.value` was an empty list. All Room tasks were deleted without queuing a single tombstone, causing Supabase cloud sync to resurrect deleted tasks on next pull. Remediated by adding `TaskRepository.getTrashedTasksSync()` to fetch tasks synchronously from Room before deletion. | `testTaskViewModelEmptyTrashQueriesRoomSyncAndRegistersTombstones` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-013 | ðŸŸ  Medium | `NotesViewModel.kt` | **Auto-Saved Draft Note Deletion & Archive Discard Omission via `pendingNewNoteId`**: In `deleteCurrentNote()`, `archiveCurrentNote()`, and `unarchiveCurrentNote()`, the code checked `if (current.originalId != 0L)`. For auto-saved drafts (`originalId == 0L`, but persisted to Room with `pendingNewNoteId != 0L`), user deletion discarded the editor state without deleting the note from Room, stranding draft notes in SQLite. Remediated by computing `effectiveId = if (current.originalId == 0L && pendingNewNoteId != 0L) pendingNewNoteId else current.originalId`, purging unpersisted media if `effectiveId == 0L`, and resetting `pendingNewNoteId = 0L`. | `testNotesViewModelDeleteCurrentNoteHandlesPendingDraft` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-014 | ðŸŸ  Medium | `NotesViewModel.kt` | **Stale Cache Retention in `restoreNote()` & `unarchiveNote()` and Omitted Sync Triggers on Batch Note Ops**: `restoreNote()` and `unarchiveNote()` updated Room but never called `latestNotesCache.remove(note.id)`. Subsequent lookups returned stale `NoteEntity` snapshots with `isTrashed = true` or `isArchived = true`. Furthermore, batch note operations (`deleteSelectedNotesPermanently`, `archiveSelectedNotes`, `unarchiveSelectedNotes`, `restoreSelectedNotes`, `moveSelectedNotesToTrash`) omitted `triggerAutoSync()`. Remediated by evicting modified notes from `latestNotesCache` and invoking `triggerAutoSync()` across all batch operations. | `testNotesViewModelRestoreNoteEvictsStaleCacheEntry` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-015 | ðŸŸ  Medium | `NotesViewModel.kt` | **Raw Notesnook Block JSON Markup Leaked in Note Sharing and Clipboard Export**: `shareCurrentNote()`, `copyCurrentNoteToClipboard()`, `shareSelectedNotes()`, and `copySelectedNotesToClipboard()` exported raw `note.content`, exposing internal `<!--NOTESNOOK_BLOCKS:[...]-->` JSON delimiters to third-party apps and the Android clipboard. Remediated by piping note content through `NotesnookBlockManager.toPlainText(content)` before sharing or clipboard copying. | `testNotesViewModelShareStripsNotesnookBlockJson` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-016 | ðŸš¨ Critical | `AppIconManager.kt`, `AndroidManifest.xml` | **Disabling Base `MainActivity` Component Breaks Alias Launches, Widgets, Notifications & App Shortcuts**: `AppIconManager.setAppIcon()` disabled all non-selected icons, including `"default"` which pointed directly to `.MainActivity`. On Android 12+, disabling the base target activity component of `<activity-alias>` tags disables all aliases, causes launcher launch failures, and throws `ActivityNotFoundException` on widgets, notifications, and shortcuts targeting `.MainActivity`. Remediated by declaring `<activity-alias android:name=".MainActivityAliasDefault">` with the `LAUNCHER` intent filter, keeping base `.MainActivity` permanently enabled without `LAUNCHER`, and updating `AppIconManager` to point `"default"` to `.MainActivityAliasDefault`. | `testAppIconManagerNeverDisablesBaseMainActivity` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-017 | ðŸŸ  Medium | `FocusViewModel.kt` | **Ignored Persistent Session State in StateFlow Init & Dropped Focus Stats Seconds on Coroutine Cancellation**: `_isSessionActive` was initialized with default `MutableStateFlow(false)` rather than restoring persisted `prefs.getBoolean("isSessionActive", false)`. Additionally, the focus session countdown loop accumulated elapsed seconds in a local variable `statsSecs` flushed every 10 seconds. When the timer coroutine was cancelled on pause/stop, unhandled `CancellationException` discarded remaining seconds (<10s) without recording them in `FocusStatsManager`. Remediated by initializing `_isSessionActive` from `prefs` and wrapping the timer in `try-finally` to flush remaining seconds on cancellation. | `testFocusViewModelSessionTimerCancellationFlushesStatsSeconds` in `Batch8SecurityAuditTest.kt` | âœ… Fixed |
-| BATCH-8-018 | ðŸŸ¡ Low | `TodosScreen.kt`, `SchedulesScreen.kt` | **Dialog State Loss Across Screen Orientation / Configuration Changes via Plain `remember`**: `editingTask` in `TodosScreen.kt` and `showCreateScreen` / `scheduleToEdit` in `SchedulesScreen.kt` used plain `remember`, causing dialog state and entered text to be discarded on screen rotation or configuration changes. Remediated by migrating `editingTaskId` (`Long?`), `scheduleToEditId` (`Int?`), and `showCreateScreen` (`Boolean`) to `rememberSaveable`. | Compose state inspection & configuration recreation verification | âœ… Fixed |
-
-**Batch 8 Result (Pass 1 + Pass 2 Combined)**: 2 Critical + 2 High + 10 Medium + 4 Low = **18 Total â€” All 18 fixed** âœ…  
-**Test Suite**: `Batch8SecurityAuditTest.kt` (13 automated regression tests, 100% passing).
-
----
-
-
----
-
-## 📦 Batch 9: New Code, Chat Architecture & UI Screens (v1.9.8)
-
-**Audit Session**: Adversarial Deep Dive (Pass 1 + Pass 2).  
-**Methodology**: Adversarial read → Failing reproduction test written → Fix applied → Test verified green.  
-**Test file**: [`Batch9SecurityAuditTest.kt`](file:///app/src/test/java/com/focusbyrj/app/Batch9SecurityAuditTest.kt)
-
-### Scope & Target Files (33 files)
-- **Safe Preferences**: [`SafePrefsExtensions.kt`](file:///app/src/main/java/com/focusbyrj/app/util/SafePrefsExtensions.kt)
-- **Account & Gamification Screens**: [`AccountScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/AccountScreen.kt), [`HabitsScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/HabitsScreen.kt), [`HabitRepository.kt`](file:///app/src/main/java/com/focusbyrj/app/data/HabitRepository.kt), [`FocusStatsManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/FocusStatsManager.kt)
-- **Ayva Chat Architecture**: [`AyvaChatDao.kt`](file:///app/src/main/java/com/focusbyrj/app/data/chat/AyvaChatDao.kt), [`AyvaChatDatabase.kt`](file:///app/src/main/java/com/focusbyrj/app/data/chat/AyvaChatDatabase.kt), [`AyvaChatMessageEntity.kt`](file:///app/src/main/java/com/focusbyrj/app/data/chat/AyvaChatMessageEntity.kt), [`AyvaChatTimeline.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaChatTimeline.kt), [`AyvaComposerBar.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaComposerBar.kt), [`AyvaCatPeekingHost.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/chat/AyvaCatPeekingHost.kt), [`AyvaContextEngine.kt`](file:///app/src/main/java/com/focusbyrj/app/util/router/AyvaContextEngine.kt), [`AyvaIntentRouter.kt`](file:///app/src/main/java/com/focusbyrj/app/util/router/AyvaIntentRouter.kt), [`AyvaCompoundCommandHandler.kt`](file:///app/src/main/java/com/focusbyrj/app/util/router/AyvaCompoundCommandHandler.kt), [`BubbleChatManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/bubble/BubbleChatManager.kt), [`ChatTextSizeDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/chat/ChatTextSizeDialog.kt)
-- **UI Screens & Dialogs**: [`SecurityScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/SecurityScreen.kt), [`NotesScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesScreen.kt), [`FocusBottomBar.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/FocusBottomBar.kt), [`NotesSpeedDialFab.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesSpeedDialFab.kt), [`NotesnookEditorDrawer.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookEditorDrawer.kt), [`BackupDialogs.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/dialogs/BackupDialogs.kt), [`AutoBackupScheduler.kt`](file:///app/src/main/java/com/focusbyrj/app/util/backup/AutoBackupScheduler.kt), [`FocusApplication.kt`](file:///app/src/main/java/com/focusbyrj/app/FocusApplication.kt), [`MainActivity.kt`](file:///app/src/main/java/com/focusbyrj/app/MainActivity.kt)
-- **Drill & Aptitude**: [`ActiveDrillStateEntity.kt`](file:///app/src/main/java/com/focusbyrj/app/data/drill/ActiveDrillStateEntity.kt), [`DrillSummaryHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/util/DrillSummaryHelper.kt), [`McqTextParser.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/McqTextParser.kt)
-- **App Widgets**: [`NoteWidgetConfig.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/NoteWidgetConfig.kt), [`NoteWidgetConfigureActivity.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/NoteWidgetConfigureActivity.kt), [`NoteWidgetDrawableGenerator.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/NoteWidgetDrawableGenerator.kt), [`TodoWidgetActionReceiver.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/TodoWidgetActionReceiver.kt), [`TodoWidgetConfigureActivity.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/TodoWidgetConfigureActivity.kt), [`WidgetConfig.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/WidgetConfig.kt), [`WidgetDrawableGenerator.kt`](file:///app/src/main/java/com/focusbyrj/app/widget/WidgetDrawableGenerator.kt)
-
-### Pass 1 Findings & Resolutions
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-9-001 | 🔴 High | `SafePrefsExtensions.kt` | **Long-to-Int Truncation Preference Corruption & Unhandled ClassCastException**: Reading a 64-bit Long (e.g. timestamp) as Int with `getSafeInt` truncated the high 32 bits into a wrapped negative integer and stored it back, corrupting the preference. Reading an Int or Long flag via `getSafeBoolean` threw unhandled `ClassCastException` in `getString`, skipping self-healing. Remediated by adding bounds check `longVal in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()` in `getSafeInt`, and expanding `getSafeBoolean` to self-heal stored Int, Long, and textual boolean representations (`"true"`, `"1"`, `"yes"`, `"false"`, `"0"`, `"no"`). | `batch9_001_getSafeIntDoesNotCorruptLongValueExceedingIntMax`, `batch9_001_getSafeBooleanSelfHealsWhenIntStored` in `Batch9SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-9-002 | 🚨 Critical | `HabitRepository.kt`, `FocusApplication.kt`, `AccountScreen.kt` | **Permanent Habit Data Loss via Unconditional Startup Cleanup**: `cleanPlaceholderData()` was invoked unconditionally on every app start in `FocusApplication.onCreate` and on every view in `AccountScreen`. Any user habit named "Deep Reading", "Mindful Focus", or "Hydration Protocol" was permanently deleted along with its streak history on restart. Remediated by guarding `cleanPlaceholderData(context: Context?)` with persistent migration flag `cleaned_placeholder_habits_v1` so the cleanup executes strictly once in the app lifecycle. | `batch9_002_cleanPlaceholderDataGuardedByPreferenceFlagDoesNotDeleteUserHabits` in `Batch9SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-9-003 | 🟠 Medium | `HabitRepository.kt` | **Unchecked Negative Progress Count Corrupts Habit Completion & Streak Tracking**: `recordHabitProgressForDate` accepted negative integers without clamping, persisting negative `completedCount` in SQLite and corrupting streak calculations. Remediated by enforcing `val safeCount = count.coerceAtLeast(0)`. | `batch9_003_recordHabitProgressForDateSanitizesNegativeCounts` in `Batch9SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-9-004 | 🔴 High | `AyvaChatDao.kt` | **SQLite `LIMIT -1` Query Bug Erases All Chat Messages**: SQLite interprets `LIMIT -1` as "no limit". When `count <= 0`, `deleteOldestMessages(count)` generated `DELETE ... LIMIT -1`, instantly deleting every chat message in the database. Remediated by adding an immediate `if (count <= 0) return` guard and hardening query with `LIMIT MAX(0, :count)`. | `batch9_004_deleteOldestMessagesWithZeroOrNegativeCountDoesNotWipeTable` in `Batch9SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-9-005 | 🟠 Medium | `AyvaIntentRouter.kt` | **Task Creation Trigger Pollution via `/create` Slash Command**: `/create` and `/task` slash commands passed explicit user text like `"add buy groceries tomorrow"` directly as the task title without stripping trigger words, resulting in tasks titled `"add buy groceries"`. Remediated by piping text through `OfflineNluEngine.extractTaskCreationDetails(rest)` when `isExplicitCreation(rest)` is matched, cleanly stripping command prefixes. | `batch9_005_slashCreateStripsTriggerWordsFromExplicitInput` in `Batch9SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-9-006 | 🟠 Medium | `FocusStatsManager.kt` | **Truncated 30-Day Window Breaks 18-Week Heatmap & Streak Calculation**: `refreshStats` only scanned the preceding 30 days. Weeks 5–18 on `AccountScreen`'s 18-week heatmap rendered permanently blank (0 min) and user focus streaks were falsely capped at 30 days. Remediated by expanding historical scan window from 30 days to 130 days (`historyDays = 130`). | `batch9_006_focusStatsManagerLoads126DayWindowForHeatmap` in `Batch9SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-9-007 | 🟠 Medium | `McqTextParser.kt` | **Regex Greedy Matching Leaks Answers and Explanations into MCQ Options**: `ANSWER_REGEX` and `EXPLANATION_REGEX` required newline delimiters `(?:\n|^)`. When an MCQ was formatted compactly on a single line or space-delimited, the entire answer and explanation text were swallowed into the final option's body. Remediated by updating regexes to match space and tab delimiters `(?:^|[\n\r]|[ \t]+)`. | `batch9_007_mcqParserExtractsSingleLineAnswersAndExplanations` in `Batch9SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-9-008 | 🔴 High | `TodoWidgetActionReceiver.kt`, `TodoWidgetProvider.kt`, `AyvaChatDatabase.kt` | **Android 14+ BAL Restriction Hazard in Widget Action Handling & Unencrypted Room Schema Migration Risk**: Direct activity launch from widget broadcast receiver without foreground privileges risks BAL suppression on Android 14+. In addition, `AyvaChatDatabase` configured `.fallbackToDestructiveMigration()`. Remediated by routing widget actions via PendingIntent activity targets directly in `TodoWidgetProvider.kt` and documenting verification requirements. | Documented & verified via `Batch9SecurityAuditTest.kt` and manual verification register | ✅ Fixed |
-
-### Pass 2 Findings & Resolutions (Adversarial Deep Dive)
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-9-P2-001 | 🔴 High | `AyvaChatDatabase.kt` | **`fallbackToDestructiveMigration()` Still Present Despite P1 "Fix"**: The DB builder still called `.fallbackToDestructiveMigration()`. A version bump without an explicit `Migration` object silently wipes all chat history, drill states, and vocab records. Remediated by replacing with `.addMigrations()` (no-op slot) and a mandatory comment requiring explicit `Migration(x, x+1)` objects for any future schema change. | `batch9_p2_001_ayvaChatDatabaseDoesNotUseFallbackToDestructiveMigration` | ✅ Fixed |
-| BATCH-9-P2-002 | 🔴 High | `BubbleChatManager.kt` | **`saveMessages()` Race Condition — Concurrent `addMessage()` Permanently Lost from Room**: `saveMessages()` updated `_messagesFlow` synchronously then launched an async coroutine calling `syncAllMessages()` using the captured `trimmed` snapshot. A concurrent `addMessage()` between those two moments added to `_messagesFlow` *after* the snapshot was taken, but `syncAllMessages` used the pre-`addMessage` snapshot — permanently losing the new message from Room on next cold boot. Remediated by re-reading `_messagesFlow.value` inside the coroutine body to always sync the latest in-memory state. | `batch9_p2_002_saveMessagesUsesLatestFlowSnapshotNotStaleCapture` | ✅ Fixed |
-| BATCH-9-P2-003 | 🔴 High | `BubbleChatManager.kt` | **`init()` Not Idempotent — TOCTOU Race Overwrites `_messagesFlow`**: `@Volatile isInitialized` was checked then written non-atomically. A second concurrent `init()` call fired a second DB-reading coroutine that raced to overwrite `_messagesFlow` with a potentially stale earlier read. Remediated by adding `private val initLatch = AtomicBoolean(false)` and guarding with `if (!initLatch.compareAndSet(false, true)) return`. | `batch9_p2_003_bubbleChatManagerInitIsIdempotentViaAtomicBoolean` | ✅ Fixed |
-| BATCH-9-P2-004 | 🟠 Medium | `BubbleChatManager.kt` | **`getMessages()` `runBlocking` Blocks Calling Thread — ANR Risk on Main Thread**: `runBlocking(Dispatchers.IO)` does NOT dispatch to IO — it blocks whatever thread calls it. If invoked from the main thread pre-init, this causes a UI freeze / ANR. Remediated by adding a main-thread early-exit with a warning log: `if (Looper.myLooper() == Looper.getMainLooper()) return emptyList()`. | Code inspection & main-thread guard verification | ✅ Fixed |
-| BATCH-9-P2-005 | 🟠 Medium | `FocusStatsManager.kt` | **Year-Boundary `DAY_OF_YEAR` Key Collision Corrupts Heatmap Every January**: `dailyFocusMinutes` used bare `Calendar.DAY_OF_YEAR` (1–366) as map key. The 130-day history window crosses Jan 1 every year: day 295 of 2025 and day 295 of 2026 produce identical key `295` — earlier year's data silently overwritten. ~35 heatmap cells wrong each January. Remediated by switching to composite key `YEAR * 1000 + DAY_OF_YEAR` throughout `refreshStats()`. | `batch9_p2_005_focusStatsManagerYearBoundaryKeysDoNotCollide` | ✅ Fixed |
-| BATCH-9-P2-006 | 🟠 Medium | `FocusStatsManager.kt` | **`addDailyActivity()` Lightweight Path Also Used Bare `DAY_OF_YEAR` Key**: Same cross-year collision bug as P2-005 in the lightweight `addDailyActivity()` update path, which must match whatever key scheme `refreshStats()` uses. Remediated by using the same `YEAR * 1000 + DAY_OF_YEAR` composite key in the lightweight update path. | Covered by `batch9_p2_005_focusStatsManagerYearBoundaryKeysDoNotCollide` | ✅ Fixed |
-| BATCH-9-P2-007 | 🟠 Medium | `SafePrefsExtensions.kt` | **`getSafeFloat()` Long-to-Float Precision Loss for Epoch Timestamps**: `getSafeFloat()` Long-fallback called `longVal.toFloat()` — silent precision loss for any value > 2^24 (~16.7M). A focus-session epoch timestamp stored as Long (`1_727_580_000_000L`) was truncated to ~6 significant digits and self-healed back as a corrupted Float. Remediated by adding a bounds check: only self-heal a Long to Float if `longVal in -floatSafeMax..floatSafeMax` where `floatSafeMax = 1L shl 24`; otherwise return `defValue`. | `batch9_p2_007_getSafeFloatDoesNotCorruptLongEpochTimestampViaPrecisionLoss` | ✅ Fixed |
-| BATCH-9-P2-008 | 🟠 Medium | `HabitRepository.kt` | **`totalCompletions` Double-Counts Today's Log in DB-write Race Window**: `totalCompletions = allLogs.sumOf { it.completedCount } + (if (todayLog != null && !allLogsMap.containsKey(todayStr)) ...)`. In the race window between `getLogsForDate(todayStr)` emitting and `getAllLogsSync()` completing, `allLogsMap` may not yet contain today's entry, causing an additive double-count. Acceptable short-term display artifact; primary mitigation is the `allLogsMap.containsKey(todayStr)` guard already present. Documented. | Code inspection & flow timing analysis | ✅ Documented |
-| BATCH-9-P2-009 | 🟠 Medium | `DrillSummaryHelper.kt` | **XP Computed in `Int` — Overflow to Negative on Extreme Combos**: `xpEarned` was `Int` throughout. With `correct * baseMultiplier * isPerfect(×2) + comboBonusXp + streakBonusXp * boostMultiplier`, extreme correct-answer counts overflowed `Int.MAX_VALUE` to negative XP. Remediated by using `Long` for all intermediate accumulation (`xpEarnedL`) and converting back with `.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()`. | `batch9_p2_009_drillSummaryHelperXpCalculationUsesLongToPreventNegativeOverflow` | ✅ Fixed |
-| BATCH-9-P2-010 | 🟠 Medium | `AyvaCompoundCommandHandler.kt` | **`extractTimeLimitMinutes()` `Int` Overflow → Negative Block Duration**: `amount * 60` in `Int` arithmetic overflowed for crafted input `"block for 35792394 hours"` → negative block duration, unblocking an app instead of blocking it. Remediated by parsing `amount` as `Long`, using Long multiplication, and clamping to `coerceAtMost(1440L)` (24h max). | `batch9_p2_010_extractTimeLimitMinutesDoesNotOverflowForHugeHourValues` | ✅ Fixed |
-| BATCH-9-P2-011 | 🟠 Medium | `AyvaIntentRouter.kt` | **Newline Injection in `ConflictOption.command`**: Raw user input embedded unescaped in `ConflictOption.command = "/create $trimmed"`. Input containing `\n/clear` passed through to the compound command splitter as a multi-command string. Remediated by sanitizing `trimmed` with `safeTrimmed = trimmed.replace(Regex("[\r\n]+"), " ").trim()` and using `safeTrimmed` in all ConflictOption command strings. | `batch9_p2_011_conflictOptionCommandStripsNewlinesFromUserInput` | ✅ Fixed |
-| BATCH-9-P2-012 | 🟡 Low | `NoteWidgetDrawableGenerator.kt` | **Throwaway 1×1 `ALPHA_8` Bitmap Never Recycled in `getWidgetColors()`**: Created on every widget refresh cycle without recycling. Remediated by switching to `ARGB_8888` and calling `emptyBitmap.recycle()` immediately after `BackgroundColors` is constructed (since `createWidgetBackground` always replaces the bitmap field). | Code inspection & bitmap lifecycle verification | ✅ Fixed |
-| BATCH-9-P2-013 | 🟡 Low | `NoteWidgetDrawableGenerator.kt` | **Unbounded `checkboxCache` ConcurrentHashMap — Native Bitmap Memory Accumulation**: `checkboxCache` held all checkbox bitmaps indefinitely. Remediated by replacing with a bounded LRU `LinkedHashMap` (capacity = 32) with `removeEldestEntry` recycling evicted bitmaps. | `batch9_p2_013_noteWidgetDrawableGeneratorCheckboxCacheIsBounded` | ✅ Fixed |
-| BATCH-9-P2-014 | 🟡 Low | `AutoBackupScheduler.kt` | **Untracked Fallback `CoroutineScope(Dispatchers.IO)` Cannot Be Cancelled**: Fallback scope created when no scope arg provided — untracked, outlives context. Documented as known limitation; callers should always pass a lifecycle-bound scope. | Code inspection | ✅ Documented |
-| BATCH-9-P2-015 | 🟡 Low | `McqTextParser.kt` | **Empty Last Option Not Filtered**: MCQ with trailing marker but no option text (`"a) One b) Two c) Three d)"`) produces a blank `Pair("D", "")`. Existing `content = ""` guard in `optionsList` handles display; documented for future strict filtering. | Code inspection | ✅ Documented |
-| BATCH-9-P2-016 | 🟡 Low | `ActiveDrillStateEntity.kt`, `AyvaChatDao.kt` | **`updatedAt` Set at Object Construction, Not DB Commit**: `getLatestActiveDrill()` sorts by `updatedAt DESC` — re-saved drills retain stale timestamps. Acceptable given single-active-drill pattern; documented. | Code inspection | ✅ Documented |
-| BATCH-9-P2-017 | 🟡 Low | `SecurityScreen.kt` | **"Restore" Button Not Disabled During Active Restore**: Only the dialog's confirm button is disabled while `isRestoring = true`. User can open a second file picker concurrently. Acceptable UI-layer issue with no data corruption risk given Room transactions; documented for future UX hardening. | Code inspection | ✅ Documented |
-| BATCH-9-P2-018 | 🟡 Low | `TodoWidgetActionReceiver.kt` | **`context.startActivity()` Unguarded Against `SecurityException`**: On Android 14+ when BAL exemption is denied, throws `SecurityException` inside `onReceive()`, crashing the receiver. Remediated by wrapping with `runCatching { context.startActivity(...) }.onFailure { Log.w(...) }`. | `batch9_p2_018_todoWidgetActionReceiverStartActivityIsGuardedAgainstSecurityException` | ✅ Fixed |
-
-### Pass 3 Findings & Resolutions (Adversarial Deep Dive)
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-9-P3-001 | 🔴 High | `AyvaContextEngine.kt`, `AccountScreen.kt` | **Composite Key Mismatch in `dailyFocusMinutes` Lookup**: In Pass 2, `FocusStatsManager` updated its map key to `year * 1000 + dayOfYear`. `AyvaContextEngine.captureSnapshot` and `AccountScreen`'s heatmap cells still queried by bare `dayOfYear`, evaluating focus minutes to `0L`. Remediated by resolving via composite key with backward-compatible fallback to `dayOfYear`. | `batch9_p3_001_ayvaContextEngineCompositeKeyResolution` | ✅ Fixed |
-| BATCH-9-P3-002 | 🔴 High | `WidgetDrawableGenerator.kt` | **Unbounded Bitmap Churn & GC Pressure in Todo Widget Items**: `createItemBackground` and `createCheckbox` allocated fresh Bitmaps on every RemoteViews item generation without caching. Remediated by implementing bounded LRU caches (`itemBgCache` cap 16, `checkboxCache` cap 32) with automatic recycling of evicted bitmaps. | `batch9_p3_002_widgetDrawableGeneratorCachesAreBounded` | ✅ Fixed |
-| BATCH-9-P3-003 | 🚨 Critical | `AyvaComposerBar.kt` | **`CommandVisualTransformation` OffsetMapping Crash on Consecutive Spaces**: Splitting text by space and re-joining collapsed consecutive spaces, violating `OffsetMapping.Identity` 1:1 length invariant and crashing Compose text layout when cursor is at the end. Remediated by styling the original text with `builder.addStyle()` without string mutation. | `batch9_p3_003_commandVisualTransformationMaintainsLengthInvariant` | ✅ Fixed |
-| BATCH-9-P3-004 | 🚨 Critical | `AyvaChatTimeline.kt` | **Arbitrary Preference Key Injection & Type Corruption in `PendingActionCard`**: `prefKey`, `prefType`, and `value` were written directly to `focus_prefs` and `bubble_prefs` without a whitelist, allowing arbitrary preference overwrites and `ClassCastException` on type collisions. Remediated by enforcing a strict static whitelist `ALLOWED_PREF_ACTIONS` with strict type validation. | Code inspection & whitelist verification | ✅ Fixed |
-| BATCH-9-P3-005 | 🟠 Medium | `AyvaChatTimeline.kt` | **Uncaught `JSONException` on Malformed `pendingActionJson`**: Corrupted JSON in chat messages crashed `PendingActionCard` during composable composition. Remediated by wrapping parsing in `try / catch` returning empty `JSONObject()`. | Code inspection | ✅ Fixed |
-| BATCH-9-P3-006 | 🟠 Medium | `WidgetConfig.kt` | **Unhandled `ClassCastException` on Corrupted Widget Preference Types**: `WidgetConfigHelper.getConfig` threw unhandled `ClassCastException` if a preference had an unexpected type. Remediated by wrapping all getter lookups with `try / catch` returning default values. | `batch9_p3_006_widgetConfigHelperSafeClassCastExceptionHandling` | ✅ Fixed |
-| BATCH-9-P3-007 | 🟠 Medium | `SecurityScreen.kt`, `BackupDialogs.kt` | **Concurrent Backup Picker / Restore Triggering & Whitespace Password Acceptance**: Backup restore button was enabled during active operations, and export dialog accepted passwords consisting solely of spaces. Remediated by guarding button with `!isRestoring && !isExporting`, requiring 8 non-whitespace characters, and sanitizing pasted 6-digit PINs against spaces/hyphens. | Code inspection | ✅ Fixed |
-| BATCH-9-P3-008 | 🟠 Medium | `NoteWidgetConfigureActivity.kt`, `TodoWidgetConfigureActivity.kt` | **AppWidget ID Guard & Default All-Widgets Update**: Passing default/invalid widget ID 0 to `updateWidget()` corrupted specific widget binding. Remediated by checking `appWidgetId != INVALID_APPWIDGET_ID && appWidgetId != 0` before updating single widget, falling back to `updateAllWidgets()`. | Code inspection | ✅ Fixed |
-| BATCH-9-P3-009 | 🟠 Medium | `NoteWidgetConfig.kt` | **Stale Specific Note ID Traps Widget in Non-SPECIFIC Filter Modes**: Switching from `SPECIFIC` to `ALL`/`PINNED` retained `KEY_CURRENT_NOTE_ID_PREFIX` in preferences, forcing `NoteWidgetService` to keep showing the old note. Remediated by adding `editor.remove(KEY_CURRENT_NOTE_ID_PREFIX + suffix)`. | `batch9_p3_009_noteWidgetConfigClearsCurrentNoteIdWhenFilterModeNotSpecific` | ✅ Fixed |
-| BATCH-9-P3-010 | 🟠 Medium | `NotesSpeedDialFab.kt` | **Dismissing Scrim Ghost Clicks Swallow Underlying Editor Touch Events**: Scrim Box intercepted touch events during its 180ms fade-out animation. Remediated by disabling clicks when `isExpanded` is false (`enabled = isExpanded`). | Code inspection | ✅ Fixed |
-| BATCH-9-P3-011 | 🟠 Medium | `AyvaCatPeekingHost.kt` | **Infinite Cat Action Lottie Loop Permanently Blocks Chat Window**: `CatActionLottieView` played forever without auto-dismiss if user never tapped the cat. Remediated by adding `LaunchedEffect(assetName)` with 5-second auto-dismiss timer and keying `startTime` by `assetName`. | Code inspection | ✅ Fixed |
-| BATCH-9-P3-012 | 🟠 Medium | `AyvaChatTimeline.kt` | **Unguarded `startActivity` in `HabitsChatCard` Under Android 14+ BAL**: Floating chat bubble launching `MainActivity` without `runCatching` could crash on BAL restriction or missing activity flags. Remediated by wrapping with `runCatching`. | Code inspection | ✅ Fixed |
-| BATCH-9-P3-013 | 🟠 Medium | `ChatTextSizeDialog.kt`, `ProfessionalSlider.kt` | **NaN Input Invariant Violation Crashes Jetpack Compose Layout**: Passing NaN font size or slider value triggered `IllegalArgumentException: Dp must not be NaN` during Compose measurement pass. Remediated by sanitizing with default fallback and clamping to valid ranges. | Code inspection & range bounds verification | ✅ Fixed |
-| BATCH-9-P3-014 | 🟡 Low | `NotesnookEditorDrawer.kt` | **NaN Safety in Text Size Stepper & Misleading "px" Unit Display**: Stepper could produce NaN values and displayed "px" instead of "sp". Remediated by sanitizing non-positive/NaN values to default 16sp and updating label to `"${currentSize.toInt()} sp"`. | Code inspection | ✅ Fixed |
-| BATCH-9-P3-015 | 🟡 Low | `AyvaComposerBar.kt` | **IME Keyboard Send Validation & Redundant Bottom Navigation Bar Insets**: IME "Send" action executed without checking `inputText.isNotBlank()`, and internal `Spacer` duplicated window insets handled by parent container. Remediated by adding blank check and removing redundant spacer. | Code inspection | ✅ Fixed |
-
-**Batch 9 Result (Pass 1 + Pass 2 + Pass 3 Combined)**: 3 Critical + 8 High + 18 Medium + 19 Low = **48 Total — All 48 fixed/documented** ✅  
-**Pass 3 Summary**: 22 additional deep adversarial findings (2 Critical, 4 High, 9 Medium, 7 Low). High-impact fixes implemented across Ayva chat architecture, widget rendering, security dialogs, compose layout safety, and BAL guardrails. All code-level bugs patched.  
-**Test Suite**: `Batch9SecurityAuditTest.kt` (25 automated regression tests, 100% passing).
-
----
-
-## 📦 Batch 10: Background Workers, Schedulers, Diagnostics & Core Data
-
-**Audit Session**: Adversarial Deep Dive (Pass 1 & Pass 2).  
-**Methodology**: Adversarial read → Failing reproduction test written → Fix applied → Test verified green.  
-**Test file**: [`Batch10SecurityAuditTest.kt`](file:///app/src/test/java/com/focusbyrj/app/Batch10SecurityAuditTest.kt)
-
-### Scope & Target Files (20 files)
-- **Background Workers & Alarms**: [`AutoBackupWorker.kt`](file:///app/src/main/java/com/focusbyrj/app/util/backup/AutoBackupWorker.kt), [`HabitAlarmScheduler.kt`](file:///app/src/main/java/com/focusbyrj/app/util/HabitAlarmScheduler.kt), [`CompletedTaskHistoryManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/CompletedTaskHistoryManager.kt)
-- **Diagnostics & Telemetry**: [`CrashHandler.kt`](file:///app/src/main/java/com/focusbyrj/app/util/diagnostics/CrashHandler.kt), [`AppLogger.kt`](file:///app/src/main/java/com/focusbyrj/app/util/diagnostics/AppLogger.kt), [`DiagnosticManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/diagnostics/DiagnosticManager.kt)
-- **Licensing & Sync Sensors**: [`LicenseManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/LicenseManager.kt), [`CameraQrScannerDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/sync/CameraQrScannerDialog.kt), [`BlockActivity.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/BlockActivity.kt)
-- **Core Databases & Repositories**: [`DrillDatabase.kt`](file:///app/src/main/java/com/focusbyrj/app/data/drill/DrillDatabase.kt), [`DrillModels.kt`](file:///app/src/main/java/com/focusbyrj/app/data/drill/DrillModels.kt), [`VocabDatabase.kt`](file:///app/src/main/java/com/focusbyrj/app/data/VocabDatabase.kt), [`VocabDao.kt`](file:///app/src/main/java/com/focusbyrj/app/data/VocabDao.kt), [`VocabEntities.kt`](file:///app/src/main/java/com/focusbyrj/app/data/VocabEntities.kt), [`VocabRepository.kt`](file:///app/src/main/java/com/focusbyrj/app/data/VocabRepository.kt), [`ScheduleDao.kt`](file:///app/src/main/java/com/focusbyrj/app/data/ScheduleDao.kt)
-- **Core Data Entities**: [`FocusSchedule.kt`](file:///app/src/main/java/com/focusbyrj/app/data/FocusSchedule.kt), [`AppRestriction.kt`](file:///app/src/main/java/com/focusbyrj/app/data/AppRestriction.kt), [`Habit.kt`](file:///app/src/main/java/com/focusbyrj/app/data/Habit.kt), [`NoteEntity.kt`](file:///app/src/main/java/com/focusbyrj/app/data/note/NoteEntity.kt), [`FocusApplication.kt`](file:///app/src/main/java/com/focusbyrj/app/FocusApplication.kt)
-
-### Findings & Resolutions
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-10-001 | 🚨 Critical | `LicenseManager.kt`, `FocusApplication.kt` | **Uninitialized SharedPreferences Wipes User Pro License on Process Death**: `LicenseManager.init` was never invoked on app startup. `prefs` remained null, meaning purchased Pro status was never loaded from disk on app launch and activating a license failed to persist to disk. Remediated by adding `LicenseManager.init(this)` to `FocusApplication.onCreate()` and adding auto-init context fallbacks in `verifyAndActivateLicense` with synchronous `.commit()`. | `batch10_001_licenseManagerLoadsPersistedProStatusOnInit` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-002 | 🔴 High | `CameraQrScannerDialog.kt` | **Camera Sensor & Executor Thread Leak on Dialog Dismissal**: Dismissing the QR scanner dialog failed to unbind `cameraProvider` or shut down the single-thread analyzer executor, keeping camera hardware active in background. Furthermore, `onQrScanned` callback ran on background analyzer thread. Remediated with `DisposableEffect(lifecycleOwner)` cleanup and MainExecutor callback dispatch. | Code inspection & compose lifecycle verification | ✅ Fixed |
-| BATCH-10-003 | 🔴 High | `AutoBackupWorker.kt` | **Unbacked-up Trash Purge & Silent Backup Failure**: If `writeDailyBackup()` failed, `AutoBackupWorker` logged a warning but proceeded to permanently delete expired trash notes/tasks and returned `Result.success()`, preventing WorkManager from retrying the backup. Remediated by returning `Result.retry()` and aborting trash purging when backup fails. | Code inspection & Worker Result verification | ✅ Fixed |
-| BATCH-10-004 | 🟠 Medium | `BlockActivity.kt` | **Implicit Broadcast Hijack in BlockActivity Dismissal**: `closeReceiver` accepted `package == null` broadcasts. On Android 12 and below (where receivers are exported by default), any third-party app could broadcast `CLOSE_BLOCK_SCREEN` to bypass app blocking. Remediated by enforcing `targetPkg == context?.packageName`. | Code inspection & intent package matching | ✅ Fixed |
-| BATCH-10-005 | 🟠 Medium | `HabitAlarmScheduler.kt` | **Negative Habit ID Modulo Corrupts Alarm Request Codes**: `habitId % 400_000L` returned negative integers for negative IDs, producing codes below 500,000 and colliding with task reminder alarms. Remediated by using `kotlin.math.abs(habitId % 400_000L)`. | `batch10_004_habitAlarmSchedulerHandlesNegativeIdSafely` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-006 | 🟠 Medium | `AppLogger.kt` | **Multiline BIP-39 Recovery Phrase Log Leak**: `AppLogger.sanitize` guarded mnemonic detection with `clean.split(" ").size >= 12`. If the 12-word phrase contained newlines or tabs, the space split failed, writing the raw mnemonic phrase into log files. Remediated by splitting on `\s+`. | `batch10_002_appLoggerSanitizesMultilineMnemonic` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-007 | 🟠 Medium | `DrillDatabase.kt` | **Unbounded Heap Cache in DrillSessionRepository**: `memoryCache` was an unbounded `ConcurrentHashMap`, holding all past drill summaries (with questions and options) in memory forever. Remediated with a synchronized bounded LRU cache (capacity = 50). | `batch10_007_drillSessionRepositoryCacheIsBounded` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-008 | 🟠 Medium | `NoteEntity.kt` | **False-Positive Empty Note Deletion on Content Outside Block Tags**: In `isEmptyNote()`, notes with `<!--NOTESNOOK_BLOCKS:...-->` only inspected inner JSON blocks. If user text was typed outside the delimiters, `isEmptyNote()` returned true, causing `NotesViewModel` to delete valid user notes. Remediated by verifying `textBefore` and `textAfter` delimiters. | `batch10_003_noteEntityWithTextOutsideBlocksIsNotMarkedEmpty` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-009 | 🔴 High | `CrashHandler.kt`, `AppLogger.kt` | **Exception Stack Traces & Messages Bypass Sanitization into Crash Logs & Diagnostics**: Uncaught exception messages and stack traces were appended raw in `CrashHandler.recordCrashToDisk` and concatenated directly in `AppLogger.logInternal`. Sensitive credentials, JWTs, and database passphrases inside exception messages leaked into `last_crash.txt`, `app_events.log`, and export ZIPs. Remediated by passing all stack traces and exception messages through `AppLogger.sanitize()`. | `batch10_010_appLoggerSanitizesStackTraceAndExtendedKeywords` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-010 | 🟠 Medium | `AppLogger.kt` | **Sensitive Keyword Omission in Secret Sanitization**: `PIN_OR_SECRET_REGEX` matched `passcode|pin|password|secret|apikey|mnemonic`, omitting `passphrase` (used by SQLCipher `DatabaseKeyProvider`), `api_key`, `access_token`, and `auth_token`. Remediated by expanding the keyword regex. | `batch10_010_appLoggerSanitizesStackTraceAndExtendedKeywords` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-011 | 🟠 Medium | `HabitAlarmScheduler.kt` | **Overnight Interval Alarms Disregard Recent Completion Anchor & Inaccurate Overnight Window Detection**: Overnight interval calculations ignored `lastCompletedTimestamp` and reset the next trigger from `now + intervalMs` instead of `anchorTime + intervalMs`. Furthermore, `isOvernight` matched equal start and end minutes (`<=`). Remediated by using `(anchorTime + intervalMs).coerceAtLeast(now + 60_000L)` in overnight branches and `<` for minute comparison. | `batch10_011_habitAlarmSchedulerAnchorsOvernightInterval` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-012 | 🟠 Medium | `HabitAlarmScheduler.kt` | **Ghost Alarms for Disabled & Archived Habits on Reschedule**: `rescheduleAllHabits` filtered habits with `it.isReminderEnabled && !it.isArchived`, skipping disabled or archived habits and preventing `cancelHabitReminder` from cancelling their active PendingIntents in Android AlarmManager. Remediated by iterating all habits through `scheduleHabitReminder()`. | Code inspection & regression test verification | ✅ Fixed |
-| BATCH-10-013 | 🟠 Medium | `DrillModels.kt`, `DrillDatabase.kt` | **Malformed Question / Option JSON Deserialization Destroys Entire Drill Summary**: `qArr.getJSONObject(i)` and `optsArr.getString(j)` threw `JSONException` on null/corrupt entries, which failed closed and wiped out the entire `DrillSummary` (XP, score, streak). In addition, `JSONObject.NULL` in `optString` returned the string `"null"`. Remediated by using `optJSONObject()`, `optString()`, guarding `isNull()`, and bounding CoroutineScopes in `DrillSessionRepository`. | `batch10_012_drillSummaryFromJsonToleratesNullOrCorruptedQuestions` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-014 | 🟠 Medium | `NoteEntity.kt` | **Malformed JSON Array Elements Abort Media & Checklist Parsing with Partial Data Loss & "null" Injection**: In `NoteEntity`, `getString(i)` on null/corrupt entries aborted the entire loop, dropping subsequent valid URIs, labels, or checklists. Furthermore, `optString()` converted `JSONObject.NULL` to the literal string `"null"`. Remediated with `isNull()` checks, string filtering, and `optJSONObject()`. | `batch10_013_noteEntityParsesUrisAndChecklistWithCorruptedEntries` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-10-015 | 🟠 Medium | `VocabRepository.kt`, `CompletedTaskHistoryManager.kt` | **Unvalidated Quiz Result Type Mutates OWS Rows & Completed Task Timestamp Override**: `recordQuizResult` assumed any non-"idiom" type was an OWS word, mutating unrelated OWS rows. Additionally, `CompletedTaskHistoryManager` ignored pre-set `task.completedAt`. Remediated by validating `type.equals("ows")` and honoring `task.completedAt`. | `batch10_014_vocabRepositoryRejectsUnknownTypeInRecordQuizResult`, `batch10_015_completedTaskHistoryUsesTaskCompletedAtIfSet` in `Batch10SecurityAuditTest.kt` | ✅ Fixed |
-
-**Batch 10 Result**: 1 Critical + 3 High + 11 Medium = **15 Total — All 15 fixed** ✅  
-**Test Suite**: `Batch10SecurityAuditTest.kt` (15 automated regression tests, 100% passing).  
-
----
-
-## 📦 Batch 11: Note Editor Helpers, Share Parsers & Export Dialogs
-
-**Audit Session**: Adversarial Deep Dive (Pass 1).  
-**Methodology**: Adversarial read → Failing reproduction test written → Fix applied → Test verified green.  
-**Test file**: [`Batch11SecurityAuditTest.kt`](file:///app/src/test/java/com/focusbyrj/app/Batch11SecurityAuditTest.kt)
-
-### Scope & Target Files (17 files, ~7,630 LOC)
-- **Share & TOC Parsers**: [`KeepNoteShareParser.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepNoteShareParser.kt), [`ArticleTocHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleTocHelper.kt)
-- **Cards, Bitmaps & Audio Widgets**: [`KeepNoteCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepNoteCard.kt), [`ImageUtils.kt`](file:///app/src/main/java/com/focusbyrj/app/util/ImageUtils.kt), [`AudioPlayerWidget.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/AudioPlayerWidget.kt), [`KeepSketchDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepSketchDialog.kt)
-- **Dialogs & Labels**: [`EditLabelsDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/EditLabelsDialog.kt), [`NoteLabelsDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NoteLabelsDialog.kt), [`NotesnookInsertBottomSheet.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/NotesnookInsertBottomSheet.kt), [`DocumentStatsDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/DocumentStatsDialog.kt)
-- **Theme, Palettes & Editorial Dialogs**: [`KeepColorDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepColorDialog.kt), [`KeepColorPalette.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepColorPalette.kt), [`KeepFontPalette.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepFontPalette.kt), [`KeepImageCollage.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepImageCollage.kt), [`KeepThemeIllustration.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/KeepThemeIllustration.kt), [`ArticleExportBottomSheet.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleExportBottomSheet.kt), [`ArticleEditorialBottomSheet.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/notes/ArticleEditorialBottomSheet.kt)
-
-### Findings & Resolutions
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-11-001 | 🟠 Medium | `KeepNoteCard.kt`, `NotesnookBlockModel.kt` | **Raw Notesnook Block Serialization Markup Leaked in Note Card Previews**: Notes stored in block format (`<!--NOTESNOOK_BLOCKS:...-->`) leaked internal JSON comment markup into the card preview text. Also, `NotesnookBlockManager.parse` failed on legacy `-->` delimiters and JSONArray roots. Remediated by adding flexible delimiter and root support in `NotesnookBlockModel.kt` and introducing `KeepNoteCardHelper.getCleanPreviewContent` with defense-in-depth HTML comment stripping. | `testKeepNoteCardHelper_StripsNotesnookBlockJsonFromPreview` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-002 | 🔴 High | `EditLabelsDialog.kt`, `NoteLabelsDialog.kt` | **Duplicate Label Item Key Crash in Compose `LazyColumn`**: Case-sensitive and duplicate label entries caused `LazyColumn` items key collision (`IllegalArgumentException: Key $key was already used`). Allowed creating duplicate labels. Remediated by creating `LabelDialogHelper` with `sanitizeLabelsForDisplay` (deduplicating case-insensitively) and `canAddLabel` (preventing blank or duplicate label additions). | `testLabelDialogHelper_DeduplicatesLabelsSafely` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-003 | 🔴 High | `ImageUtils.kt` | **Unbounded Bitmap Cache Memory Leak & Hardware Bitmap Software Render Crash**: `LruCache(250)` held full-size original 512x512 unscaled bitmaps without downsampling, consuming up to 250MB heap. Cache had no `clearCache()` method, and passing `Bitmap.Config.HARDWARE` to software canvas threw `IllegalArgumentException`. Remediated by downsampling cached icons to 96x96, copying `HARDWARE` bitmaps to `ARGB_8888` for drawing, and adding public `clearCache()`. | `testImageUtils_ClearCacheAndSafeBitmapDownsampling` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-004 | 🟠 Medium | `ArticleTocHelper.kt` | **Hashtags, Issue Numbers, and C++ Includes Misclassified as Article Headings**: TOC regex matched `#` anywhere at the start of a line without requiring trailing whitespace, falsely misclassifying `#focus` hashtags, `#123` issue references, and `#include <iostream>` as H1 headings. Outline item levels also lacked upper-bound clamping (e.g., `H7`). Remediated by enforcing `Regex("""^(#{1,6})[ \t]+(.+)$""")` and `(block.level + 2).coerceIn(1, 6)`. | `testArticleTocHelper_RejectsHashtagsAndNonHeadingHashLines`, `testArticleTocHelper_CoercesOutlineLevelToValidRange` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-005 | 🔴 High | `NotesnookInsertBottomSheet.kt` | **Unvalidated Dangerous URL Schemes in Embed and Media Ingestion**: Inserting embed and media blocks accepted arbitrary URL schemes including `javascript:`, `file:///data/data/com.focusbyrj.app/...`, and executable data URIs. Remediated by introducing `NotesnookUrlValidator.isValidMediaUrl` allowing only `https://`, `http://`, and `content://` schemes. | `testNotesnookUrlValidator_RejectsDangerousSchemes` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-006 | 🔴 High | `KeepSketchDialog.kt` | **Infinite Loop ANR on Non-Positive Scale & Wide-Gamut Color Crash in Bitmap Export**: Background grid/lines while-loop froze the UI thread if `scale <= 0f` (infinite loop ANR due to 0f increment). Wide-gamut floating point color values (>1f or <0f) caused `android.graphics.Color.argb` `IllegalArgumentException`. Remediated by creating `KeepSketchHelper.calculateLineStep` (`coerceAtLeast(1f)`) and `coerceColorComponent` (`coerceIn(0, 255)`). | `testKeepSketchDialog_StepAndColorCoercionSafety` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-007 | 🟠 Medium | `KeepNoteShareParser.kt` | **Over-Eager Checklist Conversion Wipes Content on Accidental Code Bracket**: Sharing multi-line text containing a single accidental `[]` bracket (such as Python `val = []` or markdown link) converted the entire note into a checklist and cleared `content = ""`. Remediated by requiring single-item checklist or majority (>50%) checklist items for multi-line notes. | `testKeepNoteShareParser_DoesNotConvertMultiLineNoteToBlankContentChecklistOnSingleAccidentalBracket`, `testKeepNoteShareParser_ConvertsLegitimateChecklists` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-008 | 🟠 Medium | `AudioPlayerWidget.kt` | **Unbounded/NaN Slider Drag Value Crashes MediaPlayer Seek**: Slider drag progress fraction caused NaN, negative values, or values > 1.0 to multiply with `actualDuration`, passing illegal seek targets to `MediaPlayer.seekTo()`. Remediated by creating `AudioPlayerWidgetHelper.calculateSeekPosition(progressFraction, durationMs)` clamping to `0..durationMs` with NaN/negative safety. | `testAudioPlayerWidgetHelper_CoercesSeekPositionSafely` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-009 | 🔴 High | `ArticleExporter.kt` | **Raw Notesnook Block Serialization Markup Leaked into Markdown Exports**: When notes were stored in Notesnook block format, exporting to Markdown dumped raw `<!--NOTESNOOK_BLOCKS:...-->` JSON markup into the file instead of cleanly serialized Markdown headings, lists, quotes, and paragraphs. Remediated by introducing `ArticleExporterHelper.getEffectiveBlocks` and integrating it into `ArticleExporter.exportToMarkdown`. | `test_BATCH_11_009_exportToMarkdown_unpacksSerializedBlocks` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-010 | 🔴 High | `ArticleDocxGenerator.kt`, `ArticlePdfGenerator.kt` | **Raw JSON Markup Leaked in Document (.docx) and PDF Generators**: When generating Word documents or PDFs, notes with serialized blocks fell back to raw JSON comment dumps, corrupting the exported document. Remediated by resolving `ArticleExporterHelper.getEffectiveBlocks` to extract actual document blocks before rendering document runs and PDF canvas elements. | `test_BATCH_11_010_docxGenerator_unpacksSerializedBlocks` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-011 | 🔴 High | `DocumentStatsDialog.kt` | **Linear O(1) Space Character Scanner & Notesnook Block Unpacking for Metrics**: `text.split(Regex("\\s+"))` caused high heap allocation and OOM risks on large notes (e.g. 500k+ chars), and word count was contaminated by raw JSON markup strings. Remediated by implementing a single-pass O(1) space scanner in `DocumentMetricsCalculator.calculate` and unpacking `effectiveBlocks`. | `test_BATCH_11_011_documentStats_linearScannerAndEffectiveBlocks` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-012 | 🔴 High | `EditLabelsDialog.kt` | **Duplicate Case-Insensitive Label Collision on Rename in Compose `LazyColumn`**: Renaming an existing label to match an existing one caused duplicate keys in Compose `items(labels, key = { it })` (`IllegalArgumentException`). Remediated by adding `LabelDialogHelper.canRenameLabel` ensuring non-blank and non-colliding renames. | `test_BATCH_11_012_editLabelsDialog_canRenameLabelPreventsCollisions` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-013 | 🟠 Medium | `KeepNoteShareParser.kt` | **Unbounded Image Attachment Ingestion & Null URI Inclusion in Shared Notes**: Intent sharing with numerous or null URIs caused null pointer exceptions and unbounded image attachment ingestion. Checklist item conversion also accepted unboundedly large lists. Remediated by filtering null URIs, capping attached images at `MAX_ATTACHED_IMAGES = 50`, and capping checklist items at `MAX_CHECKLIST_ITEMS = 500`. | `test_BATCH_11_013_shareParser_capsImagesAndChecklistItems` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-014 | 🟠 Medium | `NoteLabelsDialog.kt` | **Case-Sensitive Label Selection Mismatch**: Selecting a label with differing casing from the note's assigned labels caused desynchronization in toggle state. Remediated by implementing `LabelDialogHelper.isLabelSelected` using case-insensitive trimmed matching. | `test_BATCH_11_014_noteLabelsDialog_caseInsensitiveSelection` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-015 | 🟠 Medium | `KeepSketchDialog.kt` | **NaN / Infinite Eraser Coordinate and Negative Radius Crash**: Erasing drawing paths with non-finite touch coordinates (NaN / Infinity) or negative eraser radii caused erratic calculations or crashes in geometry math. Remediated by adding `KeepSketchHelper.safeRadius` and `isCoordinateValid` in `erasePathsNear`. | `test_BATCH_11_015_keepSketch_safeRadiusAndCoordinateValidation` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-11-016 | 🟠 Medium | `KeepImageCollage.kt` | **Unbounded Image Memory Consumption & Negative Range Crash in `coerceIn`**: Passing unbounded images or negative/invalid `maxImages` crashed Compose with `IllegalArgumentException: Cannot coerce value to an empty range` (`minOf(safeTotal, safeMax).coerceAtMost(MAX_COLLAGE_IMAGES)`). Remediated with safe bounds checking and `MAX_COLLAGE_IMAGES = 50`. | `test_BATCH_11_016_keepImageCollage_safeImageCountClamping` in `Batch11SecurityAuditTest.kt` | ✅ Fixed |
-
-**Batch 11 Result**: 0 Critical + 8 High + 8 Medium = **16 Total — All 16 fixed** ✅  
-**Test Suite**: `Batch11SecurityAuditTest.kt` (18 automated regression tests, 100% passing).  
-
----
-
-## 📦 Batch 12: Quiz, Drill Runners & Settings Screens
-
-**Audit Session**: Adversarial Deep Dive (Pass 1 & Pass 2).  
-**Methodology**: Adversarial read → Failing reproduction test written → Fix applied → Test verified green.  
-**Test file**: [`Batch12SecurityAuditTest.kt`](file:///app/src/test/java/com/focusbyrj/app/Batch12SecurityAuditTest.kt)
-
-### Scope & Target Files (16 files, ~9,000 LOC)
-- **Drill & Quiz Runners**: [`FullscreenDrillView.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/FullscreenDrillView.kt), [`FullscreenDrillSummaryView.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/FullscreenDrillSummaryView.kt), [`FullscreenSolutionsView.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/FullscreenSolutionsView.kt), [`DrillSummaryCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/DrillSummaryCard.kt)
-- **Drill Components**: [`DrillTopBar.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillTopBar.kt), [`DrillBottomActionRow.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillBottomActionRow.kt), [`DrillQuestionPaletteModal.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/drill/DrillQuestionPaletteModal.kt), [`ExplanationSection.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/drill/ExplanationSection.kt), [`SolutionCardItem.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/drill/SolutionCardItem.kt), [`SolutionsTopBar.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/drill/SolutionsTopBar.kt)
-- **Settings & Config**: [`SettingsScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/SettingsScreen.kt), [`BubbleSettingsScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/BubbleSettingsScreen.kt), [`PreferencesHubScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/PreferencesHubScreen.kt), [`CustomCategoryEditor.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/CustomCategoryEditor.kt), [`SubscriptionScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/SubscriptionScreen.kt), [`AptitudeProfileCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/AptitudeProfileCard.kt)
-
-### Findings & Resolutions
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-12-001 | 🟠 Medium | `FullscreenDrillSummaryView.kt`, `AptitudeProfileCard.kt` | **Negative Modulo & Corrupt Streak Calculation in 7-Day Cycle**: `((currentStreak - 1) % 7) + 1` produced negative day numbers (e.g. `Day -1/7`) and broke active streak circle states when `currentStreak < 0`. Remediated by introducing `DrillStreakHelper.calculateCycleDay(streak)` coercing streak to `0` before cycle math. | `test_BATCH_12_001_streakCycleDayCalculation_negativeAndBoundaryValues` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-002 | 🔴 High | `CustomCategoryEditor.kt` | **Duplicate Package Name Key Collision in Compose `LazyColumn` & Untrimmed Filter Name**: Duplicate package names from package manager queries crashed Compose runtime with `IllegalArgumentException: Key $key was already used` at `items(filteredApps, key = { it.packageName })`. Search query whitespace also caused search misses. Remediated by introducing `CategoryEditorHelper.filterAndDeduplicateApps` deduplicating by `packageName`, and trimming category names on save. | `test_BATCH_12_002_customCategoryEditor_deduplicatesPackages` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-003 | 🟠 Medium | `SolutionsTopBar.kt`, `DrillSummaryCard.kt` | **Negative Seconds Integer Modulo Produces Malformed Time Strings**: Clock skew or negative durations produced malformed time strings like `"00:-5"` or `"-5sec"`. Remediated by coercing seconds with `.coerceAtLeast(0)` in `formatSecondsToMmSs`, `formatSecondsToMinutesSec`, and `DrillSummaryCard` JSON parsing. | `test_BATCH_12_003_secondsFormatting_negativeSecondsSafeCoercion` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-004 | 🔴 High | `FullscreenSolutionsView.kt`, `BubbleSettingsScreen.kt` | **Implicit Broadcasts Missing Package Scoping on Android 14+**: `HIDE_BUBBLE`, `SHOW_BUBBLE`, and `ACTION_SETTINGS_CHANGED` broadcasts were sent without `setPackage(context.packageName)`, exposing them to interception and silent drops on Android 14+. Remediated by enforcing `.setPackage(context.packageName)` on all internal broadcasts. | `test_BATCH_12_004_broadcastIntents_mustBeExplicitOrPackageScoped` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-005 | 🟠 Medium | `FullscreenDrillSummaryView.kt`, `DrillSummaryCard.kt` | **Unbounded/Negative Accuracy Percentage Calculation**: Malformed inputs where `correct < 0` or `correct > total` produced negative percentages or values exceeding 100%. Remediated by introducing `DrillSummaryMathHelper.calculateAccuracy` clamping output strictly to `0..100`. | `test_BATCH_12_005_drillSummaryAccuracyPercentage_bounded0To100` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-006 | 🟠 Medium | `DrillQuestionPaletteModal.kt` | **Negative Count Exception in Compose `LazyVerticalGrid.items(count)`**: Passing `totalQuestions < 0` triggered `IllegalArgumentException: count should be greater than or equal to 0`. Remediated with `DrillPaletteHelper.getSafeCount(totalQuestions)` coercing count to `0`. | `test_BATCH_12_006_drillQuestionPalette_safeCountClamping` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-007 | 🟠 Medium | `FullscreenDrillView.kt`, `DrillTopBar.kt` | **Negative Countdown & Overflow in Blitz Mode Timer HUD**: Overtime countdown ticks or negative remaining blitz seconds displayed `"-1s"` and corrupted progress fraction calculations. Remediated by creating `DrillTopBarHelper.formatBlitzTimer` and `calculateBlitzProgress` coercing remaining seconds to `0`. | `test_BATCH_12_007_drillBlitzTimer_negativeRemainingClamping` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-008 | 🟠 Medium | `SettingsScreen.kt` | **Missing `FLAG_ACTIVITY_NEW_TASK` on Widget Configuration Launch**: Invoking `startActivity(intent)` without `FLAG_ACTIVITY_NEW_TASK` risked fatal `AndroidRuntimeException` when executed from a non-Activity context. Remediated by introducing `SettingsScreenHelper.createWidgetConfigureIntent` setting `FLAG_ACTIVITY_NEW_TASK`. | `test_BATCH_12_008_settingsScreen_widgetConfigureIntentHasNewTaskFlag` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-009 | 🔴 High | `FullscreenDrillView.kt` | **Drill Session Combo & MaxCombo Desynchronization & Unvalidated Correct Index**: `activeSession.combo` and `activeSession.maxCombo` were never updated upon answering questions, and combo was not reset to 0 on wrong answer. Correct option indices in answer choices were unvalidated, risking out-of-bounds mismatches. Remediated by introducing `FullscreenDrillHelper.updateCombo` and `safeCorrectIndex`. | `test_BATCH_12_009_drillCombo_updatesAndResetsCorrectly` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-010 | 🔴 High | `BubbleSettingsScreen.kt` | **Compose Slider IllegalArgumentException on Stored Out-of-Bounds Range**: Stored preferences in `BubbleSettingsScreen` passed uncoerced `value` into `ProfessionalSlider`, throwing `IllegalArgumentException` if value was outside `valueRange`. Also malformed time parsing strings crashed with `NumberFormatException`. Remediated by introducing `BubbleSettingsHelper.coerceSliderValue` and `parseTimeSafe`. | `test_BATCH_12_010_bubbleSettings_sliderValueCoercion` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-011 | 🔴 High | `FullscreenSolutionsView.kt` | **Null JSON Elements Abort Entire Test Solution Deserialization & Unbounded Index Selection**: `qArr.getJSONObject(i)` threw `JSONException` when encountering null or corrupted elements in questions array, aborting deserialization of the entire test. Question selection index was uncoerced. Remediated by introducing `SolutionsViewHelper.parseQuestionsSafely` and `safeQuestionIndex`. | `test_BATCH_12_011_solutionsView_safeJsonParsingAndQuestionIndex` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-012 | 🟠 Medium | `SettingsScreen.kt`, `SettingsScreenHelper.kt` | **Corrupted Reminder Interval Value Deadlock & Unbounded Soft Lock/Unlock Durations**: When `persistentReminderInterval` contained an unexpected value, `when` branches had no fallback, deadlocking stepper interactions. Also soft lock and unlock durations lacked bounds clamping. Remediated by introducing `SettingsScreenHelper.getNextReminderInterval`, `coerceSoftLockDuration`, and `coerceSoftUnlockDuration`. | `test_BATCH_12_012_settingsScreen_reminderIntervalCycleAndDurations` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-013 | 🟠 Medium | `PreferencesHubScreen.kt`, `PreferencesHubHelper.kt` | **Blind FocusApplication Cast ClassCastException in PreferencesHub**: Blind cast `(context.applicationContext as FocusApplication)` threw `ClassCastException` in non-`FocusApplication` contexts. Remediated by creating `PreferencesHubHelper.getTaskDao` returning nullable `TaskDao` safely. | `test_BATCH_12_013_preferencesHub_taskDaoSafeResolution` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-014 | 🟠 Medium | `CustomCategoryEditor.kt`, `CategoryEditorHelper.kt` | **Package Name Search Misses When App Name Empty & Blank Package Filtering**: Search query failed to match `packageName` when `appName` was empty or localized. Also blank package names were not filtered out. Remediated by enhancing `CategoryEditorHelper.filterAndDeduplicateApps` to search both `appName` and `packageName`, and filtering out blank packages. | `test_BATCH_12_014_customCategoryEditor_packageNameSearchAndBlankFiltering` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-015 | 🟠 Medium | `AptitudeProfileCard.kt`, `AptitudeCardHelper.kt` | **Unbounded Accuracy Percentage & Negative Streak Freezes Counter in Profile Card**: Profile card rendered negative or >100% accuracy values and negative streak freezes count. Remediated by introducing `AptitudeCardHelper.clampAccuracy` and `clampStreakFreezes`. | `test_BATCH_12_015_aptitudeCard_clampingAccuracyAndFreezes` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-12-016 | 🟠 Medium | `AptitudeReminderReceiver.kt`, `AptitudeReminderHelper.kt` | **Unbounded Hour/Minute Parsing Rollover in Calendar Alarm Scheduler**: Unbounded hour/minute parsing allowed hour > 23 and minute > 59, silently rolling over Calendar days and delaying reminder alarms. Remediated by introducing `AptitudeReminderHelper.parseHourAndMinute` clamping hour to `0..23` and minute to `0..59`. | `test_BATCH_12_016_aptitudeReminder_hourMinuteClamping` in `Batch12SecurityAuditTest.kt` | ✅ Fixed |
-
-**Batch 12 Result**: 0 Critical + 5 High + 11 Medium = **16 Total — All 16 fixed** ✅  
-**Test Suite**: `Batch12SecurityAuditTest.kt` (16 automated regression tests, 100% passing).  
-
----
-
-## 📦 Batch 13: Presentation Cards, Theme & Design Tokens
-
-**Audit Session**: Adversarial Deep Dive (Pass 1).  
-**Methodology**: Adversarial read → Failing reproduction test written → Fix applied → Test verified green.  
-**Test file**: [`Batch13SecurityAuditTest.kt`](file:///app/src/test/java/com/focusbyrj/app/Batch13SecurityAuditTest.kt)
-
-### Scope & Target Files (29 files, ~6,500 LOC)
-- **Restrictions & Mode Selection UI**: [`AddRestrictionScreen.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/AddRestrictionScreen.kt), [`AppModeSection.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/AppModeSection.kt), [`CustomRestrictionSection.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/CustomRestrictionSection.kt), [`CustomCategoryManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/CustomCategoryManager.kt)
-- **Chat & Presentation Cards**: [`ArithmeticCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/ArithmeticCard.kt), [`HabitsChatCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/HabitsChatCard.kt), [`MysteryBoxChatCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/MysteryBoxChatCard.kt), [`VocabBriefContent.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/VocabBriefContent.kt), [`VocabRetentionHubChatCard.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/VocabRetentionHubChatCard.kt)
-- **Permissions, Device Stats & Diagnostics**: [`PermissionsDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/screens/permissions/PermissionsDialog.kt), [`PermissionUtils.kt`](file:///app/src/main/java/com/focusbyrj/app/util/PermissionUtils.kt), [`DeviceStatsHelper.kt`](file:///app/src/main/java/com/focusbyrj/app/util/DeviceStatsHelper.kt), [`AnalyticsComponents.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/AnalyticsComponents.kt)
-- **Theme, Styling, Animation & Components**: [`AppThemeManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/AppThemeManager.kt), [`Color.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/Color.kt), [`Theme.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/Theme.kt), [`Type.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/Type.kt), [`AyvaAlertTheme.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/AyvaAlertTheme.kt), [`AyvaIcon.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/theme/AyvaIcon.kt), [`CatMagicRiveView.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/CatMagicRiveView.kt), [`DuolingoComponents.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/DuolingoComponents.kt), [`ProfessionalSlider.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/ProfessionalSlider.kt), [`ProfileAvatarManager.kt`](file:///app/src/main/java/com/focusbyrj/app/util/ProfileAvatarManager.kt), [`GamificationHaptics.kt`](file:///app/src/main/java/com/focusbyrj/app/util/GamificationHaptics.kt), [`TalkActionChips.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/TalkActionChips.kt), [`AyvaNotificationColorsDialog.kt`](file:///app/src/main/java/com/focusbyrj/app/ui/components/AyvaNotificationColorsDialog.kt), [`FocusQuotes.kt`](file:///app/src/main/java/com/focusbyrj/app/util/FocusQuotes.kt), [`HabitMicroCopyProvider.kt`](file:///app/src/main/java/com/focusbyrj/app/util/HabitMicroCopyProvider.kt), [`SummaryQuotes.kt`](file:///app/src/main/java/com/focusbyrj/app/util/SummaryQuotes.kt)
-
-### Findings & Resolutions
-
-| ID | Severity | File | Description | Test | Status |
-|:---|:---|:---|:---|:---|:---|
-| BATCH-13-001 | 🔴 High | `AppModeSection.kt`, `AddRestrictionScreen.kt` | **Duplicate Package Name Key Collision in Compose LazyRow/LazyColumn**: Duplicate packages from package manager queries or multi-user profiles crashed Compose runtime with `IllegalArgumentException: Key $key was already used`. Remediated by adding `AppModeHelper.sanitizeAppsForDisplay` and `.distinctBy { it.packageName }`. | `test_batch13_001_duplicatePackagesInAppModeSectionAndAddRestrictions` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-13-002 | 🔴 High | `ArithmeticCard.kt` | **Rigid Drill JSON Parsing & NaN/DivZero in Question Progress Calculation**: Strict `getString` caused Compose cards to fail on missing fields; progress calculation threw `NaN`/`DivZero` if `totalQ <= 0`. Remediated by introducing `ArithmeticCardHelper.parseDrillJson` with `optString`/`optInt` and `computeProgressFraction`. | `test_batch13_002_arithmeticCardSafeJsonAndProgressMath` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-13-003 | 🟠 Medium | `CustomCategoryManager.kt` | **Brittle Monolithic JSON Parsing & Repeated Disk I/O**: Single corrupted category JSON discarded the entire list; `getCategories()` hit SharedPreferences on every call when categories were empty. Remediated by adding `isInitialized` flag and resilient per-item JSON parsing. | `test_batch13_003_customCategoryManagerResilientParsingAndCaching` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-13-004 | 🟠 Medium | `HabitsChatCard.kt`, `HabitWithProgress` | **Progress Fraction Zero/Negative Bound Handling in Compose**: Passing `progressFraction <= 0f` to `fillMaxWidth` risked Compose layout constraint errors. Remediated by guarding rendering with `if (progressFraction > 0f) fillMaxWidth(progressFraction.coerceIn(0.01f, 1f))`. | `test_batch13_004_habitsCardProgressFractionClamping` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-13-005 | 🟠 Medium | `DeviceStatsHelper.kt` | **Negative Battery Level & Zero Scale Arithmetic**: Missing battery extras resulted in `level = -1` or `scale = 0`, producing negative percentages or division by zero. Remediated by clamping `rawPercentage` to `0..100`, guarding `scale <= 0`, and safely wrapping receiver registration. | `test_batch13_005_deviceStatsHelperBatteryInfoMathGuards` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-13-006 | 🟠 Medium | `Theme.kt` | **Unsafe `(view.context as Activity)` Direct Cast**: When Composable is hosted in a Dialog, ContextWrapper, or test environment, direct casting caused `ClassCastException`. Remediated by implementing recursive `Context.findActivity(): Activity?` and safe null check before accessing window. | `test_batch13_006_themeContextUnwrapSafeActivity` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-13-007 | 🟠 Medium | `CustomRestrictionSection.kt` | **Time Limit Slider Range & Stepper Bound Mismatch**: Stepper button allowed up to 180 min, but slider was clamped to 120 min, causing UI desynchronization. Remediated by aligning `ProfessionalSlider` `valueRange` and value coercion to `1f..180f`. | `test_batch13_007_customRestrictionSectionTimeLimitSliderBounds` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
-| BATCH-13-008 | 🟠 Medium | `VocabRetentionHubChatCard.kt`, `VocabBriefContent.kt` | **Mastery Progress Overflow & Unbounded In-Memory Set**: Data desync allowed `masteryProgress > 1.0f`; duplicate IDs collided in `LazyColumn`; static card ID cache grew indefinitely. Remediated by adding `computeMasteryProgress` clamped to `0f..1f`, unique keys with term suffix, and LRU cap on card ID set. | `test_batch13_008_vocabRetentionHubMasteryProgressClampingAndKeys` in `Batch13SecurityAuditTest.kt` | ✅ Fixed |
-
-**Batch 13 Result**: 0 Critical + 2 High + 6 Medium = **8 Total — All 8 fixed** ✅  
-**Test Suite**: `Batch13SecurityAuditTest.kt` (8 automated regression tests, 100% passing).  
-
----
-
-## 🗂️ Remediation Log
-
-| Date | Batch | Action / Finding | Commits / Changes |
-| :--- | :--- | :--- | :--- |
-| *2026-09-22* | Initial Setup | Created comprehensive audit roadmap and tracking framework (`AUDIT_TRACKER.md`). | Setup tracker |
-| *2026-09-22* | **Batch 1 Audit (Pass 1)** | Deep dive into Cryptography, KDF, and Vault storage. Identified 8 findings (3 High, 3 Med, 2 Low). | Logged findings BATCH-1-001 to BATCH-1-008 |
-| *2026-09-22* | **Batch 1 Fixes (Pass 1)** | Remediated all 8 findings across Argon2idKdf, EncryptedMediaStorage, EncryptedMediaFetcher, ArchiveVaultSecurity, NoteDatabase, and VaultPayloadEncryptor. | Applied fixes |
-| *2026-09-22* | **Batch 1 Audit (Pass 2)** | Conducted second-pass scan across all 9 Batch 1 files. Discovered 5 additional subtle bugs/risks (1 Critical, 2 High, 2 Medium): PIN change note corruption, PBKDF2 migration desync, backup short-read, test KeyStore crash, memory residue. | Logged findings BATCH-1-009 to BATCH-1-013 |
-| *2026-09-22* | **Batch 1 Fixes (Pass 2)** | Remediated all 5 second-pass findings across CryptoBackupEngine, ArchiveVaultSecurity, DatabaseKeyProvider, VaultCryptoEngine, HkdfUtil, and VaultPayloadEncryptor. | Applied fixes |
-| *2026-09-22* | **Batch 1 Audit (Pass 3)** | Exhaustive edge-case and consumer scan. Discovered 4 critical integration bugs: archiving failure without vault PIN, plaintext leakage on initial vault setup, media storage test crash & short read, and database key reference mutation. | Logged findings BATCH-1-014 to BATCH-1-017 |
-| *2026-09-22* | **Batch 1 Fixes (Pass 3)** | Remediated all 4 findings across VaultPayloadEncryptor, ArchiveVaultSecurity, EncryptedMediaStorage, and DatabaseKeyProvider. | Applied fixes |
-| *2026-09-22* | **Batch 1 Audit (Final Pass)** | Final deep scan across all lifecycles and edge cases. Discovered locked-vault credential overwrite trap and trashed note decryption mapping. | Logged findings BATCH-1-018 and BATCH-1-019 |
-| *2026-09-22* | **Batch 1 Fixes (Final Pass)** | Remediated both findings in ArchiveVaultSecurity and NoteRepository. Verified clean compile with `./gradlew compileDebugKotlin` (0 errors, 0 warnings). Batch 1 completely hardened. | Applied fixes, 100% resolved |
-| *2026-09-22* | **Batch 2 Audit & Remediation (Deep Dive)** | Deep dive into Cloud Sync, Auth, Storage & Network Security. Identified and resolved 32 vulnerabilities (7 Critical, 10 High, 12 Medium, 3 Low) across Supabase storage, sync engine, key management, vault restore, envelope crypto, auto-sync coordinator, and auth UI. Verified with clean `./gradlew :app:compileDebugKotlin` (0 errors). | Logged findings BATCH-2-001 to BATCH-2-032, applied fixes, 100% resolved |
-| *2026-09-22* | **Batch 3 Audit & Remediation** | Deep dive into Android Components, IPC, Intents & Permissions. Identified and resolved 7 vulnerabilities (1 Critical, 3 High, 3 Medium) across FileProvider, Widgets, BootReceiver, ShareToNote, and Quick actions. Verified with clean `./gradlew :app:compileDebugKotlin`. | Logged findings BATCH-3-001 to BATCH-3-007, applied fixes, 100% resolved |
-| *2026-09-22* | **Batch 4 Audit & Remediation** | Deep dive into System Services, App Blocking & Background Execution. Identified and resolved 7 vulnerabilities (1 Critical, 3 High, 3 Medium) across BubbleService, FocusBlockerService, BlockOverlayManager, and UnifiedOverlayCoordinator. Preserved Android 14+ BAL overlay invariant. Verified with clean `:app:compileDebugKotlin`. | Logged findings BATCH-4-001 to BATCH-4-007, applied fixes, 100% resolved |
-| *2026-09-22* | **Batch 5 Audit & Remediation** | Deep dive into Databases, Migrations & Backup/Export Pipeline. Identified and resolved 8 vulnerabilities (3 Critical, 4 High, 1 Medium) across NoteMediaManager (catastrophic vault media purge), FocusDatabase (destructive migration removal & v10 fail-closed schema), SupabaseSyncEngine (true 3-way concurrent conflict resolution & task updatedAt), NotesViewModel (empty note soft-delete & pre-op snapshot), ArchiveVaultSecurity (transactional split-key protection), BackupRestoreManager (Zip Slip canonical path validation, pre-restore snapshot & Room transactions), and NoteDatabase/FocusApplication (SQLCipher SupportFactory clearPassphrase re-open fix). Verified with clean `:app:compileDebugKotlin`, `:app:assembleDebug`, and `adb install -r`. | Logged findings BATCH-5-001 to BATCH-5-008, applied fixes, 100% resolved |
-| *2026-09-23* | **Batch 2 Audit & Remediation (Pass 2 Deep Dive)** | Adversarial security & data integrity audit across Cloud Sync, Auth & Network Security. Identified and resolved 11 vulnerabilities (2 Critical, 3 High, 4 Medium, 2 Low) across `SupabaseSyncEngine.kt`, `SupabaseKeyManager.kt`, `SupabaseAuthManager.kt`, `AutoSyncWorker.kt`, `AutoSyncManager.kt`, `VaultSyncManager.kt`, and `NotesViewModel.kt`. Created regression test suite in `Batch2SecurityAuditTest.kt`. | Logged findings B2-F-009 to B2-F-019, applied fixes, 100% resolved âœ… |
-| *2026-09-23* | **Data Integrity Hardening: Phase 1** | Implemented Phase 1 Data Integrity Hardening: (1) True streaming encrypted backup creation and extraction via `CipherOutputStream`/`CipherInputStream` over AES-256-GCM + Argon2id with 32 KB chunk buffers, eliminating JVM heap `OutOfMemoryError` on archives >100 MB. (2) Android `WorkManager` persistent background scheduling replacing in-memory coroutine timers for daily auto-backups (`AutoBackupWorker`) and cloud sync (`AutoSyncWorker`). (3) Atomic file writes via `androidx.core.util.AtomicFile` in `DataSafetyManager` to prevent 0-byte snapshot corruption on sudden process death. (4) Created `DataIntegrityPhase1Test` and verified full unit test suite passing (80/80 passed, 0 failures). | Implemented Phase 1 hardening, 100% passed |
-| *2026-09-23* | **Data Integrity Hardening: Phase 2** | Implemented Phase 2 Data Integrity Hardening without shortcuts: (1) Added task soft-delete Trash bin (`isTrashed`, `trashedAt`, `deletedAt`) in Room migration v11, TaskDao, TaskRepository, and TaskViewModel. (2) Designed and added Task Trash BottomSheet in `TodosScreen.kt` with badge counter, 30-day retention countdown, restore, permanent deletion, and empty trash confirmation dialogs. (3) Expanded `DataSafetyManager.kt` to write multi-table atomic snapshots covering all FocusDatabase entities (tasks, habits, schedules, restrictions) alongside notes with 7-day rolling rotation and snapshot version 2. (4) Automated 30-day trash purging across both notes and tasks with pre-op safety snapshots in `AutoBackupWorker` and `AutoBackupScheduler`. (5) Added task trash sync to `SupabaseSyncEngine.kt` with trash-sensitive fingerprints and updated `.ayva_backup` archives in `BackupRestoreManager.kt`. (6) Created `DataIntegrityPhase2Test` and verified all tests passing with exit code 0. | Implemented Phase 2 hardening, 100% passed |
-| *2026-09-23* | **Data Integrity Hardening: Phase 3** | Implemented Phase 3 Recovery & Cryptographic Hardening: (1) Wired BIP-39 12-word mnemonic phrase key derivation (`deriveKeyFromMnemonic`) and AES-256-GCM envelope encryption (`createRecoveryEnvelope` / `decryptRecoveryEnvelopeWithMnemonic`) in `VaultCryptoEngine.kt`. (2) Upgraded `ArchiveVaultSecurity.kt` with recovery envelope persistence, authenticated mnemonic verification, and atomic re-encryption of all archived notes during recovery without data loss. (3) Added `SHOW_MNEMONIC` step in `ArchiveVaultFirstTimeDialog` displaying a 4x3 word grid with copy action and backup acknowledgement. (4) Created `ArchiveVaultMnemonicRecoveryDialog` with live BIP-39 checksum validation, new PIN configuration, and error recovery. (5) Integrated vault status and emergency recovery options into `SecurityScreen.kt` and `NotesScreen.kt`. (6) Removed `.fallbackToDestructiveMigration()` from `VocabDatabase` and `DrillDatabase`, guaranteeing strict fail-closed Room persistence. (7) Created `DataIntegrityPhase3Test` and verified all test suites (Phases 1, 2, and 3) passing with exit code 0. | Implemented Phase 3 hardening, 100% passed |
-| *2026-09-23* | **Data Integrity Hardening: Phase 3.1** | Implemented Zero-Knowledge Recovery Phrase Export & Unsaved Backup Warning System: (1) Added Zero-Knowledge recovery phrase persistence in `ArchiveVaultSecurity.kt`, encrypting the 12 words under a domain-separated AES-256-GCM key derived from the active vault subkey (`SHA-256("focus_vault_recovery_phrase_v1" + vaultSubKey)`). Inaccessible without PIN. (2) Added on-demand phrase generation & envelope wrapping (`getOrConfigureRecoveryPhrase`) for users who skipped phrase creation or had legacy vaults. (3) Implemented seamless phrase preservation across PIN rotations (`setPasscode`) by re-encrypting the stored recovery phrase under the new subkey and updating the recovery envelope without forcing the user to change their 12 words. (4) Designed and implemented `ArchiveVaultExportPhraseDialog` in `ArchiveVaultDialogs.kt` with 4x3 word grid, copy-to-clipboard with safety notes, system share intent launcher, and "Mark as Backed Up" confirmation. (5) Added unsaved phrase reminder banner in `NotesScreen.kt` for unlocked Archive Vaults when `!isRecoveryPhraseBackedUp`. (6) Added "Export Recovery Phrase" rows with PIN challenge in `ArchiveVaultSettingsDialog` and `SecurityScreen.kt`. (7) Added 5 comprehensive automated tests to `DataIntegrityPhase3Test.kt` verifying encryption, export, PIN rotation continuity, on-demand generation, and purge on passcode disable. 100% passed. | Implemented Phase 3.1 hardening, 100% passed |
-| *2026-09-23* | **Batch 2 Audit & Remediation (Pass 1 Deep Dive)** | Adversarial deep dive into Cloud Sync, Auth & Network Security. Resolved 8 critical sync and data integrity flaws (B2-F-001 through B2-F-008): prevented re-login item duplication by preserving user-partitioned mappings in `clearSession`, eliminated `isMatchingItem` mutating UUID side effects, decrypted vault notes prior to remote tombstone attachment purge, added `trashedAt` note serialization, deterministic PostgREST ordering (`order=id.asc`), content/timestamp deduplication fallbacks, and persistent offline deletion fallback. Verified 100% pass across 38 unit tests in `SyncAndConflictResolutionTest` and `Batch1SecurityAuditTest`. | Applied fixes across `SupabaseKeyManager.kt`, `SupabaseSyncEngine.kt`, and `SyncAndConflictResolutionTest.kt`. 100% resolved. |
-| *2026-09-23* | **Batch 2 Audit & Remediation (Pass 3 Deep Dive)** | Adversarial deep dive into Session Security, Vault Salts & Synchronization Hazards. Remediated 11 vulnerabilities (2 Critical, 4 High, 5 Medium): (1) Mitigated offline dictionary attacks via per-user random `vaultSalt` generation and server-side metadata synchronization (`B2-P3-002`). (2) Plaintext HMAC key sandbox fallback separation (`B2-P3-001`). (3) In-memory Master Password exposure window minimization (`B2-P3-003`). (4) Pre-deletion anomaly guard in pull phase preventing permanent SQLite data loss on large remote drops (`B2-P3-004`). (5) O(1) targeted tombstone unbinding avoiding O(nÂ²) SharedPreferences stalls (`B2-P3-005`). (6) Chunked streaming media download preventing heap OOM spikes (`B2-P3-006`). (7) Conflict/restored copy push phase suppression preventing exponential duplication bombs (`B2-P3-007`). (8) Synchronous `.commit()` for monotonic sync sequence numbers (`B2-P3-008`). (9) Avoided phantom UUID generation for never-synced local deletions (`B2-P3-009`). (10) Lifecycle cleanup of network callbacks in AutoSyncManager (`B2-P3-010`). (11) NotesViewModel trash unlinking race condition prevention (`B2-P3-011`). | Applied fixes across `SupabaseKeyManager.kt`, `SupabaseAuthManager.kt`, `SupabaseSyncEngine.kt`, `SupabaseStorageEngine.kt`, `AutoSyncManager.kt`, `NotesViewModel.kt`, and `Batch2Pass3SecurityTest.kt`. 100% resolved âœ… |
-| *2026-09-24* | **Batch 5 Audit & Remediation (Pass 2 Deep Dive) + Batch 2 Low Fixes** | Deep dive into Databases, Migrations & Backup/Export Pipeline (6 findings resolved) plus resolved pending Batch 2 Low findings (2 findings resolved): (1) Task `subtasksJson` preserved across backup creation and restoration (`B5-F-001`). (2) Note `fontKey` and `deletedAt` preserved across backup pipeline (`B5-F-002`). (3) Legacy SQLite plaintext task migration extracts `updatedAt`, `isTrashed`, `trashedAt`, `deletedAt`, and `subtasksJson` (`B5-F-003`). (4) Legacy SQLite note migration extracts `fontKey`, `trashedAt`, and `deletedAt` (`B5-F-004`). (5) Safe native `PdfDocument` closure in `try-finally` in `ArticlePdfGenerator` (`B5-F-005`). (6) XML 1.0 illegal control character sanitization and `xml:space="preserve"` in `ArticleDocxGenerator` (`B5-F-006`). (7) Master password `CharArray` overloads and immediate UI buffer zeroization in `SupabaseAuthManager` & `SupabaseAuthScreen` (`B2-LOW-001`). (8) Batch media deletion `ProtocolException` override fallback return in `SupabaseStorageEngine` (`B2-LOW-002`). Created `Batch5SecurityAuditTest.kt` with Robolectric test suite (8/8 passing). | Applied fixes across `BackupRestoreManager.kt`, `FocusDatabaseMigrationHelper.kt`, `NoteDatabaseMigrationHelper.kt`, `ArticlePdfGenerator.kt`, `ArticleDocxGenerator.kt`, `SupabaseAuthManager.kt`, `SupabaseAuthScreen.kt`, `SupabaseStorageEngine.kt`, and `Batch5SecurityAuditTest.kt`. 100% resolved âœ… |
-| *2026-09-24* | **Batch 5 Audit & Remediation (Pass 3 Deep Dive)** | Adversarial deep dive into Databases, Migrations & Backup/Export Pipeline. Identified and resolved 9 vulnerabilities (2 Critical, 3 High, 3 Medium, 1 Low): (1) Bypassed PIN protection & plaintext leakage of archived vault notes on restore (`BATCH-5-015`). (2) Task subtasks loss in DataSafetyManager auto-backup & restore (`BATCH-5-016`). (3) Note typography & soft-delete audit omission in DataSafetyManager (`BATCH-5-017`). (4) Missing habit logs serialization & non-transactional multi-table restore in DataSafetyManager (`BATCH-5-018`). (5) Plaintext database persistence & migration failure loops in FocusDatabaseMigrationHelper (`BATCH-5-019`). (6) Pre-op safety snapshot omission in TaskViewModel.emptyTrash and truncated scope in BackupRestoreManager (`BATCH-5-020`). (7) Non-transactional vocab restore & stale SharedPreferences on clean restore (`BATCH-5-021`). (8) Subtask JSON parsing resilience across schema variations (`BATCH-5-022`). (9) Division by zero / Infinity in ArticlePdfGenerator table renderer (`BATCH-5-023`). Verified with 14/14 tests in `Batch5SecurityAuditTest.kt` and full test suite passing with 0 failures. | Applied fixes across `BackupRestoreManager.kt`, `DataSafetyManager.kt`, `FocusDatabaseMigrationHelper.kt`, `Task.kt`, `TaskViewModel.kt`, `ArticlePdfGenerator.kt`, and `Batch5SecurityAuditTest.kt`. 100% resolved âœ… |
-| *2026-09-24* | **Batch 6 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Rich Content, Note Engine & Media Processing. Identified and resolved 11 vulnerabilities (2 Critical, 4 High, 4 Medium, 1 Low): (1) StackOverflowError recursion on incomplete blocks tag (`BATCH-6-001`). (2) Arbitrary file wipe / path traversal in `NoteMediaManager.secureDeleteMediaFile` (`BATCH-6-002`). (3) Premature deletion of embedded block images/attachments in `cleanOrphanedMedia` (`BATCH-6-003`). (4) Native `MediaMetadataRetriever` leak & unhandled audio player crash (`BATCH-6-004`). (5) Unbounded canvas bitmap OOM & dot tap dropping in `KeepSketchDialog` (`BATCH-6-005`). (6) Graphic bitmap leak in `NotesViewModel.addDrawingToEditor`/`addPhotoToEditor` (`BATCH-6-006`). (7) Middle-edit span offset drift in `RichTextEngine` (`BATCH-6-007`). (8) Hyperlink data loss across Markdown serialization (`BATCH-6-008`). (9) Unbounded table allocation & cell index OOB (`BATCH-6-009`). (10) Plaintext image copy & IV reuse in `NoteImageHelper` (`BATCH-6-010`). (11) Formatting selection index OOB & unsafe embed schemes (`BATCH-6-011`). Created `Batch6SecurityAuditTest.kt` with 10/10 tests passing green; full suite passing with 0 failures. | Applied fixes across `RichTextEngine.kt`, `NoteMediaManager.kt`, `AudioMemoManager.kt`, `KeepSketchDialog.kt`, `NotesViewModel.kt`, `NotesnookBlockModel.kt`, `NotesnookTableWidget.kt`, `NoteImageHelper.kt`, `NotesnookFormattingHelper.kt`, `NotesnookBlockWidgets.kt`, and `Batch6SecurityAuditTest.kt`. 100% resolved âœ… |
-| *2026-09-24* | **Batch 6 Audit & Remediation (Pass 2 Deep Dive)** | Adversarial re-audit of Rich Content, Note Engine & Media Processing. Identified and resolved 8 additional vulnerabilities (2 High, 4 Medium, 2 Low): (1) NotesnookBlockManager.parse discards text before/after delimiters and corrupted JSON triggers mutual recursion (BATCH-6-012). (2) ArticleExporter duplicates text on overlapping spans in Markdown/HTML export (BATCH-6-013). (3) ArticleDocxGenerator applies span offsets globally instead of per-line in DOCX (BATCH-6-014). (4) Note duplication shares encrypted attachment file bytes instead of re-encrypting with fresh IV (BATCH-6-015). (5) KeepNoteEditor toolbar does not clamp selection range on rapid concurrent format (BATCH-6-016). (6) Attachment open intent exposes raw file:// path (BATCH-6-017). (7) RichTextEngine loses nested inline spans and emits non-LIFO closing tags (BATCH-6-018). (8) NotesnookTableWidget cell onValueChange fires with stale captured row/col index (BATCH-6-019). Extended Batch6SecurityAuditTest.kt from 10 to 17 tests (17/17 passing). | Applied fixes across NotesnookBlockManager.kt, ArticleExporter.kt, ArticleDocxGenerator.kt, NotesViewModel.kt, KeepNoteEditor.kt, NotesnookBlockWidgets.kt, RichTextEngine.kt, and Batch6SecurityAuditTest.kt. 100% resolved. |
-| *2026-09-24* | **Batch 6 Audit & Remediation (Pass 3 Deep Dive)** | Found 3 additional vulnerabilities: (1) Unbounded readBytes() in addAttachmentToEditor causes OOM on large files (BATCH-6-020, High). (2) Background DB refresh in openExistingNote silently overwrites live user edits (BATCH-6-021, Medium). (3) latestNotesCache ConcurrentHashMap has no eviction policy (BATCH-6-022, Low, deferred to Batch 8). Fixed BATCH-6-020 (50 MB size gate + Toast) and BATCH-6-021 (isNoteModified guard). Extended Batch6SecurityAuditTest.kt to 19 tests. Full test suite BUILD SUCCESSFUL, 0 failures. | Applied fixes to NotesViewModel.kt. Regression tests added in Batch6SecurityAuditTest.kt. BATCH-6-022 documented and deferred. 100% resolved (1 deferred). |
-| *2026-09-24* | **Batch 6 Audit & Remediation (Pass 4 Deep Dive)** | Adversarial re-audit of Rich Content, Note Engine & Media Processing. Identified and resolved 6 additional vulnerabilities (2 High, 3 Medium, 1 Low): (1) Embedded block media isolation omission during batch note duplication (`BATCH-6-023`). (2) Missing image block rendering in HTML export (`BATCH-6-024`). (3) Raw JSON dump in plain text export (`BATCH-6-025`). (4) HTML export stored XSS via unsanitized data/script URIs (`BATCH-6-026`). (5) Plaintext decrypted audio buffer heap residue in `getAudioDurationMs` (`BATCH-6-027`). (6) Roman numeral auto-continuation shadowing in `handleEnterKey` (`BATCH-6-028`). Extended `Batch6SecurityAuditTest.kt` to 25 tests (25/25 passing, 0 failures). | Applied fixes across `NotesViewModel.kt`, `ArticleExporter.kt`, `AudioMemoManager.kt`, `NotesnookFormattingHelper.kt`, and `Batch6SecurityAuditTest.kt`. 100% resolved âœ… |
-| *2026-09-24* | **Batch 8 Audit & Remediation (Pass 1 Deep Dive)** | Adversarial deep dive into UI Screens, ViewModels, State & Edge Cases. Identified and resolved 10 vulnerabilities (1 High, 6 Medium, 3 Low): (1) Unbounded cache memory growth in `NotesViewModel.kt` (`BATCH-8-001`, resolved deferred `BATCH-6-022`). (2) Premature task deletion & missing cloud tombstones on `completedAt == null` (`BATCH-8-002`). (3) Infinite XP/Gold farming exploit past habit target (`BATCH-8-003`). (4) Editor Undo/Redo UI desynchronization via static sessionId (`BATCH-8-004`). (5) Permanent permission lock on settings return in `TimeScreen.kt` (`BATCH-8-005`). (6) Stale closure in task deletion in `TodosScreen.kt` (`BATCH-8-006`). (7) DatePicker day-shift in negative UTC offsets (`BATCH-8-007`). (8) Unhandled navigation route crash in `MainActivity.kt` (`BATCH-8-008`). (9) Stale `updatedAt` timestamp on task edit (`BATCH-8-009`). (10) Configuration/Orientation dialog state loss (`BATCH-8-010`). Created `Batch8SecurityAuditTest.kt` with 6 automated tests (6/6 passing). Full test suite BUILD SUCCESSFUL, 0 failures. | Applied fixes across `NotesViewModel.kt`, `TaskViewModel.kt`, `TaskDao.kt`, `TaskRepository.kt`, `HabitViewModel.kt`, `HabitActionReceiver.kt`, `HabitFloatingOverlayManager.kt`, `TimeScreen.kt`, `TodosScreen.kt`, `QuickAddTaskActivity.kt`, `TaskReminderPopupActivity.kt`, `MainActivity.kt`, and `Batch8SecurityAuditTest.kt`. 100% resolved âœ… |
-| *2026-09-25* | **Batch 7 Audit & Remediation (Deep Dive)** | Adversarial deep dive into AI / Dialogue Engines, Math Logic, Gamification Economy & Parsing. Identified and resolved 8 vulnerabilities (2 Critical, 3 High, 3 Medium): (1) Math options deduplication in wrong number series (`BATCH-7-001`). (2) Data destruction / tombstone leak on task completion via AyvaTalkEngine (`BATCH-7-002`). (3) Stale `updatedAt` on task reschedule in AyvaTalkEngine (`BATCH-7-003`). (4) False morning classification from substring "am" in words like "team", "exam", "stream" (`BATCH-7-004`). (5) Default 8:00 AM timestamp causing immediate overdue tasks on afternoon creation (`BATCH-7-005`). (6) Cross-chest state hijacking between Early Bird and Night Owl chests in DailyQuestManager & DailyQuestsCard (`BATCH-7-006`). (7) Fractional truncation error in BODMAS simplification (`BATCH-7-007`). (8) Desynchronized streak freeze economy between FocusEconomyManager & AptitudeManager (`BATCH-7-008`). Created `Batch7SecurityAuditTest.kt` with 9 automated tests (9/9 passing). Full test suite BUILD SUCCESSFUL, 0 failures. | Applied fixes across `ArithmeticEngine.kt`, `AyvaTalkEngine.kt`, `OfflineNluEngine.kt`, `SmartDateParser.kt`, `DailyQuestManager.kt`, `DailyQuestsCard.kt`, `DuolingoMysteryChestDialog.kt`, `FocusEconomyManager.kt`, `AptitudeManager.kt`, and `Batch7SecurityAuditTest.kt`. 100% resolved âœ… |
-| *2026-09-28* | **Tracker Restructure + Batch 4 Tests** | Restructured tracker to active-dev format: fixed stale dashboard (Batch 6: 28/28, Batch 7: 18/18, Active=Batch 9), removed ~1,240 duplicate lines (Remediation Log + stale Batch 7 block), added File Coverage Map + Pending Audit Queue + Manual Verification Register sections, created `Batch4SecurityAuditTest.kt` (7 regression tests covering BATCH-4-001 to BATCH-4-007), added `scripts/check_audit_coverage.ps1` auto-detection script. | Files: `AUDIT_TRACKER.md`, `Batch4SecurityAuditTest.kt`, `scripts/check_audit_coverage.ps1` |
-| *2026-09-29* | **Batch 9 Audit & Remediation (Deep Dive)** | Adversarial deep dive into New Code, Chat Architecture & UI Screens (v1.9.8). Identified and resolved 8 vulnerabilities (1 Critical, 3 High, 4 Medium) across `SafePrefsExtensions.kt`, `HabitRepository.kt`, `FocusApplication.kt`, `AccountScreen.kt`, `AyvaChatDao.kt`, `AyvaIntentRouter.kt`, `FocusStatsManager.kt`, `McqTextParser.kt`, `TodoWidgetProvider.kt`, and `AyvaChatDatabase.kt`. Created `Batch9SecurityAuditTest.kt` with 8 automated regression tests. 100% resolved ✅ | Applied fixes across SafePrefsExtensions.kt, HabitRepository.kt, FocusApplication.kt, AccountScreen.kt, AyvaChatDao.kt, AyvaIntentRouter.kt, FocusStatsManager.kt, McqTextParser.kt, TodoWidgetProvider.kt, and Batch9SecurityAuditTest.kt. |
-| *2026-09-29* | **Batch 10 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Background Workers, Schedulers, Diagnostics & Core Data. Identified and resolved 8 vulnerabilities (1 Critical, 2 High, 5 Medium) across `LicenseManager.kt`, `FocusApplication.kt`, `CameraQrScannerDialog.kt`, `AutoBackupWorker.kt`, `BlockActivity.kt`, `HabitAlarmScheduler.kt`, `AppLogger.kt`, `DrillDatabase.kt`, `NoteEntity.kt`, `DiagnosticManager.kt`, `CompletedTaskHistoryManager.kt`, and `VocabRepository.kt`. Created `Batch10SecurityAuditTest.kt` with 9 regression tests (100% passing). | Applied fixes across LicenseManager.kt, FocusApplication.kt, CameraQrScannerDialog.kt, AutoBackupWorker.kt, BlockActivity.kt, HabitAlarmScheduler.kt, AppLogger.kt, DrillDatabase.kt, NoteEntity.kt, DiagnosticManager.kt, CompletedTaskHistoryManager.kt, and VocabRepository.kt. 100% resolved ✅ |
-| *2026-09-29* | **Batch 11 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Note Editor Helpers, Share Parsers & Export Dialogs (17 files, ~7,630 LOC). Identified and resolved 8 vulnerabilities (4 High, 4 Medium) across `KeepNoteCard.kt`, `NotesnookBlockModel.kt`, `EditLabelsDialog.kt`, `NoteLabelsDialog.kt`, `ImageUtils.kt`, `ArticleTocHelper.kt`, `NotesnookInsertBottomSheet.kt`, `KeepSketchDialog.kt`, `KeepNoteShareParser.kt`, and `AudioPlayerWidget.kt`. Created `Batch11SecurityAuditTest.kt` with 10 regression tests (100% passing). | Applied fixes across KeepNoteCard.kt, NotesnookBlockModel.kt, EditLabelsDialog.kt, NoteLabelsDialog.kt, ImageUtils.kt, ArticleTocHelper.kt, NotesnookInsertBottomSheet.kt, KeepSketchDialog.kt, KeepNoteShareParser.kt, AudioPlayerWidget.kt, and Batch11SecurityAuditTest.kt. 100% resolved ✅ |
-| *2026-09-29* | **Batch 12 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Quiz, Drill Runners & Settings Screens (16 files, ~9,000 LOC). Identified and resolved 8 vulnerabilities (2 High, 6 Medium) across `FullscreenDrillView.kt`, `FullscreenDrillSummaryView.kt`, `FullscreenSolutionsView.kt`, `DrillSummaryCard.kt`, `DrillTopBar.kt`, `DrillQuestionPaletteModal.kt`, `SolutionsTopBar.kt`, `SettingsScreen.kt`, `BubbleSettingsScreen.kt`, `CustomCategoryEditor.kt`, and `AptitudeProfileCard.kt`. Created `Batch12SecurityAuditTest.kt` with 8 regression tests (100% passing). | Applied fixes across FullscreenDrillView.kt, FullscreenDrillSummaryView.kt, FullscreenSolutionsView.kt, DrillSummaryCard.kt, DrillTopBar.kt, DrillQuestionPaletteModal.kt, SolutionsTopBar.kt, SettingsScreen.kt, BubbleSettingsScreen.kt, CustomCategoryEditor.kt, AptitudeProfileCard.kt, and Batch12SecurityAuditTest.kt. 100% resolved ✅ |
-| *2026-09-29* | **Batch 13 Audit & Remediation (Deep Dive)** | Adversarial deep dive into Presentation Cards, Theme & Design Tokens (29 files, ~6,500 LOC). Identified and resolved 8 vulnerabilities (2 High, 6 Medium) across `AppModeSection.kt`, `AddRestrictionScreen.kt`, `ArithmeticCard.kt`, `CustomCategoryManager.kt`, `HabitsChatCard.kt`, `DeviceStatsHelper.kt`, `Theme.kt`, `CustomRestrictionSection.kt`, `VocabRetentionHubChatCard.kt`, and `VocabBriefContent.kt`. Created `Batch13SecurityAuditTest.kt` with 8 regression tests (100% passing). | Applied fixes across AppModeSection.kt, AddRestrictionScreen.kt, ArithmeticCard.kt, CustomCategoryManager.kt, HabitsChatCard.kt, DeviceStatsHelper.kt, Theme.kt, CustomRestrictionSection.kt, VocabRetentionHubChatCard.kt, VocabBriefContent.kt, and Batch13SecurityAuditTest.kt. 100% resolved ✅ |
-| *2026-09-29* | **Batch 1 Audit & Remediation (Pass 8 Deep Dive)** | Adversarial deep dive into Cryptography, Key Derivation & Vault Storage (10 files). Identified and resolved 8 vulnerabilities (1 Critical, 1 High, 6 Medium) across `VaultPayloadEncryptor.kt`, `ArchiveVaultSecurity.kt`, `EncryptedMediaStorage.kt`, `CryptoBackupEngine.kt`, `VaultCryptoEngine.kt`, and `BackupRestoreManager.kt`. Extended `Batch1SecurityAuditTest.kt` to 40 regression tests (100% passing). Cross-batch regression verified across Batches 1, 9, 10, 11, 12, 13 (all green). | Applied fixes across VaultPayloadEncryptor.kt, ArchiveVaultSecurity.kt, EncryptedMediaStorage.kt, CryptoBackupEngine.kt, VaultCryptoEngine.kt, BackupRestoreManager.kt, and Batch1SecurityAuditTest.kt. 100% resolved ✅ |
-| *2026-10-01* | **Batch 4 Audit & Remediation (Pass 2 Deep Dive)** | Adversarial deep dive into System Services, App Blocking & Background Execution (10 files). Identified and resolved 8 new vulnerabilities (BATCH-4-008 through BATCH-4-015, total 15 issues: 8 High, 7 Medium): (1) Watchdog broadcast package shadowing & API 33+ receiver export flags in `FocusBlockerService.kt` (`BATCH-4-008`). (2) Concurrent delayed runnables on rapid overlay dismissals in `UnifiedOverlayCoordinator.kt` (`BATCH-4-009`). (3) Orphaned queue advancement runnable on `clearQueue()` (`BATCH-4-010`). (4) Floating card identity race in 180ms fade animation in `HabitFloatingOverlayManager.kt` (`BATCH-4-011`). (5) Async removeView WindowManager crash and stalled coordinator queue in `TaskReminderOverlayManager.kt` (`BATCH-4-012`). (6) BAL startActivity crash protection, coroutine/animator cancellation, and sync view removal in `BubbleService.kt` (`BATCH-4-013`). (7) Tapjacking / touch event leak prevention by removing `FLAG_NOT_TOUCH_MODAL` from full-screen blocking overlay in `BlockOverlayManager.kt` (`BATCH-4-014`). (8) Thread-safe `homePackagesCache` via `CopyOnWriteArraySet`, division/null guards, double-alert prevention, and input clamping across `UsageStatsHelper.kt`, `UsageBreakTracker.kt`, `TemporaryUnlockManager.kt`, and `DndHelper.kt` (`BATCH-4-015`). Extended `Batch4SecurityAuditTest.kt` to 16 automated regression tests (100% passing). BAL direct `WindowManager.addView` overlay invariant strictly preserved. | Applied fixes across `FocusBlockerService.kt`, `UnifiedOverlayCoordinator.kt`, `HabitFloatingOverlayManager.kt`, `TaskReminderOverlayManager.kt`, `BubbleService.kt`, `BlockOverlayManager.kt`, `UsageStatsHelper.kt`, `UsageBreakTracker.kt`, `TemporaryUnlockManager.kt`, `DndHelper.kt`, and `Batch4SecurityAuditTest.kt`. 100% resolved ✅ |
-| *2026-10-01* | **Batch 4 Audit & Remediation (Pass 3 Deep Dive)** | Adversarial deep dive into System Services, App Blocking & Background Execution (Pass 3). Identified and resolved 8 new vulnerabilities (BATCH-4-016 through BATCH-4-023, total 23 issues: 13 High, 10 Medium): (1) Zombie overlay window leak on rapid pre-attachment removal across `BlockOverlayManager.kt`, `TaskReminderOverlayManager.kt`, and `HabitFloatingOverlayManager.kt` (`BATCH-4-016`). (2) Double-add WindowManager crash, unhandled preview pill dismissal, and end-action pill reference race in `BubbleService.kt` (`BATCH-4-017`). (3) Unilateral focus session destruction in `FocusBlockerService.onDestroy()` and thread-safe `homePackages` `CopyOnWriteArraySet` (`BATCH-4-018`). (4) Fallback `BlockActivity` background receiver deafness while paused resolved by registering `closeReceiver` in `onCreate()` and unregistering in `onDestroy()` (`BATCH-4-019`). (5) Synchronous `clearQueue()` execution on main thread, main looper verification on `onOverlayDismissed()`, and bounded FIFO queue cap (`MAX_QUEUE_SIZE = 10`) in `UnifiedOverlayCoordinator.kt` (`BATCH-4-020`). (6) Lock/unlock duration bounds clamping and fallback context propagation in `BlockOverlayManager.kt` (`BATCH-4-021`). (7) Prolonged screen-off app reset and negative clock jump lockout prevention in `UsageBreakTracker.kt` (`BATCH-4-022`). (8) Safe `AppOpsManager` cast, `runCatching` on intent launch in `UsageStatsHelper.kt`, synchronous `.commit()` on unlock revoke, and expired unlock pruning in `TemporaryUnlockManager.kt` (`BATCH-4-023`). Extended `Batch4SecurityAuditTest.kt` to 22 automated regression tests (100% passing). BAL direct `WindowManager.addView` overlay invariant strictly preserved. | Applied fixes across `BlockOverlayManager.kt`, `TaskReminderOverlayManager.kt`, `HabitFloatingOverlayManager.kt`, `BubbleService.kt`, `FocusBlockerService.kt`, `BlockActivity.kt`, `UnifiedOverlayCoordinator.kt`, `UsageBreakTracker.kt`, `UsageStatsHelper.kt`, `TemporaryUnlockManager.kt`, and `Batch4SecurityAuditTest.kt`. 100% resolved ✅ |
-| *2026-10-01* | **Batch 10 Audit & Remediation (Pass 2 Deep Dive)** | Adversarial re-audit of Background Workers, Schedulers, Diagnostics & Core Data (20 files). Identified and resolved 7 additional vulnerabilities (BATCH-10-009 to BATCH-10-015, total 15 issues: 1 Critical, 3 High, 11 Medium): (1) Exception messages and stack traces bypassed sanitization into crash logs & diagnostic bundles (`BATCH-10-009`). (2) Extended secret keyword redaction for `passphrase`, `api_key`, `access_token`, `auth_token` in `AppLogger.kt` (`BATCH-10-010`). (3) Overnight interval alarms disregarded recent completion anchor & fixed overnight minute evaluation (`BATCH-10-011`). (4) Reschedule zombie alarm leak for disabled & archived habits in `HabitAlarmScheduler.kt` (`BATCH-10-012`). (5) Null/corrupted JSON question parsing destroyed entire DrillSummary, clamped accuracy percentage, and guarded against `"null"` strings from `JSONObject.NULL` in `DrillModels.kt` & bounded CoroutineScopes in `DrillDatabase.kt` (`BATCH-10-013`). (6) Malformed JSON array elements aborted media URI, audio, label, and checklist deserialization in `NoteEntity.kt` with "null" string prevention (`BATCH-10-014`). (7) Unvalidated quiz result type mutated unrelated OWS table rows in `VocabRepository.kt` & completed task timestamp preservation in `CompletedTaskHistoryManager.kt` (`BATCH-10-015`). Extended `Batch10SecurityAuditTest.kt` from 9 to 15 regression tests (100% passing). | Applied fixes across `CrashHandler.kt`, `AppLogger.kt`, `HabitAlarmScheduler.kt`, `DrillModels.kt`, `DrillDatabase.kt`, `NoteEntity.kt`, `VocabRepository.kt`, `CompletedTaskHistoryManager.kt`, `CameraQrScannerDialog.kt`, and `Batch10SecurityAuditTest.kt`. 100% resolved ✅ |
-| *2026-10-01* | **Batch 11 Audit & Remediation (Pass 2 Deep Dive)** | Adversarial re-audit of Note Editor Helpers, Share Parsers & Export Dialogs (17 files). Identified and resolved 8 additional vulnerabilities (BATCH-11-009 to BATCH-11-016, total 16 issues: 8 High, 8 Medium): (1) Raw Notesnook block serialization markup leaked into Markdown exports (`BATCH-11-009`). (2) Raw block JSON markup leaked in Word (.docx) and PDF document generators (`BATCH-11-010`). (3) Linear O(1) space character scanner & Notesnook block unpacking for document metrics eliminating regex split heap spikes (`BATCH-11-011`). (4) Duplicate case-insensitive label collision on rename in Compose LazyColumn (`BATCH-11-012`). (5) Unbounded image attachment ingestion capped at 50, null URI filtering, and checklist items capped at 500 in KeepNoteShareParser (`BATCH-11-013`). (6) Case-sensitive label selection mismatch resolved with trimmed case-insensitive comparison (`BATCH-11-014`). (7) NaN/Infinite touch coordinates and negative radius crash prevented in KeepSketchDialog (`BATCH-11-015`). (8) Unbounded image memory consumption and negative range crash in coerceIn fixed in KeepImageCollage (`BATCH-11-016`). Extended `Batch11SecurityAuditTest.kt` from 10 to 18 regression tests (100% passing). | Applied fixes across `ArticleExporterHelper.kt`, `ArticleExporter.kt`, `ArticleDocxGenerator.kt`, `ArticlePdfGenerator.kt`, `DocumentStatsDialog.kt`, `EditLabelsDialog.kt`, `KeepNoteShareParser.kt`, `NoteLabelsDialog.kt`, `KeepSketchDialog.kt`, `KeepImageCollage.kt`, and `Batch11SecurityAuditTest.kt`. 100% resolved ✅ |
-| *2026-10-01* | **Batch 12 Audit & Remediation (Pass 2 Deep Dive)** | Adversarial re-audit of Quiz, Drill Runners & Settings Screens (16 files). Identified and resolved 8 additional vulnerabilities (BATCH-12-009 to BATCH-12-016, total 16 issues: 5 High, 11 Medium): (1) Drill session combo and maxCombo desynchronization & unvalidated correct option index (`BATCH-12-009`). (2) Slider IllegalArgumentException crash on stored out-of-bounds ranges and malformed time string parsing (`BATCH-12-010`). (3) Null/corrupted JSON question array elements aborting solution view deserialization & uncoerced question index (`BATCH-12-011`). (4) Corrupted reminder interval value deadlock & unbounded soft lock/unlock durations (`BATCH-12-012`). (5) Blind FocusApplication cast ClassCastException in PreferencesHub (`BATCH-12-013`). (6) Search query missing packageName on empty/localized app names & blank package filtering (`BATCH-12-014`). (7) Unbounded accuracy percentage & negative streak freeze counter in AptitudeProfileCard (`BATCH-12-015`). (8) Unbounded hour/minute parsing rollover in Calendar reminder alarms (`BATCH-12-016`). Extended `Batch12SecurityAuditTest.kt` from 8 to 16 regression tests (100% passing). Full test suite BUILD SUCCESSFUL. | Applied fixes across `FullscreenDrillView.kt`, `FullscreenDrillHelper.kt`, `BubbleSettingsScreen.kt`, `BubbleSettingsHelper.kt`, `FullscreenSolutionsView.kt`, `SolutionsViewHelper.kt`, `SettingsScreen.kt`, `SettingsScreenHelper.kt`, `PreferencesHubScreen.kt`, `PreferencesHubHelper.kt`, `CustomCategoryEditor.kt`, `CategoryEditorHelper.kt`, `AptitudeProfileCard.kt`, `AptitudeCardHelper.kt`, `AptitudeReminderReceiver.kt`, `AptitudeReminderHelper.kt`, and `Batch12SecurityAuditTest.kt`. 100% resolved ✅ |
-
-
-
-
+| _None queued here_ | See current findings and actual Git diff | Historical |
+
+## Manual Verification Register
+
+| Area | Required evidence |
+| --- | --- |
+| Key transitions and recovery | Native Keystore, PIN/key changes, low storage and process/power interruption; old dates are not a fresh pass |
+| Android services, overlays and permissions | Supported modern APIs/OEMs, BAL, alarm access, screen lock, notifications and foreground limits |
+| UI and widgets | Native task/reward actions, Back/IME/rotation, usage-access refresh, widget taps and launcher rendering |
+
+The prior register recorded checks in September 2026, including a retired
+PBKDF2-to-Argon2 upgrade scenario. It does not authorize reintroducing unsupported
+development-format readers. Current device gates and verification limits are in
+[security](docs/security/README.md) and [open findings](docs/security/OPEN_FINDINGS.md).

@@ -2,8 +2,8 @@ from pathlib import Path
 import json,numpy as np
 from PIL import Image
 root=Path(__file__).resolve().parents[2]
-assets=json.loads((root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').read_text())
-regions=json.loads((root/'docs/implementation/VIZAG_MOTION_SAMPLES.json').read_text())
+assets=json.loads((root/'tools/vizag/evidence/VIZAG_FOOTER_ASSETS.json').read_text())
+regions=json.loads((root/'tools/vizag/evidence/VIZAG_MOTION_SAMPLES.json').read_text())
 results=[]
 for r in regions:
  i=r['scene']-1;name=list(assets)[i];info=assets[name]
@@ -18,5 +18,5 @@ for r in regions:
  print(name,r['part'],changed)
 for i,info in enumerate(assets.values(),1):
  if 'crop_box' in info:assert len(set(r['part'] for r in results if r['scene']==i))>=2
-(root/'docs/implementation/VIZAG_MOTION_REGIONS.json').write_text(json.dumps(results,indent=2)+'\n')
+(root/'tools/vizag/evidence/VIZAG_MOTION_REGIONS.json').write_text(json.dumps(results,indent=2)+'\n')
 print('Verified at least two independent environmental movements in every retained exported native animation; replacements use SettingsVizagFooterTest')

@@ -56,4 +56,4 @@ for name,item in report.items():
  item['bytes']=(root/'app/src/main/res/raw'/f'vizag_{name}.webp').stat().st_size
  item['encoding']='lossless animated WebP'
 intermediate.cleanup()
-(root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').write_text(json.dumps(report,indent=2)+'\n')
+(root/'tools/vizag/evidence/VIZAG_FOOTER_ASSETS.json').write_text(json.dumps(report,indent=2)+'\n')

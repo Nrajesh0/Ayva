@@ -1,38 +1,32 @@
-# Documentation guide
+# Developer documentation
 
-Use the entry points below instead of reading the documentation file by file.
-Feature records describe the app; plans and dated audits describe their recorded
-checkpoint. Historical test counts and release statements are not current CI or
-device-acceptance results.
+These guides describe the current working tree. Git history holds earlier plans,
+delivery logs and audits; their test counts and release claims apply only to the
+revision reviewed. Current implementation is not a claim of device certification.
 
-| What you need | Start here |
+| Topic | Current reference |
 | --- | --- |
-| Build, test commands and when CI runs | [Build and test guide](development/BUILD_AND_TEST.md) |
-| Backup, archive, widgets, settings and other feature behavior | [Feature guide](features/README.md) |
-| Offline assistant scope, implementation and plans | [Assistant guide](assistant/README.md), starting with its [status](assistant/STATUS.md) |
-| Backup/restore and image-handling deep dive | [14 November review](audits/BACKUP_AND_MEDIA_REVIEW_2026-11-14.md) |
-| Security findings, evidence and verification limits | [Security guide](security/README.md) |
-| Repository inventory, cleanup and outstanding findings | [Cleanup review and follow-up](audits/CODE_CLEANUP_REVIEW.md), [13 November repository review](audits/REPOSITORY_REVIEW_2026-11-13.md) and its [baseline inventory](audits/REPOSITORY_FILE_INVENTORY_2026-11-13.csv) |
-| Historical release changes | [Recorded release notes](releases/CHANGELOG.md) |
-| Historical visual/source map | [Visual guide](app-atlas/README.md), pinned to its older source snapshot |
+| Build, tests, CI and development workflow | [Build and test](development/BUILD_AND_TEST.md) |
+| Source ownership | [Android module](../app/README.md) |
+| Features and cross-feature rules | [Feature guide](features/README.md) |
+| Portable/manual/automatic backups and restore | [Backup and restore](features/backups/BACKUP_AND_RESTORE.md) |
+| Archive encryption, private media and picker return | [Private notes and media](features/notes/ARCHIVE_AND_MEDIA.md) |
+| Assistant scope, guarded actions and acceptance | [Offline assistant](assistant/README.md) |
+| Vocabulary preservation and attribution | [Vocabulary and dictionary retirement](assistant/DICTIONARY_DATA.md) |
+| Settings ownership and search | [Settings](features/settings/SETTINGS_BEHAVIOR.md) |
+| Runtime artwork and its authoring tools | [Vizag footer](features/settings/VIZAG_FOOTER.md) |
+| Permissions, overlays, reminders and speech lifecycle | [Reliability and permissions](features/system/RELIABILITY_AND_PERMISSIONS.md) |
+| Home-screen widget behavior | [Widgets](features/widgets/WIDGETS.md) |
+| Data protection and verification limits | [Security](security/README.md) |
+| Unresolved findings and acceptance work | [Open findings](security/OPEN_FINDINGS.md) |
+| Recorded milestones and previous evidence | [Compact history](releases/CHANGELOG.md) |
 
-## How the files are organized
+Keep one authoritative guide per topic. Update behavior and open findings when
+code changes; add test results with their revision and scope, rather than another
+delivery document. Preserve security decisions, attribution and recovery rules.
+Do not place keys, private notes or real conversation transcripts in these files.
 
-- `development/`: build/testing instructions and the assistant development workflow.
-- `features/`: behavior and implementation records grouped by feature.
-- `assistant/`: maintained status/capability references, specific implementation
-  records, future plans, and explicitly separated `history/` and `research/`.
-- `security/` and `audits/`: reviews, findings and evidence. Read dates and scope
-  before treating an old proposed fix as current work.
-- `releases/` and `app-atlas/`: historical release notes and the pinned visual map.
-- `implementation/*.json` and `design/*.json`: retained generated evidence at the
-  original paths. Some art tools read/write these paths; they are not loose guides.
-
-The CI-used `security/ayva_review_checks.py` remains executable tooling. Tests,
-Room schemas, build configuration, licences, provenance and store metadata also
-serve maintenance/distribution purposes even when they are not APK inputs.
-
-Maintain one clear entry point for a topic. Update it when behavior changes;
-combine related delivery records rather than adding another competing status page.
-Preserve unique security, authorization, recovery and provenance details. Keep
-historical records labelled, and update local links whenever a document moves.
+`security/ayva_review_checks.py` is executable CI tooling retained at its existing
+path. Artwork JSON inputs/evidence live in `tools/vizag/evidence/`, outside the
+guides. The root audit tracker retains historical file classifications consumed
+by its PowerShell helper; it is not a current security certificate.

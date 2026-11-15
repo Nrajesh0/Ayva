@@ -33,7 +33,7 @@ application lives in this repository under the project name **Ayva**.
 | Backup and restore | Password-protected manual backups, scheduled encrypted backups, a portable recovery file, backup verification and restore progress. Snapshot restore replaces backed-up app data after review; importing extra copies is a separate choice. |
 | Ayva assistant | On-device conversation for supported task, habit, focus, routine and settings actions, with clarification, previews and guarded undo where supported. |
 | Learning | Offline idiom/OWS vocabulary practice and Drill/Blitz exercises. |
-| Widgets and appearance | Home-screen widgets for notes, exams and battery health; themes, launcher icons and animated companion artwork. |
+| Widgets and appearance | Home-screen widgets for notes and exam countdowns; themes, launcher icons and animated companion artwork. |
 
 Ayva uses authored content and bounded rules. It is not a general-purpose language
 model and does not download a model or call a hosted AI service. Private note
@@ -141,9 +141,9 @@ for focused checks, CI scheduling and device-testing limits.
 
 - [Documentation index](docs/README.md)
 - [Feature implementation guide](docs/features/README.md)
-- [Assistant scope and history](docs/assistant/README.md)
-- [Security reviews and evidence](docs/security/README.md)
-- [Recorded release notes](docs/releases/CHANGELOG.md)
+- [Assistant scope and acceptance](docs/assistant/README.md)
+- [Security contracts and open findings](docs/security/README.md)
+- [Compact implementation history](docs/releases/CHANGELOG.md)
 
 ## License and branding
 

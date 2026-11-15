@@ -106,8 +106,8 @@ def install(output):
             suffix='_light'if theme=='light'else'';filename=f'vizag_{name}{suffix}_poster.webp';shutil.copy2(output/filename,ROOT/'app/src/main/res/drawable-nodpi'/filename)
         (ROOT/'app/src/main/res/raw'/f'vizag_{name}.webp').unlink(missing_ok=True)
     shutil.copy2(output/'vizag_replacement_layers.json',ROOT/'app/src/main/res/raw/vizag_replacement_layers.json')
-    shutil.copy2(output/'report.json',ROOT/'docs/implementation/VIZAG_REPLACEMENT_ASSETS.json')
-    path=ROOT/'docs/implementation/VIZAG_FOOTER_ASSETS.json';data=json.loads(path.read_text());report=json.loads((output/'report.json').read_text())
+    shutil.copy2(output/'report.json',ROOT/'tools/vizag/evidence/VIZAG_REPLACEMENT_ASSETS.json')
+    path=ROOT/'tools/vizag/evidence/VIZAG_FOOTER_ASSETS.json';data=json.loads(path.read_text());report=json.loads((output/'report.json').read_text())
     for name in SCENES:data[name]=report[name]
     path.write_text(json.dumps(data,indent=2)+'\n')
 

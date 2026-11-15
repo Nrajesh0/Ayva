@@ -98,38 +98,37 @@ open. Screen-off/device lock, an explicit vault lock, expiry, process loss,
 credential changes or a restore revoke this convenience and require a fresh PIN.
 Saved selection metadata contains no key or PIN and cannot authorize a replay.
 Quick cancellation also returns to the same note; expired selections show the
-existing PIN flow. See the [current backup and media review](../../audits/BACKUP_AND_MEDIA_REVIEW_2026-11-14.md#coverage-media-return-and-chat-control-implementation-follow-up)
-for the security boundaries and current verification.
+existing PIN flow. See [backup and restore](../backups/BACKUP_AND_RESTORE.md) for archive coverage and recovery.
 
-## Archive implementation verification (13 November)
 
-Focused tests cover both modes, settings/PIN UI, small-screen cancellation, wrong
-PINs, stale callbacks, new/edited notes, screen destruction, revision conflicts,
-atomic batches, recovery-file preservation, all envelope components being
-modified, wrong keys, corrupted configuration, option disable/re-enable, PIN
-changes, separate automatic-backup authorization, and repeat restore with media.
-The native restore fixture retains its original private-note assertions and adds
-a sealed private note through backup/restore and lock checks.
 
-That implementation recorded **389 selected regression executions across 24
-classes**, with zero failures, errors or skips. The broad run executed 387 cases;
-one recovery fixture checked before cleanup finished. Its wait now includes the
-main recovery file, retaining its original assertions. The affected three classes
-were rerun (61 passing cases), also adding two executions for unsupported/changed
-authentication metadata. The combined count uses each class's latest result rather
-than double-counting reruns.
+## Media display, deletion and recovery
 
-Debug and optimized release APK builds pass, and native fixtures compile. Full
-Debug/Release lint passes with zero errors (245/243 warnings and 57 informational
-findings per report at that scan). The sole added dependency-catalog style warning
-was then fixed by moving the unchanged 1.87 dependency into the version catalog.
-Both APK variants rebuilt successfully; release dependencyInsight confirms 1.87.
-A scoped UseTomlInstead rerun reports only the 10 existing literal-dependency
-warnings, with none for the added library. Full reports were preserved separately;
-no permanent lint checks or suppressions were changed. Application sources were
-unchanged during this final build-file-only cleanup.
+Images use authenticated bounded reads, sampled display and encrypted preview
+derivatives. Preview identity includes the original encrypted file identity;
+unsupported/large inputs use the bounded display fallback. No plaintext disk
+thumbnail cache is introduced. Image imports apply the existing bounded image
+pipeline; attaching the original file preserves its bytes, animation/resolution
+included. Keep original attachments distinct from disposable previews.
 
-Source security contracts, chat data boundary, dictionary integrity, shell syntax
-and diff whitespace checks pass.
-No connected device/emulator is available locally; native fixture compilation does
-not constitute native execution. The completed changes are included in version 2.0.46 (146) for the requested GitHub push.
+Small encrypted streams use an authenticated in-memory snapshot wiped on close;
+large streams authenticate before exposing plaintext. Existing encryption formats,
+original image quality and backup password derivation are not weakened for speed.
+Sensitive progress/logs contain operation labels, not note text, credentials or paths.
+
+Removing an image or permanently deleting a note creates known retirement
+candidates. Reclamation needs a fresh, complete strict reference inventory and
+must preserve shared media, trash references, current creation/editor/undo leases
+and pending recovery. Unknown files, unsupported payloads and incomplete private
+inventories are retained regardless of age. This deliberately favors retention
+over reclaiming every abandoned byte. Flash deletion is not forensic erasure.
+
+Archive batches are transactional. Editor operations retain revisions, pending
+new-note IDs and newer drafts until persistence succeeds; unsupported/corrupt
+payloads cannot open as empty editable notes. Whole-store restore invalidates old
+editor generations, including equal-timestamp rows. Recovery never overwrites a
+newer live note with an older draft; preserved copies make conflicts recoverable.
+
+The editor's non-inline layout boundaries prevent oversized generated Android
+methods; preserve them when refactoring state/effects. Native Android verification
+can catch a DEX VerifyError that JVM tests and APK assembly do not.

@@ -6,7 +6,7 @@ from pathlib import Path
 import json,sys,numpy as np
 from PIL import Image
 root=Path(__file__).resolve().parents[2]
-assets=json.loads((root/'docs/implementation/VIZAG_FOOTER_ASSETS.json').read_text())
+assets=json.loads((root/'tools/vizag/evidence/VIZAG_FOOTER_ASSETS.json').read_text())
 regions=json.loads(Path(sys.argv[1]).read_text());result=[]
 for r in regions:
  i=r['scene']-1;name=list(assets)[i];meta=assets[name]
@@ -28,7 +28,7 @@ for r in regions:
   assert all(b>a+20 for a,b in zip(positions,positions[1:])),(name,positions)
   result.append(dict(scene=name,sampled_frames=[36,72,144],bird_x=positions))
 print('Verified rightward bird displacement in the retained native WebPs')
-(root/'docs/implementation/VIZAG_BIRD_FRAME_CHECKS.json').write_text(json.dumps(result,indent=2)+'\n')
+(root/'tools/vizag/evidence/VIZAG_BIRD_FRAME_CHECKS.json').write_text(json.dumps(result,indent=2)+'\n')
 
 if not (root/'app/src/main/res/raw/vizag_rk_beach.webp').exists():
  print('Replacement vehicle/paraglider checks use SettingsVizagFooterTest native layer rendering.')
@@ -47,5 +47,5 @@ with Image.open(root/'app/src/main/res/raw/vizag_rushikonda.webp') as im:
  im.seek(0);a=np.array(im.convert('RGBA')).astype(int);mask=(np.abs(a[:,:,:3]-(201,113,85)).max(axis=2)<25)&(a[:,:,3]>150)
  assert mask.sum()>150,'Paraglider missing from first frame'
  vehicle_checks.append(dict(scene='rushikonda',paraglider_first_frame_pixels=int(mask.sum())))
-(root/'docs/implementation/VIZAG_VEHICLE_FRAME_CHECKS.json').write_text(json.dumps(vehicle_checks,indent=2)+'\n')
+(root/'tools/vizag/evidence/VIZAG_VEHICLE_FRAME_CHECKS.json').write_text(json.dumps(vehicle_checks,indent=2)+'\n')
 print('Verified vehicle direction and initial paraglider visibility in the native WebPs')

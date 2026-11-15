@@ -13,9 +13,9 @@ the [build guide](../docs/development/BUILD_AND_TEST.md).
 
 ## Vizag artwork
 
-These tools maintain the Settings footer artwork. Their complete behavior and
-historical evidence are in the [footer record](../docs/features/settings/VIZAG_FOOTER.md).
-Generated reports stay in `docs/implementation/`; packaged artwork stays under
+These tools maintain the Settings footer artwork. Their current behavior and
+regeneration boundaries are in the [footer guide](../docs/features/settings/VIZAG_FOOTER.md).
+Machine inputs and generated reports stay in `tools/vizag/evidence/`; packaged artwork stays under
 `app/src/main/res/`.
 
 | Files under `tools/vizag/` | Role |
@@ -41,3 +41,7 @@ Some tools write resources, test fixtures or generated evidence. Use them for an
 intentional artwork update; external gallery/frame inputs are not bundled here.
 The earlier authoring stages are retained for reproducibility rather than renamed
 or described as runtime app fixes.
+
+The artwork evidence moved byte-for-byte from the former documentation folder.
+Verifier/exporter report paths follow that move; app resource paths and authoring
+algorithms are unchanged. Existing evidence is a dated checkpoint, not a fresh run.
