@@ -1200,13 +1200,9 @@ fun HabitEditorBottomSheet(
 
     val activeWindowMinutes by remember {
         derivedStateOf {
-            val startMins = windowStartHour * 60 + windowStartMinute
-            val endMins = windowEndHour * 60 + windowEndMinute
-            if (endMins > startMins) {
-                (endMins - startMins).coerceAtLeast(30)
-            } else {
-                (24 * 60 - startMins + endMins).coerceAtLeast(30)
-            }
+            com.focusbyrj.app.data.HabitIntervalRules.windowMinutes(
+                windowStartHour, windowStartMinute, windowEndHour, windowEndMinute
+            )
         }
     }
 
@@ -1220,8 +1216,7 @@ fun HabitEditorBottomSheet(
     var fixedMinute by remember(habit) { mutableIntStateOf(restored.optInt("fixedMinute", habit?.fixedReminderMinute ?: 0)) }
 
     fun autoSplitInterval(target: Int) {
-        val totalWin = activeWindowMinutes
-        val step = (totalWin / target.coerceAtLeast(1)).coerceAtLeast(5)
+        val step = com.focusbyrj.app.data.HabitIntervalRules.intervalForTarget(activeWindowMinutes, target)
         intervalHours = step / 60
         intervalMinutes = step % 60
     }
@@ -1233,19 +1228,12 @@ fun HabitEditorBottomSheet(
     }
 
     fun onIntervalStep(direction: Int) {
-        val currentTotal = (intervalHours * 60 + intervalMinutes)
-        val step = if (currentTotal <= 90) 15 else 30
-        val targetStep = if (direction > 0) {
-            ((currentTotal / step) + 1) * step
-        } else {
-            val prev = ((currentTotal - 1) / step) * step
-            prev.coerceAtLeast(15)
-        }
-        val safeWindow = activeWindowMinutes.coerceAtLeast(30)
-        val clamped = targetStep.coerceIn(15, safeWindow)
+        val clamped = com.focusbyrj.app.data.HabitIntervalRules.stepInterval(
+            intervalHours * 60 + intervalMinutes, direction, activeWindowMinutes
+        )
         intervalHours = clamped / 60
         intervalMinutes = clamped % 60
-        targetPerDay = (safeWindow / clamped).coerceIn(1, 24)
+        targetPerDay = com.focusbyrj.app.data.HabitIntervalRules.targetForInterval(activeWindowMinutes, clamped)
     }
 
     var selectedCategoryIndex by remember { mutableIntStateOf(0) }

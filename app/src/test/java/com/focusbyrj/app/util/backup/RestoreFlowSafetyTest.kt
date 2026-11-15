@@ -340,4 +340,22 @@ class RestoreFlowSafetyTest {
         } finally { model.cancel() }
     }
 
+
+    @Test fun cancellingReviewDoesNotReportAnInterruptedRestoreOnNextStartup() {
+        val source = runBlocking {
+            notes.insertNote(NoteEntity(title = "Keep current"))
+            archive()
+        }
+        val model = RestoreBackupViewModel(app)
+        try {
+            model.prepare(Uri.fromFile(source), password, true)
+            await { model.state.value.phase != RestorePhase.CHECKING }
+            assertEquals(RestorePhase.REVIEW, model.state.value.phase)
+            model.cancel()
+            RestoreNotice.onStartup(app)
+            assertNull(RestoreNotice.pending(app))
+            assertEquals(RestorePhase.IDLE, model.state.value.phase)
+            runBlocking { assertEquals("Keep current", notes.getAllNotesList().single().title) }
+        } finally { model.cancel() }
+    }
 }

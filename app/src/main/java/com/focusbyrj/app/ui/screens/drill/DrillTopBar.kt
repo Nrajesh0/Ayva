@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.focusbyrj.app.ui.screens.DrillSession
+import com.focusbyrj.app.data.drill.DrillSession
 
 private val duolingoGreen = Color(0xFF58CC02)
 private val duolingoYellow = Color(0xFFFFC800)

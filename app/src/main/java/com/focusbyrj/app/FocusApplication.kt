@@ -20,6 +20,7 @@ import com.focusbyrj.app.data.PreservingSqlCipherFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 
 class FocusApplication : Application(), ImageLoaderFactory {
     
@@ -36,6 +37,10 @@ class FocusApplication : Application(), ImageLoaderFactory {
             .build()
     }
     
+    private val startupRecoveryRetry = kotlinx.coroutines.sync.Mutex()
+    @Volatile var startupRecoveryPending: Boolean = false
+        private set
+
     override fun onCreate() {
         super.onCreate()
         runCatching { com.focusbyrj.app.data.note.CaptureCleanupWorker.clean(this) }
@@ -47,9 +52,41 @@ class FocusApplication : Application(), ImageLoaderFactory {
             android.util.Log.e("FocusApplication", "Failed to load SQLCipher libs early", t)
         }
         // Complete or roll back an interrupted restore before managers or workers can write.
-        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-            com.focusbyrj.app.util.backup.RestoreJournal.recover(this@FocusApplication)
+        try {
+            kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                com.focusbyrj.app.util.backup.RestoreJournal.recover(this@FocusApplication)
+                com.focusbyrj.app.util.backup.RestoreNotice.onStartup(this@FocusApplication)
+            }
+        } catch (error: Exception) {
+            com.focusbyrj.app.util.backup.MaintenanceGate.requireRecovery()
+            startupRecoveryPending = true
+            android.util.Log.e("FocusApplication", "Startup recovery retained; normal initialization deferred", error)
+            return
         }
+        initializeAfterRecovery()
+    }
+
+    suspend fun retryStartupRecovery(): Boolean = startupRecoveryRetry.withLock {
+        if (!startupRecoveryPending) return@withLock true
+        try {
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                com.focusbyrj.app.util.backup.RestoreJournal.consistent(this@FocusApplication) {
+                    com.focusbyrj.app.util.backup.RestoreNotice.onStartup(this@FocusApplication)
+                }
+            }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            com.focusbyrj.app.util.backup.MaintenanceGate.requireRecovery()
+            return@withLock false
+        }
+        kotlinx.coroutines.withContext(Dispatchers.Main) {
+            initializeAfterRecovery()
+            startupRecoveryPending = false
+        }
+        true
+    }
+
+    private fun initializeAfterRecovery() {
         com.focusbyrj.app.util.AppThemeManager.init(this)
         com.focusbyrj.app.util.LicenseManager.init(this)
         com.focusbyrj.app.util.FocusStatsManager.init(this)

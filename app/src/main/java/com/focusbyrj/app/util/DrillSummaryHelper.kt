@@ -1,8 +1,8 @@
 package com.focusbyrj.app.util
 
-import com.focusbyrj.app.ui.screens.ChatMessage
-import com.focusbyrj.app.ui.screens.DrillSession
-import com.focusbyrj.app.ui.screens.QuestionRecord
+import com.focusbyrj.app.data.chat.ChatMessage
+import com.focusbyrj.app.data.drill.DrillSession
+import com.focusbyrj.app.data.drill.QuestionRecord
 import org.json.JSONObject
 import java.util.UUID
 import kotlin.math.roundToInt

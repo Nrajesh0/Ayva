@@ -21,9 +21,8 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /**
- * Production-grade background worker for daily automatic backups.
- * Managed by Android WorkManager, ensuring reliable daily execution even if the app process
- * is killed or the device restarts.
+ * Writes device-bound rolling snapshots when WorkManager runs the daily job.
+ * Android may defer execution while constraints are unmet or the app is force-stopped.
  */
 class AutoBackupWorker(
     appContext: Context,

@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusbyrj.app.R
 import com.focusbyrj.app.ui.components.TalkActionChips
-import com.focusbyrj.app.ui.screens.ChatMessage
+import com.focusbyrj.app.data.chat.ChatMessage
 import com.focusbyrj.app.util.assistant.AssistantChatState
 import com.focusbyrj.app.util.assistant.AssistantPresentation
 import com.focusbyrj.app.util.assistant.AssistantResponseContent

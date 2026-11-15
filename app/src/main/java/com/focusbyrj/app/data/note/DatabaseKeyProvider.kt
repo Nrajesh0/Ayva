@@ -21,10 +21,9 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * Provides a hardware-backed 256-bit encryption passphrase for SQLCipher database encryption at rest.
- * Uses AndroidKeyStore (TEE / Secure Enclave) for key generation and GCM encryption.
- * 
- * Hardened for production:
+ * Wraps the 256-bit SQLCipher passphrase using an Android Keystore AES-GCM key.
+ * Hardware protection depends on the device's Keystore implementation.
+ *
  * - Never overwrites an existing key if KeyStore encounters temporary unlock or busyness errors.
  * - Automatic retry logic on intermittent KeyStore operational failures.
  * - Zeroing utility for memory hygiene.

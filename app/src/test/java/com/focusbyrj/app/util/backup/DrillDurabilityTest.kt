@@ -4,8 +4,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.drill.DrillDatabase
 import com.focusbyrj.app.data.drill.DrillSessionRepository
+import com.focusbyrj.app.data.drill.DrillCompletion
 import com.focusbyrj.app.data.note.NotesStorageVersion
-import com.focusbyrj.app.ui.screens.DrillSession
+import com.focusbyrj.app.data.drill.DrillSession
 import com.focusbyrj.app.util.AptitudeManager
 import com.focusbyrj.app.util.DailyQuestManager
 import com.focusbyrj.app.util.DrillSummaryHelper
@@ -38,6 +39,31 @@ class DrillDurabilityTest {
         DrillSessionRepository.init(context)
     }
     @After fun clearHook() { RestoreJournal.checkpointHook = null }
+
+    @Test
+    fun sharedCompletionPersistsBeforeReturningUpdatedChatPayloadWithoutAwardingAgain() = runBlocking {
+        val session = DrillSession(difficulty = "easy", targetQuestions = 1, correct = 1, total = 1)
+        val message = DrillSummaryHelper.generateSummaryMessage(session)
+        val before = FocusEconomyManager.profileFlow.value.gold
+        val payload = org.json.JSONObject(message.drillSummaryJson!!).put("extra", "preserved")
+
+        val updated = org.json.JSONObject(DrillCompletion.claim(payload.toString(), message.id))
+
+        assertTrue(updated.getBoolean("isClaimed"))
+        assertEquals("preserved", updated.getString("extra"))
+        DrillSessionRepository.invalidateCache()
+        assertTrue(DrillSessionRepository.getSummary(session.sessionId)!!.isClaimed)
+        assertEquals(before, FocusEconomyManager.profileFlow.value.gold)
+        DrillCompletion.claim(updated.toString(), message.id)
+        assertEquals(before, FocusEconomyManager.profileFlow.value.gold)
+    }
+
+    @Test
+    fun failedCompletionCannotReturnASuccessfulChatPayload() = runBlocking {
+        val result = runCatching { DrillCompletion.claim("{}", "missing-session") }
+        assertTrue(result.isFailure)
+        assertNull(DrillSessionRepository.getSummary("missing-session"))
+    }
 
     @Test fun duplicateFinishUsesOneDurableIdentityAndAwardsOnceWithoutInvalidatingNoteEditors() = runBlocking {
         val session = DrillSession(difficulty = "easy", targetQuestions = 10, correct = 8, total = 10, gold = 40)
@@ -109,7 +135,7 @@ class DrillDurabilityTest {
     @Test fun submittedResultDoesNotChangeWhileJournalIsWriting() = runBlocking {
         val options = mutableListOf("one", "two")
         val session = DrillSession(difficulty = "easy", targetQuestions = 2, correct = 1, total = 1, gold = 20)
-        session.questionRecords.add(com.focusbyrj.app.ui.screens.QuestionRecord(
+        session.questionRecords.add(com.focusbyrj.app.data.drill.QuestionRecord(
             1, "Original", "First question", options, 0, 0, "correct", "Original answer"))
         val goldBefore = FocusEconomyManager.profileFlow.value.gold
         RestoreJournal.checkpointHook = { phase ->

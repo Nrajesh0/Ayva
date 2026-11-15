@@ -302,7 +302,7 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
             onDismissRequest = { pendingRestoreUri = null; restore.cancel() },
             title = { Text("Restore complete") },
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (restoreState.replace) "Your data now matches the backup." else "Additional copies were imported.")
+                Text(if (restoreState.replace) "Backup restored. Review any notices below." else "Additional copies were imported.")
                 restoreState.metadata?.let {
                     Text("${it.noteCount} notes · ${it.taskCount} tasks · ${it.habitCount} habits")
                     it.warnings.forEach { warning -> Text(warning, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -318,7 +318,7 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
                     Text(if (com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired) "Restart the app to finish recovery. Keep your backup file."
                         else if (restoreState.needsBackupFile) "Choose the backup file again. Its folder may be unavailable."
                         else if (restoreState.needsRecoveryFile) "This backup needs its original recovery file."
-                        else "Check the recovery key and available storage, then try again.")
+                        else restoreState.message?.substringBefore('\n') ?: "Check the recovery key and available storage, then try again.")
                     TextButton(onClick = { details = !details }) { Text(if (details) "Hide details" else "Details") }
                     if (details) Text(restoreState.message.orEmpty(), style = MaterialTheme.typography.bodySmall)
                 } },
@@ -350,7 +350,7 @@ internal fun RestoreReviewDialog(state: RestoreState, onConfirm: () -> Unit, onD
                 Text("Backup: ${backupTime(state.createdAt)}")
                 Text("${state.notes} notes · ${state.tasks} tasks")
                 Text(if (state.replace) "Current records and settings will match this backup. Later changes will be replaced."
-                    else "Adds extra records and applies backed-up settings.")
+                    else "Adds copies of notes, tasks and habits. Existing chat and drill results are kept on ID conflicts. Backed-up settings are applied. Importing again adds more copies.")
                 Text("Current notes and tasks get a safety snapshot first.", style = MaterialTheme.typography.bodySmall)
                 Text("Running drills will end. Only completed drill results are restored.", style = MaterialTheme.typography.bodySmall)
             } },

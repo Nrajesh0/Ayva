@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.data.chat.ChatMessage
+
 import kotlinx.coroutines.launch
 
 import android.content.Intent
@@ -90,11 +92,10 @@ fun FullscreenDrillSummaryView(
             savingClaim = true
             saveScope.launch {
                 try {
-                    val obj = JSONObject(message.drillSummaryJson ?: "{}")
-                    val id = obj.optString("sessionId", message.id)
-                    com.focusbyrj.app.data.drill.DrillSessionRepository.markClaimed(id).getOrThrow()
-                    obj.put("isClaimed", true)
-                    onMessageUpdate?.invoke(message.copy(drillSummaryJson = obj.toString()))
+                    val claimedJson = com.focusbyrj.app.data.drill.DrillCompletion.claim(
+                        message.drillSummaryJson ?: "{}", message.id
+                    )
+                    onMessageUpdate?.invoke(message.copy(drillSummaryJson = claimedJson))
                     isClaimedState = true
                 } catch (error: Exception) {
                     if (error is kotlinx.coroutines.CancellationException) throw error

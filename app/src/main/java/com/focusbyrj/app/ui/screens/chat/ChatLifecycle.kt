@@ -5,7 +5,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.focusbyrj.app.util.assistant.AssistantChatState
-import com.focusbyrj.app.ui.screens.toPersistedChatMessage
+import com.focusbyrj.app.data.chat.toPersistedChatMessage
 import kotlinx.coroutines.delay
 
 /** UI-only projection: suspend reads when hidden and refresh immediately on return. */
@@ -31,7 +31,7 @@ internal fun rememberChatStateProjection(
 }
 
 /** Keep an already-viewed timestamp stable; hidden replies remain unviewed. */
-internal fun com.focusbyrj.app.ui.screens.ChatMessage.toStableChatRecord(
+internal fun com.focusbyrj.app.data.chat.ChatMessage.toStableChatRecord(
     previous: com.focusbyrj.app.util.PersistedChatMessage?,
     visible: Boolean
 ): com.focusbyrj.app.util.PersistedChatMessage {

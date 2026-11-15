@@ -1,7 +1,7 @@
 package com.focusbyrj.app.ui.screens.chat
 
 import android.app.Application
-import com.focusbyrj.app.ui.screens.ChatMessage
+import com.focusbyrj.app.data.chat.ChatMessage
 import com.focusbyrj.app.util.PersistedChatMessage
 import org.junit.Assert.*
 import org.junit.Test

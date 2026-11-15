@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.data.chat.ChatMessage
+
 import android.app.TimePickerDialog
 import android.content.Intent
 import android.widget.Toast
@@ -579,13 +581,10 @@ private fun EnterHabitView(
 
     val activeWindowMinutes by remember {
         derivedStateOf {
-            val startMins = windowStartHour * 60 + windowStartMinute
-            val endMins = windowEndHour * 60 + windowEndMinute
-            if (endMins > startMins) {
-                endMins - startMins
-            } else {
-                (24 * 60 - startMins + endMins).coerceAtLeast(15)
-            }
+            com.focusbyrj.app.data.HabitIntervalRules.windowMinutes(
+                windowStartHour, windowStartMinute, windowEndHour, windowEndMinute,
+                policy = com.focusbyrj.app.data.HabitIntervalRules.WindowPolicy.CHAT
+            )
         }
     }
 
@@ -598,8 +597,7 @@ private fun EnterHabitView(
     var showMoreOptions by remember { mutableStateOf(false) }
 
     fun autoSplitInterval(target: Int) {
-        val totalWin = activeWindowMinutes
-        val step = (totalWin / target.coerceAtLeast(1)).coerceAtLeast(5)
+        val step = com.focusbyrj.app.data.HabitIntervalRules.intervalForTarget(activeWindowMinutes, target)
         intervalHours = step / 60
         intervalMinutes = step % 60
     }
@@ -611,18 +609,12 @@ private fun EnterHabitView(
     }
 
     fun onIntervalStep(direction: Int) {
-        val currentTotal = (intervalHours * 60 + intervalMinutes)
-        val step = if (currentTotal <= 90) 15 else 30
-        val targetStep = if (direction > 0) {
-            ((currentTotal / step) + 1) * step
-        } else {
-            val prev = ((currentTotal - 1) / step) * step
-            prev.coerceAtLeast(15)
-        }
-        val clamped = targetStep.coerceIn(15, activeWindowMinutes)
+        val clamped = com.focusbyrj.app.data.HabitIntervalRules.stepInterval(
+            intervalHours * 60 + intervalMinutes, direction, activeWindowMinutes
+        )
         intervalHours = clamped / 60
         intervalMinutes = clamped % 60
-        targetPerDay = (activeWindowMinutes / clamped).coerceIn(1, 24)
+        targetPerDay = com.focusbyrj.app.data.HabitIntervalRules.targetForInterval(activeWindowMinutes, clamped)
     }
 
     val activeColor = remember(colorHex) {

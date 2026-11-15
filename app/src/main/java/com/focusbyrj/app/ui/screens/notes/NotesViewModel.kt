@@ -422,14 +422,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
         private val vaultDraftWriteLock = Any()
-        private const val MAX_CACHE_SIZE = 200
-        val latestNotesCache: MutableMap<Long, NoteEntity> = java.util.Collections.synchronizedMap(
-            object : java.util.LinkedHashMap<Long, NoteEntity>(MAX_CACHE_SIZE, 0.75f, true) {
-                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, NoteEntity>?): Boolean {
-                    return size > MAX_CACHE_SIZE
-                }
-            }
-        )
+        val latestNotesCache: MutableMap<Long, NoteEntity> =
+            com.focusbyrj.app.data.note.LatestNotesCache.entries
     }
 
     private val vaultPrefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->

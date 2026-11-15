@@ -43,22 +43,26 @@ class DataPreservationAuditTest {
         assertFalse(File(file.path + ".new").exists())
     }
 
-    @Test fun missingCredentialsNeverCreateReplacementForExistingDatabase() {
-        // Initialize the Application before clearing its cached database credentials.
+    @org.robolectric.annotation.Config(application = android.app.Application::class)
+    @Test fun missingCredentialsNeverCreateReplacementForExistingDatabase() = synchronized(DatabaseKeyProvider) {
+        // Exercise key admission without FocusApplication's asynchronous startup writes.
+        // Use the provider's monitor so no other caller can refill the cache during setup.
         val appContext = context.applicationContext
         DatabaseKeyProvider.clearCachedPassphrase()
-        appContext.getSharedPreferences("focus_notes_vault_security_prefs", 0).edit().clear().commit()
+        val preferences = appContext.getSharedPreferences("focus_notes_vault_security_prefs", 0)
+        assertTrue(preferences.edit().clear().commit())
         for (databaseName in listOf("keep_notes_vault.db", "focus_database_vault.db")) {
-        val file = appContext.getDatabasePath(databaseName)
-        file.parentFile!!.mkdirs()
-        file.writeText("synthetic-existing-encrypted-database")
-        try {
-            DatabaseKeyProvider.getOrCreatePassphrase(appContext)
-            fail("Existing database must block new key creation")
-        } catch (_: IllegalStateException) {
-            assertEquals("synthetic-existing-encrypted-database", file.readText())
-            assertFalse(appContext.getSharedPreferences("focus_notes_vault_security_prefs", 0).contains("enc_db_passphrase"))
-        } finally { file.delete(); DatabaseKeyProvider.clearCachedPassphrase() }
+            val file = appContext.getDatabasePath(databaseName)
+            file.parentFile!!.mkdirs()
+            file.writeText("synthetic-existing-encrypted-database")
+            assertFalse(preferences.contains("enc_db_passphrase"))
+            try {
+                DatabaseKeyProvider.getOrCreatePassphrase(appContext)
+                fail("Existing database must block new key creation")
+            } catch (_: IllegalStateException) {
+                assertEquals("synthetic-existing-encrypted-database", file.readText())
+                assertFalse(preferences.contains("enc_db_passphrase"))
+            } finally { file.delete(); DatabaseKeyProvider.clearCachedPassphrase() }
         }
     }
 

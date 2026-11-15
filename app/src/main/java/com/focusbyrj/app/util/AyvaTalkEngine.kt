@@ -260,30 +260,11 @@ object AyvaTalkEngine {
         }
     }
 
-    // --- LEVENSHTEIN FUZZY DISTANCE HELPER ---
-    private fun levenshteinDistance(s1: String, s2: String): Int {
-        val dp = Array(s1.length + 1) { IntArray(s2.length + 1) }
-        for (i in 0..s1.length) dp[i][0] = i
-        for (j in 0..s2.length) dp[0][j] = j
-
-        for (i in 1..s1.length) {
-            for (j in 1..s2.length) {
-                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
-                dp[i][j] = minOf(
-                    dp[i - 1][j] + 1,
-                    dp[i][j - 1] + 1,
-                    dp[i - 1][j - 1] + cost
-                )
-            }
-        }
-        return dp[s1.length][s2.length]
-    }
-
     private fun isFuzzyMatchWord(word: String, target: String): Boolean {
         if (word == target) return true
         if (word.length < 3 || target.length < 3) return false
         val maxDist = if (target.length > 5) 2 else 1
-        return levenshteinDistance(word, target) <= maxDist
+        return editDistance(word, target) <= maxDist
     }
 
     // --- ATOMIC KNOWLEDGE BASE (JSON ASSET-DRIVEN) ---
@@ -1480,7 +1461,7 @@ object AyvaTalkEngine {
                                     val name = pm.getApplicationLabel(it).toString()
                                     if (name.isNotBlank() && it.packageName != context.packageName) {
                                         val category = com.focusbyrj.app.ui.screens.getCategoryForApp(it, it.packageName)
-                                        com.focusbyrj.app.ui.screens.AppInfo(name, it.packageName, category)
+                                        com.focusbyrj.app.data.AppInfo(name, it.packageName, category)
                                     } else null
                                 }
                                 

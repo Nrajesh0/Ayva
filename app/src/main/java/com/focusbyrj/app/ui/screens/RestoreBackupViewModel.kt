@@ -71,6 +71,7 @@ internal class RestoreBackupViewModel(
             var owned: BackupRestoreManager.PreparedRestore? = null
             var keyReady = credential != null
             try {
+                withContext(Dispatchers.IO) { com.focusbyrj.app.util.backup.RestoreNotice.outcome(getApplication(), "checking") }
                 val secret = credential ?: withContext(Dispatchers.IO) {
                     val vaultKey = capability?.copyKey(getApplication())
                     try {
@@ -145,7 +146,16 @@ internal class RestoreBackupViewModel(
             if (request == generation) mutable.value = RestoreState(RestorePhase.SUCCESS, replace = replace, metadata = metadata)
         } catch (error: CancellationException) { throw error }
         catch (error: Exception) {
-            if (request == generation) mutable.value = RestoreState(RestorePhase.ERROR, message = error.message ?: "Restore did not finish. Your previous data is protected by recovery.")
+            if (request == generation) {
+                val outcome = com.focusbyrj.app.util.backup.RestoreNotice.lastOutcome(getApplication())
+                val explanation = when {
+                    com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired -> "Recovery needs to finish. Keep the backup and restart the app."
+                    outcome == "completed" -> "Restore completed, but final cleanup needs attention. Do not import copies again."
+                    outcome == "recovered" -> "Restore failed. Your previous records were recovered and imported files were removed. You can try again."
+                    else -> "Restore did not finish. Keep your backup file."
+                }
+                mutable.value = RestoreState(RestorePhase.ERROR, message = explanation + "\n" + (error.message ?: ""))
+            }
         } finally {
             value.close()
             if (prepared === value) prepared = null
@@ -156,6 +166,7 @@ internal class RestoreBackupViewModel(
     }
 
     fun cancel(message: String? = null) {
+        if (message == null || mutable.value.phase in setOf(RestorePhase.SUCCESS, RestorePhase.ERROR)) runCatching { com.focusbyrj.app.util.backup.RestoreNotice.acknowledge(getApplication()) }
         reset()
         mutable.value = RestoreState(if (message == null) RestorePhase.IDLE else RestorePhase.ERROR, message = message)
     }

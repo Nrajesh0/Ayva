@@ -44,7 +44,14 @@ class RestoreRecoveryDeviceTest {
                 Process.killProcess(Process.myPid())
             }
         }
-        RestoreJournal.mutate(app) {
+        RestoreJournal.mutate(app, portableRestore = true) {
+            val destination = File(app.filesDir, "keep_images/import_${java.util.UUID.randomUUID()}.bin")
+            val temporary = File(destination.parentFile, ".${destination.name}.${java.util.UUID.randomUUID()}.restore")
+            RestoreJournal.registerMedia(app, listOf(destination to temporary))
+            EncryptedMediaStorage.writeEncryptedBytes(temporary, "interrupted imported bytes".toByteArray())
+            check(temporary.renameTo(destination))
+            val proof = JSONObject(fixture.readText()).put("ownedMedia", destination.path)
+            fixture.outputStream().use { output -> output.write(proof.toString().toByteArray()); output.fd.sync() }
             notes.updateNote(notes.getNoteByIdSync(noteId)!!.copy(content = "Interrupted new value"))
             tasks.updateTask(tasks.getTaskById(taskId)!!.copy(title = "Interrupted new value"))
             app.getSharedPreferences("focus_prefs", 0).edit().putString("audit_recovery", "partial").commit()
@@ -62,6 +69,9 @@ class RestoreRecoveryDeviceTest {
         assertEquals(saved.getString("tasks"), fingerprint(tasks.getAllTasksList().sortedBy { it.id }.toString()))
         assertEquals("before", app.getSharedPreferences("focus_prefs", 0).getString("audit_recovery", null))
         assertFalse(File(app.filesDir, "restore_before_state.enc").exists())
+        assertFalse("Interrupted import must be reclaimed by startup recovery", File(saved.getString("ownedMedia")).exists())
+        assertTrue(RestoreNotice.pending(app)!!.first.contains("recovered", true))
+        RestoreNotice.acknowledge(app)
         val interruptedStage = File(app.cacheDir, "restore_media_stage_native_interrupted/keep_images/incomplete.enc")
         assertTrue("Unowned interrupted staging must not block startup or be silently imported/deleted", interruptedStage.exists())
         File(app.cacheDir, "restore_media_stage_native_interrupted").deleteRecursively()

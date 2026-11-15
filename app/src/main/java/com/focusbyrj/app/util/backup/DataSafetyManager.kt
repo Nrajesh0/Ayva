@@ -35,7 +35,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Production-grade data safety manager providing three complementary layers of protection
+ * Records encrypted recovery snapshots providing three complementary layers of protection
  * against accidental data loss:
  *
  * ## 1. Rolling Daily Auto-Backup (7-day retention)
@@ -95,8 +95,6 @@ object DataSafetyManager {
             val file = File(dir, "${DAILY_PREFIX}${dateStamp}.json")
             writeAtomically(file, payload)
 
-            // Migrate any old unencrypted legacy snapshots
-
             // Rotate: remove oldest if over limit
             rotateDailyBackups(dir)
 
@@ -136,8 +134,6 @@ object DataSafetyManager {
             val safeTag = operationTag.replace(Regex("[^a-zA-Z0-9_]"), "_")
             val file = File(dir, "${PRE_OP_PREFIX}${safeTag}_${ts}.json")
             writeAtomically(file, payload)
-
-            // Migrate any old unencrypted legacy snapshots
 
             // Rotate: keep only the most recent MAX_PRE_OP_BACKUPS
             rotatePreOpBackups(dir)

@@ -25,9 +25,7 @@ import com.focusbyrj.app.data.note.NoteEntity
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
 import com.focusbyrj.app.util.crypto.EncryptedMediaStorage
-import com.focusbyrj.app.ui.screens.notes.NotesViewModel
-import com.focusbyrj.app.ui.screens.notes.NotesnookBlock
-import com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager
+import com.focusbyrj.app.data.note.LatestNotesCache
 import com.focusbyrj.app.widget.NoteWidgetProvider
 import com.focusbyrj.app.widget.TodoWidgetProvider
 import com.focusbyrj.app.util.AptitudeManager
@@ -285,86 +283,28 @@ object BackupRestoreManager {
                 // Notes
                 val notesArray = JSONArray()
                 processedNotes.forEach { note ->
-                    notesArray.put(JSONObject().apply {
-                        put("id", note.id)
-                        put("title", note.title)
-                        put("content", note.content)
-                        put("isChecklist", note.isChecklist)
-                        put("checklistJson", note.checklistJson)
-                        put("labelsJson", note.labelsJson)
-                        put("imageUrisJson", note.imageUrisJson)
-                        put("audioUrisJson", note.audioUrisJson)
-                        put("colorKey", note.colorKey)
-                        put("fontKey", note.fontKey)
-                        put("isPinned", note.isPinned)
-                        put("isArchived", note.isArchived)
-                        put("isTrashed", note.isTrashed)
-                        if (note.trashedAt != null) put("trashedAt", note.trashedAt)
-                        if (note.deletedAt != null) put("deletedAt", note.deletedAt)
-                        put("createdAt", note.createdAt)
-                        put("updatedAt", note.updatedAt)
-                    })
+                    notesArray.put(BackupRecordCodec.note(note))
                 }
                 put("notes", notesArray)
 
                 // Restrictions
                 val restrArray = JSONArray()
                 restrictions.forEach { res: AppRestriction ->
-                    restrArray.put(JSONObject().apply {
-                        put("packageName", res.packageName)
-                        put("appName", res.appName)
-                        put("isRestricted", res.isRestricted)
-                        put("mode", res.mode)
-                        put("restrictionMode", res.restrictionMode)
-                        put("timeLimitMinutes", res.timeLimitMinutes)
-                        put("clickLimitCount", res.clickLimitCount)
-                        put("customQuote", res.customQuote)
-                    })
+                    restrArray.put(BackupRecordCodec.restriction(res))
                 }
                 put("restrictions", restrArray)
 
                 // Schedules
                 val schedArray = JSONArray()
                 schedules.forEach { sc: FocusSchedule ->
-                    schedArray.put(JSONObject().apply {
-                        put("id", sc.id)
-                        put("name", sc.name)
-                        put("startHour", sc.startHour)
-                        put("startMinute", sc.startMinute)
-                        put("endHour", sc.endHour)
-                        put("endMinute", sc.endMinute)
-                        put("daysOfWeek", sc.daysOfWeek)
-                        put("mode", sc.mode)
-                        put("restrictionMode", sc.restrictionMode)
-                        put("timeLimitMinutes", sc.timeLimitMinutes)
-                        put("clickLimitCount", sc.clickLimitCount)
-                        put("appsToBlock", sc.appsToBlock)
-                        put("isEnabled", sc.isEnabled)
-                    })
+                    schedArray.put(BackupRecordCodec.schedule(sc))
                 }
                 put("schedules", schedArray)
 
                 // Tasks
                 val taskArray = JSONArray()
                 tasks.forEach { t: Task ->
-                    taskArray.put(JSONObject().apply {
-                        put("id", t.id)
-                        put("title", t.title)
-                        put("details", t.details)
-                        put("dueDate", t.dueDate ?: JSONObject.NULL)
-                        put("isCompleted", t.isCompleted)
-                        put("completedAt", t.completedAt ?: JSONObject.NULL)
-                        put("type", t.type.name)
-                        put("recurrence", t.recurrence.name)
-                        put("isPersistent", t.isPersistent)
-                        put("isPriority", t.isPriority)
-                        put("subtasksJson", t.subtasksJson)
-                        put("planningJson", t.planningJson)
-                        put("updatedAt", t.updatedAt)
-                        put("isTrashed", t.isTrashed)
-                        put("trashedAt", t.trashedAt ?: JSONObject.NULL)
-                        put("deletedAt", t.deletedAt ?: JSONObject.NULL)
-                    })
+                    taskArray.put(BackupRecordCodec.task(t))
                 }
                 put("tasks", taskArray)
                 put("assistantPlanning", assistantPlanning)
@@ -372,85 +312,34 @@ object BackupRestoreManager {
                 // Habits
                 val habitArray = JSONArray()
                 habits.forEach { h: Habit ->
-                    habitArray.put(JSONObject().apply {
-                        put("id", h.id)
-                        put("title", h.title)
-                        put("description", h.description)
-                        put("iconEmoji", h.iconEmoji)
-                        put("colorHex", h.colorHex)
-                        put("type", h.type.name)
-                        put("targetPerDay", h.targetPerDay)
-                        put("intervalHours", h.intervalHours)
-                        put("intervalMinutes", h.intervalMinutes)
-                        put("windowStartHour", h.windowStartHour)
-                        put("windowStartMinute", h.windowStartMinute)
-                        put("windowEndHour", h.windowEndHour)
-                        put("windowEndMinute", h.windowEndMinute)
-                        put("fixedReminderHour", h.fixedReminderHour)
-                        put("fixedReminderMinute", h.fixedReminderMinute)
-                        put("isReminderEnabled", h.isReminderEnabled)
-                        put("reminderSound", h.reminderSound)
-                        put("createdAt", h.createdAt)
-                        put("isArchived", h.isArchived)
-                        put("pausedAt", h.pausedAt ?: JSONObject.NULL)
-                        put("pauseHistoryJson", h.pauseHistoryJson)
-                        put("frequencyJson", h.frequencyJson)
-                    })
+                    habitArray.put(BackupRecordCodec.habit(h))
                 }
                 put("habits", habitArray)
 
                 // Habit Logs
                 val logArray = JSONArray()
                 habitLogs.forEach { l: HabitLog ->
-                    logArray.put(JSONObject().apply {
-                        put("id", l.id)
-                        put("habitId", l.habitId)
-                        put("date", l.date)
-                        put("completedCount", l.completedCount)
-                        put("targetCount", l.targetCount)
-                        put("lastCompletedTimestamp", l.lastCompletedTimestamp ?: JSONObject.NULL)
-                    })
+                    logArray.put(BackupRecordCodec.habitLog(l))
                 }
                 put("habitLogs", logArray)
 
                 // Drill Sessions
                 val drillArray = JSONArray()
                 drillSessions.forEach { d: DrillSessionEntity ->
-                    drillArray.put(JSONObject().apply {
-                        put("sessionId", d.sessionId)
-                        put("title", d.title)
-                        put("totalQuestions", d.totalQuestions)
-                        put("correctCount", d.correctCount)
-                        put("timeSpentSeconds", d.timeSpentSeconds)
-                        put("xpEarned", d.xpEarned)
-                        put("isBlitz", d.isBlitz)
-                        put("isClaimed", d.isClaimed)
-                        put("timestamp", d.timestamp)
-                        put("summaryJson", d.summaryJson)
-                    })
+                    drillArray.put(BackupRecordCodec.drill(d))
                 }
                 put("drillSessions", drillArray)
 
                 // Vocab learned states
                 val idiomsArray = JSONArray()
                 learnedIdioms.forEach { idm: Idiom ->
-                    idiomsArray.put(JSONObject().apply {
-                        put("id", idm.id ?: 0)
-                        put("learned_at", idm.learnedAt ?: 0L)
-                        put("is_mastered", idm.isMastered ?: 0)
-                        put("is_bookmarked", idm.isBookmarked ?: 0)
-                    })
+                    idiomsArray.put(BackupRecordCodec.idiomProgress(idm))
                 }
                 put("learnedIdioms", idiomsArray)
 
                 val owsArray = JSONArray()
                 learnedOws.forEach { ow: Ows ->
-                    owsArray.put(JSONObject().apply {
-                        put("id", ow.id ?: 0)
-                        put("learned_at", ow.learnedAt ?: 0L)
-                        put("is_mastered", ow.isMastered ?: 0)
-                        put("is_bookmarked", ow.isBookmarked ?: 0)
-                    })
+                    owsArray.put(BackupRecordCodec.owsProgress(ow))
                 }
                 put("learnedOws", owsArray)
                 put("vocabulary", VocabularyArchive.export(vocabDb))
@@ -458,36 +347,7 @@ object BackupRestoreManager {
                 // Ayva Chat Messages
                 val chatArray = JSONArray()
                 chatMessages.forEach { msg ->
-                    chatArray.put(JSONObject().apply {
-                        put("id", msg.id)
-                        put("text", msg.text)
-                        put("isUser", msg.isUser)
-                        put("timestamp", msg.timestamp)
-                        put("firstViewedTimestamp", msg.firstViewedTimestamp)
-                        put("isArithmetic", msg.isArithmetic)
-                        if (msg.arithmeticJson != null) put("arithmeticJson", msg.arithmeticJson)
-                        put("isDrillSummary", msg.isDrillSummary)
-                        if (msg.drillSummaryJson != null) put("drillSummaryJson", msg.drillSummaryJson)
-                        put("isAptitudeProfile", msg.isAptitudeProfile)
-                        put("isStreakPrompt", msg.isStreakPrompt)
-                        if (msg.streakPromptJson != null) put("streakPromptJson", msg.streakPromptJson)
-                        put("isTaskSummary", msg.isTaskSummary)
-                        if (msg.taskSummaryJson != null) put("taskSummaryJson", msg.taskSummaryJson)
-                        put("isTalkAction", msg.isTalkAction)
-                        if (msg.talkActionJson != null) put("talkActionJson", msg.talkActionJson)
-                        if (msg.pendingActionJson != null) put("pendingActionJson", msg.pendingActionJson)
-                        put("isDailyQuests", msg.isDailyQuests)
-                        put("isMysteryBox", msg.isMysteryBox)
-                        put("isMorningBrief", msg.isMorningBrief)
-                        put("isEveningBrief", msg.isEveningBrief)
-                        put("isStreakFreezeSkipped", msg.isStreakFreezeSkipped)
-                        put("isVocabBrief", msg.isVocabBrief)
-                        put("isVocabHub", msg.isVocabHub)
-                        if (msg.vocabJson != null) put("vocabJson", msg.vocabJson)
-                        put("isWelcome", msg.isWelcome)
-                        put("isHabitsSummary", msg.isHabitsSummary)
-                        if (msg.habitsSummaryJson != null) put("habitsSummaryJson", msg.habitsSummaryJson)
-                    })
+                    chatArray.put(BackupRecordCodec.chat(msg))
                 }
                 put("chatMessages", chatArray)
 
@@ -846,7 +706,7 @@ object BackupRestoreManager {
             // One-use authorization: the vault UI remains locked throughout the write.
             ArchiveVaultSecurity.lockVault()
             BackupProgress.report("Saving recovery point")
-            RestoreJournal.mutate(context, invalidateDrills = true) {
+            RestoreJournal.mutate(context, invalidateDrills = true, portableRestore = true) {
                 if (context.getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE).all != vaultBefore)
                     Result.failure(SecurityException("Vault settings changed. Start restore again; your data was not changed."))
                 else restorePreparedLocked(context, prepared, cleanRestore, vaultPin, vaultKey)
@@ -869,6 +729,10 @@ object BackupRestoreManager {
         val restoredHabitIds = mutableMapOf<Long, Long>()
         val restoredNoteIds = mutableMapOf<Long, Long>()
         val restoreWarnings = mutableListOf<String>()
+        var importedDrills = 0
+        var importedMessages = 0
+        var skippedMessages = 0
+        var skippedDrills = 0
         var restoreVaultKey = authorizedVaultKey?.copyOf()
         try {
             val focusDb = app.database
@@ -950,9 +814,9 @@ object BackupRestoreManager {
 
             // Complete all expensive/fallible media decryption and device-key encryption before
             // any live database is changed. Installation later is rename-only and rollback-safe.
-            preparedMedia = prepareRestoredMedia(stagingDir, mediaDestinations)
+            preparedMedia = prepareRestoredMedia(app, stagingDir, mediaDestinations)
 
-            NotesViewModel.latestNotesCache.clear()
+            LatestNotesCache.clear()
 
             // Safe transactional swap:
             // Insert all restored notes FIRST, then prune rows not in the backup — all in one transaction.
@@ -1104,7 +968,7 @@ object BackupRestoreManager {
                 for (i in 0 until logArray.length()) {
                     val obj = logArray.getJSONObject(i)
                     val origHabitId = obj.optLong("habitId", 0L)
-                    val targetHabitId = idMapping[origHabitId] ?: origHabitId
+                    val targetHabitId = checkNotNull(idMapping[origHabitId]) { "Backup habit log has no restored parent" }
                     val log = HabitLog(
                         id = if (cleanRestore) obj.optLong("id", 0L) else 0L,
                         habitId = targetHabitId,
@@ -1127,6 +991,11 @@ object BackupRestoreManager {
                 }
                 for (i in 0 until drillArray.length()) {
                     val obj = drillArray.getJSONObject(i)
+                    if (!cleanRestore && drillDb.drillSessionDao().getSessionById(obj.getString("sessionId")) != null) {
+                        skippedDrills++
+                        continue
+                    }
+                    importedDrills++
                     val entity = DrillSessionEntity(
                         sessionId = obj.getString("sessionId"),
                         title = obj.optString("title", "Drill Session"),
@@ -1182,6 +1051,11 @@ object BackupRestoreManager {
                 val chatEntities = mutableListOf<AyvaChatMessageEntity>()
                 for (i in 0 until chatArray.length()) {
                     val obj = chatArray.getJSONObject(i)
+                    if (!cleanRestore && chatDb.chatDao().getMessageById(obj.getString("id")) != null) {
+                        skippedMessages++
+                        continue
+                    }
+                    importedMessages++
                     chatEntities.add(
                         AyvaChatMessageEntity(
                             id = obj.getString("id"),
@@ -1197,7 +1071,7 @@ object BackupRestoreManager {
                             isStreakPrompt = obj.optBoolean("isStreakPrompt", false),
                             streakPromptJson = if (obj.has("streakPromptJson") && !obj.isNull("streakPromptJson")) obj.optString("streakPromptJson") else null,
                             isTaskSummary = obj.optBoolean("isTaskSummary", false),
-                            taskSummaryJson = if (obj.has("taskSummaryJson") && !obj.isNull("taskSummaryJson")) obj.optString("taskSummaryJson") else null,
+                            taskSummaryJson = RestoreImportPolicy.remapCards(if (obj.has("taskSummaryJson") && !obj.isNull("taskSummaryJson")) obj.getString("taskSummaryJson") else null, taskIdMapping, restoreWarnings),
                             isTalkAction = obj.optBoolean("isTalkAction", false),
                             talkActionJson = if (obj.has("talkActionJson") && !obj.isNull("talkActionJson")) obj.optString("talkActionJson") else null,
                             pendingActionJson = if (obj.has("pendingActionJson") && !obj.isNull("pendingActionJson")) obj.optString("pendingActionJson") else null,
@@ -1211,7 +1085,7 @@ object BackupRestoreManager {
                             vocabJson = if (obj.has("vocabJson") && !obj.isNull("vocabJson")) obj.optString("vocabJson") else null,
                             isWelcome = obj.optBoolean("isWelcome", false),
                             isHabitsSummary = obj.optBoolean("isHabitsSummary", false),
-                            habitsSummaryJson = if (obj.has("habitsSummaryJson") && !obj.isNull("habitsSummaryJson")) obj.optString("habitsSummaryJson") else null
+                            habitsSummaryJson = RestoreImportPolicy.remapCards(if (obj.has("habitsSummaryJson") && !obj.isNull("habitsSummaryJson")) obj.getString("habitsSummaryJson") else null, restoredHabitIds, restoreWarnings)
                         )
                     )
                 }
@@ -1271,6 +1145,10 @@ object BackupRestoreManager {
                         val edit = sp.edit(); if (cleanRestore) edit.clear()
                         pObj.keys().forEach { key ->
                             val raw = com.focusbyrj.app.data.ProductivityLibrary.remapChain(pObj.getString(key), restoredHabitIds, taskIdMapping)
+                            val originalChain = JSONObject(pObj.getString(key))
+                            if (originalChain.optString("kind") == "chain" &&
+                                (raw == null || JSONObject(raw).getJSONArray("habits").length() != originalChain.getJSONArray("habits").length()))
+                                restoreWarnings += "Some saved routine steps were unavailable. Review routines; empty routines were skipped."
                             if (raw != null) {
                                 val kind = JSONObject(raw).getString("kind")
                                 val target = if (!cleanRestore && sp.contains(key)) "${kind}_${UUID.randomUUID()}" else key
@@ -1396,6 +1274,8 @@ object BackupRestoreManager {
             if (refreshWarnings.isNotEmpty()) {
                 com.focusbyrj.app.util.backup.RestoreRefreshWorker.enqueue(app)
             }
+            if (skippedMessages > 0) restoreWarnings += "$skippedMessages imported chat messages were skipped because their IDs already exist. Local messages were kept."
+            if (skippedDrills > 0) restoreWarnings += "$skippedDrills imported drill results were skipped because their IDs already exist. Local results were kept."
             val metadata = BackupMetadata(
                 version = version,
                 createdAt = createdAt,
@@ -1405,12 +1285,13 @@ object BackupRestoreManager {
                 habitCount = habitArray.length(),
                 restrictionCount = restrArray.length(),
                 scheduleCount = schedArray.length(),
-                drillCount = drillArray.length(),
-                chatMessageCount = chatArray.length(),
+                drillCount = importedDrills,
+                chatMessageCount = importedMessages,
                 planCount = assistantPlanning?.getJSONArray("plans")?.length() ?: 0,
                 warnings = (restoreWarnings + refreshWarnings).distinct()
             )
 
+            RestoreJournal.recordRestoreResult(app, metadata)
             Log.i(TAG, "Encrypted backup restored successfully.")
             Result.success(metadata)
         } catch (e: Exception) {
@@ -1480,6 +1361,24 @@ object BackupRestoreManager {
                 require(id <= 0L || ids.add(id)) { "Duplicate $name ID: $id" }
             }
         }
+        for ((name, key) in listOf("chatMessages" to "id", "drillSessions" to "sessionId")) {
+            val seen = hashSetOf<String>()
+            val array = root.optJSONArray(name) ?: continue
+            for (i in 0 until array.length()) {
+                val id = array.getJSONObject(i).getString(key)
+                require(id.isNotBlank() && seen.add(id)) { "Duplicate or empty $name ID. Your data was not changed." }
+            }
+        }
+        val habitIds = root.optJSONArray("habits")?.let { a -> (0 until a.length()).map { a.getJSONObject(it).optLong("id", 0) }.filter { it > 0 }.toSet() }.orEmpty()
+        val logIds = hashSetOf<Long>()
+        val logDays = hashSetOf<Pair<Long, String>>()
+        root.optJSONArray("habitLogs")?.let { a -> for (i in 0 until a.length()) {
+            val row = a.getJSONObject(i)
+            val id = row.optLong("id", 0)
+            require(id <= 0 || logIds.add(id)) { "Duplicate habit log ID" }
+            require(row.getLong("habitId") in habitIds) { "Backup contains a habit log without its habit. Your data was not changed." }
+            require(logDays.add(row.getLong("habitId") to row.getString("date"))) { "Duplicate habit log date" }
+        } }
         fun requireObjects(arrayName: String, requiredFields: List<String> = emptyList()) {
             val array = root.optJSONArray(arrayName) ?: return
             for (i in 0 until array.length()) {
@@ -1703,65 +1602,46 @@ object BackupRestoreManager {
     }
 
     private fun prepareRestoredMedia(
+        app: Context,
         stagingDir: File,
         destinations: Map<String, File>
     ): List<Pair<File, File>> {
-        val prepared = mutableListOf<Pair<File, File>>()
+        val sources = MEDIA_FOLDERS.flatMap { folder ->
+            File(stagingDir, folder).listFiles()?.filter { it.isFile }?.map { staged ->
+                val destination = checkNotNull(destinations["$folder/${staged.name}"])
+                val temporary = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.restore")
+                Triple(staged, destination, temporary)
+            }.orEmpty()
+        }
+        val prepared = sources.map { it.second to it.third }
+        // Persist all ownership before creating files; one durable write for the whole batch.
+        RestoreJournal.registerMedia(app, prepared)
         try {
-            MEDIA_FOLDERS.forEach { folder ->
-                File(stagingDir, folder).listFiles()?.filter { it.isFile }?.forEach { staged ->
-                    val relative = "$folder/${staged.name}"
-                    val destination = checkNotNull(destinations[relative]) {
-                        "No destination allocated for restored media $relative"
-                    }
-                    destination.parentFile?.mkdirs()
-                    val temp = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.restore")
-                    prepared += destination to temp
-                    BackupProgress.report("Restoring attachment ${prepared.size} of ${destinations.size}")
-                    // This authenticates the complete GCM tag before any database change.
-                    (EncryptedMediaStorage.openDecryptedInputStream(staged)
-                        ?: throw IOException("Staged attachment cannot be decrypted")).close()
-                    if (!staged.renameTo(temp)) {
-                        val expected = staged.inputStream().use { digestBackup(it) }
-                        staged.inputStream().use { input -> temp.outputStream().use { input.copyTo(it) } }
-                        check(temp.inputStream().use { digestBackup(it) } == expected) { "Staged media copy did not verify" }
-                    }
-                    java.io.RandomAccessFile(temp, "rw").use { it.fd.sync() }
+            sources.forEachIndexed { index, (staged, destination, temp) ->
+                check(destination.parentFile!!.mkdirs() || destination.parentFile!!.isDirectory)
+                BackupProgress.report("Restoring attachment ${index + 1} of ${sources.size}")
+                (EncryptedMediaStorage.openDecryptedInputStream(staged)
+                    ?: throw IOException("Staged attachment cannot be decrypted")).close()
+                if (!staged.renameTo(temp)) {
+                    val expected = staged.inputStream().use { digestBackup(it) }
+                    staged.inputStream().use { input -> temp.outputStream().use { input.copyTo(it) } }
+                    check(temp.inputStream().use { digestBackup(it) } == expected) { "Staged media copy did not verify" }
                 }
+                java.io.RandomAccessFile(temp, "rw").use { it.fd.sync() }
             }
             return prepared
-        } catch (e: Exception) {
+        } catch (error: Exception) {
             prepared.forEach { it.second.delete() }
-            throw e
+            throw error
         }
     }
 
     private fun installPreparedMedia(prepared: List<Pair<File, File>>) {
-        val installed = mutableListOf<Pair<File, File?>>()
-        try {
-            prepared.forEach { (destination, temp) ->
-                val backup = if (destination.exists()) {
-                    File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.old")
-                } else null
-                if (backup != null && !destination.renameTo(backup)) {
-                    throw IOException("Could not stage existing media ${destination.name} for replacement")
-                }
-                if (!temp.renameTo(destination)) {
-                    backup?.renameTo(destination)
-                    throw IOException("Could not atomically install restored media ${destination.name}")
-                }
-                installed += destination to backup
-            }
-            installed.forEach { it.second?.delete() }
-        } catch (e: Exception) {
-            installed.asReversed().forEach { (destination, backup) ->
-                destination.delete()
-                backup?.renameTo(destination)
-            }
-            throw e
-        } finally {
-            prepared.forEach { it.second.delete() }
+        prepared.forEach { (destination, temp) ->
+            check(!destination.exists()) { "Restored attachment conflicts with an existing file" }
+            check(temp.renameTo(destination)) { "Could not atomically install restored attachment" }
         }
+        // Rollback/startup recovery removes only the new destinations recorded in the journal.
     }
 
     private fun isKnownFloatPreference(prefName: String, key: String): Boolean {

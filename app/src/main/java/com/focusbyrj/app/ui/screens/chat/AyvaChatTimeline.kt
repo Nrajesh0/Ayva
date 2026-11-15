@@ -1,5 +1,9 @@
 package com.focusbyrj.app.ui.screens.chat
 
+import com.focusbyrj.app.data.chat.ChatMessage
+import com.focusbyrj.app.data.drill.DrillSession
+import com.focusbyrj.app.data.drill.QuestionRecord
+
 import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.core.FastOutSlowInEasing

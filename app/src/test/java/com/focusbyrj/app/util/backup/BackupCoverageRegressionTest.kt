@@ -155,7 +155,7 @@ class BackupCoverageRegressionTest {
     }
 
     @Test fun aPreRestoreDrillCannotSettleRewardsIntoTheRestoredProfile() = runBlocking {
-        val session=com.focusbyrj.app.ui.screens.DrillSession(difficulty="easy",correct=5,total=5,gold=500)
+        val session=com.focusbyrj.app.data.drill.DrillSession(difficulty="easy",correct=5,total=5,gold=500)
         val file=archive()
         BackupRestoreManager.restoreEncryptedBackup(app,Uri.fromFile(file),password,true).getOrThrow()
         com.focusbyrj.app.data.drill.DrillSessionRepository.init(app)

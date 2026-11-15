@@ -9,8 +9,8 @@ import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.FocusDatabase
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.util.assistant.*
-import com.focusbyrj.app.ui.screens.toPersistedChatMessage
-import com.focusbyrj.app.ui.screens.toChatMessage
+import com.focusbyrj.app.data.chat.toPersistedChatMessage
+import com.focusbyrj.app.data.chat.toChatMessage
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -186,7 +186,7 @@ class AssistantChatPresentationTest {
     @Test fun quotedTextAndTargetSurviveExistingMessageConversion() {
         val reference = AssistantItemReference("task", 7L, "Original title", "Original time")
         val payload = AssistantPresentation.withReply("Original reply", reference, "original")
-        val restored = com.focusbyrj.app.ui.screens.ChatMessage("reply", "Move it", true, talkActionJson = payload).toPersistedChatMessage().toChatMessage()
+        val restored = com.focusbyrj.app.data.chat.ChatMessage("reply", "Move it", true, talkActionJson = payload).toPersistedChatMessage().toChatMessage()
         assertEquals("Original reply", AssistantPresentation.replyReference(restored.talkActionJson)!!.getString("text"))
         assertEquals(reference, AssistantItemReference.fromJson(AssistantPresentation.replyReference(restored.talkActionJson)!!.getJSONObject("reference")))
     }

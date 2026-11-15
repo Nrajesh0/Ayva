@@ -195,35 +195,9 @@ class DailySummaryReceiver : BroadcastReceiver() {
         val revIdiom = vocabRepo.getRevisionIdiom(excludeId = newIdiom?.id)
         val revOws = vocabRepo.getRevisionOws(excludeId = newOws?.id)
         
-        val vocabObj = org.json.JSONObject()
-        if (newIdiom != null) {
-            vocabObj.put("idiom", org.json.JSONObject().apply {
-                put("id", newIdiom.id ?: -1)
-                put("idiom", newIdiom.idiom)
-                put("meaning", newIdiom.meaning)
-            })
-        }
-        if (newOws != null) {
-            vocabObj.put("ows", org.json.JSONObject().apply {
-                put("id", newOws.id ?: -1)
-                put("term", newOws.term)
-                put("definition", newOws.definition)
-            })
-        }
-        if (revIdiom != null) {
-            vocabObj.put("rev_idiom", org.json.JSONObject().apply {
-                put("id", revIdiom.id ?: -1)
-                put("idiom", revIdiom.idiom)
-                put("meaning", revIdiom.meaning)
-            })
-        }
-        if (revOws != null) {
-            vocabObj.put("rev_ows", org.json.JSONObject().apply {
-                put("id", revOws.id ?: -1)
-                put("term", revOws.term)
-                put("definition", revOws.definition)
-            })
-        }
+        val vocabObj = com.focusbyrj.app.data.VocabBriefPayload.encode(
+            newIdiom, newOws, revIdiom, revOws
+        )
 
         val message = com.focusbyrj.app.util.PersistedChatMessage(
             id = "morning_${System.currentTimeMillis()}",

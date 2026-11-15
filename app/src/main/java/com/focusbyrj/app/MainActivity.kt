@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.WindowInsets
@@ -158,7 +159,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun handleIncomingIntent(intent: android.content.Intent?) {
-        if (intent == null) return
+        if ((application as FocusApplication).startupRecoveryPending || !::viewModel.isInitialized || intent == null) return
         val navigateTo = intent.getStringExtra("navigate_to") ?: intent.getStringExtra("NAV_DESTINATION")
         val openAddDialog = intent.getBooleanExtra("open_add_dialog", false)
         val openNoteId = intent.getLongExtra("open_note_id", -1L).takeIf { it != -1L }
@@ -182,6 +183,10 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if ((application as FocusApplication).startupRecoveryPending) {
+            showRecoveryGate()
+            return
+        }
         enableEdgeToEdge()
 
         // Apply Anti-Screenshot / FLAG_SECURE protection dynamically based on user preference (defaults to false / off)
@@ -226,6 +231,19 @@ class MainActivity : FragmentActivity() {
                     initialNavigateTo = navigateTo,
                     initialOpenAdd = openAddDialog
                 )
+                var restoreNotice by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf(com.focusbyrj.app.util.backup.RestoreNotice.forStartup())
+                }
+                if (!maintaining) restoreNotice?.let { notice ->
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { /* Acknowledge explicitly so the result is not missed. */ },
+                        title = { Text(notice.first) }, text = { Text(notice.second, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) },
+                        confirmButton = { androidx.compose.material3.TextButton(onClick = {
+                            runCatching { com.focusbyrj.app.util.backup.RestoreNotice.acknowledge(this@MainActivity) }
+                            restoreNotice = null
+                        }) { Text("Got it") } }
+                    )
+                }
                 if (maintaining) androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
                     androidx.compose.material3.Surface(shape = RoundedCornerShape(24.dp)) {
                         Text("Protecting your data…", modifier = Modifier.padding(28.dp))
@@ -235,8 +253,36 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    /** No repositories, view models or ordinary startup actions while recovery is incomplete. */
+    private fun showRecoveryGate() {
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        setContent {
+            androidx.compose.material3.MaterialTheme {
+                var retrying by remember { mutableStateOf(false) }
+                var failed by remember { mutableStateOf(false) }
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {},
+                    title = { Text("Recovery needs attention") },
+                    text = { Text(if (failed) "Recovery could not finish. Free device storage if needed, then retry. Keep your backup file; do not clear app data."
+                        else "An interrupted restore needs recovery before you can use the app. Your encrypted recovery journal was kept. Keep your backup file and do not clear app data.") },
+                    confirmButton = { androidx.compose.material3.TextButton(enabled = !retrying, onClick = {
+                        retrying = true
+                        lifecycleScope.launch {
+                            try {
+                                if ((application as FocusApplication).retryStartupRecovery()) recreate()
+                                else failed = true
+                            } finally { retrying = false }
+                        }
+                    }) { Text(if (retrying) "Recovering…" else "Retry recovery") } },
+                    dismissButton = { androidx.compose.material3.TextButton(enabled = !retrying, onClick = { finish() }) { Text("Close") } }
+                )
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        if ((application as FocusApplication).startupRecoveryPending) return
         updateSecureWindowFlags()
         lifecycleScope.launch {
             try {

@@ -6,14 +6,9 @@
  */
 
 package com.focusbyrj.app.ui.screens.notes
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 
 import android.app.Activity
@@ -36,7 +31,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -60,33 +54,24 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.Redo
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Quiz
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -95,13 +80,11 @@ import kotlinx.coroutines.delay
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material.icons.outlined.AddBox
-import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.CheckBox
-import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FontDownload
@@ -110,11 +93,8 @@ import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.Mic
-import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PhotoCamera
-import androidx.compose.material.icons.outlined.Publish
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.AttachFile
@@ -127,15 +107,11 @@ import androidx.compose.foundation.layout.widthIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.focusbyrj.app.data.note.NoteImageHelper
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material3.ripple
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -145,28 +121,19 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -175,37 +142,20 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.zIndex
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
-import kotlin.math.roundToInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -3263,525 +3213,4 @@ private fun KeepEditorSurface(modifier: Modifier, content: @Composable BoxScope.
 @Composable
 private fun KeepEditorColumn(content: @Composable ColumnScope.() -> Unit) {
     Column(modifier = Modifier.fillMaxSize(), content = content)
-}
-
-@Composable
-private fun KeepOverflowGridItem(
-    icon: ImageVector,
-    label: String,
-    isDark: Boolean,
-    modifier: Modifier = Modifier,
-    tint: Color? = null,
-    isActive: Boolean = false,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (isActive) {
-                        if (isDark) Color(0xFF2C323D) else Color(0xFFE0E7FF)
-                    } else {
-                        if (isDark) Color(0xFF212328) else Color(0xFFF1F3F5)
-                    }
-                )
-                .border(
-                    1.dp,
-                    if (isActive) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                    } else {
-                        if (isDark) Color(0xFF2B2E35) else Color(0xFFE2E4E9)
-                    },
-                    RoundedCornerShape(12.dp)
-                )
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = ripple(bounded = true),
-                    onClick = onClick
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label.replace("\n", " "),
-                tint = tint ?: if (isActive) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    if (isDark) Color(0xFFC7CAD2) else Color(0xFF374151)
-                },
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            lineHeight = 13.sp,
-            color = if (isActive) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                if (isDark) Color(0xFFA0A3AD) else Color(0xFF4B5563)
-            },
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            minLines = 2,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-private fun KeepAddOptionRow(
-    icon: ImageVector,
-    title: String,
-    onClick: () -> Unit
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 14.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = title,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.width(20.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ChecklistRow(
-    item: com.focusbyrj.app.data.note.ChecklistItem,
-    textColor: Color,
-    fontFamily: FontFamily = FontFamily.Default,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
-    isTargetFocus: Boolean,
-    onFocused: () -> Unit,
-    onToggle: () -> Unit,
-    onTextChange: (String) -> Unit,
-    onEnterPressed: (String) -> Unit,
-    onDelete: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
-) {
-    val focusRequester = remember { FocusRequester() }
-    val bringIntoViewRequester = remember { BringIntoViewRequester() }
-    val textFieldBringIntoViewRequester = remember { BringIntoViewRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val coroutineScope = rememberCoroutineScope()
-    var isDragging by remember { mutableStateOf(false) }
-    var dragOffsetY by remember { mutableFloatStateOf(0f) }
-    val density = LocalDensity.current
-    val haptic = LocalHapticFeedback.current
-    val rowThresholdPx = remember(density) { with(density) { 44.dp.toPx() } }
-
-    val currentCanMoveUp by rememberUpdatedState(canMoveUp)
-    val currentCanMoveDown by rememberUpdatedState(canMoveDown)
-    val currentOnMoveUp by rememberUpdatedState(onMoveUp)
-    val currentOnMoveDown by rememberUpdatedState(onMoveDown)
-
-    LaunchedEffect(isTargetFocus) {
-        if (isTargetFocus) {
-            bringIntoViewRequester.bringIntoView()
-            textFieldBringIntoViewRequester.bringIntoView()
-            kotlinx.coroutines.delay(40)
-            try {
-                focusRequester.requestFocus()
-                keyboardController?.show()
-                onFocused()
-            } catch (e: Exception) {
-                kotlinx.coroutines.delay(80)
-                runCatching {
-                    bringIntoViewRequester.bringIntoView()
-                    textFieldBringIntoViewRequester.bringIntoView()
-                    focusRequester.requestFocus()
-                    keyboardController?.show()
-                    onFocused()
-                }
-            }
-        }
-    }
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .bringIntoViewRequester(bringIntoViewRequester)
-            .zIndex(if (isDragging) 10f else 1f)
-            .offset { IntOffset(0, dragOffsetY.roundToInt()) }
-            .background(
-                color = if (isDragging) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
-                shape = RoundedCornerShape(8.dp)
-            )
-            .padding(vertical = 2.dp)
-    ) {
-        // Drag Handle with Touch / Pointer Drag Gesture
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .pointerInput(item.id) {
-                    detectVerticalDragGestures(
-                        onDragStart = {
-                            isDragging = true
-                            dragOffsetY = 0f
-                            try {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            } catch (_: Exception) {}
-                        },
-                        onDragEnd = {
-                            isDragging = false
-                            dragOffsetY = 0f
-                        },
-                        onDragCancel = {
-                            isDragging = false
-                            dragOffsetY = 0f
-                        },
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            dragOffsetY += dragAmount
-                            if (dragOffsetY > rowThresholdPx) {
-                                if (currentCanMoveDown) {
-                                    currentOnMoveDown()
-                                    dragOffsetY -= rowThresholdPx
-                                    try {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    } catch (_: Exception) {}
-                                }
-                            } else if (dragOffsetY < -rowThresholdPx) {
-                                if (currentCanMoveUp) {
-                                    currentOnMoveUp()
-                                    dragOffsetY += rowThresholdPx
-                                    try {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    } catch (_: Exception) {}
-                                }
-                            }
-                        }
-                    )
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.DragIndicator,
-                contentDescription = "Drag to reorder",
-                tint = if (isDragging) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.38f),
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        // Square Checkbox
-        IconButton(
-            onClick = onToggle,
-            modifier = Modifier.size(32.dp)
-        ) {
-            Icon(
-                imageVector = if (item.isChecked) Icons.Filled.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
-                contentDescription = if (item.isChecked) "Completed" else "Incomplete",
-                tint = if (item.isChecked) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.6f),
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(4.dp))
-
-        // Checklist Text Field (Multi-line wrapping with full content display)
-        BasicTextField(
-            value = item.text,
-            onValueChange = { newText ->
-                if (newText.contains('\n')) {
-                    val split = newText.split('\n', limit = 2)
-                    onTextChange(split[0])
-                    val nextItemText = if (split.size > 1) split[1] else ""
-                    onEnterPressed(nextItemText)
-                } else {
-                    onTextChange(newText)
-                }
-                coroutineScope.launch {
-                    textFieldBringIntoViewRequester.bringIntoView()
-                }
-            },
-            singleLine = false,
-            maxLines = 20,
-            modifier = Modifier
-                .weight(1f)
-                .bringIntoViewRequester(textFieldBringIntoViewRequester)
-                .focusRequester(focusRequester)
-                .onKeyEvent { keyEvent ->
-                    if (keyEvent.type == KeyEventType.KeyDown) {
-                        if (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) {
-                            onEnterPressed("")
-                            true
-                        } else if (keyEvent.key == Key.Backspace && item.text.isEmpty()) {
-                            onDelete()
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                },
-            textStyle = TextStyle(
-                color = if (item.isChecked) textColor.copy(alpha = 0.45f) else textColor,
-                fontSize = 16.sp,
-                lineHeight = 22.sp,
-                textDecoration = if (item.isChecked) TextDecoration.LineThrough else null,
-                fontFamily = fontFamily
-            ),
-            cursorBrush = SolidColor(textColor),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences,
-                imeAction = ImeAction.Next
-            ),
-            keyboardActions = KeyboardActions(
-                onNext = { onEnterPressed("") },
-                onDone = { onEnterPressed("") }
-            ),
-            decorationBox = { innerTextField ->
-                if (item.text.isEmpty()) {
-                    Text(
-                        text = "List item",
-                        style = TextStyle(
-                            color = textColor.copy(alpha = 0.35f),
-                            fontSize = 16.sp,
-                            fontFamily = fontFamily
-                        )
-                    )
-                }
-                innerTextField()
-            }
-        )
-
-        // Delete 'x' icon
-        IconButton(
-            onClick = onDelete,
-            modifier = Modifier.size(32.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = "Delete item",
-                tint = textColor.copy(alpha = 0.35f),
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
-}
-
-
-
-@Composable
-@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-fun ZoomableImagePager(
-    imageUris: List<String>,
-    initialUri: String,
-    onDismiss: () -> Unit,
-    bottomInset: Dp = 0.dp
-) {
-    val initialPage = remember(initialUri, imageUris) {
-        imageUris.indexOf(initialUri).coerceAtLeast(0)
-    }
-    val pagerState = rememberPagerState(
-        initialPage = initialPage,
-        pageCount = { imageUris.size }
-    )
-    val coroutineScope = rememberCoroutineScope()
-    var isZooming by remember { mutableStateOf(false) }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = !isZooming
-            ) { page ->
-                val uri = imageUris.getOrNull(page) ?: return@HorizontalPager
-                
-                var scale by remember { mutableFloatStateOf(1f) }
-                var offset by remember { mutableStateOf(Offset.Zero) }
-
-                LaunchedEffect(pagerState.currentPage) {
-                    if (pagerState.currentPage != page) {
-                        scale = 1f
-                        offset = Offset.Zero
-                    }
-                }
-                
-                LaunchedEffect(scale) {
-                    if (pagerState.currentPage == page) {
-                        isZooming = scale > 1.05f
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clipToBounds()
-                        .then(
-                            if (scale > 1.05f) {
-                                Modifier.pointerInput(scale) {
-                                    detectTransformGestures { centroid, pan, zoom, _ ->
-                                        val oldScale = scale
-                                        scale = (scale * zoom).coerceIn(1f, 5f)
-                                        if (scale > 1f) {
-                                            val fractionalX = (centroid.x - offset.x) / oldScale
-                                            val fractionalY = (centroid.y - offset.y) / oldScale
-                                            var newOffsetX = centroid.x - (fractionalX * scale)
-                                            var newOffsetY = centroid.y - (fractionalY * scale)
-                                            newOffsetX += pan.x
-                                            newOffsetY += pan.y
-                                            
-                                            val maxX = (size.width.toFloat() * scale - size.width.toFloat()) / 2f
-                                            val maxY = (size.height.toFloat() * scale - size.height.toFloat()) / 2f
-                                            offset = Offset(
-                                                newOffsetX.coerceIn(-maxX, maxX),
-                                                newOffsetY.coerceIn(-maxY, maxY)
-                                            )
-                                        } else {
-                                            offset = Offset.Zero
-                                        }
-                                    }
-                                }
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onDoubleTap = { tapOffset ->
-                                    if (scale > 1f) {
-                                        scale = 1f
-                                        offset = Offset.Zero
-                                    } else {
-                                        scale = 2.5f
-                                        val newOffsetX = -(tapOffset.x * 2.5f - size.width.toFloat() / 2f)
-                                        val newOffsetY = -(tapOffset.y * 2.5f - size.height.toFloat() / 2f)
-                                        val maxX = (size.width.toFloat() * 2.5f - size.width.toFloat()) / 2f
-                                        val maxY = (size.height.toFloat() * 2.5f - size.height.toFloat()) / 2f
-                                        offset = Offset(
-                                            newOffsetX.coerceIn(-maxX, maxX),
-                                            newOffsetY.coerceIn(-maxY, maxY)
-                                        )
-                                    }
-                                }
-                            )
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    coil.compose.AsyncImage(
-                        model = coil.request.ImageRequest.Builder(LocalContext.current)
-                            .data(uri)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = "Full view image",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                translationX = offset.x
-                                translationY = offset.y
-                            },
-                        contentScale = ContentScale.Fit
-                    )
-                }
-            }
-
-            // Bottom Thumbnail Gallery Strip (Quick Jump)
-            if (imageUris.size > 1) {
-                val effectiveBottomPadding = maxOf(bottomInset, 28.dp) + 24.dp
-                LazyRow(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = effectiveBottomPadding)
-                        .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    itemsIndexed(imageUris) { index, uri ->
-                        val isSelected = index == pagerState.currentPage
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(
-                                    width = if (isSelected) 2.dp else 0.dp,
-                                    color = if (isSelected) Color.White else Color.Transparent,
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                                .clickable {
-                                    coroutineScope.launch {
-                                        pagerState.animateScrollToPage(index)
-                                    }
-                                }
-                        ) {
-                            coil.compose.AsyncImage(
-                                model = coil.request.ImageRequest.Builder(LocalContext.current)
-                                    .data(uri)
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = "Thumbnail ${index + 1}",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Top Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "${pagerState.currentPage + 1} / ${imageUris.size}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = "Close preview",
-                        tint = Color.White
-                    )
-                }
-            }
-        }
-    }
 }

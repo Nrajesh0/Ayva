@@ -10,7 +10,7 @@ import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.util.assistant.AssistantPlanningArchive
-import com.focusbyrj.app.ui.screens.notes.NotesViewModel
+import com.focusbyrj.app.data.note.LatestNotesCache
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -37,8 +37,8 @@ internal object RestoreJournal {
         block()
     }
 
-    suspend fun <T> mutate(context: Context, invalidateDrills: Boolean = false, block: suspend () -> Result<T>): Result<T> = try {
-        mutateLocked(context, invalidateDrills = invalidateDrills, block = block)
+    suspend fun <T> mutate(context: Context, invalidateDrills: Boolean = false, portableRestore: Boolean = false, block: suspend () -> Result<T>): Result<T> = try {
+        mutateLocked(context, invalidateDrills = invalidateDrills, portableRestore = portableRestore, block = block)
     } catch (error: Exception) {
         if (error is kotlinx.coroutines.CancellationException) throw error
         Result.failure(error)
@@ -52,14 +52,17 @@ internal object RestoreJournal {
     }
 
     private suspend fun <T> mutateLocked(context: Context, drillOnly: Boolean = false, drillSessionId: String? = null,
-                                       invalidateDrills: Boolean = false, block: suspend () -> Result<T>): Result<T> = MaintenanceGate.exclusively {
+                                       invalidateDrills: Boolean = false, portableRestore: Boolean = false, block: suspend () -> Result<T>): Result<T> = MaintenanceGate.exclusively {
         val app = context.applicationContext as FocusApplication
         recoverLocked(app)
         if (drillOnly) requireNotNull(drillSessionId).also { java.util.UUID.fromString(it) }
-        val before = capture(app, drillOnly, drillSessionId)
-        EncryptedSnapshotFile.write(journal(app), before.toString())
-        check(EncryptedSnapshotFile.read(journal(app)) == before.toString()) { "Restore recovery journal verification failed" }
+        if (portableRestore) RestoreNotice.outcome(app, "applying")
+        val before = capture(app, drillOnly, drillSessionId).put("portableRestore", portableRestore)
+        MaintenanceGate.requireRecovery()
         try {
+            EncryptedSnapshotFile.write(journal(app), before.toString())
+            checkpoint("journal_written")
+            check(EncryptedSnapshotFile.read(journal(app)) == before.toString()) { "Restore recovery journal verification failed" }
             checkpoint("prepared")
             val result = block()
             if (result.isFailure) {
@@ -76,6 +79,8 @@ internal object RestoreJournal {
                 catch (error: Throwable) { marker(app).failWrite(output); throw error }
                 if (invalidateDrills) com.focusbyrj.app.data.drill.DrillSessionRepository.invalidateAfterRestore()
                 checkpoint("committed")
+                cleanOwnedMedia(app, JSONObject(EncryptedSnapshotFile.read(journal(app))), true)
+                if (portableRestore) RestoreNotice.outcome(app, "completed", JSONObject(EncryptedSnapshotFile.read(journal(app))).optString("restoreSummary"))
                 cleanup(app)
             }
             result
@@ -98,7 +103,7 @@ internal object RestoreJournal {
     suspend fun recover(context: Context) {
         val file = journal(context)
         if (!file.exists() && !File(file.path + ".bak").exists()) return
-        MaintenanceGate.exclusively { recoverLocked(context.applicationContext as FocusApplication) }
+        MaintenanceGate.exclusively { recoverLocked(context.applicationContext as FocusApplication, announce = true) }
     }
 
     private fun cleanup(context: Context) {
@@ -112,14 +117,21 @@ internal object RestoreJournal {
         MaintenanceGate.recovered()
     }
 
-    private suspend fun recoverLocked(app: FocusApplication) {
+    private suspend fun recoverLocked(app: FocusApplication, announce: Boolean = false) {
         val file = journal(app)
         if (!file.exists() && !File(file.path + ".bak").exists()) { marker(app).delete(); MaintenanceGate.recovered(); return }
         MaintenanceGate.requireRecovery()
         val root = JSONObject(EncryptedSnapshotFile.read(file))
         require(root.getInt("version") == 1)
         val committed = runCatching { marker(app).openRead().use { it.readBytes().decodeToString() } }.getOrNull()
-        if (committed == root.getString("id")) { cleanup(app); return }
+        if (committed == root.getString("id")) {
+            cleanOwnedMedia(app, root, true)
+            if (root.optBoolean("portableRestore")) {
+                RestoreNotice.outcome(app, "completed", JSONObject(EncryptedSnapshotFile.read(journal(app))).optString("restoreSummary"))
+                if (announce) RestoreNotice.publish(app, "Restore completed", "Your restore finished before the app closed. Do not import copies again unless you want more copies." + root.optString("restoreSummary"))
+            }
+            cleanup(app); return
+        }
         val drillOnly = root.optBoolean("drillOnly", false)
         val drillSessionId = if (drillOnly) root.optString("drillSessionId", "").takeIf { it.isNotBlank() } else null
         drillSessionId?.let { java.util.UUID.fromString(it) }
@@ -184,7 +196,7 @@ internal object RestoreJournal {
         }
         AssistantPlanningArchive.recover(app, AssistantPlanningArchive.Recovery(bytes))
         ArchiveVaultSecurity.lockVault()
-        NotesViewModel.latestNotesCache.clear()
+        LatestNotesCache.clear()
         com.focusbyrj.app.data.drill.DrillSessionRepository.invalidateCache()
         // Derived schedules and caches must agree with the recovered stores as well.
         runCatching {
@@ -208,8 +220,43 @@ internal object RestoreJournal {
             com.focusbyrj.app.service.DailySummaryReceiver.scheduleDailySummaries(app)
             com.focusbyrj.app.service.AptitudeReminderReceiver.scheduleDrillReminders(app)
         }.onFailure { RestoreRefreshWorker.enqueue(app) }
+        cleanOwnedMedia(app, root, false)
+        if (root.optBoolean("portableRestore")) {
+            RestoreNotice.outcome(app, "recovered")
+            if (announce) RestoreNotice.publish(app, "Interrupted restore recovered", "Your previous records were recovered. Imported files from the interrupted restore were removed. Choose the backup again to retry; nothing resumes automatically.")
+        }
         checkpoint("recovered")
         cleanup(app)
+    }
+
+    /** Called before creating any operation-owned destination or temporary file. */
+    fun registerMedia(context: Context, files: List<Pair<File, File>>) {
+        check(MaintenanceGate.requiresDurableCommit)
+        files.forEach { (destination, temporary) -> check(!destination.exists() && !temporary.exists()) { "Restore attachment destination already exists" } }
+        val root = JSONObject(EncryptedSnapshotFile.read(journal(context)))
+        val media = root.optJSONArray("ownedMedia") ?: JSONArray().also { root.put("ownedMedia", it) }
+        files.forEach { (destination, temporary) -> media.put(JSONObject().put("destination", destination.canonicalPath).put("temporary", temporary.canonicalPath)) }
+        EncryptedSnapshotFile.write(journal(context), root.toString())
+    }
+
+    fun recordRestoreResult(context: Context, metadata: BackupRestoreManager.BackupMetadata) {
+        val root = JSONObject(EncryptedSnapshotFile.read(journal(context)))
+        root.put("restoreSummary", "\n${metadata.noteCount} notes · ${metadata.taskCount} tasks. " + metadata.warnings.joinToString(" "))
+        EncryptedSnapshotFile.write(journal(context), root.toString())
+    }
+
+    private fun cleanOwnedMedia(context: Context, root: JSONObject, committed: Boolean) {
+        val media = root.optJSONArray("ownedMedia") ?: return
+        for (i in 0 until media.length()) {
+            val item = media.getJSONObject(i)
+            val destination = File(item.getString("destination")).canonicalFile
+            val temporary = File(item.getString("temporary")).canonicalFile
+            require(listOf("keep_images", "keep_audio", "keep_drawings").any { destination.parentFile == File(context.filesDir, it).canonicalFile })
+            require(Regex("import_[a-f0-9-]{36}\\.[a-z0-9]{1,10}").matches(destination.name))
+            require(temporary.parentFile == destination.parentFile && temporary.name.startsWith(".${destination.name}.") && temporary.name.endsWith(".restore"))
+            val targets = if (committed) listOf(temporary) else listOf(temporary, destination)
+            targets.forEach { file -> check(!file.exists() || file.delete()) { "Restore attachment recovery is pending. Keep your backup and restart." } }
+        }
     }
 
     private fun quote(value: String) = "\"" + value.replace("\"", "\"\"") + "\""

@@ -1,5 +1,9 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.data.chat.ChatMessage
+import com.focusbyrj.app.data.drill.DrillSession
+import com.focusbyrj.app.data.drill.QuestionRecord
+
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke

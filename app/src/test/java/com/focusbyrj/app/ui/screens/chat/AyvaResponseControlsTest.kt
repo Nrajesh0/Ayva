@@ -7,7 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.focusbyrj.app.data.Task
-import com.focusbyrj.app.ui.screens.ChatMessage
+import com.focusbyrj.app.data.chat.ChatMessage
 import com.focusbyrj.app.util.AyvaTalkEngine
 import com.focusbyrj.app.util.TalkAction
 import com.focusbyrj.app.util.assistant.*

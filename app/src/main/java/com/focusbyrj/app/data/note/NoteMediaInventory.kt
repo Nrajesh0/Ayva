@@ -1,6 +1,5 @@
 package com.focusbyrj.app.data.note
 
-import com.focusbyrj.app.ui.screens.notes.NotesnookBlockManager
 import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
 import org.json.JSONArray
 import org.json.JSONObject
@@ -34,8 +33,8 @@ internal object NoteMediaInventory {
     fun remapContent(content: String, transform: (String) -> String): String {
         var output = content
         for ((start, end) in listOf(
-            NotesnookBlockManager.BLOCKS_PREFIX to NotesnookBlockManager.BLOCKS_SUFFIX,
-            NotesnookBlockManager.ALT_BLOCKS_START to NotesnookBlockManager.ALT_BLOCKS_END)) {
+            NoteContentFormat.BLOCKS_PREFIX to NoteContentFormat.BLOCKS_SUFFIX,
+            NoteContentFormat.ALT_BLOCKS_START to NoteContentFormat.ALT_BLOCKS_END)) {
             var from = output.indexOf(start)
             while (from >= 0) {
                 val to = output.indexOf(end, from + start.length)

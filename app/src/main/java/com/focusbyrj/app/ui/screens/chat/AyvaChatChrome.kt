@@ -26,7 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusbyrj.app.R
-import com.focusbyrj.app.ui.screens.ChatMessage
+import com.focusbyrj.app.data.chat.ChatMessage
 import com.focusbyrj.app.util.assistant.AssistantItemReference
 import java.text.DateFormat
 import java.util.Date

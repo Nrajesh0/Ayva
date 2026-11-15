@@ -15,7 +15,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.text.TextLayoutResult
-import com.focusbyrj.app.ui.screens.ChatMessage
+import com.focusbyrj.app.data.chat.ChatMessage
 import com.focusbyrj.app.util.assistant.AssistantChatState
 import com.focusbyrj.app.util.assistant.AssistantItemReference
 import org.junit.Assert.*

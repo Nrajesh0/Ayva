@@ -90,10 +90,10 @@ sealed interface NotesnookBlock {
 }
 
 object NotesnookBlockManager {
-    const val BLOCKS_PREFIX = "<!--NOTESNOOK_BLOCKS:"
-    const val BLOCKS_SUFFIX = ":BLOCKS_END-->"
-    const val ALT_BLOCKS_START = "<!--BLOCKS_START-->"
-    const val ALT_BLOCKS_END = "<!--BLOCKS_END-->"
+    const val BLOCKS_PREFIX = com.focusbyrj.app.data.note.NoteContentFormat.BLOCKS_PREFIX
+    const val BLOCKS_SUFFIX = com.focusbyrj.app.data.note.NoteContentFormat.BLOCKS_SUFFIX
+    const val ALT_BLOCKS_START = com.focusbyrj.app.data.note.NoteContentFormat.ALT_BLOCKS_START
+    const val ALT_BLOCKS_END = com.focusbyrj.app.data.note.NoteContentFormat.ALT_BLOCKS_END
     private const val TABLE_START = "<!--TABLE_START:"
     private const val TABLE_END = ":TABLE_END-->"
 

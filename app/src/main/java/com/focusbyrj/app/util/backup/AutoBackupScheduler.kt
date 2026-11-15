@@ -13,18 +13,13 @@ import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.util.getSafeLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Production-grade scheduler for daily automatic rolling backups.
- * Utilizes Android WorkManager ([AutoBackupWorker]) for guaranteed execution even if
- * the app process is terminated or the device reboots.
- *
- * The backup is an unencrypted JSON snapshot of notes written to app-private internal storage
- * (see [DataSafetyManager.writeDailyBackup]). Keeps 7 rolling daily snapshots.
+ * Schedules encrypted, device-bound rolling snapshots of records and media references.
+ * WorkManager persists the schedule across process death and reboot; execution time depends
+ * on Android scheduling and battery constraints. Opening the app also checks for catch-up work.
+ * These snapshots omit media bytes; portable backups are handled by [BackupRestoreManager].
  */
 object AutoBackupScheduler {
 

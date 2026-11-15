@@ -11,6 +11,8 @@ paths += list((JAVA / 'util/router').glob('*.kt'))
 paths += list((JAVA / 'util/speech').glob('*.kt'))
 paths += list((JAVA / 'ui/screens/chat').glob('*.kt'))
 paths += [JAVA / 'ui/screens/BubbleChatActivity.kt']
+paths += [JAVA / 'data/chat/ChatMessage.kt', JAVA / 'data/chat/ChatMessageMappings.kt',
+          JAVA / 'data/drill/DrillSession.kt']
 paths += [JAVA / 'ui/components/TalkActionChips.kt']
 paths += [JAVA / 'util/AyvaTalkEngine.kt', JAVA / 'util/TalkAction.kt', JAVA / 'util/VocabQuizChoices.kt',
           JAVA / 'util/backup/TaskRecoveryStore.kt', JAVA / 'util/backup/EncryptedSnapshotFile.kt']

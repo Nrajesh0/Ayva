@@ -1,5 +1,14 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.data.chat.toChatMessage
+import com.focusbyrj.app.data.chat.toPersistedChatMessage
+
+import com.focusbyrj.app.data.AppInfo
+import com.focusbyrj.app.data.chat.ChatMessage
+import com.focusbyrj.app.data.drill.DrillSession
+import com.focusbyrj.app.data.drill.QuestionRecord
+import com.focusbyrj.app.data.drill.createDrillSessionWithQuestions
+
 import com.focusbyrj.app.ui.security.installScreenCaptureProtection
 
 import com.focusbyrj.app.util.assistant.ChatMode
@@ -124,186 +133,6 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-data class QuestionRecord(
-    val questionNumber: Int,
-    val title: String,
-    val questionText: String,
-    val options: List<String>,
-    val correctIndex: Int,
-    val userSelectedIndex: Int?,
-    val status: String,
-    val explanation: String,
-    val vocabType: String? = null,
-    val vocabId: Int? = null
-)
-
-data class DrillSession(
-    val difficulty: String, 
-    val targetQuestions: Int = -1, 
-    var correct: Int = 0, 
-    var total: Int = 0, 
-    var xp: Int = 0, 
-    var gold: Int = 0,
-    var combo: Int = 0,
-    var maxCombo: Int = 0,
-    val isBlitz: Boolean = false,
-    var blitzSecondsRemaining: Int = 60,
-    val startTime: Long = System.currentTimeMillis(),
-    val questionRecords: MutableList<QuestionRecord> = mutableListOf(),
-    val preGeneratedQuestions: MutableList<String> = mutableListOf(),
-    val attemptedIndices: MutableSet<Int> = mutableSetOf(),
-    val markedForReview: MutableSet<Int> = mutableSetOf(),
-    var highestSeenIndex: Int = 0,
-    val isSettled: java.util.concurrent.atomic.AtomicBoolean = java.util.concurrent.atomic.AtomicBoolean(false),
-    val sessionId: String = java.util.UUID.randomUUID().toString(),
-    val storageGeneration: Long = com.focusbyrj.app.data.drill.DrillSessionRepository.storageGeneration
-)
-
-data class AppInfo(val name: String, val packageName: String, val category: AppCategory = AppCategory.OTHERS)
-
-data class ChatMessage(
-    val id: String, 
-    val text: String, 
-    val isUser: Boolean, 
-    val timestamp: Long = System.currentTimeMillis(),
-    val firstViewedTimestamp: Long = 0L,
-    val isArithmetic: Boolean = false,
-    val arithmeticJson: String? = null,
-    val isDrillSummary: Boolean = false,
-    val drillSummaryJson: String? = null,
-    val isAptitudeProfile: Boolean = false,
-    val isStreakPrompt: Boolean = false,
-    val streakPromptJson: String? = null,
-    val isTaskSummary: Boolean = false,
-    val taskSummaryJson: String? = null,
-    val isTalkAction: Boolean = false,
-    val talkActionJson: String? = null,
-    val pendingActionJson: String? = null,
-    val isDailyQuests: Boolean = false,
-    val isMysteryBox: Boolean = false,
-    val isMorningBrief: Boolean = false,
-    val isEveningBrief: Boolean = false,
-    val isStreakFreezeSkipped: Boolean = false,
-    val isVocabBrief: Boolean = false,
-    val isVocabHub: Boolean = false,
-    val vocabJson: String? = null,
-    val isWelcome: Boolean = false,
-    val isHabitsSummary: Boolean = false,
-    val habitsSummaryJson: String? = null
-)
-
-fun PersistedChatMessage.toChatMessage(): ChatMessage {
-    return ChatMessage(
-        id = id,
-        text = text,
-        isUser = isUser,
-        timestamp = timestamp,
-        firstViewedTimestamp = firstViewedTimestamp,
-        isArithmetic = isArithmetic,
-        arithmeticJson = arithmeticJson,
-        isDrillSummary = isDrillSummary,
-        drillSummaryJson = drillSummaryJson,
-        isAptitudeProfile = isAptitudeProfile,
-        isStreakPrompt = isStreakPrompt,
-        streakPromptJson = streakPromptJson,
-        isTaskSummary = isTaskSummary,
-        taskSummaryJson = taskSummaryJson,
-        isTalkAction = isTalkAction,
-        talkActionJson = talkActionJson,
-        pendingActionJson = pendingActionJson,
-        isDailyQuests = isDailyQuests,
-        isMysteryBox = isMysteryBox || id.startsWith("mystery_box_"),
-        isMorningBrief = isMorningBrief || id.startsWith("morning_"),
-        isEveningBrief = isEveningBrief || id.startsWith("evening_"),
-        isStreakFreezeSkipped = isStreakFreezeSkipped || id.startsWith("angry_freeze_"),
-        isVocabBrief = isVocabBrief,
-        isVocabHub = isVocabHub || id.startsWith("vocab_hub_"),
-        vocabJson = vocabJson,
-        isWelcome = isWelcome || id.startsWith("welcome_") || 
-                    text.contains("Hey! Ayva is on deck", ignoreCase = true) ||
-                    text.contains("ready for action", ignoreCase = true) ||
-                    text.contains("Ayva here!", ignoreCase = true) ||
-                    text.contains("I'm Ayva", ignoreCase = true) ||
-                    text.contains("anti-procrastination", ignoreCase = true),
-        isHabitsSummary = isHabitsSummary || id.startsWith("habits_"),
-        habitsSummaryJson = habitsSummaryJson
-    )
-}
-
-fun ChatMessage.toPersistedChatMessage(markViewedIfActive: Boolean = true): PersistedChatMessage {
-    val viewedTs = if (firstViewedTimestamp > 0L) {
-        firstViewedTimestamp
-    } else if (markViewedIfActive) {
-        System.currentTimeMillis()
-    } else {
-        0L
-    }
-    return PersistedChatMessage(
-        id = id,
-        text = text,
-        isUser = isUser,
-        timestamp = timestamp,
-        firstViewedTimestamp = viewedTs,
-        isArithmetic = isArithmetic,
-        arithmeticJson = arithmeticJson,
-        isDrillSummary = isDrillSummary,
-        drillSummaryJson = drillSummaryJson,
-        isAptitudeProfile = isAptitudeProfile,
-        isStreakPrompt = isStreakPrompt,
-        streakPromptJson = streakPromptJson,
-        isTaskSummary = isTaskSummary,
-        taskSummaryJson = taskSummaryJson,
-        isTalkAction = isTalkAction,
-        talkActionJson = talkActionJson,
-        pendingActionJson = pendingActionJson,
-        isDailyQuests = isDailyQuests,
-        isMysteryBox = isMysteryBox,
-        isMorningBrief = isMorningBrief,
-        isEveningBrief = isEveningBrief,
-        isStreakFreezeSkipped = isStreakFreezeSkipped,
-        isVocabBrief = isVocabBrief,
-        isVocabHub = isVocabHub,
-        vocabJson = vocabJson,
-        isWelcome = isWelcome,
-        isHabitsSummary = isHabitsSummary,
-        habitsSummaryJson = habitsSummaryJson
-    )
-}
-
-fun createDrillSessionWithQuestions(difficulty: String, targetQuestions: Int): DrillSession {
-    val diffEnum = when (difficulty) {
-        "hard" -> com.focusbyrj.app.util.ArithmeticDifficulty.HARD
-        "medium" -> com.focusbyrj.app.util.ArithmeticDifficulty.MEDIUM
-        else -> com.focusbyrj.app.util.ArithmeticDifficulty.EASY
-    }
-    val count = if (targetQuestions <= 0) 10 else targetQuestions
-    val generated = (0 until count).map {
-        try {
-            val q = com.focusbyrj.app.util.ArithmeticEngine.generateQuestion(diffEnum)
-            org.json.JSONObject().apply {
-                put("title", q.title)
-                put("questionText", q.questionText)
-                val arr = org.json.JSONArray()
-                q.options.forEach { arr.put(it) }
-                put("options", arr)
-                put("correctIndex", q.correctIndex)
-                put("explanation", q.explanation)
-            }.toString()
-        } catch (e: Exception) {
-            org.json.JSONObject().apply {
-                put("title", "Mental Arithmetic")
-                put("questionText", "What is 12 + 15?")
-                val arr = org.json.JSONArray()
-                listOf("25", "27", "29", "31").forEach { arr.put(it) }
-                put("options", arr)
-                put("correctIndex", 1)
-                put("explanation", "12 + 15 = 27")
-            }.toString()
-        }
-    }.toMutableList()
-    return DrillSession(difficulty = difficulty, targetQuestions = targetQuestions, preGeneratedQuestions = generated)
-}
 
 class BubbleChatActivity : ComponentActivity() {
 
@@ -1255,36 +1084,10 @@ fun ChatInterface() {
                                     if (newIdiom != null) vocabRepo.markIdiomLearned(newIdiom)
                                     if (newOws != null) vocabRepo.markOwsLearned(newOws)
                                     
-                                    val vocabObj = org.json.JSONObject()
-                                    if (newIdiom != null) {
-                                        vocabObj.put("idiom", org.json.JSONObject().apply {
-                                            put("id", newIdiom.id ?: -1)
-                                            put("idiom", newIdiom.idiom)
-                                            put("meaning", newIdiom.meaning)
-                                        })
-                                    }
-                                    if (newOws != null) {
-                                        vocabObj.put("ows", org.json.JSONObject().apply {
-                                            put("id", newOws.id ?: -1)
-                                            put("term", newOws.term)
-                                            put("definition", newOws.definition)
-                                        })
-                                    }
-                                    if (revIdiom != null) {
-                                        vocabObj.put("rev_idiom", org.json.JSONObject().apply {
-                                            put("id", revIdiom.id ?: -1)
-                                            put("idiom", revIdiom.idiom)
-                                            put("meaning", revIdiom.meaning)
-                                        })
-                                    }
-                                    if (revOws != null) {
-                                        vocabObj.put("rev_ows", org.json.JSONObject().apply {
-                                            put("id", revOws.id ?: -1)
-                                            put("term", revOws.term)
-                                            put("definition", revOws.definition)
-                                        })
-                                    }
-                                    
+                                    val vocabObj = com.focusbyrj.app.data.VocabBriefPayload.encode(
+                                        newIdiom, newOws, revIdiom, revOws
+                                    )
+
                                     val summaryResponse = ChatMessage(
                                         id = if (isMorningBriefQuery) "morning_${System.currentTimeMillis()}" else "evening_${System.currentTimeMillis()}",
                                         text = if (isMorningBriefQuery) "☀️ Good morning! Let's build your vocabulary today." else "🌙 Good evening! Time for your nightly vocab drip.",
