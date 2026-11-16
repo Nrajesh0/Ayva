@@ -38,7 +38,8 @@ fun AppModeDropZone(
     apps: List<InstalledApp>,
     onAppClick: (InstalledApp) -> Unit,
     modifier: Modifier = Modifier,
-    borderColor: Color = MaterialTheme.colorScheme.outline
+    borderColor: Color = MaterialTheme.colorScheme.outline,
+    headerModifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     Column(
@@ -52,7 +53,7 @@ fun AppModeDropZone(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+            modifier = headerModifier.fillMaxWidth().padding(bottom = 12.dp)
         ) {
             Column {
                 Text(

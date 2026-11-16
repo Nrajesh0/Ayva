@@ -13,7 +13,7 @@ preference write or evidence that Android granted access.
 | Security & permissions | Usage, overlays, optional battery help, notifications, exact alarms, uninstall friction, screen protection and private vault |
 | Data & recovery | Verified portable export/restore, safety snapshots, saved drafts, storage, temporary-export cleanup and pending recovery |
 | Bubble Settings | Existing bubble layout and controls; related pages link here |
-| Help & about | Setup help, diagnostics, app version/build and GitHub |
+| Help & about | Setup help, replayable app tours, diagnostics, app version/build and GitHub |
 
 Restore defaults to snapshot replacement after review. Import extra copies is a
 separate advanced choice; see [backup/restore](../backups/BACKUP_AND_RESTORE.md).
@@ -48,3 +48,26 @@ Widget configuration distinguishes Tasks, Notes and Exam instances; ID 0 is the
 explicit default style. Avatar, launcher, accent, blocker and per-widget appearance
 are separate scopes. Keep the compact design language, actual artwork, keyboard/
 Back behavior, scroll state and large-text access when reorganizing these pages.
+
+## First-use tours
+
+New installations can choose a short spotlight introduction after permission setup.
+Existing installations are not opted in automatically. Help & about → App tours
+provides feature-introduction replays and a switch for contextual first-use tips. Skipping a
+tour persists its dismissal; replay does not enable other automatic tips.
+
+Guides cover navigation, tasks and natural-language dates, app blocking, notes and
+Archive, profile rewards, habits, routines, and backup choices. Highlights follow
+measured controls, account for their window offset, and avoid system insets. Short
+cards can scroll with large text. A missing or fully clipped target is never highlighted
+at a guessed position. Guides pause for the keyboard, backgrounding, edited or restored drafts,
+authorization dialogs and backup operations; they do not forward taps to controls.
+Tour state is kept in separate local preferences, outside the portable backup
+allowlist. Tours never fill forms, save records, claim rewards, request permissions,
+change vault protection or start data operations. Ayva placement is unchanged.
+
+Tour tests live in `ui/tours` under the JVM test source set. Device acceptance still
+needs TalkBack focus/readout, rotation and split-screen positioning, keyboard/
+picker returns, and a clean-install run followed by an update with saved data.
+Use Help's replay controls on an existing installation; clearing user data is not
+needed to test the guides.

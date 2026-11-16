@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.tours.*
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,11 +28,12 @@ fun DataRecoveryScreen(nav: NavController, onRestored: () -> Unit = {}) {
         if (target == "data.snapshots") snapshots = true
         if (target in setOf("data.verify", "data.snapshots", "data.repair", "data.drafts", "data.storage")) recoveryTools = true
     }
-    SettingsMenuPage("Data & recovery", nav) {
+    val backupTour = rememberSpotlightTour(AppTours.backups)
+    SettingsMenuPage("Data & recovery", nav, Modifier.pauseTourOnInteraction(backupTour)) {
         BackupFlow(onRestored) { actions ->
             SettingsMenuSectionHeader("ENCRYPTED BACKUPS")
-            SettingsMenuLink(Icons.Default.Update, "Automatic backups", "data.automatic", nav, automaticStatus)
-            SettingsMenuRow(Icons.Default.CloudUpload, "Create manual backup", Modifier.settingsSearchTarget("data.export")) {
+            SettingsMenuLink(Icons.Default.Update, "Automatic backups", "data.automatic", nav, automaticStatus, Modifier.spotlightTarget(backupTour, "automatic_backup"))
+            SettingsMenuRow(Icons.Default.CloudUpload, "Create manual backup", Modifier.settingsSearchTarget("data.export").spotlightTarget(backupTour, "manual_backup")) {
                 GrantButton("Create", enabled = !actions.busy, onClick = actions.export)
             }
             SettingsMenuRow(Icons.Default.CloudDownload, "Restore encrypted backup", Modifier.settingsSearchTarget("data.restore")) {
@@ -38,7 +41,8 @@ fun DataRecoveryScreen(nav: NavController, onRestored: () -> Unit = {}) {
             }
             Text("Automatic: recovery file. Manual: chosen password.", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
-            TextButton(onClick = { recoveryTools = !recoveryTools }) { Text(if (recoveryTools) "Hide recovery tools" else "More recovery tools") }
+            SpotlightTour(backupTour, enabled = !actions.busy && !snapshots && !recoveryTools && !com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired)
+            TextButton(onClick = { recoveryTools = !recoveryTools }, modifier = Modifier.spotlightTarget(backupTour, "recovery_tools")) { Text(if (recoveryTools) "Hide recovery tools" else "More recovery tools") }
             DataRecoveryTools { open ->
               if (com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired && !recoveryTools)
                 SettingsMenuRow(Icons.Default.Restore, "Finish interrupted recovery") { GrantButton("Review") { open("recovery") } }

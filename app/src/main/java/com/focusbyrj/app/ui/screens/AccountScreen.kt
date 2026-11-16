@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.tours.*
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -130,8 +132,11 @@ fun AccountScreen(
         FocusStatsManager.refreshStats(context)
     }
 
+    val profileTour = rememberSpotlightTour(AppTours.profile)
+    SpotlightTour(profileTour, enabled = !showEditProfileDialog && !showAvatarStoreSheet && !showShareProfileDialog && !showOptionsMenu && !showRulesDialog && !showEnclaveSystemDialog && !showStreakDialog && !showChoosePinnedNotesDialog)
     Box(
         modifier = Modifier
+            .pauseTourOnInteraction(profileTour)
             .fillMaxSize()
             .background(enclaveColors.bg)
     ) {
@@ -170,20 +175,20 @@ fun AccountScreen(
             Spacer(modifier = Modifier.height(14.dp))
 
             // QUICK STATS ROW: [GOLD] [LEVEL] [VAULT]
-            EnclaveQuickStatsRow(
+            Box(Modifier.spotlightTarget(profileTour, "profile_stats")) { EnclaveQuickStatsRow(
                 colors = enclaveColors,
                 gold = effectiveGold,
                 level = effectiveLevel
-            )
+            ) }
 
             Spacer(modifier = Modifier.height(14.dp))
 
             // NAVIGATION TABS: Overview | Achievements
-            EnclaveTabsRow(
+            Box(Modifier.spotlightTarget(profileTour, "profile_tabs")) { EnclaveTabsRow(
                 colors = enclaveColors,
                 selectedTabIndex = selectedTab,
                 onTabSelected = { selectedTab = it }
-            )
+            ) }
 
             Spacer(modifier = Modifier.height(18.dp))
 

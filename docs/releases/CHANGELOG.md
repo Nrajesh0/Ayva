@@ -2,8 +2,8 @@
 
 This is a compact implementation history, not a complete release list or a claim
 that every milestone was published. Use [GitHub Releases](https://github.com/Nrajesh0/Ayva/releases)
-for actual artifacts and Git/CI for the exact revision. App metadata currently
-remains 2.0.47 / 147; later local changes are not a new published version.
+for actual artifacts and Git/CI for the exact revision. App metadata is prepared for 2.0.48 / 148. A version bump is not evidence of
+publication; use GitHub Releases for the published status.
 
 | Checkpoint | Retained decision/outcome |
 | --- | --- |
@@ -18,8 +18,20 @@ remains 2.0.47 / 147; later local changes are not a new published version.
 | Later local restore work | Remapped interactive card identities, duplicate/orphan preflight checks, preserved chat/drill collisions, operation-owned media cleanup, startup recovery gating and persistent non-sensitive outcomes |
 | 15 November source cleanup | Account/editor components and shared models extracted, duplicate pure helpers/record writers consolidated, current invariants clarified; no source features or encryption policy removed |
 | Documentation consolidation | Current guides replace overlapping plans/audits/HTML inventories. Artwork machine records move with tool references. Historical file-coverage classifications remain in the root tracker |
+| 2.0.48 | Optional first-use spotlight tours, context-aware feature tips and Help replay controls. Guides preserve authorization/data-operation flows; Ayva placement is unchanged |
 
-## Latest application verification checkpoint
+## Spotlight tour verification
+
+The tour implementation passed 81 distinct targeted JVM/Robolectric cases across
+validation runs, including archive/backup/navigation regressions, locked-archive
+replay, accessible controls, large text, dismissal and task saving. Source security
+and chat-boundary guards passed. Debug and optimized unsigned release APKs built;
+debug/release lint reported zero errors, 246/244 warnings and 57 informational
+findings each. These checks preceded the metadata-only bump to 2.0.48 / 148;
+hosted CI verifies the versioned commit. Device acceptance for TalkBack, rotation,
+split-screen and clean-install/update flows remains necessary.
+
+## Source cleanup verification checkpoint
 
 The source cleanup's initial full JVM/Robolectric run executed 1,939 cases in 144
 suites with one synthetic credential-fixture race. Only that key-policy test was

@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app.ui.screens.notes
 
+import com.focusbyrj.app.ui.tours.*
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -384,6 +386,12 @@ fun NotesScreen(
     val searchBarBorder = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
     val contentTextColor = MaterialTheme.colorScheme.onSurface
 
+    val notesTour = rememberSpotlightTour(AppTours.notes)
+    val protectedArchive = vaultStatus == ArchiveVaultSecurity.VaultStatus.ENABLED
+    val notesGuide = if (protectedArchive) notesTour.tour.copy(steps = listOf(TourStep("notes_menu", "Find your private archive", "Open this menu for Archive. Viewing or unarchiving protected notes requires your PIN, even when archiving does not."))) else notesTour.tour
+    SpotlightTour(notesTour, enabled = editingState == null && !isSelectionMode && !drawerState.isOpen &&
+        !showVaultUnlockDialog && !showVaultFirstTimeDialog && !showVaultSettingsDialog && !showVaultMnemonicRecoveryDialog && !showVaultExportPhraseDialog && !showSketchDialogFromDock && !showEditLabelsDialog && !showEmptyTrashDialog && !recordingState.isSessionOpen && archiveMove.phase == NotesViewModel.ArchiveMovePhase.IDLE,
+        steps = notesGuide.steps)
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -717,6 +725,7 @@ fun NotesScreen(
     ) {
         Box(
             modifier = modifier
+                .pauseTourOnInteraction(notesTour)
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
         ) {
@@ -984,7 +993,7 @@ fun NotesScreen(
                             ) {
                                 IconButton(
                                     onClick = { coroutineScope.launch { drawerState.open() } },
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(36.dp).spotlightTarget(notesTour, "notes_menu")
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Menu,

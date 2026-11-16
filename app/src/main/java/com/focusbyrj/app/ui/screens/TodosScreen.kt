@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.tours.*
+
 import com.focusbyrj.app.data.planning
 import com.focusbyrj.app.data.agendaAt
 import com.focusbyrj.app.data.isInTodayAgenda
@@ -202,7 +204,10 @@ fun TodosScreen(
         }
     }
 
+    val taskTour = rememberSpotlightTour(AppTours.tasks)
+    SpotlightTour(taskTour, enabled = !showAddDialog && editingTaskId == null && !showTemplates && blockedCompletion == null && dependencyDelete == null && pendingDeleteTask == null)
     Scaffold(
+        modifier = Modifier.pauseTourOnInteraction(taskTour),
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         Box(
@@ -215,11 +220,11 @@ fun TodosScreen(
                     .fillMaxSize()
                     .padding(horizontal = 12.dp)
             ) {
-                TodoSegmentedPill(
+                Box(Modifier.spotlightTarget(taskTour, "task_tabs")) { TodoSegmentedPill(
                     tabs = tabs,
                     selectedIndex = selectedTab,
                     onSelect = { selectedTab = it }
-                )
+                ) }
                 
                 Spacer(modifier = Modifier.height(10.dp))
                 
@@ -457,6 +462,7 @@ fun TodosScreen(
                 onCreateTask = { creatingTemplate = false; templateDraft = null; showAddDialog = true },
                 onCreateTemplate = { creatingTemplate = true; templateDraft = null; showAddDialog = true },
                 onTemplates = { showTemplates = true },
+                buttonModifier = Modifier.spotlightTarget(taskTour, "task_add"),
                 modifier = Modifier.fillMaxSize())
         }
     }
@@ -1166,6 +1172,7 @@ fun AddTaskDialog(
     com.focusbyrj.app.ui.components.PersistEditorDraft(draftStore, org.json.JSONObject().put("title", title).put("details", details).put("newStepText", newStepText).put("userManuallySelectedType", userManuallySelectedType).put("userManuallySetRecurrence", userManuallySetRecurrence).put("isPersistent", isPersistent).put("isPriority", isPriority).put("userManuallySetDate", userManuallySetDate).put("type", type.name).put("recurrence", recurrence.name).put("manualDueDate", manualDueDate ?: org.json.JSONObject.NULL).put("subtasks", Subtask.listToJson(subtasks)).put("clearWorkTime", clearWorkTime).put("planningJson", nativePlanning?.json().orEmpty()))
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val dateTour = rememberSpotlightTour(AppTours.taskDates)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1175,9 +1182,11 @@ fun AddTaskDialog(
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
         com.focusbyrj.app.ui.components.KeyboardFirstBackHandler(onDismiss)
+        SpotlightTour(dateTour, enabled = sheetState.currentValue == SheetValue.Expanded && initialTask == null && !templateMode && type == TaskType.TASK && title.isBlank() && details.isBlank() && !draftStore.restoreFailed)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .pauseTourOnInteraction(dateTour)
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 28.dp)
                 .verticalScroll(rememberScrollState())
@@ -1248,7 +1257,7 @@ fun AddTaskDialog(
                 value = title,
                 onValueChange = { title = it },
                 label = { Text("Title") },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().spotlightTarget(dateTour, "task_title"),
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true
             )

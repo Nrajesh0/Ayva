@@ -1,5 +1,7 @@
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.tours.*
+
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
@@ -157,9 +159,12 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
         }
     }
 
+    val automaticTour = rememberSpotlightTour(AppTours.automatic)
     BackupFlow(onRestored, automaticRestore = true) { backupActions ->
-      SettingsMenuPage("Automatic backups", nav) {
+      SettingsMenuPage("Automatic backups", nav, Modifier.pauseTourOnInteraction(automaticTour)) {
         val controlsEnabled = configurationLoaded && !busy && !backgroundBusy && !backupActions.busy
+        SpotlightTour(automaticTour, enabled = controlsEnabled && !configurationDamaged && error == null && !advanced && !showBackups && !showSchedule && !showRetention && !showKeyInput && !newKeyConfirmation && importedKeyConfirmation == null && !vaultConsent && !showVaultPin && !confirmRevoke && !keyExportConsent && pendingExportUri == null && !com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired,
+            steps = if (config.enabled) listOf(TourStep("automatic_setup", "Check your latest backup", "Android schedules backups in the background. Check the last successful backup here; a scheduled run may be delayed.")) else automaticTour.tour.steps)
         val ready = hasKey && config.tree.isNotBlank() && config.keyExported && config.keyAcknowledged && (!vaultConfigured || vaultAuthorized)
         val step = when { config.tree.isBlank() -> 1; !hasKey || !config.keyExported -> 2; else -> 3 }
         Surface(shape = MaterialTheme.shapes.large,
@@ -167,7 +172,7 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).testTag(if (configurationLoaded) "automatic_backup_loaded" else "automatic_backup_loading")) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (backgroundBusy) BackupElapsedLabel()
-                Text(if (!configurationLoaded) "Loading backup settings" else if (backgroundBusy) backupProgress else if (config.problem.isNotBlank()) "Needs attention" else if (pendingBackup) "Backup queued" else if (!ready) "Set up automatic backups" else backupHealth(config, now), style = MaterialTheme.typography.titleMedium)
+                Text(if (!configurationLoaded) "Loading backup settings" else if (backgroundBusy) backupProgress else if (config.problem.isNotBlank()) "Needs attention" else if (pendingBackup) "Backup queued" else if (!ready) "Set up automatic backups" else backupHealth(config, now), style = MaterialTheme.typography.titleMedium, modifier = Modifier.spotlightTarget(automaticTour, "automatic_setup"))
                 Text("Encrypted · Saved data and attachments", style = MaterialTheme.typography.bodySmall)
                 if (configurationLoaded) Text("Last backup: ${backupTime(config.lastSuccess)}", style = MaterialTheme.typography.bodySmall)
                 if (config.tree.isNotBlank()) Text("Folder: ${Uri.parse(config.tree).lastPathSegment.orEmpty().substringAfterLast('/').substringAfter(':')}", style = MaterialTheme.typography.bodySmall)

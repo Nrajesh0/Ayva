@@ -70,8 +70,9 @@ fun SettingsMenuSectionHeader(title: String) {
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsMenuPage(title: String, nav: androidx.navigation.NavController, content: @Composable ColumnScope.() -> Unit) {
+fun SettingsMenuPage(title: String, nav: androidx.navigation.NavController, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     androidx.compose.material3.Scaffold(
+        modifier = modifier,
         topBar = {
             androidx.compose.material3.TopAppBar(
                 title = { Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)) },
@@ -96,8 +97,8 @@ fun SettingsMenuPage(title: String, nav: androidx.navigation.NavController, cont
 }
 
 @Composable
-fun SettingsMenuLink(icon: ImageVector, title: String, id: String, nav: androidx.navigation.NavController, value: String? = null) {
-    SettingsMenuRow(icon, title, modifier = Modifier.settingsSearchTarget(id), onClick = { SettingsNavigation.open(nav, id) }) {
+fun SettingsMenuLink(icon: ImageVector, title: String, id: String, nav: androidx.navigation.NavController, value: String? = null, modifier: Modifier = Modifier) {
+    SettingsMenuRow(icon, title, modifier = modifier.settingsSearchTarget(id), onClick = { SettingsNavigation.open(nav, id) }) {
         if (value != null) Text(value, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Icon(androidx.compose.material.icons.Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .4f), modifier = Modifier.size(16.dp))
     }

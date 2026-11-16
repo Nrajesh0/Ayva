@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.tours.*
+
 import androidx.activity.compose.BackHandler
 import android.app.TimePickerDialog
 import androidx.compose.animation.*
@@ -76,7 +78,10 @@ fun HabitsScreen(
     val totalCount = habitsWithProgress.count { !it.habit.isPaused && it.habit.frequency.scheduled(java.time.LocalDate.now()) }
     val overallRatio = if (totalCount > 0) completedCount.toFloat() / totalCount.toFloat() else 0f
 
+    val habitTour = rememberSpotlightTour(AppTours.habits)
+    SpotlightTour(habitTour, enabled = !showEditorSheet && editingHabit == null && habitToDelete == null && !showFreezeDialog)
     Scaffold(
+        modifier = Modifier.pauseTourOnInteraction(habitTour),
         topBar = {
             TopAppBar(
                 title = {
@@ -137,7 +142,7 @@ fun HabitsScreen(
                         },
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(38.dp).spotlightTarget(habitTour, "habit_add")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(

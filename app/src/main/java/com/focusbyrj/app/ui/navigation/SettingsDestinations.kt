@@ -12,7 +12,7 @@ import com.focusbyrj.app.ui.screens.*
 internal object SettingsRoutes {
     val all = setOf("preferences_hub", "settings", "security", "bubble_settings", "subscription",
         "settings_appearance", "settings_focus", "settings_notifications", "settings_widgets",
-        "settings_data", "settings_help", "settings_diagnostics", "settings_vault", "settings_automatic_backups")
+        "settings_tours", "settings_data", "settings_help", "settings_diagnostics", "settings_vault", "settings_automatic_backups")
     val sensitive = setOf("security", "settings_data", "settings_vault", "settings_automatic_backups")
 }
 
@@ -40,6 +40,7 @@ internal fun NavGraphBuilder.settingsDestinations(
     composable("security") { SettingsSearchDestination(nav) { SecurityScreen(nav) } }
     composable("settings_data") { SettingsSearchDestination(nav) { DataRecoveryScreen(nav, onDataRestored) } }
     composable("settings_automatic_backups") { SettingsSearchDestination(nav) { AutomaticBackupsScreen(nav, onDataRestored) } }
+    composable("settings_tours") { SettingsSearchDestination(nav) { com.focusbyrj.app.ui.tours.AppToursScreen(nav) } }
     composable("settings_help") { SettingsSearchDestination(nav) { HelpSettingsScreen(nav, onSetup) } }
     composable("settings_diagnostics") { SettingsSearchDestination(nav) { DiagnosticsSettingsScreen(nav) } }
     composable("settings_vault") { SettingsSearchDestination(nav) { vaultContent() } }

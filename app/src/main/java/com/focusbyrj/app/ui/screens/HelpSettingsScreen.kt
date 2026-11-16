@@ -28,6 +28,7 @@ fun HelpSettingsScreen(nav: NavController, onSetup: (() -> Unit)? = null) {
     LaunchedEffect(target) { if (target == "help.setup") setup() }
     SettingsMenuPage("Help & about", nav) {
         SettingsMenuSectionHeader("HELP")
+        SettingsMenuLink(Icons.Default.Explore, "App tours", "help.tours", nav)
         SettingsMenuRow(Icons.Default.Info, "Permission setup", Modifier.settingsSearchTarget("help.setup"), onClick = ::setup) { Text("Open", style = MaterialTheme.typography.labelMedium) }
         SettingsMenuLink(Icons.Default.QueryStats, "Diagnostics", "help.diagnostics", nav)
         SettingsMenuSectionHeader("ABOUT")

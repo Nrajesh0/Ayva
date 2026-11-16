@@ -120,4 +120,26 @@ class ArchiveMoveUiTest {
         assertTrue(ArchiveVaultSecurity.isVaultLocked(app))
     }
 
+    @Test fun notesTourCanReplayFromALockedArchiveWithoutUnlockingIt() {
+        val tours = com.focusbyrj.app.ui.tours.TourPreferences(app)
+        tours.replay(com.focusbyrj.app.ui.tours.AppTours.notes)
+        try {
+            model.setFolder(NoteFolder.ARCHIVE)
+            compose.setContent { FocusByRjTheme { NotesScreen(model) } }
+            repeat(3) {
+                compose.mainClock.advanceTimeBy(500)
+                compose.waitForIdle()
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(34))
+            }
+            compose.onNodeWithText("Find your private archive").assertIsDisplayed()
+            assertFalse(model.isVaultUnlocked.value)
+            compose.onNodeWithTag("spotlight_skip").performClick()
+            assertFalse(model.isVaultUnlocked.value)
+            assertEquals(NoteFolder.ARCHIVE, model.currentFolder.value)
+            assertTrue(tours.done(com.focusbyrj.app.ui.tours.AppTours.notes.id))
+        } finally {
+            app.getSharedPreferences("app_tours", 0).edit().clear().commit()
+        }
+    }
+
 }

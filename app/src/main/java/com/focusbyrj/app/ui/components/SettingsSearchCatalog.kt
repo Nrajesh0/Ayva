@@ -67,6 +67,7 @@ internal object SettingsSearchCatalog {
         SettingsSearchEntry("Saved drafts", "Review and recover saved editor text", "Data & recovery", "settings_data", "data.drafts", listOf()),
         SettingsSearchEntry("Storage", "Database, attachment, draft and cache usage", "Data & recovery", "settings_data", "data.storage", listOf()),
         SettingsSearchEntry("Clean expired temporary exports", "Remove expired shares; retain notes, attachments and backups", "Data & recovery", "settings_data", "data.cleanup", listOf()),
+        SettingsSearchEntry("App tours", "Short guides for navigation and features", "Help & about", "settings_tours", "help.tours", listOf("Tutorial", "Walkthrough", "First-use tips")),
         SettingsSearchEntry("App version", "Version name and build number", "Help & about", "settings_help", "help.version", listOf()),
         SettingsSearchEntry("GitHub", "Source repository and project information", "Help & about", "settings_help", "help.github", listOf()),
         SettingsSearchEntry("Diagnostics", "Troubleshooting logs and diagnostic export", "Diagnostics", "settings_diagnostics", "help.diagnostics", listOf()),

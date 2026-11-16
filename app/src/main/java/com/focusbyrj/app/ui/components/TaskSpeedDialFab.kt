@@ -67,7 +67,8 @@ fun TaskSpeedDialFab(
     onCreateTask: () -> Unit,
     onCreateTemplate: () -> Unit,
     onTemplates: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    buttonModifier: Modifier = Modifier
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -152,7 +153,7 @@ fun TaskSpeedDialFab(
                     defaultElevation = 6.dp,
                     pressedElevation = 10.dp
                 ),
-                modifier = Modifier
+                modifier = buttonModifier
                     .size(56.dp)
                     .testTag("tasks_main_fab")
             ) {

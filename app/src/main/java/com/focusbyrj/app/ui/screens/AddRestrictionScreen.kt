@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.tours.*
+
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -85,14 +87,19 @@ fun AddRestrictionScreen(
         }
     }
 
+    val appTour = rememberSpotlightTour(AppTours.blocking)
+    val modesTour = rememberSpotlightTour(AppTours.blockingModes)
+    SpotlightTour(appTour, enabled = !isLoading && currentStep == 1 && !showCustomCategoryEditor)
+    SpotlightTour(modesTour, enabled = currentStep == 2 && !showCustomCategoryEditor)
     Scaffold(
+        modifier = Modifier.pauseTourOnInteraction(if (currentStep == 1) appTour else modesTour),
         topBar = {
             TopAppBar(
                 title = { 
                     Text(
                         if (currentStep == 1) "Shield New Apps" else "Configure Shield", 
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    ) 
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = { 
@@ -208,7 +215,8 @@ fun AddRestrictionScreen(
                             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .spotlightTarget(appTour, "app_search"),
                             shape = RoundedCornerShape(18.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -465,7 +473,8 @@ fun AddRestrictionScreen(
                             apps = hardApps,
                             onAppClick = { appModes = appModes + (it.packageName to "SOFT") },
                             borderColor = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 16.dp)
+                            modifier = Modifier.padding(bottom = 16.dp),
+                            headerModifier = Modifier.spotlightTarget(modesTour, "block_options")
                         )
 
                         com.focusbyrj.app.ui.components.AppModeDropZone(

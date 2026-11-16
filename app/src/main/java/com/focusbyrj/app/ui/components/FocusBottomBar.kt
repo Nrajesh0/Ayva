@@ -55,7 +55,8 @@ fun FocusBottomBar(
     items: List<Screen>,
     currentDestination: NavDestination?,
     navController: NavController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    itemModifier: (Screen) -> Modifier = { Modifier }
 ) {
     val haptic = LocalHapticFeedback.current
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -195,7 +196,8 @@ fun FocusBottomBar(
                                     }
                                 }
                             }
-                            .testTag("tab_${screen.route}"),
+                            .testTag("tab_${screen.route}")
+                            .then(itemModifier(screen)),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(

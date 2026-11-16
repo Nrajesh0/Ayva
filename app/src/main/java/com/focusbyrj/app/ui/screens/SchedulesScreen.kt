@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app.ui.screens
 
+import com.focusbyrj.app.ui.tours.*
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.Image
@@ -55,6 +57,8 @@ fun SchedulesScreen(viewModel: FocusViewModel) {
         scheduleToEditId?.let { id -> schedules.find { it.id == id } }
     }
 
+    val routineTour = rememberSpotlightTour(AppTours.routines)
+    SpotlightTour(routineTour, enabled = !showCreateScreen && scheduleToEditId == null)
     if (showCreateScreen || scheduleToEditId != null) {
         CreateRoutineScreen(
             scheduleToEdit = scheduleToEdit,
@@ -81,9 +85,11 @@ fun SchedulesScreen(viewModel: FocusViewModel) {
         )
     } else {
         Scaffold(
+            modifier = Modifier.pauseTourOnInteraction(routineTour),
             floatingActionButton = {
                 FloatingActionButton(
                     onClick = { showCreateScreen = true },
+                    modifier = Modifier.spotlightTarget(routineTour, "routine_add"),
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {

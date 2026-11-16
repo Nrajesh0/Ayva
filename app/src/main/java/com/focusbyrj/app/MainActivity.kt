@@ -7,6 +7,8 @@
 
 package com.focusbyrj.app
 
+import com.focusbyrj.app.ui.tours.*
+
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -187,6 +189,9 @@ class MainActivity : FragmentActivity() {
             showRecoveryGate()
             return
         }
+        TourPreferences(this).initialize(existingInstall =
+            getSharedPreferences("focus_app_prefs", Context.MODE_PRIVATE).contains("has_seen_permission_onboarding") ||
+                packageManager.getPackageInfo(packageName, 0).let { it.firstInstallTime != it.lastUpdateTime })
         enableEdgeToEdge()
 
         // Apply Anti-Screenshot / FLAG_SECURE protection dynamically based on user preference (defaults to false / off)
@@ -336,7 +341,8 @@ private fun MainTopBar(
     showBack: Boolean = false,
     activeStreakDays: Int,
     economyProfile: com.focusbyrj.app.util.UserProfile,
-    navController: NavController
+    navController: NavController,
+    navigationTour: SpotlightState? = null
 ) {
     TopAppBar(
         title = {
@@ -433,6 +439,7 @@ private fun MainTopBar(
                 modifier = Modifier
                     .padding(start = 8.dp, end = 12.dp)
                     .size(36.dp)
+                    .spotlightTarget(navigationTour, "settings")
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .border(1.8.dp, avatarBorder, CircleShape)
@@ -564,6 +571,18 @@ fun MainAppScreen(
     val allConfigured = permissionState.ready
 
     var showSetupDialog by remember { mutableStateOf(!hasSeenOnboarding && !allConfigured) }
+    val navigationTour = rememberSpotlightTour(AppTours.navigation)
+    val focusTour = rememberSpotlightTour(AppTours.focus)
+    val tourPreferences = rememberTourPreferences()
+    LaunchedEffect(currentDestination?.route) {
+        val replay = AppTours.replayable.find { it.id == tourPreferences.replayId }
+        if (replay != null && currentDestination?.route != null && currentDestination?.route != replay.route)
+            tourPreferences.cancelReplay()
+    }
+    val toursSafe = !showSetupDialog && !isSessionActive && currentDestination?.route == Screen.Dashboard.route
+    TourWelcome(enabled = toursSafe)
+    SpotlightTour(navigationTour, enabled = toursSafe)
+    SpotlightTour(focusTour, enabled = toursSafe)
 
     var currentEconomyEvent by remember { mutableStateOf<EconomyEvent?>(null) }
     
@@ -593,7 +612,7 @@ fun MainAppScreen(
     }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().pauseTourOnInteraction(navigationTour).pauseTourOnInteraction(focusTour),
         containerColor = MaterialTheme.colorScheme.background,
 
             bottomBar = {
@@ -613,7 +632,8 @@ fun MainAppScreen(
                     FocusBottomBar(
                         items = items,
                         currentDestination = currentDestination,
-                        navController = navController
+                        navController = navController,
+                        itemModifier = { screen -> Modifier.spotlightTarget(navigationTour, "tab_${screen.route}") }
                     )
                 }
             },
@@ -621,6 +641,7 @@ fun MainAppScreen(
                 if (currentDestination?.route == Screen.Dashboard.route) {
                     FloatingActionButton(
                         onClick = { navController.navigate(Screen.AddRestriction.route) },
+                        modifier = Modifier.spotlightTarget(focusTour, "add_boundary"),
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
                         shape = RoundedCornerShape(18.dp),
@@ -708,6 +729,7 @@ fun MainAppScreen(
                             MainTopBar(
                                 title = "RuN",
                                 isDashboard = true,
+                                navigationTour = navigationTour,
                                 activeStreakDays = activeStreakDays,
                                 economyProfile = economyProfile,
                                 navController = navController
