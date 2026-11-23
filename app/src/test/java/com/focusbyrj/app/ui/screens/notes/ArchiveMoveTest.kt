@@ -58,6 +58,36 @@ class ArchiveMoveTest {
         awaitFinished()
     }
 
+    @Test fun closingANormalDraftStoresItOnceBeforeClosingTheEditor() = runBlocking {
+        model.openNewNote()
+        model.updateEditorTitle("A normal saved note")
+        model.closeEditor()
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (model.editingState.value != null && System.nanoTime() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+        assertNull("Save status: ${model.saveStatus.value}", model.editingState.value)
+        val stored = dao.getAllNotesList().single { it.title == "A normal saved note" }
+        assertTrue(stored.id > 0)
+        assertEquals(NotesViewModel.NoteSaveStatus.Saved(stored.id), model.saveStatus.value)
+    }
+
+    @Test fun delayedDockResultsCannotReplaceAnotherOpenDraft() {
+        model.openNewNote()
+        model.updateEditorTitle("Keep the active draft")
+        val before = model.editingState.value!!
+        model.openNewNoteWithVoice("Delayed speech result")
+        assertEquals(before, model.editingState.value)
+        model.openNewNoteWithImages(listOf(android.net.Uri.parse("content://fixture/delayed-image")))
+        assertEquals(before, model.editingState.value)
+        val drawing = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888)
+        try {
+            model.openNewNoteWithDrawing(drawing)
+            assertEquals(before, model.editingState.value)
+        } finally { drawing.recycle() }
+    }
+
     @Test fun lockedCardMoveAsksInlineAndEncryptsOnlyAfterCorrectPin() = runBlocking {
         val note = NoteEntity(id = 81001, title = "Private title", content = "Private content", isPinned = true)
         dao.insertNote(note); enableLockedVault()
@@ -307,6 +337,31 @@ class ArchiveMoveTest {
         assertEquals(1, rows.size)
         val recovered = VaultPayloadEncryptor.tryDecryptNotePayload(rows.single()) as VaultPayloadEncryptor.DecryptionResult.Success
         assertEquals("Recover earlier draft", recovered.note.title)
+    }
+
+    @Test fun openingAnotherNoteCannotDiscardTheCurrentDraft() {
+        val target = NoteEntity(id = 74101, title = "Target note", content = "Saved content")
+        runBlocking { dao.insertNote(target) }
+        model.openNewNote()
+        model.updateEditorTitle("Unfinished draft")
+        val session = model.editingState.value!!.sessionId
+        model.openNoteById(target.id)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(session, model.editingState.value!!.sessionId)
+        assertEquals("Unfinished draft", model.editingState.value!!.title)
+    }
+    @Test fun aDeletedNoteCannotBeOpenedFromAStalePresentationCache() {
+        org.robolectric.shadows.ShadowToast.reset()
+        val deleted = NoteEntity(id = 74102, title = "Removed note", content = "Do not resurrect")
+        NotesViewModel.latestNotesCache[deleted.id] = deleted
+        model.openNoteById(deleted.id)
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (System.nanoTime() < deadline && org.robolectric.shadows.ShadowToast.getTextOfLatestToast() != "This note is no longer available.") {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(5)
+        }
+        assertNull(model.editingState.value)
+        assertEquals("This note is no longer available.", org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
     }
 
 }

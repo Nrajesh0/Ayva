@@ -67,7 +67,8 @@ class FocusApplication : Application(), ImageLoaderFactory {
     }
 
     suspend fun retryStartupRecovery(): Boolean = startupRecoveryRetry.withLock {
-        if (!startupRecoveryPending) return@withLock true
+        val initialize = startupRecoveryPending
+        if (!initialize && !com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired) return@withLock true
         try {
             kotlinx.coroutines.withContext(Dispatchers.IO) {
                 com.focusbyrj.app.util.backup.RestoreJournal.consistent(this@FocusApplication) {
@@ -80,8 +81,10 @@ class FocusApplication : Application(), ImageLoaderFactory {
             return@withLock false
         }
         kotlinx.coroutines.withContext(Dispatchers.Main) {
-            initializeAfterRecovery()
-            startupRecoveryPending = false
+            if (initialize) {
+                initializeAfterRecovery()
+                startupRecoveryPending = false
+            }
         }
         true
     }
@@ -116,6 +119,11 @@ class FocusApplication : Application(), ImageLoaderFactory {
 
         // Warm up Ayva knowledge base and schedule daily rolling auto-backup (7-day retention, internal storage).
         val ioScope = CoroutineScope(Dispatchers.IO)
+        ioScope.launch {
+            try { com.focusbyrj.app.util.RewardDelivery.reconcileRoutines(this@FocusApplication, startNewRuns = false) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { android.util.Log.w("Rewards", "Pending rewards retained for retry", error) }
+        }
         ioScope.launch {
             com.focusbyrj.app.util.LegacyDialogueCleanup.remove(this@FocusApplication)
             com.focusbyrj.app.util.AyvaTalkEngine.warmUp(this@FocusApplication)
@@ -166,7 +174,7 @@ class FocusApplication : Application(), ImageLoaderFactory {
                 FocusDatabase.MIGRATION_1_12,
                 FocusDatabase.MIGRATION_12_13,
                 FocusDatabase.MIGRATION_13_14,
-                FocusDatabase.MIGRATION_14_15, FocusDatabase.MIGRATION_15_16
+                FocusDatabase.MIGRATION_14_15, FocusDatabase.MIGRATION_15_16, FocusDatabase.MIGRATION_16_17
             )
             .build()
         } catch (t: Throwable) {

@@ -33,86 +33,108 @@ class HabitViewModel(
             initialValue = emptyList()
         )
 
-    fun addHabit(habit: Habit, onStored: () -> Unit = {}) {
-        viewModelScope.launch {
-            val id = repository.insertHabit(habit)
-            onStored()
-            val created = habit.copy(id = id)
-            HabitAlarmScheduler.scheduleHabitReminder(getApplication(), created)
+    fun addHabit(habit: Habit, onStored: () -> Unit = {}) = saveHabit(habit, true, onStored)
+
+    fun updateHabit(habit: Habit, onStored: () -> Unit = {}) = saveHabit(habit, false, onStored)
+
+    private fun saveHabit(habit: Habit, creating: Boolean, onStored: () -> Unit) = viewModelScope.launch {
+        val stored = try {
+            if (creating) habit.copy(id = repository.insertHabit(habit))
+            else {
+                repository.updateHabit(habit)
+                habit
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            val message = if (error is IllegalArgumentException) {
+                error.message ?: "Check the habit options. Your draft is kept."
+            } else "Could not save habit. Your draft is kept; try again."
+            android.widget.Toast.makeText(getApplication(), message, android.widget.Toast.LENGTH_LONG).show()
+            return@launch
+        }
+        onStored()
+        try {
+            HabitAlarmScheduler.scheduleHabitReminder(getApplication(), stored)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(getApplication(),
+                "Habit saved. The reminder could not be scheduled; check reminder access in Settings.",
+                android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
-    fun updateHabit(habit: Habit, onStored: () -> Unit = {}) {
-        viewModelScope.launch {
-            repository.updateHabit(habit)
-            onStored()
-            HabitAlarmScheduler.scheduleHabitReminder(getApplication(), habit)
+    private fun mutate(action: suspend () -> Unit) = viewModelScope.launch {
+        try { action() }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            android.widget.Toast.makeText(getApplication(), error.message ?: "Could not update habit. Try again.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
-    fun setPaused(habit: Habit, paused: Boolean) {
-        viewModelScope.launch {
-            val updated = repository.setPaused(habit.id, paused) ?: return@launch
-            val today = repository.getTodayDateString()
-            HabitAlarmScheduler.scheduleHabitReminder(getApplication(), updated,
-                isGoalCompletedToday = repository.isCompleteToday(updated, today))
+    private suspend fun refreshReminder(habit: Habit, lastCompleted: Long? = null, completed: Boolean = false) {
+        try { HabitAlarmScheduler.scheduleHabitReminder(getApplication(), habit, lastCompleted, isGoalCompletedToday = completed) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            android.widget.Toast.makeText(getApplication(), "Habit saved. Reminder refresh failed; check reminder access in Settings.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
-    fun deleteHabit(habit: Habit) {
-        viewModelScope.launch {
-            HabitAlarmScheduler.cancelHabitReminder(getApplication(), habit.id)
-            repository.deleteHabit(habit)
+    fun setPaused(habit: Habit, paused: Boolean) = mutate {
+        val updated = repository.setPaused(habit.id, paused) ?: error("This habit no longer exists.")
+        try {
+            val completed = repository.isCompleteToday(updated, repository.getTodayDateString())
+            refreshReminder(updated, completed = completed)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            android.widget.Toast.makeText(getApplication(), "Habit updated. Reminder refresh failed; check reminder access in Settings.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun deleteHabit(habit: Habit) = mutate {
+        repository.deleteHabit(habit)
+        try { HabitAlarmScheduler.cancelHabitReminder(getApplication(), habit.id) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            android.widget.Toast.makeText(getApplication(), "Habit deleted. Reminder cleanup will retry when the app opens.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
     fun incrementProgress(habit: Habit, onDone: () -> Unit = {}) {
         if (habit.isPaused) { onDone(); return }
-        viewModelScope.launch {
+        mutate {
             try {
-            val updatedLog = repository.incrementHabitProgress(habit.id)
-            val isMilestoneReached = updatedLog.completedCount == habit.targetPerDay
-            val isGoalMet = updatedLog.completedCount >= habit.targetPerDay
-            val xpReward = when {
-                updatedLog.completedCount > habit.targetPerDay -> 0
-                isMilestoneReached -> 25
-                else -> 10
-            }
-            val goldReward = when {
-                updatedLog.completedCount > habit.targetPerDay -> 0
-                isMilestoneReached -> 15
-                else -> 5
-            }
-            if (xpReward > 0 || goldReward > 0) {
-                com.focusbyrj.app.util.FocusEconomyManager.addRewards(xpReward, goldReward)
-            }
-
-            // Reschedule interval if applicable
-            HabitAlarmScheduler.scheduleHabitReminder(
-                getApplication(),
-                habit,
-                updatedLog.lastCompletedTimestamp,
-                isGoalCompletedToday = isGoalMet
-            )
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                android.widget.Toast.makeText(getApplication(), e.message, android.widget.Toast.LENGTH_LONG).show()
+                var log: com.focusbyrj.app.data.HabitLog? = null
+                try {
+                    com.focusbyrj.app.util.backup.MaintenanceGate.shared {
+                        log = repository.incrementHabitProgress(habit.id)
+                        com.focusbyrj.app.util.RewardDelivery.drain(getApplication())
+                    }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (error: Exception) {
+                    if (log == null) throw error
+                    android.widget.Toast.makeText(getApplication(), "Progress saved. Rewards are pending and will retry automatically.", android.widget.Toast.LENGTH_LONG).show()
+                }
+                val stored = log ?: return@mutate
+                refreshReminder(habit, stored.lastCompletedTimestamp, stored.completedCount >= stored.targetCount)
             } finally { onDone() }
         }
     }
 
     fun decrementProgress(habit: Habit) {
         if (habit.isPaused) return
-        viewModelScope.launch {
-            repository.decrementHabitProgress(habit.id)
+        mutate {
+            val log = repository.decrementHabitProgress(habit.id)
+            refreshReminder(habit, log?.lastCompletedTimestamp, (log?.completedCount ?: 0) >= (log?.targetCount ?: habit.targetPerDay))
         }
     }
 
-    fun setProgress(habit: Habit, count: Int) {
-        viewModelScope.launch {
-            repository.setHabitProgress(habit.id, count)
-        }
+    fun setProgress(habit: Habit, count: Int) = mutate {
+        val log = repository.setHabitProgress(habit.id, count)
+        refreshReminder(habit, log.lastCompletedTimestamp, log.completedCount >= log.targetCount)
     }
+
 }
 
 class HabitViewModelFactory(

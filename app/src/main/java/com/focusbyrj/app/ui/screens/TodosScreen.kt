@@ -70,19 +70,27 @@ fun TodosScreen(
     val tabs = listOf("Today", "Upcoming", "All", "Occasions")
     
     var showAddDialog by rememberSaveable { mutableStateOf(initialOpenAdd) }
+    var templateDraft by remember { mutableStateOf<Task?>(null) }
+    var templateEditorSession by rememberSaveable { mutableStateOf<String?>(null) }
+    var creatingTemplate by remember { mutableStateOf(false) }
+    var templateSaving by remember { mutableStateOf(false) }
+    var showTemplates by remember { mutableStateOf(false) }
+    var editingTaskId by rememberSaveable { mutableStateOf<Long?>(null) }
     LaunchedEffect(initialOpenAdd) {
         if (initialOpenAdd) {
-            showAddDialog = true
+            if (!showAddDialog && editingTaskId == null) {
+                creatingTemplate = false; templateDraft = null; templateEditorSession = null; showAddDialog = true
+            }
             onOpenAddHandled?.invoke()
         }
     }
-    var templateDraft by remember { mutableStateOf<Task?>(null) }
-    var creatingTemplate by remember { mutableStateOf(false) }
-    var showTemplates by remember { mutableStateOf(false) }
-    var editingTaskId by rememberSaveable { mutableStateOf<Long?>(null) }
-    val editingTask = remember(editingTaskId, tasks) {
-        editingTaskId?.let { id -> tasks.find { it.id == id } }
+    val editorFlow = remember(editingTaskId, viewModel) {
+        editingTaskId?.let(viewModel::observeEditor)
+            ?: kotlinx.coroutines.flow.flowOf(com.focusbyrj.app.ui.viewmodels.TaskViewModel.EditorRecord(true))
     }
+    val editorRecord by key(editingTaskId) { editorFlow.collectAsState(initial = com.focusbyrj.app.ui.viewmodels.TaskViewModel.EditorRecord()) }
+    val editingTask = editorRecord.task
+    val saving by viewModel.saving.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     
     var blockedCompletion by remember { mutableStateOf<Task?>(null) }
@@ -91,56 +99,28 @@ fun TodosScreen(
         else viewModel.toggleTaskCompletion(task)
     }
     var dependencyDelete by remember { mutableStateOf<Task?>(null) }
-    var pendingDeleteTask by remember { mutableStateOf<Task?>(null) }
-    var deleteCountdown by remember { mutableStateOf(4) }
-    var locallyDeletedTaskIds by remember { mutableStateOf(emptySet<Long>()) }
-
-    LaunchedEffect(viewModel) {
-        viewModel.deletionFailures.collect { id ->
-            locallyDeletedTaskIds = locallyDeletedTaskIds - id
-            if (pendingDeleteTask?.id == id) pendingDeleteTask = null
+    var pendingEditorDiscard by remember { mutableStateOf<Pair<Long, () -> Unit>?>(null) }
+    val pendingDeletions by viewModel.pendingDeletions.collectAsState()
+    val pendingDeletion = pendingDeletions.lastOrNull()
+    val pendingDeleteTask = pendingDeletion?.task
+    val locallyDeletedTaskIds by viewModel.hiddenTaskIds.collectAsState()
+    var deleteCountdown by remember(pendingDeletion) { mutableIntStateOf(if (pendingDeletion == null) 0 else 4) }
+    LaunchedEffect(pendingDeletion) {
+        val deadline = pendingDeletion?.deadline ?: return@LaunchedEffect
+        while (true) {
+            deleteCountdown = ((deadline - android.os.SystemClock.elapsedRealtime() + 999) / 1000).toInt().coerceAtLeast(0)
+            if (deleteCountdown == 0) break
+            delay(100)
         }
     }
     val agendaDay by produceState(initialValue = java.time.LocalDate.now()) {
         while (true) { delay(60_000); value = java.time.LocalDate.now() }
     }
-
-    // Prune locallyDeletedTaskIds once Room database update has propagated
-    LaunchedEffect(tasks) {
-        val currentIds = tasks.map { it.id }.toSet()
-        locallyDeletedTaskIds = locallyDeletedTaskIds.filter { it in currentIds }.toSet()
-    }
-
     val onRequestDelete: (Task) -> Unit = request@ { task ->
         if (tasks.any { task.id in it.planning?.prerequisiteTaskIds.orEmpty() }) { dependencyDelete = task; return@request }
-        pendingDeleteTask?.let { previous ->
-            if (previous.id != task.id) {
-                viewModel.deleteTask(previous)
-            }
-        }
-        locallyDeletedTaskIds = locallyDeletedTaskIds + task.id
-        pendingDeleteTask = task
-        deleteCountdown = 4
-    }
-
-    LaunchedEffect(pendingDeleteTask) {
-        val task = pendingDeleteTask ?: return@LaunchedEffect
-        deleteCountdown = 4
-        while (deleteCountdown > 0) {
-            delay(1000L)
-            deleteCountdown -= 1
-        }
-        viewModel.deleteTask(task)
-        if (pendingDeleteTask?.id == task.id) {
-            pendingDeleteTask = null
-        }
-    }
-
-    val currentPendingDeleteTask by rememberUpdatedState(pendingDeleteTask)
-    DisposableEffect(Unit) {
-        onDispose {
-            currentPendingDeleteTask?.let { viewModel.deleteTask(it) }
-        }
+        val discard = pendingEditorDiscard?.takeIf { it.first == task.id }?.second ?: {}
+        pendingEditorDiscard = null
+        viewModel.requestDelete(task, onDeleted = discard)
     }
 
     // Filter tasks
@@ -438,10 +418,7 @@ fun TodosScreen(
                         
                         Button(
                             onClick = {
-                                pendingDeleteTask?.let { task ->
-                                    locallyDeletedTaskIds = locallyDeletedTaskIds - task.id
-                                }
-                                pendingDeleteTask = null
+                                pendingDeleteTask?.let { viewModel.undoDelete(it.id) }
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
@@ -459,8 +436,8 @@ fun TodosScreen(
                 }
             }
             com.focusbyrj.app.ui.components.TaskSpeedDialFab(
-                onCreateTask = { creatingTemplate = false; templateDraft = null; showAddDialog = true },
-                onCreateTemplate = { creatingTemplate = true; templateDraft = null; showAddDialog = true },
+                onCreateTask = { creatingTemplate = false; templateDraft = null; templateEditorSession = null; showAddDialog = true },
+                onCreateTemplate = { templateSaving = false; creatingTemplate = true; templateDraft = null; templateEditorSession = null; showAddDialog = true },
                 onTemplates = { showTemplates = true },
                 buttonModifier = Modifier.spotlightTarget(taskTour, "task_add"),
                 modifier = Modifier.fillMaxSize())
@@ -476,40 +453,51 @@ fun TodosScreen(
             dismissButton = { TextButton(onClick = { blockedCompletion = null }) { Text("Cancel") } })
     }
     dependencyDelete?.let { target ->
-        AlertDialog(onDismissRequest = { dependencyDelete = null }, title = { Text("Remove dependency and delete?") },
+        AlertDialog(onDismissRequest = { dependencyDelete = null; pendingEditorDiscard = null }, title = { Text("Remove dependency and delete?") },
             text = { Text("Tasks waiting for ${target.title} will become independent. Their contents will be kept.") },
-            confirmButton = { TextButton(onClick = { viewModel.deleteTask(target, detach = true); dependencyDelete = null }) { Text("Remove links and delete") } },
-            dismissButton = { TextButton(onClick = { dependencyDelete = null }) { Text("Cancel") } })
+            confirmButton = { TextButton(onClick = { viewModel.deleteTask(target, detach = true, onDeleted = pendingEditorDiscard?.takeIf { it.first == target.id }?.second ?: {}); dependencyDelete = null; pendingEditorDiscard = null }) { Text("Remove links and delete") } },
+            dismissButton = { TextButton(onClick = { dependencyDelete = null; pendingEditorDiscard = null }) { Text("Cancel") } })
     }
     if (showTemplates) com.focusbyrj.app.ui.components.TemplatePicker(onDismiss = { showTemplates = false }, onPick = {
-        creatingTemplate = false; templateDraft = it; showTemplates = false; showAddDialog = true
+        creatingTemplate = false; templateDraft = it; templateEditorSession = java.util.UUID.randomUUID().toString(); showTemplates = false; showAddDialog = true
     })
-    if (showAddDialog || editingTaskId != null) {
+    if ((showAddDialog || editingTaskId != null) && (editingTaskId == null || editorRecord.loaded)) {
         AddTaskDialog(
-            initialTask = editingTask ?: templateDraft,
-            templateMode = creatingTemplate && editingTask == null,
+            initialTask = editingTask ?: editingTaskId?.let { Task(id = it, title = "") } ?: templateDraft,
+            recordMissing = editingTaskId != null && editingTask == null,
+            saving = saving || templateSaving,
+            draftKeyOverride = if (editingTaskId == null) templateEditorSession?.let { "task:template-copy:$it" } else null,
+            templateMode = creatingTemplate && editingTaskId == null,
             relatedTasks = tasks,
-            onOpenTask = { editingTaskId = it.id },
+            onOpenTask = { templateEditorSession = null; templateDraft = null; creatingTemplate = false; editingTaskId = it.id },
             defaultType = if (selectedTab == 3) TaskType.BIRTHDAY else TaskType.TASK,
-            onDismiss = { 
+            onDismiss = {
+                if (!saving && !templateSaving) {
                 showAddDialog = false
                 templateDraft = null
+                templateEditorSession = null
                 editingTaskId = null
+                creatingTemplate = false
+                }
             },
-            onSave = { task, stored ->
-                val saved = { stored(); showAddDialog = false; editingTaskId = null; templateDraft = null }
-                if (creatingTemplate && editingTask == null) {
+            onSave = saveTaskEditor@ { task, stored ->
+                if ((!showAddDialog && editingTaskId == null) || templateSaving) return@saveTaskEditor
+                val saved = { stored(); showAddDialog = false; editingTaskId = null; templateDraft = null; templateEditorSession = null }
+                if (creatingTemplate && editingTaskId == null) {
+                    if (templateSaving) return@saveTaskEditor
+                    templateSaving = true
                     runCatching { com.focusbyrj.app.data.ProductivityLibrary(context).put("template", com.focusbyrj.app.data.ProductivityLibrary.template(task)) }
-                        .onSuccess { saved(); creatingTemplate = false; android.widget.Toast.makeText(context, "Template saved", android.widget.Toast.LENGTH_SHORT).show() }
-                        .onFailure { android.widget.Toast.makeText(context, it.message, android.widget.Toast.LENGTH_LONG).show() }
-                } else if (editingTask != null) {
-                    viewModel.updateTask(task.copy(id = editingTask.id), saved)
+                        .onSuccess { saved(); templateSaving = false; creatingTemplate = false; android.widget.Toast.makeText(context, "Template saved", android.widget.Toast.LENGTH_SHORT).show() }
+                        .onFailure { templateSaving = false; android.widget.Toast.makeText(context, it.message, android.widget.Toast.LENGTH_LONG).show() }
+                } else if (task.id > 0) {
+                    viewModel.updateTask(task, saved)
                 } else {
                     viewModel.addTask(task, saved)
                 }
             },
             onDelete = if (editingTask != null) {
-                { taskToDelete ->
+                { taskToDelete, discard ->
+                    pendingEditorDiscard = taskToDelete.id to discard
                     onRequestDelete(taskToDelete)
                     showAddDialog = false
                     editingTaskId = null
@@ -1084,20 +1072,56 @@ fun CompletedAccordion(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTaskDialog(
     templateMode: Boolean = false,
-    initialTask: Task? = null, 
+    initialTask: Task? = null,
+    defaultType: TaskType = TaskType.TASK,
+    onDismiss: () -> Unit,
+    onSave: (Task, () -> Unit) -> Unit,
+    onDelete: ((Task, () -> Unit) -> Unit)? = null,
+    relatedTasks: List<Task> = emptyList(),
+    onOpenTask: ((Task) -> Unit)? = null,
+    recordMissing: Boolean = false,
+    saving: Boolean = false,
+    draftKeyOverride: String? = null
+) {
+    var reload by remember(initialTask?.id) { mutableIntStateOf(0) }
+    key(initialTask?.id, draftKeyOverride, templateMode, if (initialTask?.id?.let { it > 0 } == true) null else defaultType, reload) {
+        TaskEditorDialog(templateMode, initialTask, defaultType, onDismiss, onSave, onDelete,
+            relatedTasks, onOpenTask, recordMissing, saving, onReload = { reload++ }, draftKeyOverride = draftKeyOverride)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TaskEditorDialog(
+    templateMode: Boolean = false,
+    liveTask: Task? = null,
     defaultType: TaskType = TaskType.TASK,
     onDismiss: () -> Unit, 
     onSave: (Task, () -> Unit) -> Unit,
-    onDelete: ((Task) -> Unit)? = null,
+    onDelete: ((Task, () -> Unit) -> Unit)? = null,
     relatedTasks: List<Task> = emptyList(),
-    onOpenTask: ((Task) -> Unit)? = null
+    onOpenTask: ((Task) -> Unit)? = null,
+    recordMissing: Boolean,
+    saving: Boolean,
+    onReload: () -> Unit,
+    draftKeyOverride: String?
 ) {
-    val draftStore = com.focusbyrj.app.ui.components.rememberEditorDraft(if (templateMode) "template:new" else "task:${initialTask?.id ?: 0}:${initialTask?.updatedAt ?: 0}:${defaultType.name}")
+    val draftKey = draftKeyOverride ?: if (templateMode) "template:new"
+        else if (liveTask != null && liveTask.id > 0) "task:${liveTask.id}" else "task:new:${defaultType.name}"
+    val earlierKeys = if (templateMode || draftKeyOverride != null) emptyList() else if (liveTask != null && liveTask.id > 0) {
+        TaskType.entries.flatMap { type -> listOf("task:${liveTask.id}:${liveTask.updatedAt}:${type.name}", "task:${liveTask.id}:${type.name}") }
+    } else listOf("task:0:${liveTask?.updatedAt ?: 0}:${defaultType.name}", "task:0:0:${defaultType.name}", "task:0:${defaultType.name}")
+    val draftStore = com.focusbyrj.app.ui.components.rememberEditorDraft(draftKey, previousKeys = earlierKeys)
     val restored = remember(draftStore) { draftStore.read() }
+    val initialTask = remember(draftStore) {
+        restored.optJSONObject("original")?.let { runCatching { com.focusbyrj.app.util.assistant.TaskJson.decode(it) }.getOrNull() } ?: liveTask
+    }
+    val conflict = recordMissing || (initialTask?.id?.let { it > 0 } == true && liveTask != initialTask)
+    var saveCopy by remember { mutableStateOf(false) }
+    val dismiss = { if (!saving) onDismiss() }
     val initialEffectiveType = initialTask?.type ?: defaultType
     var title by remember(initialTask) { mutableStateOf(restored.optString("title", initialTask?.title ?: "")) }
     var details by remember(initialTask) { mutableStateOf(restored.optString("details", initialTask?.details ?: "")) }
@@ -1169,19 +1193,22 @@ fun AddTaskDialog(
         calendar.timeInMillis = effectiveDueDate
     }
 
-    com.focusbyrj.app.ui.components.PersistEditorDraft(draftStore, org.json.JSONObject().put("title", title).put("details", details).put("newStepText", newStepText).put("userManuallySelectedType", userManuallySelectedType).put("userManuallySetRecurrence", userManuallySetRecurrence).put("isPersistent", isPersistent).put("isPriority", isPriority).put("userManuallySetDate", userManuallySetDate).put("type", type.name).put("recurrence", recurrence.name).put("manualDueDate", manualDueDate ?: org.json.JSONObject.NULL).put("subtasks", Subtask.listToJson(subtasks)).put("clearWorkTime", clearWorkTime).put("planningJson", nativePlanning?.json().orEmpty()))
+    com.focusbyrj.app.ui.components.PersistEditorDraft(draftStore, org.json.JSONObject().put("original", initialTask?.let(com.focusbyrj.app.util.assistant.TaskJson::encode) ?: org.json.JSONObject.NULL).put("title", title).put("details", details).put("newStepText", newStepText).put("userManuallySelectedType", userManuallySelectedType).put("userManuallySetRecurrence", userManuallySetRecurrence).put("isPersistent", isPersistent).put("isPriority", isPriority).put("userManuallySetDate", userManuallySetDate).put("type", type.name).put("recurrence", recurrence.name).put("manualDueDate", manualDueDate ?: org.json.JSONObject.NULL).put("subtasks", Subtask.listToJson(subtasks)).put("clearWorkTime", clearWorkTime).put("planningJson", nativePlanning?.json().orEmpty()))
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val dateTour = rememberSpotlightTour(AppTours.taskDates)
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismiss,
         sheetState = sheetState,
         properties = ModalBottomSheetProperties(shouldDismissOnBackPress = false),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
-        com.focusbyrj.app.ui.components.KeyboardFirstBackHandler(onDismiss)
+        if (saving) androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
+            Surface(shape = RoundedCornerShape(24.dp)) { Text("Saving task…", Modifier.padding(24.dp)) }
+        }
+        com.focusbyrj.app.ui.components.KeyboardFirstBackHandler(dismiss)
         SpotlightTour(dateTour, enabled = sheetState.currentValue == SheetValue.Expanded && initialTask == null && !templateMode && type == TaskType.TASK && title.isBlank() && details.isBlank() && !draftStore.restoreFailed)
         Column(
             modifier = Modifier
@@ -1220,7 +1247,7 @@ fun AddTaskDialog(
                                 details
                             }
 
-                            val base = initialTask ?: Task(title = finalTitle)
+                            val base = if (saveCopy) Task(title = finalTitle) else initialTask ?: Task(title = finalTitle)
                             val effectiveSubtasks = if (newStepText.isNotBlank()) {
                                 subtasks + Subtask(title = newStepText.trim())
                             } else {
@@ -1243,12 +1270,20 @@ fun AddTaskDialog(
                             )
                         }
                     },
-                    enabled = title.isNotBlank() && !workPastDeadline && planningFieldsValid
+                    enabled = !saving && (!conflict || saveCopy) && title.isNotBlank() && !workPastDeadline && planningFieldsValid
                 ) {
                     Text(
-                        text = if (templateMode) "Save template" else "Save",
+                        text = if (saving) "Saving…" else if (saveCopy) "Save copy" else if (templateMode) "Save template" else "Save",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                     )
+                }
+            }
+            if (restored.length() > 0) com.focusbyrj.app.ui.components.DraftRestoredBanner(enabled = !saving, onDiscard = { draftStore.discard(); onReload() })
+            if (conflict) {
+                Text(if (recordMissing) "This task was deleted. Your draft is kept." else "This task changed elsewhere. Your draft is kept.", color = MaterialTheme.colorScheme.error)
+                Row {
+                    if (!recordMissing) TextButton(enabled = !saving, onClick = { draftStore.discard(); onReload() }) { Text("Reload saved task") }
+                    TextButton(enabled = !saving, onClick = { saveCopy = true }) { Text("Keep as a new task") }
                 }
             }
             if (templateMode) Text(if (type == TaskType.TASK) "All task options are available. Dates and work sessions repeat relative to the day you use this template." else "All task options are available. Birthday and anniversary dates retain their calendar dates; review them when using the template.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1674,7 +1709,8 @@ fun AddTaskDialog(
             if (initialTask != null && onDelete != null) {
                 Spacer(modifier = Modifier.height(24.dp))
                 OutlinedButton(
-                    onClick = { draftStore.discard(); onDelete(initialTask) },
+                    enabled = !saving && !conflict,
+                    onClick = { onDelete(initialTask, draftStore::discard) },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(

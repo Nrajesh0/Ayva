@@ -12,7 +12,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [AppRestriction::class, FocusSchedule::class, Task::class, Habit::class, HabitLog::class, AssistantPlanReceipt::class], version = 16, exportSchema = true)
+@Database(entities = [AppRestriction::class, FocusSchedule::class, Task::class, Habit::class, HabitLog::class, AssistantPlanReceipt::class, EarnedReward::class], version = 17, exportSchema = true)
 abstract class FocusDatabase : RoomDatabase() {
     abstract fun appRestrictionDao(): AppRestrictionDao
     abstract fun scheduleDao(): ScheduleDao
@@ -20,7 +20,24 @@ abstract class FocusDatabase : RoomDatabase() {
     abstract fun habitDao(): HabitDao
     abstract fun assistantPlanReceiptDao(): AssistantPlanReceiptDao
 
+    abstract fun earnedRewardDao(): EarnedRewardDao
+
     companion object {
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS earned_rewards (id TEXT NOT NULL, kind TEXT NOT NULL, sourceId INTEGER NOT NULL, period TEXT NOT NULL, ordinal INTEGER NOT NULL, xp INTEGER NOT NULL, gold INTEGER NOT NULL, state TEXT NOT NULL, snapshot TEXT NOT NULL, endAt INTEGER NOT NULL, PRIMARY KEY(id))")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_earned_rewards_kind_sourceId_period_ordinal ON earned_rewards (kind, sourceId, period, ordinal)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_earned_rewards_state ON earned_rewards (state)")
+                seedLegacyRewards(db)
+            }
+        }
+
+        internal fun seedLegacyRewards(db: SupportSQLiteDatabase) {
+            // Old logs have no reward history. Settle existing days without changing earned balances.
+            db.execSQL("INSERT INTO earned_rewards SELECT 'legacy-log-' || habitId || '-' || date, 'HABIT_LOG', habitId, date || '@' || habits.createdAt, MAX(completedCount, targetCount), 0, 0, 'APPLIED', '', 0 FROM habit_logs JOIN habits ON habits.id = habit_logs.habitId")
+            db.execSQL("INSERT INTO earned_rewards SELECT 'legacy-goal-' || habitId || '-' || date, 'HABIT_GOAL', habitId, date || '@' || habits.createdAt, 0, 0, 0, 'APPLIED', '', 0 FROM habit_logs JOIN habits ON habits.id = habit_logs.habitId")
+        }
+
         val MIGRATION_15_16 = object : Migration(15, 16) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE habits ADD COLUMN frequencyJson TEXT NOT NULL DEFAULT ''")

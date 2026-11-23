@@ -118,7 +118,7 @@ class HabitRepository(private val habitDao: HabitDao) {
 
     suspend fun updateHabit(habit: Habit) = withContext(Dispatchers.IO) {
         habit.frequency.validate()
-        habitDao.updateHabit(habit)
+        check(habitDao.updateHabit(habit) == 1) { "This habit was removed. Your draft is kept." }
     }
 
     suspend fun setPaused(id: Long, paused: Boolean): Habit? = withContext(Dispatchers.IO) {
@@ -136,58 +136,15 @@ class HabitRepository(private val habitDao: HabitDao) {
 
     suspend fun incrementHabitProgress(habitId: Long): HabitLog = withContext(Dispatchers.IO) {
         val today = getTodayDateString()
-        val habit = habitDao.getHabitById(habitId) ?: throw IllegalArgumentException("Habit not found")
-        require(!habit.isPaused) { "Resume this habit before logging progress" }
-        val now = System.currentTimeMillis()
-
-        // 1. Ensure log row exists atomically without overwriting concurrent progress
-        val initialLog = HabitLog(
-            habitId = habitId,
-            date = today,
-            completedCount = 0,
-            targetCount = habit.targetPerDay,
-            lastCompletedTimestamp = now
-        )
-        habitDao.insertOrIgnoreLog(initialLog)
-
-        // 2. Perform atomic SQL increment directly in SQLite
-        habitDao.atomicIncrementLog(habitId, today, now)
-        habitDao.getLogForHabitAndDate(habitId, today) ?: initialLog.copy(completedCount = 1)
+        habitDao.incrementWithReward(habitId, today, System.currentTimeMillis())
     }
 
     suspend fun decrementHabitProgress(habitId: Long): HabitLog? = withContext(Dispatchers.IO) {
-        val today = getTodayDateString()
-        require(habitDao.getHabitById(habitId)?.isPaused != true) { "Resume this habit before logging progress" }
-        val existingLog = habitDao.getLogForHabitAndDate(habitId, today) ?: return@withContext null
-        if (existingLog.completedCount <= 0) return@withContext existingLog
-
-        habitDao.atomicDecrementLog(habitId, today)
-        habitDao.getLogForHabitAndDate(habitId, today)
+        habitDao.decrementChecked(habitId, getTodayDateString())
     }
 
     suspend fun setHabitProgress(habitId: Long, count: Int): HabitLog = withContext(Dispatchers.IO) {
-        val today = getTodayDateString()
-        val habit = habitDao.getHabitById(habitId) ?: throw IllegalArgumentException("Habit not found")
-        val existingLog = habitDao.getLogForHabitAndDate(habitId, today)
-        require(!habit.isPaused) { "Resume this habit before logging progress" }
-        val now = System.currentTimeMillis()
-
-        val updatedLog = if (existingLog != null) {
-            existingLog.copy(
-                completedCount = count.coerceAtLeast(0),
-                lastCompletedTimestamp = now
-            )
-        } else {
-            HabitLog(
-                habitId = habitId,
-                date = today,
-                completedCount = count.coerceAtLeast(0),
-                targetCount = habit.targetPerDay,
-                lastCompletedTimestamp = now
-            )
-        }
-        habitDao.insertOrUpdateLog(updatedLog)
-        updatedLog
+        habitDao.setProgressChecked(habitId, getTodayDateString(), count, System.currentTimeMillis())
     }
 
     /**
@@ -292,28 +249,8 @@ class HabitRepository(private val habitDao: HabitDao) {
         date: String,
         count: Int
     ) = withContext(Dispatchers.IO) {
-        val habit = habitDao.getHabitById(habitId) ?: return@withContext
-        val existingLog = habitDao.getLogForHabitAndDate(habitId, date)
-        require(!habit.isPaused) { "Resume this habit before logging progress" }
-        val now = System.currentTimeMillis()
-        val target = habit.targetPerDay
-        val safeCount = count.coerceAtLeast(0)
-        val updatedLog = if (existingLog != null) {
-            existingLog.copy(
-                completedCount = safeCount,
-                targetCount = target,
-                lastCompletedTimestamp = now
-            )
-        } else {
-            HabitLog(
-                habitId = habitId,
-                date = date,
-                completedCount = safeCount,
-                targetCount = target,
-                lastCompletedTimestamp = now
-            )
-        }
-        habitDao.insertOrUpdateLog(updatedLog)
+        habitDao.setProgressChecked(habitId, date, count, System.currentTimeMillis())
+        Unit
     }
 
     companion object {

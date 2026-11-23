@@ -3,6 +3,8 @@ package com.focusbyrj.app.data
 import kotlinx.coroutines.flow.Flow
 
 class TaskRepository(private val taskDao: TaskDao) {
+    fun observeTask(id: Long) = taskDao.observeTask(id)
+
     val allTasks: Flow<List<Task>> = taskDao.getAllTasks()
     val trashedTasks: Flow<List<Task>> = taskDao.getTrashedTasks()
 
@@ -13,6 +15,9 @@ class TaskRepository(private val taskDao: TaskDao) {
     suspend fun updateTask(task: Task, expectedUpdatedAt: Long? = null) {
         taskDao.updateTaskChecked(task, expectedUpdatedAt)
     }
+
+    suspend fun toggleSubtask(taskId: Long, subtaskId: String): Task =
+        taskDao.toggleSubtaskChecked(taskId, subtaskId)
 
     /**
      * Directly deletes a task row from SQLite (standard production To-Do model).

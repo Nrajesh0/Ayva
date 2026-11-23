@@ -92,12 +92,15 @@ class AssistantAppKnowledgeTest {
         val style = AssistantPreferences.find("notification style")!!
         assertEquals(listOf("Notification Only", "Both"), style.values)
         assertEquals("Both", AssistantPreferences.validate(style.key, style.type, "Floating Bar"))
-        assertEquals(listOf("dashboard", "todos", "time", "account"), AssistantPreferences.find("launch tab")!!.values)
-        for (key in listOf("soft_lock_duration", "soft_unlock_duration", "auto_hide_duration_sec", "bubble_hidden_opacity", "app_theme_mode")) {
+        assertEquals(listOf("dashboard", "todos", "empty", "time", "account"), AssistantPreferences.find("launch tab")!!.values)
+        for (key in listOf("soft_lock_duration", "soft_unlock_duration", "auto_hide_duration_sec", "bubble_hidden_opacity", "app_theme_mode", "default_start_tab")) {
             val spec = AssistantPreferences.specs.first { it.key == key }
             val before = AssistantPreferences.read(context, spec)
-            val value = AssistantPreferences.presets(spec).first { it != before }
-            val preview = say(AssistantPreferences.previewQuery(spec, value))
+            val value = if (key == "default_start_tab" && before != "empty") "empty"
+                else AssistantPreferences.presets(spec).first { it != before }
+            val query = if (key == "default_start_tab" && value == "empty") "set launch tab to notes"
+                else AssistantPreferences.previewQuery(spec, value)
+            val preview = say(query)
             assertEquals(before, AssistantPreferences.read(context, spec))
             assertTrue(preview.formattedText.contains("Proposed"))
             assertEquals(value, (state().pending.single() as AssistantAction.SetPreference).value)

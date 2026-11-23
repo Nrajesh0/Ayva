@@ -1004,7 +1004,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     current.imageUris.isNotEmpty() ||
                     current.audioUris.isNotEmpty()
         }
-        return current.title != initial.title ||
+        return editorContentChanged(current, initial)
+    }
+
+    /** Compare draft content independently of whether a new row has received its ID yet. */
+    private fun editorContentChanged(current: EditingNoteState, initial: EditingNoteState): Boolean =
+        current.title != initial.title ||
                 current.content != initial.content ||
                 current.isChecklist != initial.isChecklist ||
                 current.checklistItems != initial.checklistItems ||
@@ -1016,9 +1021,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 current.labels != initial.labels ||
                 current.imageUris != initial.imageUris ||
                 current.audioUris != initial.audioUris
-    }
+
+    private var noteOpenGeneration = 0L
 
     fun openNewNote(asChecklist: Boolean = false, returnRoute: String? = null) {
+        noteOpenGeneration++
         _returnRouteOnClose.value = returnRoute
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
@@ -1043,6 +1050,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openExistingNote(note: NoteEntity) {
+        noteOpenGeneration++
         if (note.isArchived && ArchiveVaultSecurity.getVaultStatus(getApplication()) == ArchiveVaultSecurity.VaultStatus.ENABLED &&
             ArchiveVaultSecurity.isVaultLocked(getApplication())) return
         audioMemoManager.stopPlayback()
@@ -1156,29 +1164,40 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openNoteById(noteId: Long, returnRoute: String? = null) {
-        _returnRouteOnClose.value = returnRoute
+        if (_editingState.value != null || recordingState.value.isSessionOpen) {
+            if (_editingState.value?.originalId != noteId) Toast.makeText(getApplication(),
+                "Finish your current note or recording before opening another note.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val generation = ++noteOpenGeneration
+        val storageGeneration = com.focusbyrj.app.data.note.NotesStorageVersion.current()
         viewModelScope.launch(Dispatchers.IO) {
-            val fresh = repository.getNoteByIdSync(noteId)
-            val cached = latestNotesCache[noteId]
-            val noteToOpen = when {
-                fresh != null && cached != null -> if (cached.updatedAt >= fresh.updatedAt) cached else fresh
-                fresh != null -> fresh
-                cached != null -> cached
-                else -> null
-            }
-            if (noteToOpen != null) {
-                if (noteToOpen.isArchived) {
-                    val status = ArchiveVaultSecurity.getVaultStatus(getApplication())
-                    if (status == ArchiveVaultSecurity.VaultStatus.ENABLED && !_isVaultUnlocked.value) {
-                        // Secret vault is locked, navigate to Archive screen to prompt PIN
-                        kotlinx.coroutines.withContext(Dispatchers.Main) {
-                            setFolder(NoteFolder.ARCHIVE)
-                        }
-                        return@launch
-                    }
+            try {
+                val fresh = repository.getNoteByIdSync(noteId)
+                val cached = latestNotesCache[noteId]
+                val noteToOpen = when {
+                    fresh != null && cached != null -> if (cached.updatedAt >= fresh.updatedAt) cached else fresh
+                    fresh != null -> fresh
+                    // A deleted row must never be revived from the presentation cache.
+                    else -> null
                 }
-                kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    openExistingNote(noteToOpen)
+                withContext(Dispatchers.Main) {
+                    if (generation != noteOpenGeneration || _editingState.value != null || recordingState.value.isSessionOpen ||
+                        storageGeneration != com.focusbyrj.app.data.note.NotesStorageVersion.current()) return@withContext
+                    if (noteToOpen == null) {
+                        Toast.makeText(getApplication(), "This note is no longer available.", Toast.LENGTH_LONG).show()
+                        return@withContext
+                    }
+                    _returnRouteOnClose.value = returnRoute
+                    if (noteToOpen.isArchived && ArchiveVaultSecurity.getVaultStatus(getApplication()) == ArchiveVaultSecurity.VaultStatus.ENABLED && !_isVaultUnlocked.value) {
+                        setFolder(NoteFolder.ARCHIVE)
+                    } else openExistingNote(noteToOpen)
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (generation == noteOpenGeneration) Toast.makeText(getApplication(),
+                        "Could not open this note. Your saved data is kept; try again.", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -1910,7 +1929,18 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentEditorState()
     }
 
+    private fun canCreateDockNote(): Boolean {
+        val allowed = _editingState.value == null && !recordingState.value.isSessionOpen &&
+            !com.focusbyrj.app.util.backup.MaintenanceGate.busy.value
+        if (!allowed) Toast.makeText(getApplication(),
+            "Finish the current note or operation, then choose this option again. Your work is kept.",
+            Toast.LENGTH_LONG).show()
+        return allowed
+    }
+
     fun openNewNoteWithVoice(transcription: String) {
+        if (!canCreateDockNote()) return
+        noteOpenGeneration++
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
         autoSaveJob?.cancel()
@@ -2101,11 +2131,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openNewNoteWithDrawing(bitmap: android.graphics.Bitmap) {
+        if (!canCreateDockNote()) return
         openNewNote(asChecklist = false)
         addDrawingToEditor(bitmap)
     }
 
     fun openNewNoteWithImages(uris: List<android.net.Uri>) {
+        if (!canCreateDockNote()) return
         openNewNote(asChecklist = false)
         uris.forEach { uri ->
             addImageUriToEditor(uri)
@@ -2170,6 +2202,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 val entity = buildEntityFromState(resolvedCurrent, isModified = modified)
 
                 try {
+                    var storedId = entity.id
                     if (entity.isEmptyNote()) {
                         if (entity.id != 0L) {
                             val noteDao = NoteDatabase.getInstance(getApplication()).noteDao()
@@ -2185,14 +2218,15 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     } else {
                         val finalEntity = saveEditorEntity(entity, resolvedCurrent)
+                        storedId = finalEntity.id
                         latestNotesCache[finalEntity.id] = finalEntity
                     }
                     val active = _editingState.value
-                    if (active?.sessionId == current.sessionId && !isNoteModified(active, current) &&
+                    if (active?.sessionId == current.sessionId && !editorContentChanged(active, current) &&
                         _editingState.compareAndSet(active, null)) {
                         pendingNewNoteId = 0L
                         initialSnapshot = null
-                        _saveStatus.value = NoteSaveStatus.Saved(entity.id)
+                        _saveStatus.value = NoteSaveStatus.Saved(storedId)
                     } else closingSessions.remove(current.sessionId)
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e

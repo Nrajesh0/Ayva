@@ -1,8 +1,12 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.focusbyrj.app.ui.tours
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -38,8 +42,11 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
+internal val LocalToursAllowed = compositionLocalOf { true }
+
 internal class SpotlightState(val tour: AppTour) {
     internal val anchors = mutableStateMapOf<String, Rect>()
+    internal val requesters = mutableStateMapOf<String, BringIntoViewRequester>()
     internal var interacted by mutableStateOf(false)
 }
 
@@ -66,22 +73,33 @@ internal fun Modifier.spotlightTarget(state: SpotlightState?, id: String): Modif
     else
         composed {
             val view = LocalView.current
-            DisposableEffect(state, id) { onDispose { state.anchors.remove(id) } }
-            this.pauseTourOnInteraction(state).onGloballyPositioned { coordinates ->
-                val screen = IntArray(2)
-                val window = IntArray(2)
-                view.getLocationOnScreen(screen)
-                view.getLocationInWindow(window)
-                state.anchors[id] =
-                    coordinates
-                        .boundsInWindow()
-                        .translate(
-                            Offset(
-                                (screen[0] - window[0]).toFloat(),
-                                (screen[1] - window[1]).toFloat(),
-                            )
-                        )
+            val requester = remember(state, id) { BringIntoViewRequester() }
+            DisposableEffect(state, id, requester) {
+                state.requesters[id] = requester
+                onDispose {
+                    if (state.requesters[id] === requester) {
+                        state.requesters.remove(id)
+                        state.anchors.remove(id)
+                    }
+                }
             }
+            this.bringIntoViewRequester(requester)
+                .pauseTourOnInteraction(state)
+                .onGloballyPositioned { coordinates ->
+                    val screen = IntArray(2)
+                    val window = IntArray(2)
+                    view.getLocationOnScreen(screen)
+                    view.getLocationInWindow(window)
+                    state.anchors[id] =
+                        coordinates
+                            .boundsInWindow()
+                            .translate(
+                                Offset(
+                                    (screen[0] - window[0]).toFloat(),
+                                    (screen[1] - window[1]).toFloat(),
+                                )
+                            )
+                }
         }
 
 internal data class TourCardSpace(val below: Boolean, val maxHeight: Int)
@@ -111,9 +129,11 @@ internal fun SpotlightTour(
     val lifecycleState by lifecycle.currentStateFlow.collectAsStateWithLifecycle()
     val density = LocalDensity.current
     val keyboardOpen = WindowInsets.ime.getBottom(density) > 0
+    val replaying = preferences.replayId == state.tour.id
     val eligible =
-        enabled &&
-            !state.interacted &&
+        LocalToursAllowed.current &&
+            enabled &&
+            (!state.interacted || replaying) &&
             preferences.eligible(state.tour) &&
             lifecycleState == Lifecycle.State.RESUMED &&
             !keyboardOpen
@@ -127,7 +147,8 @@ internal fun SpotlightTour(
     }
     var index by rememberSaveable(state.tour.id, preferences.replaySerial) { mutableIntStateOf(0) }
     val step = steps.getOrNull(index) ?: return
-    val anchor = state.anchors[step.target] ?: return
+    val requester = state.requesters[step.target]
+    val anchor = state.anchors[step.target]
     val parentView = LocalView.current
     val visibleFrame = android.graphics.Rect()
     parentView.getWindowVisibleDisplayFrame(visibleFrame)
@@ -138,7 +159,30 @@ internal fun SpotlightTour(
             visibleFrame.right.toFloat(),
             visibleFrame.bottom.toFloat(),
         )
-    if (!eligible || !settled || anchor.width < 12 || anchor.height < 12) return
+    val needsScroll =
+        anchor == null ||
+            anchor.width < 12 ||
+            anchor.height < 12 ||
+            anchor.intersect(viewport).isEmpty
+    var seeking by remember { mutableStateOf(false) }
+    LaunchedEffect(eligible, requester, index, preferences.replaySerial) {
+        seeking = eligible && (replaying || index > 0) && requester != null && needsScroll
+        try {
+            if (seeking) {
+                if (index == 0) delay(650)
+                requester?.bringIntoView()
+                withFrameNanos {}
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: IllegalStateException) {
+            /* Detached targets wait for the next layout. */
+        } finally {
+            seeking = false
+        }
+    }
+    if (anchor == null) return
+    if (!eligible || !settled || seeking || anchor.width < 12 || anchor.height < 12) return
     val visibleAnchor = anchor.intersect(viewport)
     if (visibleAnchor.isEmpty) return
     val available =
@@ -150,7 +194,11 @@ internal fun SpotlightTour(
             with(density) { 28.dp.roundToPx() },
         )
     // Wait for a usable layout rather than showing a card whose dismissal cannot fit.
-    if (available.maxHeight < with(density) { 120.dp.roundToPx() }) return
+    if (
+        available.maxHeight <
+            with(density) { (64 + 56 * fontScale.coerceAtLeast(1f)).dp.roundToPx() }
+    )
+        return
 
     Dialog(
         onDismissRequest = { preferences.finish(state.tour) },
@@ -306,13 +354,9 @@ internal fun SpotlightTour(
                                             val next =
                                                 ((index + 1)..steps.lastIndex).firstOrNull {
                                                     nextIndex ->
-                                                    state.anchors[steps[nextIndex].target]
-                                                        ?.intersect(viewport)
-                                                        ?.let {
-                                                            !it.isEmpty &&
-                                                                it.width >= 12 &&
-                                                                it.height >= 12
-                                                        } == true
+                                                    state.requesters.containsKey(
+                                                        steps[nextIndex].target
+                                                    )
                                                 }
                                             if (next == null) preferences.finish(state.tour)
                                             else index = next

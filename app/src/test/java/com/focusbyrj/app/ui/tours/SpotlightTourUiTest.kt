@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -207,6 +208,8 @@ class SpotlightTourUiTest {
 
     @Test
     fun interactingBeforeATipAppearsPreventsALateInterruption() {
+        store.cancelReplay()
+        store.setAutomatic(true)
         val enabled = mutableStateOf(false)
         var taps = 0
         show(enabled = enabled, onTap = { taps++ })
@@ -250,5 +253,63 @@ class SpotlightTourUiTest {
         compose.onNodeWithTag("spotlight_next").assertIsDisplayed().performClick()
         compose.onNodeWithText("Create a task").assertIsDisplayed()
         compose.onNodeWithTag("spotlight_skip").assertIsDisplayed()
+    }
+
+    @Test
+    fun replayBringsTheNextOffscreenControlIntoViewInsteadOfSkippingIt() {
+        compose.setContent {
+            MaterialTheme {
+                val state = rememberSpotlightTour(AppTours.tasks)
+                Box(Modifier.fillMaxSize()) {
+                    androidx.compose.foundation.layout.Column(
+                        Modifier.fillMaxSize()
+                            .then(
+                                Modifier.verticalScroll(
+                                    androidx.compose.foundation.rememberScrollState()
+                                )
+                            )
+                    ) {
+                        Text("Tabs", Modifier.spotlightTarget(state, "task_tabs"))
+                        Spacer(Modifier.height(1400.dp))
+                        Button(
+                            onClick = {},
+                            modifier = Modifier.spotlightTarget(state, "task_add"),
+                        ) {
+                            Text("Create")
+                        }
+                    }
+                    SpotlightTour(state)
+                }
+            }
+        }
+        settle()
+        compose.onNodeWithTag("spotlight_next").performClick()
+        settle()
+        compose.onNodeWithText("Create a task").assertIsDisplayed()
+        assertFalse(store.done(AppTours.tasks.id))
+        compose.onNodeWithTag("spotlight_next").performClick()
+        assertTrue(store.done(AppTours.tasks.id))
+    }
+
+    @Test
+    fun recoveryNoticesCanSuppressAndResumeAllGuidance() {
+        val allowed = mutableStateOf(false)
+        compose.setContent {
+            CompositionLocalProvider(LocalToursAllowed provides allowed.value) {
+                MaterialTheme {
+                    val state = rememberSpotlightTour(AppTours.tasks)
+                    Box(Modifier.fillMaxSize()) {
+                        Text("Tabs", Modifier.spotlightTarget(state, "task_tabs"))
+                        SpotlightTour(state)
+                    }
+                }
+            }
+        }
+        settle()
+        compose.onNodeWithTag("spotlight_overlay").assertDoesNotExist()
+        assertFalse(store.done(AppTours.tasks.id))
+        compose.runOnIdle { allowed.value = true }
+        settle()
+        compose.onNodeWithText("Find the right tasks").assertIsDisplayed()
     }
 }

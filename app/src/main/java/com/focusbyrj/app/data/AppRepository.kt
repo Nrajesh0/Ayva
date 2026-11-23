@@ -14,6 +14,10 @@ class AppRepository(private val database: FocusDatabase) {
     private val appRestrictionDao = database.appRestrictionDao()
     private val scheduleDao = database.scheduleDao()
     val allRestrictions: Flow<List<AppRestriction>> = appRestrictionDao.getAllRestrictions()
+    fun observeSchedule(id: Int) = scheduleDao.observeSchedule(id)
+    suspend fun updateScheduleChecked(schedule: FocusSchedule, expected: FocusSchedule) = scheduleDao.updateChecked(schedule, expected)
+    suspend fun deleteScheduleChecked(schedule: FocusSchedule) = scheduleDao.deleteChecked(schedule)
+
     val allSchedules: Flow<List<FocusSchedule>> = scheduleDao.getAllSchedules()
 
     suspend fun getRestriction(packageName: String): AppRestriction? {

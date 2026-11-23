@@ -57,3 +57,22 @@ data class FocusSchedule(
         }
     }
 }
+
+/** Used only inside encrypted drafts; includes the original row for conflict detection. */
+internal object ScheduleJson {
+    fun encode(row: FocusSchedule) = org.json.JSONObject().apply {
+        put("id", row.id); put("name", row.name)
+        put("startHour", row.startHour); put("startMinute", row.startMinute)
+        put("endHour", row.endHour); put("endMinute", row.endMinute)
+        put("days", row.daysOfWeek); put("mode", row.mode); put("restriction", row.restrictionMode)
+        put("minutes", row.timeLimitMinutes); put("clicks", row.clickLimitCount)
+        put("apps", row.appsToBlock); put("enabled", row.isEnabled)
+    }
+    fun decode(value: org.json.JSONObject) = FocusSchedule(
+        id = value.getInt("id"), name = value.getString("name"), startHour = value.getInt("startHour"),
+        startMinute = value.getInt("startMinute"), endHour = value.getInt("endHour"), endMinute = value.getInt("endMinute"),
+        daysOfWeek = value.getString("days"), mode = value.getString("mode"), restrictionMode = value.getString("restriction"),
+        timeLimitMinutes = value.getInt("minutes"), clickLimitCount = value.getInt("clicks"),
+        appsToBlock = value.getString("apps"), isEnabled = value.getBoolean("enabled")
+    )
+}

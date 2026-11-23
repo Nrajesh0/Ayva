@@ -25,7 +25,7 @@ object AssistantPreferences {
         AssistantPreferenceSpec("app_theme_color", "string", "Accent color", listOf("accent color", "accent colour", "theme color", "theme colour"), "emerald", values = AppThemeColor.entries.map { it.id }, group = AssistantSettingGroup.APPEARANCE),
         AssistantPreferenceSpec("overlay_theme_mode", "string", "Overlay theme", listOf("overlay theme", "block screen theme"), "system", values = ThemeMode.entries.map { it.id }, group = AssistantSettingGroup.APPEARANCE),
         AssistantPreferenceSpec("task_notification_style", "string", "Task notification style", listOf("task notification style", "notification style"), "Both", values = listOf("Notification Only", "Both")),
-        AssistantPreferenceSpec("default_start_tab", "string", "Default launch tab", listOf("default launch tab", "default tab", "start tab", "launch tab"), "dashboard", values = listOf("dashboard", "todos", "time", "account"), group = AssistantSettingGroup.APPEARANCE),
+        AssistantPreferenceSpec("default_start_tab", "string", "Default launch tab", listOf("default launch tab", "default tab", "start tab", "launch tab"), "dashboard", values = listOf("dashboard", "todos", "empty", "time", "account"), group = AssistantSettingGroup.APPEARANCE),
         AssistantPreferenceSpec("bubble_enabled", "boolean", "Floating bubble", listOf("floating bubble", "bubble"), "false", owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
         AssistantPreferenceSpec("hide_in_landscape", "boolean", "Hide bubble in landscape", listOf("hide in landscape", "hide bubble in landscape", "landscape hiding"), "true", owner = "bubble_prefs", group = AssistantSettingGroup.BUBBLE),
         AssistantPreferenceSpec("vacation_mode", "boolean", "Vacation mode", listOf("vacation mode", "vacation", "freeze streak", "unfreeze streak"), "false", owner = "bubble_prefs", group = AssistantSettingGroup.PRIVACY),
@@ -91,11 +91,20 @@ object AssistantPreferences {
                 "floating bar" in lower || "both" == lower || "notification + popup" in lower || "notification bar + floating popup" in lower -> return "Both"
             }
         }
+        if (spec.key == "default_start_tab") {
+            val aliases = mapOf(
+                "dashboard" to "dashboard|focus",
+                "todos" to "todos|tasks|to dos|to-dos",
+                "empty" to "empty|notes",
+                "time" to "time|screen time",
+                "account" to "account|profile"
+            )
+            return aliases.filterValues { Regex("\\b(?:$it)\\b").containsMatchIn(lower) }.keys.singleOrNull()
+        }
         if (spec.type == "string") {
             val named = when (spec.key) {
                 "app_theme_mode", "overlay_theme_mode" -> ThemeMode.entries.filter { lower.contains(it.displayName.lowercase()) }.singleOrNull()?.id
                 "app_theme_color" -> AppThemeColor.entries.filter { lower.contains(it.displayName.lowercase()) }.singleOrNull()?.id
-                "default_start_tab" -> if (Regex("\\b(?:tasks|to dos|to-dos)\\b").containsMatchIn(lower)) "todos" else null
                 else -> null
             }
             if (named != null) return named
@@ -157,7 +166,7 @@ object AssistantPreferences {
         spec.key == "streak_notification_time" && value.isBlank() -> "Random alerts (twice daily, 9 AM–8 PM)"
         spec.key in setOf("app_theme_mode", "overlay_theme_mode") -> ThemeMode.entries.find { it.id == value }?.displayName ?: value
         spec.key == "app_theme_color" -> AppThemeColor.entries.find { it.id == value }?.displayName ?: value
-        spec.key == "default_start_tab" -> mapOf("dashboard" to "Focus", "todos" to "Tasks", "time" to "Time", "account" to "Account")[value] ?: value
+        spec.key == "default_start_tab" -> mapOf("dashboard" to "Focus", "todos" to "Tasks", "empty" to "Notes", "time" to "Time", "account" to "Account")[value] ?: value
         spec.unit.isNotBlank() && spec.unit != "clock" -> "$value ${spec.unit}"
         else -> value
     }

@@ -57,11 +57,13 @@ internal object RestoreJournal {
         recoverLocked(app)
         if (drillOnly) requireNotNull(drillSessionId).also { java.util.UUID.fromString(it) }
         if (portableRestore) RestoreNotice.outcome(app, "applying")
+        BackupProgress.report("Saving recovery point")
         val before = capture(app, drillOnly, drillSessionId).put("portableRestore", portableRestore)
         MaintenanceGate.requireRecovery()
         try {
             EncryptedSnapshotFile.write(journal(app), before.toString())
             checkpoint("journal_written")
+            BackupProgress.report("Checking recovery point")
             check(EncryptedSnapshotFile.read(journal(app)) == before.toString()) { "Restore recovery journal verification failed" }
             checkpoint("prepared")
             val result = block()
@@ -121,6 +123,7 @@ internal object RestoreJournal {
         val file = journal(app)
         if (!file.exists() && !File(file.path + ".bak").exists()) { marker(app).delete(); MaintenanceGate.recovered(); return }
         MaintenanceGate.requireRecovery()
+        MaintenanceGate.reportProgress("Recovering previous data")
         val root = JSONObject(EncryptedSnapshotFile.read(file))
         require(root.getInt("version") == 1)
         val committed = runCatching { marker(app).openRead().use { it.readBytes().decodeToString() } }.getOrNull()
@@ -145,10 +148,17 @@ internal object RestoreJournal {
             val snapshot = stored.getJSONObject(index)
             room.withTransaction {
                 val db = room.openHelper.writableDatabase
-                require(db.version == snapshot.getInt("schema")) { "Recovery schema changed; preserving journal" }
+                val oldFocus = room is com.focusbyrj.app.data.FocusDatabase &&
+                    snapshot.getInt("schema") == 16 && db.version == 17 && !drillOnly
+                require(db.version == snapshot.getInt("schema") || oldFocus) { "Recovery schema changed; preserving journal" }
                 db.execSQL("PRAGMA defer_foreign_keys = ON")
                 val tables = snapshot.getJSONArray("tables")
                 val known = tableNames(room).toSet()
+                if (oldFocus) {
+                    val storedNames = (0 until tables.length()).mapTo(hashSetOf()) { tables.getJSONObject(it).getString("name") }
+                    require(storedNames == known - "earned_rewards") { "Recovery tables changed; preserving journal" }
+                    db.execSQL("DELETE FROM earned_rewards")
+                }
                 for (i in 0 until tables.length()) {
                     val table = tables.getJSONObject(i).getString("name")
                     require(table in known)
@@ -169,6 +179,7 @@ internal object RestoreJournal {
                         db.execSQL(sql, args)
                     }
                 }
+                if (oldFocus) com.focusbyrj.app.data.FocusDatabase.seedLegacyRewards(db)
             }
         }
         val prefs = root.getJSONObject("preferences")

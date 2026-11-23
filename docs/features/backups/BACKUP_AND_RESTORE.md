@@ -2,7 +2,7 @@
 
 Manual and scheduled portable archives use the same full exporter and restore
 reader. Internal safety snapshots are a separate, device-bound recovery layer.
-Archive encryption version 4 and JSON manifest version 2 are separate version
+Archive encryption version 4 and JSON manifest version 3 are separate version
 numbers; manifest compatibility does not enable retired encryption formats.
 This guide describes current behavior; it replaces the older setup/audit diaries.
 
@@ -262,7 +262,7 @@ rollback; an unreadable journal fails closed rather than guessing what to delete
 | Checking/review, before writes | The unfinished session is discarded. Choose the archive again; it is not resumed automatically. A persisted checking outcome gives a restart notice. |
 | Applying, before durable commit | Startup recovers prior databases/settings and removes new operation-owned attachment files. A recovery notice explains that the backup can be selected again. |
 | After durable commit, before success is seen | Startup keeps restored records/files and reports completion. The notice warns against repeating import-copies. |
-| Recovery cannot finish | The journal is retained; further ordinary writes remain gated. The error asks the user to keep the backup and restart/resolve storage problems. |
+| Recovery cannot finish | The journal is retained; further ordinary writes remain gated. A full-screen recovery gate blocks ordinary controls and offers recovery retry or close. The journal remains until recovery succeeds. |
 | Retry replacement after recovery | The selected snapshot is applied normally, without appending duplicate note rows. |
 | Explicitly repeat import-copies | More copies are intentional; the confirmation warns about this. Chat/drill conflicts preserve local rows and produce skip notices. |
 
@@ -318,3 +318,28 @@ both sides of commit, reboot, recovery PDF/QR rendering and real Keystore behavi
 Provider read-back proves bytes visible through Android, not off-device cloud
 upload completion. See [security](../../security/README.md) and the
 [build guide](../../development/BUILD_AND_TEST.md) for verification boundaries.
+
+The restore review lists attachment counts, routines/boundaries, habit history,
+completed drill results, vocabulary progress, and the backed-up preference groups.
+Replacement restores the selected categories to their backed-up state; import-copies
+retains its explicit copy/ID-conflict policy and applies backed-up settings. Device
+permissions, security keys and backup-folder grants are local to the phone.
+
+Portable manifest version 3 includes earned-reward receipts. Versions 1 and 2 remain
+readable. Export drains pending reward delivery before capturing balances and
+receipts under the same maintenance barrier. Replacement restores earned history;
+copy import remaps its source IDs and never re-awards historical credit. Incomplete
+routine runs are cancelled on portable restore. Older archives without receipts
+settle existing habit-log days while preserving the backed-up balances. The local
+journal captures the new table and reward acknowledgement preferences together.
+
+One blocking progress surface owns journaled maintenance, with the current operation
+and elapsed time. It does not obscure a second detailed progress dialog. Failed
+in-session recovery is gated in the same way as failed startup recovery; dismissing
+a restore error cannot resume ordinary editing while the journal needs recovery.
+
+Recovery accepts the known additive FocusDatabase upgrade from schema 16 to 17:
+it restores the original tables and settles legacy reward history in the new table.
+Other schema mismatches still retain the journal and block ordinary writes. Drafts
+remain encrypted in separate private editor storage and can be preserved on shutdown
+while journaled records are gated; they do not become committed records during recovery.

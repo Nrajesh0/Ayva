@@ -5,6 +5,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TaskDao {
+    @Query("SELECT * FROM tasks WHERE id = :id")
+    fun observeTask(id: Long): kotlinx.coroutines.flow.Flow<Task?>
+
     @Query("SELECT * FROM tasks WHERE isTrashed = 0 ORDER BY dueDate ASC")
     fun getAllTasks(): Flow<List<Task>>
 
@@ -22,6 +25,22 @@ interface TaskDao {
 
     @Update
     suspend fun updateTask(task: Task)
+
+    @Transaction
+    suspend fun toggleSubtaskChecked(taskId: Long, subtaskId: String): Task {
+        val current = getTaskById(taskId) ?: error("This task is no longer available")
+        require(!current.isTrashed && current.deletedAt == null) { "This task was removed" }
+        val steps = current.subtasks
+        require(steps.any { it.id == subtaskId }) { "This step changed or was removed. Reopen the task." }
+        val updated = current.copy(
+            subtasksJson = Subtask.listToJson(steps.map {
+                if (it.id == subtaskId) it.copy(isDone = !it.isDone) else it
+            }),
+            updatedAt = maxOf(System.currentTimeMillis(), current.updatedAt + 1)
+        )
+        updateTaskChecked(updated, current.updatedAt)
+        return updated
+    }
 
     @Transaction
     suspend fun insertTaskChecked(task: Task): Long {

@@ -36,7 +36,7 @@ internal class BackupProgress(private val listener: (String) -> Unit) :
         private val current = ThreadLocal<((String) -> Unit)?>()
         fun report(message: String) {
             // A UI observer must never change whether a data operation succeeds.
-            try { current.get()?.invoke(message) } catch (_: Exception) { }
+            try { MaintenanceGate.reportProgress(message); current.get()?.invoke(message) } catch (_: Exception) { }
         }
     }
     override fun updateThreadContext(context: CoroutineContext): ((String) -> Unit)? =

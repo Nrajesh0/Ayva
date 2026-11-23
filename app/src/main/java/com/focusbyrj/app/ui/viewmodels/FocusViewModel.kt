@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -24,11 +25,13 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
     private val _pendingNavigationRoute = MutableStateFlow<String?>(null)
     val pendingNavigationRoute: StateFlow<String?> = _pendingNavigationRoute
 
-    private val _pendingOpenAddDialog = MutableStateFlow(false)
-    val pendingOpenAddDialog: StateFlow<Boolean> = _pendingOpenAddDialog
+    private val _pendingOpenAddDialog = MutableStateFlow<String?>(null)
+    val pendingOpenAddDialog: StateFlow<String?> = _pendingOpenAddDialog
 
     private val _pendingOpenNoteId = MutableStateFlow<Long?>(null)
     val pendingOpenNoteId: StateFlow<Long?> = _pendingOpenNoteId
+    private val _pendingNoteReturnRoute = MutableStateFlow<String?>(null)
+    val pendingNoteReturnRoute: StateFlow<String?> = _pendingNoteReturnRoute
 
     private val _pendingOpenNewNote = MutableStateFlow<Boolean?>(null) // true if checklist, false if standard note
     val pendingOpenNewNote: StateFlow<Boolean?> = _pendingOpenNewNote
@@ -37,31 +40,59 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
     val pendingOpenVoiceNote: StateFlow<Boolean> = _pendingOpenVoiceNote
 
     fun triggerNavigation(route: String) {
+        clearPendingEditors()
         _pendingNavigationRoute.value = route
+    }
+
+    fun cancelPendingLaunchRequests() {
+        clearPendingEditors()
+        _pendingNavigationRoute.value = null
     }
 
     fun clearNavigation() {
         _pendingNavigationRoute.value = null
     }
 
-    fun triggerOpenAddDialog() {
-        _pendingOpenAddDialog.value = true
+    fun triggerOpenAddDialog(route: String = "todos") {
+        _pendingOpenAddDialog.value = if (route == "habits") "habits" else "todos"
     }
 
     fun clearOpenAddDialog() {
-        _pendingOpenAddDialog.value = false
+        _pendingOpenAddDialog.value = null
     }
 
-    fun triggerOpenNote(noteId: Long) {
+    private val _voiceInputRequested = MutableStateFlow(false)
+    val voiceInputRequested: StateFlow<Boolean> = _voiceInputRequested
+    fun requestVoiceInput() { _voiceInputRequested.value = true }
+    fun clearVoiceInput() { _voiceInputRequested.value = false }
+
+    private val _launchRequestSerial = MutableStateFlow(0L)
+    val launchRequestSerial: StateFlow<Long> = _launchRequestSerial
+
+    private fun clearPendingEditors() {
+        _launchRequestSerial.value++
+        _pendingOpenAddDialog.value = null
+        _pendingOpenNoteId.value = null
+        _pendingNoteReturnRoute.value = null
+        _pendingOpenNewNote.value = null
+        _pendingOpenVoiceNote.value = false
+        _voiceInputRequested.value = false
+    }
+
+    fun triggerOpenNote(noteId: Long, returnRoute: String? = null) {
+        clearPendingEditors()
         _pendingNavigationRoute.value = "empty"
+        _pendingNoteReturnRoute.value = returnRoute
         _pendingOpenNoteId.value = noteId
     }
 
     fun clearOpenNote() {
         _pendingOpenNoteId.value = null
+        _pendingNoteReturnRoute.value = null
     }
 
     fun triggerOpenNewNote(asChecklist: Boolean = false) {
+        clearPendingEditors()
         _pendingNavigationRoute.value = "empty"
         _pendingOpenNewNote.value = asChecklist
     }
@@ -71,6 +102,7 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
     }
 
     fun triggerOpenVoiceNote() {
+        clearPendingEditors()
         _pendingNavigationRoute.value = "empty"
         _pendingOpenVoiceNote.value = true
     }
@@ -111,51 +143,20 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
             }
         }.associateBy { it.packageName }.toMutableMap()
 
-        val calendar = Calendar.getInstance()
-        val currentDay = calendar.get(Calendar.DAY_OF_WEEK)
-        val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
-        val currentMinute = calendar.get(Calendar.MINUTE)
-        val currentTotalMinutes = currentHour * 60 + currentMinute
-
-        for (s in scheds) {
-            if (!s.isEnabled) continue
-            val isActiveNow = s.isActiveAt(calendar)
-
-            val entries = s.appsToBlock.split(",").filter { it.isNotBlank() }
-            for (entry in entries) {
-                val parts = entry.split("|")
-                val pkg = parts[0].trim()
-                if (pkg.isEmpty()) continue
-
-                val appInfo = try { pm.getApplicationInfo(pkg, 0) } catch (e: Exception) { null }
-                if (appInfo == null) continue // Skip uninstalled apps from routine
-
-                val appMode = if (parts.size > 1) parts[1] else s.mode
-                if (!map.containsKey(pkg)) {
-                    val appName = try { pm.getApplicationLabel(appInfo).toString() } catch(e: Exception) { pkg }
-                    val newRest = AppRestriction(
-                        packageName = pkg,
-                        appName = appName,
-                        isRestricted = isActiveNow,
-                        mode = appMode,
-                        restrictionMode = s.restrictionMode,
-                        timeLimitMinutes = s.timeLimitMinutes,
-                        clickLimitCount = s.clickLimitCount,
-                        customQuote = ""
-                    )
-                    newRest.isFromRoutine = true
-                    map[pkg] = newRest
-                } else if (isActiveNow) {
-                    val existing = map[pkg]!!
-                    val updated = existing.copy(
-                        isRestricted = true,
-                        mode = appMode,
-                        restrictionMode = s.restrictionMode,
-                        timeLimitMinutes = s.timeLimitMinutes,
-                        clickLimitCount = s.clickLimitCount
-                    )
-                    updated.isFromRoutine = existing.isFromRoutine
-                    map[pkg] = updated
+        val routineRules = com.focusbyrj.app.data.BlockingRules.routines(scheds, Calendar.getInstance()).groupBy { it.packageName }
+        for ((pkg, rules) in routineRules) {
+            val info = try { pm.getApplicationInfo(pkg, 0) } catch (_: Exception) { continue }
+            val manual = map[pkg]
+            val active = rules + listOfNotNull(manual?.takeIf { it.isRestricted }?.let(com.focusbyrj.app.data.BlockingRules::manual))
+            if (manual != null) {
+                // Keep the manual row intact so editing/toggling it cannot overwrite a routine.
+                map[pkg] = manual.copy().also { it.ruleSummary = "Active: " + com.focusbyrj.app.data.BlockingRules.summary(active) }
+            } else {
+                val selected = com.focusbyrj.app.data.BlockingRules.preview(rules) ?: continue
+                map[pkg] = AppRestriction(pkg, pm.getApplicationLabel(info).toString(), true,
+                    selected.mode, selected.restrictionMode, selected.minutes, selected.clicks).also {
+                    it.isFromRoutine = true
+                    it.ruleSummary = "Active: " + com.focusbyrj.app.data.BlockingRules.summary(active) + ". Manage in Routines."
                 }
             }
         }
@@ -168,54 +169,51 @@ class FocusViewModel(private val repository: AppRepository, application: Applica
     
     val schedules: StateFlow<List<FocusSchedule>> = repository.allSchedules.stateIn(scope = viewModelScope, started = SharingStarted.WhileSubscribed(5000), initialValue = emptyList())
 
-    fun addSchedule(
-        name: String,
-        startHour: Int,
-        startMinute: Int,
-        endHour: Int,
-        endMinute: Int,
-        daysOfWeek: String,
-        mode: String,
-        appsToBlock: String,
-        restrictionMode: String = "SIMPLE",
-        timeLimitMinutes: Int = 0,
-        clickLimitCount: Int = 0,
-        isEnabled: Boolean = true
-    ) {
+    private val _savingSchedule = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val savingSchedule: StateFlow<Boolean> = _savingSchedule
+    data class ScheduleRecord(val loaded: Boolean = false, val schedule: FocusSchedule? = null)
+    fun observeSchedule(id: Int) = repository.observeSchedule(id).map { ScheduleRecord(true, it) }
+
+    fun saveSchedule(schedule: FocusSchedule, expected: FocusSchedule? = null, onStored: () -> Unit = {}) {
+        if (!_savingSchedule.compareAndSet(false, true)) return
         viewModelScope.launch {
-            repository.insertSchedule(
-                FocusSchedule(
-                    name = name,
-                    startHour = startHour,
-                    startMinute = startMinute,
-                    endHour = endHour,
-                    endMinute = endMinute,
-                    daysOfWeek = daysOfWeek,
-                    mode = mode,
-                    appsToBlock = appsToBlock,
-                    restrictionMode = restrictionMode,
-                    timeLimitMinutes = timeLimitMinutes,
-                    clickLimitCount = clickLimitCount,
-                    isEnabled = isEnabled
-                )
-            )
-            com.focusbyrj.app.util.FocusStatsManager.addRoutineActivity(getApplication(), 15L)
+            try {
+                try {
+                    if (expected == null) {
+                        require(schedule.id == 0) { "Missing original routine; your draft is kept." }
+                        repository.insertSchedule(schedule)
+                    } else repository.updateScheduleChecked(schedule, expected)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (error: Exception) {
+                    android.widget.Toast.makeText(getApplication(), error.message ?: "Couldn't save routine. Your draft is kept.", android.widget.Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                onStored()
+                if (expected == null) try {
+                    com.focusbyrj.app.util.FocusStatsManager.addRoutineActivity(getApplication(), 15L)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) {
+                    android.widget.Toast.makeText(getApplication(), "Routine saved. Activity refresh failed.", android.widget.Toast.LENGTH_LONG).show()
+                }
+            } finally { _savingSchedule.value = false }
         }
-    }
-    
-    fun toggleSchedule(schedule: FocusSchedule) {
-        updateSchedule(schedule.copy(isEnabled = !schedule.isEnabled))
     }
 
-    fun updateSchedule(schedule: FocusSchedule) {
-        viewModelScope.launch {
-            repository.insertSchedule(schedule)
-        }
+    fun toggleSchedule(schedule: FocusSchedule) {
+        saveSchedule(schedule.copy(isEnabled = !schedule.isEnabled), schedule)
     }
-    
+
+    fun updateSchedule(schedule: FocusSchedule, expected: FocusSchedule = schedule) {
+        saveSchedule(schedule, expected)
+    }
+
     fun deleteSchedule(schedule: FocusSchedule) {
         viewModelScope.launch {
-            repository.deleteSchedule(schedule)
+            try { repository.deleteScheduleChecked(schedule) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                android.widget.Toast.makeText(getApplication(), error.message ?: "Couldn't delete routine. Try again.", android.widget.Toast.LENGTH_LONG).show()
+            }
         }
     }
 

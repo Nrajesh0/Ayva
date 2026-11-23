@@ -19,7 +19,9 @@ internal data class RestoreState(
     val phase: RestorePhase = RestorePhase.IDLE,
     val notes: Int = 0, val tasks: Int = 0, val replace: Boolean = true, val createdAt: Long = 0,
     val metadata: BackupRestoreManager.BackupMetadata? = null,
-    val message: String? = null, val needsRecoveryFile: Boolean = false, val needsBackupFile: Boolean = false
+    val scope: List<String> = emptyList(),
+    val message: String? = null, val needsRecoveryFile: Boolean = false, val needsBackupFile: Boolean = false,
+    val recoveryPending: Boolean = false
 )
 
 /** Credentials never enter saved state. Verified preparation and one-use authorization stay in this session. */
@@ -88,7 +90,7 @@ internal class RestoreBackupViewModel(
                 prepared = owned; owned = null
                 val value = checkNotNull(prepared)
                 mutable.value = RestoreState(RestorePhase.REVIEW, value.noteCount, value.taskCount, replace,
-                    value.manifest?.optLong("createdAt", 0) ?: 0)
+                    value.manifest?.optLong("createdAt", 0) ?: 0, scope = RestoreReviewScope.describe(checkNotNull(value.manifest)))
                 expiration = viewModelScope.launch {
                     delay(600_000)
                     if (request == generation && mutable.value.phase in setOf(RestorePhase.REVIEW, RestorePhase.UNLOCK, RestorePhase.SETUP_PIN))
@@ -154,7 +156,7 @@ internal class RestoreBackupViewModel(
                     outcome == "recovered" -> "Restore failed. Your previous records were recovered and imported files were removed. You can try again."
                     else -> "Restore did not finish. Keep your backup file."
                 }
-                mutable.value = RestoreState(RestorePhase.ERROR, message = explanation + "\n" + (error.message ?: ""))
+                mutable.value = RestoreState(RestorePhase.ERROR, message = explanation + "\n" + (error.message ?: ""), recoveryPending = com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired)
             }
         } finally {
             value.close()

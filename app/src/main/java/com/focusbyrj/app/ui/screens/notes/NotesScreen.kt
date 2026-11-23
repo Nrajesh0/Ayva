@@ -144,6 +144,7 @@ import android.widget.Toast
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -175,7 +176,9 @@ fun NotesScreen(
     onNavigateToDashboard: () -> Unit = {},
     onNavigateToTodos: () -> Unit = {},
     onNavigateToRoute: ((String) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    voiceInputRequested: Boolean = false,
+    onVoiceInputHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -265,21 +268,36 @@ fun NotesScreen(
     var showSketchDialogFromDock by remember { mutableStateOf(false) }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
 
+    var microphoneRequestPending by rememberSaveable { mutableStateOf(false) }
+    var microphoneRequestOwner by rememberSaveable { mutableStateOf<String?>(null) }
+    var microphoneRequestEpoch by rememberSaveable { mutableStateOf(0L) }
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { isGranted ->
-            if (isGranted) {
-                viewModel.startVoiceRecording()
-            } else {
+            val requested = microphoneRequestPending
+            microphoneRequestPending = false
+            if (isGranted && requested) {
+                val editor = viewModel.editingState.value
+                val stillOwned = microphoneRequestOwner == editor?.sessionId &&
+                    microphoneRequestEpoch == com.focusbyrj.app.data.note.NotesStorageVersion.current() &&
+                    !com.focusbyrj.app.util.backup.MaintenanceGate.busy.value &&
+                    (editor?.isArchived != true || !ArchiveVaultSecurity.isVaultLocked(context))
+                if (stillOwned) viewModel.startVoiceRecording()
+                else Toast.makeText(context, "The note changed. Tap record again when ready. Your work is kept.", Toast.LENGTH_LONG).show()
+            } else if (!isGranted && requested) {
                 Toast.makeText(context, "Microphone permission is required for live transcription", Toast.LENGTH_SHORT).show()
             }
         }
     )
 
     fun checkAndStartRecording() {
+        if (microphoneRequestPending || com.focusbyrj.app.util.backup.MaintenanceGate.busy.value) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             viewModel.startVoiceRecording()
         } else {
+            microphoneRequestOwner = viewModel.editingState.value?.sessionId
+            microphoneRequestEpoch = com.focusbyrj.app.data.note.NotesStorageVersion.current()
+            microphoneRequestPending = true
             recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
@@ -304,6 +322,13 @@ fun NotesScreen(
             }
         }
     )
+
+    LaunchedEffect(voiceInputRequested) {
+        if (voiceInputRequested) {
+            onVoiceInputHandled()
+            checkAndStartRecording()
+        }
+    }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()

@@ -18,7 +18,7 @@ import com.focusbyrj.app.ui.components.SettingsMenuSectionHeader
 @Composable
 internal fun TourWelcome(enabled: Boolean) {
     val store = rememberTourPreferences()
-    if (enabled && store.welcomePending)
+    if (enabled && LocalToursAllowed.current && store.welcomePending)
         AlertDialog(
             onDismissRequest = { store.chooseWelcome(false) },
             title = { Text("A quick look around?") },

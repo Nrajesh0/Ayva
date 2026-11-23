@@ -110,6 +110,8 @@ import androidx.navigation.compose.rememberNavController
 import com.focusbyrj.app.service.FocusBlockerService
 import com.focusbyrj.app.ui.components.FocusBottomBar
 import com.focusbyrj.app.ui.components.SetupPermissionsDialog
+import com.focusbyrj.app.ui.navigation.MainNavigation
+import com.focusbyrj.app.ui.navigation.MainLaunchRequest
 import com.focusbyrj.app.ui.navigation.Screen
 import com.focusbyrj.app.ui.screens.AccountScreen
 import com.focusbyrj.app.ui.screens.AddRestrictionScreen
@@ -161,31 +163,28 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun handleIncomingIntent(intent: android.content.Intent?) {
-        if ((application as FocusApplication).startupRecoveryPending || !::viewModel.isInitialized || intent == null) return
-        val navigateTo = intent.getStringExtra("navigate_to") ?: intent.getStringExtra("NAV_DESTINATION")
-        val openAddDialog = intent.getBooleanExtra("open_add_dialog", false)
-        val openNoteId = intent.getLongExtra("open_note_id", -1L).takeIf { it != -1L }
-        val openNewNote = intent.getBooleanExtra("open_new_note", false)
-        val asChecklist = intent.getBooleanExtra("as_checklist", false)
-        val openVoiceNote = intent.getBooleanExtra("open_voice_note", false)
-
-        if (openNoteId != null) {
-            viewModel.triggerOpenNote(openNoteId)
-        } else if (openNewNote) {
-            viewModel.triggerOpenNewNote(asChecklist)
-        } else if (openVoiceNote) {
-            viewModel.triggerOpenVoiceNote()
-        } else if (navigateTo != null) {
-            viewModel.triggerNavigation(navigateTo)
+        if (com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired || (application as FocusApplication).startupRecoveryPending || !::viewModel.isInitialized || intent == null) return
+        val request = MainLaunchRequest.consume(intent) ?: return
+        if (com.focusbyrj.app.util.backup.MaintenanceGate.busy.value) {
+            android.widget.Toast.makeText(this, "Wait for the data operation to finish, then try again.", android.widget.Toast.LENGTH_LONG).show()
+            return
         }
-        if (openAddDialog) {
-            viewModel.triggerOpenAddDialog()
+        when {
+            request.noteId != null -> viewModel.triggerOpenNote(request.noteId)
+            request.newNote != null -> viewModel.triggerOpenNewNote(request.newNote)
+            request.voiceNote -> viewModel.triggerOpenVoiceNote()
+            else -> {
+                viewModel.triggerNavigation(request.route)
+                if (request.openEditor) viewModel.triggerOpenAddDialog(request.route)
+            }
         }
+        if (request.invalidDestination) android.widget.Toast.makeText(this,
+            "That destination is unavailable. Opened Focus.", android.widget.Toast.LENGTH_LONG).show()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if ((application as FocusApplication).startupRecoveryPending) {
+        if ((application as FocusApplication).startupRecoveryPending || com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired) {
             showRecoveryGate()
             return
         }
@@ -221,25 +220,35 @@ class MainActivity : FragmentActivity() {
         kotlin.runCatching { com.focusbyrj.app.widget.TodoWidgetProvider.updateAllWidgets(this) }
         kotlin.runCatching { com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(this) }
 
-        handleIncomingIntent(intent)
-
-        val navigateTo = intent?.getStringExtra("navigate_to") ?: intent?.getStringExtra("NAV_DESTINATION")
-        val openAddDialog = intent?.getBooleanExtra("open_add_dialog", false) ?: false
+        if (savedInstanceState == null) handleIncomingIntent(intent)
 
         setContent {
             FocusByRjTheme {
                 val maintaining by com.focusbyrj.app.util.backup.MaintenanceGate.busy.collectAsStateWithLifecycle()
-                MainAppScreen(
-                    viewModel = viewModel, 
-                    taskViewModel = taskViewModel,
-                    habitViewModel = habitViewModel,
-                    initialNavigateTo = navigateTo,
-                    initialOpenAdd = openAddDialog
-                )
-                var restoreNotice by androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf(com.focusbyrj.app.util.backup.RestoreNotice.forStartup())
+                val recoveryNeeded by com.focusbyrj.app.util.backup.MaintenanceGate.recoveryNeeded.collectAsStateWithLifecycle()
+                var recoveryPinned by remember { mutableStateOf(false) }
+                LaunchedEffect(recoveryNeeded, maintaining) {
+                    if (recoveryNeeded && !maintaining) recoveryPinned = true
+                    if (!recoveryNeeded) recoveryPinned = false
                 }
-                if (!maintaining) restoreNotice?.let { notice ->
+                val recoveryBlocked = recoveryNeeded && (!maintaining || recoveryPinned)
+                var restoreNotice by remember {
+                    mutableStateOf(com.focusbyrj.app.util.backup.RestoreNotice.forStartup())
+                }
+                LaunchedEffect(maintaining, recoveryNeeded) {
+                    if (maintaining || recoveryNeeded) viewModel.cancelPendingLaunchRequests()
+                }
+                val canHandleRequests = !maintaining && !recoveryNeeded && restoreNotice == null
+                androidx.compose.runtime.CompositionLocalProvider(LocalToursAllowed provides canHandleRequests) {
+                    MainAppScreen(
+                        viewModel = viewModel,
+                        taskViewModel = taskViewModel,
+                        habitViewModel = habitViewModel,
+                        requestsAllowed = canHandleRequests,
+                        forceSecure = maintaining || recoveryNeeded || restoreNotice != null
+                    )
+                }
+                if (!maintaining && !recoveryBlocked) restoreNotice?.let { notice ->
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { /* Acknowledge explicitly so the result is not missed. */ },
                         title = { Text(notice.first) }, text = { Text(notice.second, modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) },
@@ -249,11 +258,11 @@ class MainActivity : FragmentActivity() {
                         }) { Text("Got it") } }
                     )
                 }
-                if (maintaining) androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
-                    androidx.compose.material3.Surface(shape = RoundedCornerShape(24.dp)) {
-                        Text("Protecting your data…", modifier = Modifier.padding(28.dp))
-                    }
-                }
+                com.focusbyrj.app.ui.components.DataMaintenanceSurface(
+                    maintaining = maintaining, recoveryBlocked = recoveryBlocked,
+                    onRecovered = { restoreNotice = com.focusbyrj.app.util.backup.RestoreNotice.forStartup() },
+                    onClose = { finish() }
+                )
             }
         }
     }
@@ -287,7 +296,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if ((application as FocusApplication).startupRecoveryPending) return
+        if ((application as FocusApplication).startupRecoveryPending || com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired) return
         updateSecureWindowFlags()
         lifecycleScope.launch {
             try {
@@ -471,11 +480,12 @@ fun MainAppScreen(
     viewModel: FocusViewModel, 
     taskViewModel: com.focusbyrj.app.ui.viewmodels.TaskViewModel,
     habitViewModel: com.focusbyrj.app.ui.viewmodels.HabitViewModel,
-    initialNavigateTo: String? = null,
-    initialOpenAdd: Boolean = false
+    requestsAllowed: Boolean = true,
+    forceSecure: Boolean = false
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val visibleEntries by navController.visibleEntries.collectAsStateWithLifecycle()
     val currentDestination = navBackStackEntry?.destination
     val notesViewModel: com.focusbyrj.app.ui.screens.notes.NotesViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 
@@ -488,64 +498,90 @@ fun MainAppScreen(
         }
         ctx as? MainActivity
     }
-    val isSensitiveRoute = currentDestination?.route == Screen.Empty.route ||
-        currentDestination?.route in com.focusbyrj.app.ui.navigation.SettingsRoutes.sensitive
+    // Outgoing screens remain visible until their navigation animation finishes.
+    val isSensitiveRoute = forceSecure || MainNavigation.isSensitive(currentDestination?.route) ||
+        visibleEntries.any { MainNavigation.isSensitive(it.destination.route) }
     LaunchedEffect(isSensitiveRoute, activity) {
         activity?.updateSecureWindowFlags(isSensitiveRoute)
     }
 
     val pendingRoute by viewModel.pendingNavigationRoute.collectAsStateWithLifecycle()
     val pendingOpenAdd by viewModel.pendingOpenAddDialog.collectAsStateWithLifecycle()
+    val launchRequestSerial by viewModel.launchRequestSerial.collectAsStateWithLifecycle()
     val pendingOpenNoteId by viewModel.pendingOpenNoteId.collectAsStateWithLifecycle()
     val pendingOpenNewNote by viewModel.pendingOpenNewNote.collectAsStateWithLifecycle()
     val pendingOpenVoiceNote by viewModel.pendingOpenVoiceNote.collectAsStateWithLifecycle()
+    val voiceInputRequested by viewModel.voiceInputRequested.collectAsStateWithLifecycle()
 
-    LaunchedEffect(pendingOpenNoteId) {
-        pendingOpenNoteId?.let { noteId ->
-            notesViewModel.openNoteById(noteId)
+    val openEditor by notesViewModel.editingState.collectAsStateWithLifecycle()
+    val recording by notesViewModel.recordingState.collectAsStateWithLifecycle()
+    LaunchedEffect(launchRequestSerial, openEditor?.sessionId, recording.isSessionOpen, requestsAllowed) {
+        if (!requestsAllowed) return@LaunchedEffect
+        // Read commands at dispatch time: collected flows may briefly describe a consumed request.
+        val noteId = viewModel.pendingOpenNoteId.value
+        val hasRequest = noteId != null || viewModel.pendingOpenNewNote.value != null
+        val editor = notesViewModel.editingState.value
+        if (hasRequest && (noteId == null || noteId != editor?.originalId)) {
+            if (notesViewModel.recordingState.value.isSessionOpen) {
+                android.widget.Toast.makeText(context, "Finish your current recording first. Your work is kept.", android.widget.Toast.LENGTH_LONG).show()
+            } else if (editor != null) notesViewModel.closeEditor()
+        }
+    }
+    LaunchedEffect(pendingOpenNoteId, pendingOpenNewNote, pendingOpenVoiceNote, openEditor?.sessionId, recording.isSessionOpen, requestsAllowed, launchRequestSerial, currentDestination?.route) {
+        if (!requestsAllowed || currentDestination == null) return@LaunchedEffect
+        val noteId = viewModel.pendingOpenNoteId.value
+        val newNote = viewModel.pendingOpenNewNote.value
+        val voiceNote = viewModel.pendingOpenVoiceNote.value
+        val editor = notesViewModel.editingState.value
+        val recordingOpen = notesViewModel.recordingState.value.isSessionOpen
+        if (noteId != null && noteId == editor?.originalId) {
+            viewModel.pendingNoteReturnRoute.value?.let(notesViewModel::setReturnRouteOnClose)
             viewModel.clearOpenNote()
+            return@LaunchedEffect
         }
-    }
-
-    LaunchedEffect(pendingOpenNewNote) {
-        pendingOpenNewNote?.let { asChecklist ->
-            notesViewModel.openNewNote(asChecklist = asChecklist)
-            viewModel.clearOpenNewNote()
-        }
-    }
-
-    LaunchedEffect(pendingOpenVoiceNote) {
-        if (pendingOpenVoiceNote) {
-            notesViewModel.startVoiceRecording()
+        if (voiceNote && (editor != null || recordingOpen)) {
             viewModel.clearOpenVoiceNote()
+            if (!recordingOpen) android.widget.Toast.makeText(context,
+                "Finish your current note, then tap the recording shortcut again.", android.widget.Toast.LENGTH_LONG).show()
+            return@LaunchedEffect
         }
-    }
-
-    LaunchedEffect(pendingRoute) {
-        pendingRoute?.let { route ->
-            try {
-                navController.navigate(route) {
-                    popUpTo(navController.graph.findStartDestination().id) {
-                        saveState = true
-                    }
-                    launchSingleTop = true
-                    restoreState = true
+        if (editor == null && !recordingOpen) {
+            if ((noteId != null || newNote != null || voiceNote) && navController.currentDestination?.route != Screen.Empty.route) {
+                navController.navigate(Screen.Empty.route) { launchSingleTop = true }
+            }
+            when {
+                noteId != null -> {
+                    val returnRoute = viewModel.pendingNoteReturnRoute.value
+                    viewModel.clearOpenNote()
+                    notesViewModel.openNoteById(noteId, returnRoute = returnRoute)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("MainActivity", "Failed to navigate to route: $route", e)
-            } finally {
-                viewModel.clearNavigation()
+                newNote != null -> {
+                    viewModel.clearOpenNewNote()
+                    notesViewModel.openNewNote(asChecklist = newNote)
+                }
+                voiceNote -> {
+                    viewModel.clearOpenVoiceNote()
+                    // The Notes owner requests microphone permission before recording.
+                    viewModel.requestVoiceInput()
+                }
             }
         }
     }
 
-    val items = listOf(
-        Screen.Dashboard,
-        Screen.Todos,
-        Screen.Empty,
-        Screen.EmptyTab,
-        Screen.Account
-    )
+    LaunchedEffect(pendingRoute, requestsAllowed, launchRequestSerial, currentDestination?.route) {
+        if (!requestsAllowed || currentDestination == null) return@LaunchedEffect
+        viewModel.pendingNavigationRoute.value?.let { requested ->
+            val route = MainNavigation.destination(requested) ?: Screen.Dashboard.route
+            navController.navigate(route) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = route != Screen.Account.route
+            }
+            viewModel.clearNavigation()
+        }
+    }
+
+    val items = MainNavigation.tabs
 
     val scope = rememberCoroutineScope()
     val isSessionActive by viewModel.isSessionActive.collectAsStateWithLifecycle()
@@ -665,9 +701,9 @@ fun MainAppScreen(
                     val saved = prefs.getString("default_start_tab", null)
                         ?: context.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE).getString("default_start_tab", Screen.Dashboard.route)
                         ?: Screen.Dashboard.route
-                    if (items.any { it.route == saved }) saved else Screen.Dashboard.route
+                    MainNavigation.launchTab(saved)
                 }
-                val startDest = initialNavigateTo ?: defaultStartTab
+                val startDest = defaultStartTab
 
                 NavHost(
                     navController = navController,
@@ -767,6 +803,8 @@ fun MainAppScreen(
                 composable(Screen.Empty.route) {
                     NotesScreen(
                         viewModel = notesViewModel,
+                        voiceInputRequested = requestsAllowed && voiceInputRequested,
+                        onVoiceInputHandled = { viewModel.clearVoiceInput() },
                         activeStreakDays = activeStreakDays,
                         onOpenAccount = {
                             navController.navigate(Screen.PreferencesHub.route) {
@@ -814,27 +852,24 @@ fun MainAppScreen(
                         navController = navController,
                         onLockPrivateVault = { notesViewModel.lockVault() },
                         onOpenNote = { noteId ->
-                            notesViewModel.openNoteById(noteId, returnRoute = Screen.Account.route)
-                            navController.navigate(Screen.Empty.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
+                            viewModel.triggerOpenNote(noteId, returnRoute = Screen.Account.route)
                         }
                     )
                 }
 
                 composable(Screen.EmptyTab.route) {
-                    Box(modifier = Modifier.fillMaxSize())
+                    LaunchedEffect(Unit) {
+                        navController.navigate(Screen.Time.route) {
+                            popUpTo(Screen.EmptyTab.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
                 }
                 composable(Screen.Time.route) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         MainTopBar(
                             title = "Screen Time",
                             isDashboard = false,
-                            showBack = true,
                             activeStreakDays = activeStreakDays,
                             economyProfile = economyProfile,
                             navController = navController
@@ -862,7 +897,7 @@ fun MainAppScreen(
                         )
                         com.focusbyrj.app.ui.screens.TodosScreen(
                             taskViewModel, 
-                            initialOpenAdd = initialOpenAdd || pendingOpenAdd,
+                            initialOpenAdd = requestsAllowed && pendingOpenAdd == Screen.Todos.route,
                             onOpenAddHandled = { viewModel.clearOpenAddDialog() }
                         )
                     }
@@ -871,7 +906,8 @@ fun MainAppScreen(
                     com.focusbyrj.app.ui.screens.HabitsScreen(
                         habitViewModel = habitViewModel,
                         onBack = { navController.popBackStack() },
-                        initialOpenCreate = initialOpenAdd || pendingOpenAdd
+                        initialOpenCreate = requestsAllowed && pendingOpenAdd == Screen.Habits.route,
+                        onOpenCreateHandled = { viewModel.clearOpenAddDialog() }
                     )
                 }
             }

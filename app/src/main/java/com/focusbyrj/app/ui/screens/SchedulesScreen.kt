@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -44,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.focusbyrj.app.ui.components.CustomRestrictionSection
 import com.focusbyrj.app.ui.theme.*
 import com.focusbyrj.app.ui.viewmodels.FocusViewModel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -53,34 +55,28 @@ fun SchedulesScreen(viewModel: FocusViewModel) {
     val schedules by viewModel.schedules.collectAsStateWithLifecycle()
     var showCreateScreen by rememberSaveable { mutableStateOf(false) }
     var scheduleToEditId by rememberSaveable { mutableStateOf<Int?>(null) }
-    val scheduleToEdit = remember(scheduleToEditId, schedules) {
-        scheduleToEditId?.let { id -> schedules.find { it.id == id } }
+    val editorFlow = remember(scheduleToEditId, viewModel) {
+        scheduleToEditId?.let(viewModel::observeSchedule)
+            ?: kotlinx.coroutines.flow.flowOf(FocusViewModel.ScheduleRecord(true))
     }
+    val editorRecord by key(scheduleToEditId) { editorFlow.collectAsState(initial = FocusViewModel.ScheduleRecord()) }
+    val scheduleToEdit = editorRecord.schedule
+    val saving by viewModel.savingSchedule.collectAsStateWithLifecycle()
 
     val routineTour = rememberSpotlightTour(AppTours.routines)
     SpotlightTour(routineTour, enabled = !showCreateScreen && scheduleToEditId == null)
     if (showCreateScreen || scheduleToEditId != null) {
-        CreateRoutineScreen(
-            scheduleToEdit = scheduleToEdit,
-            onBack = { 
-                showCreateScreen = false
-                scheduleToEditId = null
+        if (scheduleToEditId == null || editorRecord.loaded) CreateRoutineScreen(
+            scheduleToEdit = scheduleToEdit ?: scheduleToEditId?.let {
+                com.focusbyrj.app.data.FocusSchedule(id = it, name = "", startHour = 9, startMinute = 0, endHour = 17, endMinute = 0, daysOfWeek = "2,3,4,5,6")
             },
-            onSave = { name, startH, startM, endH, endM, days, mode, apps, restrictionMode, timeLimitMinutes, clickLimitCount ->
-                if (scheduleToEdit != null) {
-                    viewModel.updateSchedule(scheduleToEdit.copy(
-                        name = name, startHour = startH, startMinute = startM,
-                        endHour = endH, endMinute = endM, daysOfWeek = days,
-                        mode = mode, appsToBlock = apps,
-                        restrictionMode = restrictionMode,
-                        timeLimitMinutes = timeLimitMinutes,
-                        clickLimitCount = clickLimitCount
-                    ))
-                } else {
-                    viewModel.addSchedule(name, startH, startM, endH, endM, days, mode, apps, restrictionMode, timeLimitMinutes, clickLimitCount)
+            recordMissing = scheduleToEditId != null && scheduleToEdit == null,
+            saving = saving,
+            onBack = { if (!saving) { showCreateScreen = false; scheduleToEditId = null } },
+            onSave = { schedule, expected, stored ->
+                viewModel.saveSchedule(schedule, expected) {
+                    stored(); showCreateScreen = false; scheduleToEditId = null
                 }
-                showCreateScreen = false
-                scheduleToEditId = null
             }
         )
     } else {
@@ -132,7 +128,7 @@ fun SchedulesScreen(viewModel: FocusViewModel) {
                         ) { schedule ->
                             RoutineCard(
                                 schedule = schedule, 
-                                onToggle = { isChecked -> viewModel.updateSchedule(schedule.copy(isEnabled = isChecked)) },
+                                onToggle = { isChecked -> viewModel.updateSchedule(schedule.copy(isEnabled = isChecked), schedule) },
                                 onEdit = { scheduleToEditId = schedule.id },
                                 onDelete = { viewModel.deleteSchedule(schedule) }
                             )
@@ -328,55 +324,72 @@ fun RoutineCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateRoutineScreen(
     scheduleToEdit: com.focusbyrj.app.data.FocusSchedule? = null,
     onBack: () -> Unit,
-    onSave: (String, Int, Int, Int, Int, String, String, String, String, Int, Int) -> Unit
+    onSave: (com.focusbyrj.app.data.FocusSchedule, com.focusbyrj.app.data.FocusSchedule?, () -> Unit) -> Unit,
+    recordMissing: Boolean = false,
+    saving: Boolean = false
 ) {
+    var reload by remember(scheduleToEdit?.id) { mutableIntStateOf(0) }
+    key(scheduleToEdit?.id, reload) {
+        RoutineEditor(scheduleToEdit, onBack, onSave, recordMissing, saving) { reload++ }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RoutineEditor(
+    liveSchedule: com.focusbyrj.app.data.FocusSchedule?,
+    onBack: () -> Unit,
+    onSave: (com.focusbyrj.app.data.FocusSchedule, com.focusbyrj.app.data.FocusSchedule?, () -> Unit) -> Unit,
+    recordMissing: Boolean,
+    saving: Boolean,
+    onReload: () -> Unit
+) {
+    val editorList = rememberLazyListState()
+    val editorScope = rememberCoroutineScope()
     val context = LocalContext.current
     val pm = context.packageManager
-    var name by remember(scheduleToEdit) { mutableStateOf(scheduleToEdit?.name ?: "Deep Focus") }
-    var startHour by remember(scheduleToEdit) { mutableStateOf(scheduleToEdit?.startHour ?: 9) }
-    var startMinute by remember(scheduleToEdit) { mutableStateOf(scheduleToEdit?.startMinute ?: 0) }
-    var endHour by remember(scheduleToEdit) { mutableStateOf(scheduleToEdit?.endHour ?: 17) }
-    var endMinute by remember(scheduleToEdit) { mutableStateOf(scheduleToEdit?.endMinute ?: 0) }
-    var selectedDays by remember(scheduleToEdit) { 
+    val draftStore = com.focusbyrj.app.ui.components.rememberEditorDraft("routine:${liveSchedule?.id ?: 0}")
+    val restored = remember(draftStore) { draftStore.read() }
+    val scheduleToEdit = remember(draftStore) {
+        restored.optJSONObject("original")?.let { runCatching { com.focusbyrj.app.data.ScheduleJson.decode(it) }.getOrNull() } ?: liveSchedule
+    }
+    val fields = remember(draftStore) {
+        restored.optJSONObject("fields")?.let { runCatching { com.focusbyrj.app.data.ScheduleJson.decode(it) }.getOrNull() } ?: scheduleToEdit
+    }
+    val conflict = recordMissing || (scheduleToEdit != null && scheduleToEdit != liveSchedule)
+    var saveCopy by remember { mutableStateOf(false) }
+    val back = { if (!saving) onBack() }
+    androidx.activity.compose.BackHandler(onBack = back)
+    var name by remember(fields) { mutableStateOf(fields?.name ?: "Deep Focus") }
+    var startHour by remember(fields) { mutableStateOf(fields?.startHour ?: 9) }
+    var startMinute by remember(fields) { mutableStateOf(fields?.startMinute ?: 0) }
+    var endHour by remember(fields) { mutableStateOf(fields?.endHour ?: 17) }
+    var endMinute by remember(fields) { mutableStateOf(fields?.endMinute ?: 0) }
+    var selectedDays by remember(fields) {
         mutableStateOf(
-            scheduleToEdit?.daysOfWeek?.split(",")?.mapNotNull { it.toIntOrNull() }?.toSet() ?: setOf(2,3,4,5,6)
+            fields?.daysOfWeek?.split(",")?.mapNotNull { it.trim().toIntOrNull() }?.toSet() ?: setOf(2,3,4,5,6)
         ) 
     } 
-    var restrictionMode by remember(scheduleToEdit) { mutableStateOf(scheduleToEdit?.restrictionMode ?: "SIMPLE") }
-    var timeLimitMinutes by remember(scheduleToEdit) { mutableStateOf(if (scheduleToEdit?.timeLimitMinutes != null && scheduleToEdit.timeLimitMinutes > 0) scheduleToEdit.timeLimitMinutes else 15) }
-    var clickLimitCount by remember(scheduleToEdit) { mutableStateOf(if (scheduleToEdit?.clickLimitCount != null && scheduleToEdit.clickLimitCount > 0) scheduleToEdit.clickLimitCount.coerceIn(1, 20) else 5) }
-    var mode by remember(scheduleToEdit) { mutableStateOf(scheduleToEdit?.mode ?: "HARD") }
-    var appModes by remember(scheduleToEdit) { 
-        val initialMap = scheduleToEdit?.appsToBlock?.split(",")?.mapNotNull { 
+    var restrictionMode by remember(fields) { mutableStateOf(fields?.restrictionMode ?: "SIMPLE") }
+    var timeLimitMinutes by remember(fields) { mutableStateOf(if (fields?.timeLimitMinutes != null && fields.timeLimitMinutes > 0) fields.timeLimitMinutes else 15) }
+    var clickLimitCount by remember(fields) { mutableStateOf(if (fields?.clickLimitCount != null && fields.clickLimitCount > 0) fields.clickLimitCount.coerceIn(1, 20) else 5) }
+    var mode by remember(fields) { mutableStateOf(fields?.mode ?: "HARD") }
+    var appModes by remember(fields) {
+        val initialMap = fields?.appsToBlock?.split(",")?.mapNotNull {
             val parts = it.split("|")
             if (parts.size > 1) parts[0].trim() to parts[1].trim() else null
         }?.toMap() ?: emptyMap<String, String>()
         
-        val validMap = initialMap.filter { (pkg, _) ->
-            try {
-                pm.getApplicationInfo(pkg, 0)
-                true
-            } catch (e: Exception) {
-                false
-            }
-        }
+        val validMap = initialMap
         mutableStateOf(validMap)
     }
-    var selectedApps by remember(scheduleToEdit) { 
-        val initialPkgs = scheduleToEdit?.appsToBlock?.split(",")?.map { it.split("|")[0].trim() }?.filter { it.isNotBlank() } ?: emptyList()
-        val validPkgs = initialPkgs.filter { pkg ->
-            try {
-                pm.getApplicationInfo(pkg, 0)
-                true
-            } catch (e: Exception) {
-                false
-            }
-        }.toSet()
+    var selectedApps by remember(fields) {
+        val initialPkgs = fields?.appsToBlock?.split(",")?.map { it.split("|")[0].trim() }?.filter { it.isNotBlank() } ?: emptyList()
+        val validPkgs = initialPkgs.toSet()
         mutableStateOf(validPkgs)
     }
 
@@ -394,6 +407,31 @@ fun CreateRoutineScreen(
         }
     }
 
+    val selectedModes = selectedApps.associateWith { appModes[it] ?: mode }
+    val originalModes = scheduleToEdit?.let { original ->
+        original.appsToBlock.split(',').filter { it.isNotBlank() }.associate { entry ->
+            val parts = entry.trim().split('|')
+            parts[0].trim() to (parts.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() } ?: original.mode)
+        }
+    }
+    val originalDays = scheduleToEdit?.daysOfWeek?.split(',')?.mapNotNull { it.trim().toIntOrNull() }?.toSet()
+    val savedApps = if (scheduleToEdit != null && originalModes == selectedModes) scheduleToEdit.appsToBlock
+        else selectedApps.sorted().joinToString(",") { "$it|${selectedModes.getValue(it)}" }
+    val savedDays = if (scheduleToEdit != null && originalDays == selectedDays) scheduleToEdit.daysOfWeek
+        else selectedDays.sorted().joinToString(",")
+    val form = com.focusbyrj.app.data.FocusSchedule(
+        id = scheduleToEdit?.id ?: 0, name = name, startHour = startHour, startMinute = startMinute,
+        endHour = endHour, endMinute = endMinute, daysOfWeek = savedDays,
+        mode = mode, appsToBlock = savedApps,
+        restrictionMode = restrictionMode, timeLimitMinutes = timeLimitMinutes, clickLimitCount = clickLimitCount,
+        isEnabled = scheduleToEdit?.isEnabled ?: true
+    )
+    com.focusbyrj.app.ui.components.PersistEditorDraft(draftStore, org.json.JSONObject()
+        .put("original", scheduleToEdit?.let(com.focusbyrj.app.data.ScheduleJson::encode) ?: org.json.JSONObject.NULL)
+        .put("fields", com.focusbyrj.app.data.ScheduleJson.encode(form)))
+    if (saving) androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
+        Surface(shape = RoundedCornerShape(24.dp)) { Text("Saving routine…", Modifier.padding(24.dp)) }
+    }
     if (showAppSelector) {
         MultiAppSelectorScreen(
             selectedApps = selectedApps,
@@ -415,7 +453,7 @@ fun CreateRoutineScreen(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = back) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
             }
             Spacer(modifier = Modifier.width(16.dp))
@@ -427,9 +465,19 @@ fun CreateRoutineScreen(
         }
 
         LazyColumn(
+            state = editorList,
             modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
             contentPadding = PaddingValues(bottom = 100.dp)
         ) {
+            item {
+                if (scheduleToEdit?.isActiveAt() == true && !saveCopy) Text("Changes cancel this run’s completion reward.", style = MaterialTheme.typography.bodySmall)
+                if (restored.length() > 0) com.focusbyrj.app.ui.components.DraftRestoredBanner(enabled = !saving, onDiscard = { draftStore.discard(); onReload() })
+                if (conflict) {
+                    Text(if (recordMissing) "This routine was deleted. Your draft is kept." else "This routine changed elsewhere. Your draft is kept.", color = MaterialTheme.colorScheme.error)
+                    if (!recordMissing) TextButton(enabled = !saving, onClick = { draftStore.discard(); onReload() }) { Text("Reload saved routine") }
+                    TextButton(enabled = !saving, onClick = { saveCopy = true }) { Text("Keep as a new routine") }
+                }
+            }
             item {
                 OutlinedTextField(
                     value = name,
@@ -556,33 +604,17 @@ fun CreateRoutineScreen(
                     )
                 }
                 Spacer(modifier = Modifier.height(48.dp))
+                if (conflict && !saveCopy) TextButton(onClick = {
+                    editorScope.launch { editorList.animateScrollToItem(0) }
+                }) { Text("Review changed routine") }
                 Button(
                     onClick = {
-                        val daysString = selectedDays.sorted().joinToString(",")
-                        val validSelectedApps = selectedApps.filter { pkg ->
-                            try {
-                                context.packageManager.getApplicationInfo(pkg, 0)
-                                true
-                            } catch (e: Exception) {
-                                false
-                            }
-                        }
-                        val appsString = validSelectedApps.joinToString(",") { pkg ->
-                            "$pkg|${appModes[pkg] ?: mode}"
-                        }
-                        onSave(
-                            name,
-                            startHour,
-                            startMinute,
-                            endHour,
-                            endMinute,
-                            daysString,
-                            mode,
-                            appsString,
-                            restrictionMode,
-                            if (restrictionMode == "TIME_LIMIT") timeLimitMinutes else 0,
-                            if (restrictionMode == "CLICK_LIMIT") clickLimitCount else 0
+                        val saved = form.copy(
+                            id = if (saveCopy) 0 else form.id,
+                            timeLimitMinutes = if (restrictionMode == "TIME_LIMIT") timeLimitMinutes else 0,
+                            clickLimitCount = if (restrictionMode == "CLICK_LIMIT") clickLimitCount else 0
                         )
+                        onSave(saved, if (saveCopy) null else scheduleToEdit, draftStore::discard)
                     },
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -590,9 +622,9 @@ fun CreateRoutineScreen(
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     shape = RoundedCornerShape(28.dp),
-                    enabled = name.isNotBlank() && selectedDays.isNotEmpty() && ((startHour * 60 + startMinute) != (endHour * 60 + endMinute))
+                    enabled = !saving && (!conflict || saveCopy) && name.isNotBlank() && selectedDays.isNotEmpty() && ((startHour * 60 + startMinute) != (endHour * 60 + endMinute))
                 ) {
-                    Text("Save Routine", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Text(if (saving) "Saving…" else if (saveCopy) "Save copy" else "Save Routine", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 }
             }
         }

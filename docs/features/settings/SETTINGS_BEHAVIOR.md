@@ -42,12 +42,56 @@ Settings and Notes share vault-management safeguards. PIN change/disable and phr
 viewing require authentication; sensitive entry clears on background. Optional
 PIN-free archiving still requires authorization for viewing/unarchiving. Disabling
 general screenshot protection must not clear a stronger sensitive-window flag.
+Sensitive-window protection remains active while a private screen is visible,
+including its exit animation.
 Live date preview and landscape hiding use the existing preference semantics.
 
 Widget configuration distinguishes Tasks, Notes and Exam instances; ID 0 is the
 explicit default style. Avatar, launcher, accent, blocker and per-widget appearance
 are separate scopes. Keep the compact design language, actual artwork, keyboard/
 Back behavior, scroll state and large-text access when reorganizing these pages.
+
+## Launch and editor entry points
+
+The dock and launch-screen picker share Focus, Tasks, Notes, Time and Account.
+The old blank-tab route redirects to Time; unknown external destinations fall
+back to Focus. Shortcut extras are consumed once, after startup recovery allows
+normal entry, and navigation waits until its graph is ready. Habit and task
+creation requests are scoped to their own screen and consumed when shown.
+
+A note shortcut or profile pin saves the current editor before switching. Profile
+links retain their return destination when the requested note is already open. A new draft can close safely before its autosave debounce has assigned an ID. A failed
+save retains the draft; an active recording is preserved. Voice shortcuts use the
+Notes microphone-permission flow and do not replace an open editor/recording.
+Delayed dock picker/speech/drawing results cannot replace a newer editor. A delayed
+microphone permission grant is checked against its requesting editor and storage
+generation. Deleted notes cannot reopen from a stale presentation cache. During maintenance,
+shortcuts ask the user to retry after the operation; tours wait for recovery notices.
+Task and routine editors retain an encrypted original row alongside their draft.
+Live database updates do not reset typed text. Explicit template copies have separate encrypted sessions, so choosing a template does not replace an unrelated new-task draft. A changed or deleted record requires
+an explicit reload or save-as-copy choice, and checked updates cannot recreate a
+deleted record. Forms close only after the database confirms a save. Save is guarded
+before the coroutine starts; reminders/widget failures report that data was saved.
+Restored task, routine, habit, quick-add and chat drafts have a discard control. Existing current-format task drafts are handed over to stable identifiers only after the new encrypted write verifies. A temporary Soft unlock never overrides an applicable Hard rule.
+
+Task Undo belongs to the Activity's ViewModel, with a separate four-second deadline
+for each deletion. Tab changes and rotation do not commit it early. A process death
+before the deferred delete conservatively leaves the original task in storage.
+Snapshot replacement cancels an earlier queued deletion, even when the restored
+task has the same ID and timestamp. Backup reads retain the original deadline.
+Subtask taps use transactions against the latest stored task, independently of the
+editor save guard; rapid taps do not overwrite other steps or task fields.
+
+Habit log rewards and goal bonuses have durable receipts. Undoing and repeating a
+log does not earn it twice; manually entered historical counts do not earn extra
+credit. Pending rewards survive interruption and retry safely after storage failures. Delivered habit steps compact to one earned high-water mark per day; history is retained without a receipt for every past tap. Routine rewards depend on a recorded
+run reaching its scheduled end, independent of notification settings. Editing,
+disabling or deleting a running routine cancels that run's reward; changing it back
+does not reset its same-day receipt. Changes after the recorded end preserve an already-earned reward even if the background completion check ran late. The database upgrade preserves balances and
+settles existing log days because earlier releases did not track reward receipts.
+
+Habit editors close and discard their saved draft only after storage succeeds;
+failed saves remain retryable, and queued duplicate save taps are ignored.
 
 ## First-use tours
 
@@ -60,7 +104,8 @@ Guides cover navigation, tasks and natural-language dates, app blocking, notes a
 Archive, profile rewards, habits, routines, and backup choices. Highlights follow
 measured controls, account for their window offset, and avoid system insets. Short
 cards can scroll with large text. A missing or fully clipped target is never highlighted
-at a guessed position. Guides pause for the keyboard, backgrounding, edited or restored drafts,
+at a guessed position. Explicit replay and Next scroll registered targets into view
+when necessary; an off-screen step is not silently counted as completed. Guides pause for the keyboard, backgrounding, edited or restored drafts,
 authorization dialogs and backup operations; they do not forward taps to controls.
 Tour state is kept in separate local preferences, outside the portable backup
 allowlist. Tours never fill forms, save records, claim rewards, request permissions,

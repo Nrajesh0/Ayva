@@ -15,12 +15,24 @@ internal object MaintenanceGate {
     private var waiting = false
     private val _busy = kotlinx.coroutines.flow.MutableStateFlow(false)
     val busy: kotlinx.coroutines.flow.StateFlow<Boolean> = _busy
-    val isBusy: Boolean get() = _busy.value
-    private var writers = 0
-    @Volatile var recoveryRequired = false
-        private set
+    val isBusy: Boolean
+        get() = _busy.value
 
-    internal val requiresDurableCommit: Boolean get() = owner.get() == true
+    private var writers = 0
+    private val _recoveryNeeded = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val recoveryNeeded: kotlinx.coroutines.flow.StateFlow<Boolean> = _recoveryNeeded
+    val recoveryRequired: Boolean
+        get() = _recoveryNeeded.value
+
+    private val _progress = kotlinx.coroutines.flow.MutableStateFlow("Protecting your data…")
+    val progress: kotlinx.coroutines.flow.StateFlow<String> = _progress
+
+    fun reportProgress(message: String) {
+        if (owner.get() == true && isBusy) _progress.value = message
+    }
+
+    internal val requiresDurableCommit: Boolean
+        get() = owner.get() == true
 
     fun inheritedContext() = owner.asContextElement(owner.get() == true)
 
@@ -28,36 +40,94 @@ internal object MaintenanceGate {
         if (owner.get() == true) return
         synchronized(monitor) {
             if (depth.get() == 0) {
-                if (waiting) throw android.database.sqlite.SQLiteException("Data maintenance is in progress. Your change was not applied; retry when it finishes.")
-                check(!recoveryRequired) { "Data recovery is required before saving. Restart Run to recover safely." }
+                if (waiting)
+                    throw android.database.sqlite.SQLiteException(
+                        "Data maintenance is in progress. Your change was not applied; retry when it finishes."
+                    )
+                check(!recoveryRequired) {
+                    "Data recovery is required before saving. Restart Run to recover safely."
+                }
                 writers++
             }
             depth.set(depth.get() + 1)
         }
     }
+
     fun exit() {
         if (owner.get() == true) return
         synchronized(monitor) {
             val next = depth.get() - 1
             check(next >= 0)
             depth.set(next)
-            if (next == 0) { writers--; monitor.notifyAll() }
-        }
-    }
-    fun <T> write(block: () -> T): T { enter(); try { return block() } finally { exit() } }
-    fun requireRecovery() { recoveryRequired = true }
-
-    suspend fun <T> exclusively(block: suspend () -> T): T = exclusive.withLock {
-        withContext(Dispatchers.IO + owner.asContextElement(true)) {
-            synchronized(monitor) {
-                waiting = true
-                _busy.value = true
-                try { while (writers > 0) monitor.wait() }
-                catch (error: Throwable) { waiting = false; _busy.value = false; monitor.notifyAll(); throw error }
+            if (next == 0) {
+                writers--
+                monitor.notifyAll()
             }
-            try { block() }
-            finally { synchronized(monitor) { waiting = false; _busy.value = false; monitor.notifyAll() } }
         }
     }
-    fun recovered() { recoveryRequired = false }
+
+    fun <T> write(block: () -> T): T {
+        enter()
+        try {
+            return block()
+        } finally {
+            exit()
+        }
+    }
+
+    fun requireRecovery() {
+        _recoveryNeeded.value = true
+    }
+
+    /** Admit a multi-store write once; an exclusive snapshot waits for the whole unit. */
+    suspend fun <T> shared(block: suspend () -> T): T =
+        withContext(Dispatchers.IO) {
+            if (owner.get() == true) return@withContext block()
+            synchronized(monitor) {
+                check(!waiting && !recoveryRequired) {
+                    "Data maintenance is in progress. Try again when it finishes."
+                }
+                writers++
+            }
+            try {
+                withContext(owner.asContextElement(true)) { block() }
+            } finally {
+                synchronized(monitor) {
+                    writers--
+                    monitor.notifyAll()
+                }
+            }
+        }
+
+    suspend fun <T> exclusively(block: suspend () -> T): T =
+        exclusive.withLock {
+            withContext(Dispatchers.IO + owner.asContextElement(true)) {
+                synchronized(monitor) {
+                    waiting = true
+                    _progress.value = "Protecting your data…"
+                    _busy.value = true
+                    try {
+                        while (writers > 0) monitor.wait()
+                    } catch (error: Throwable) {
+                        waiting = false
+                        _busy.value = false
+                        monitor.notifyAll()
+                        throw error
+                    }
+                }
+                try {
+                    block()
+                } finally {
+                    synchronized(monitor) {
+                        waiting = false
+                        _busy.value = false
+                        monitor.notifyAll()
+                    }
+                }
+            }
+        }
+
+    fun recovered() {
+        _recoveryNeeded.value = false
+    }
 }

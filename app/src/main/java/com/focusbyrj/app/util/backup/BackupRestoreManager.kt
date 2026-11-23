@@ -69,7 +69,7 @@ object BackupRestoreManager {
     class RequiresVaultSetupException(message: String) : IllegalStateException(message)
 
     private const val TAG = "BackupRestoreManager"
-    private const val BACKUP_VERSION = 2
+    private const val BACKUP_VERSION = 3
 
     private val PREF_FILES = listOf(
         "focus_completed_tasks_history",
@@ -202,6 +202,7 @@ object BackupRestoreManager {
             val app = context.applicationContext as FocusApplication
             BackupProgress.report("Reading saved data")
             val focusDb = app.database
+            com.focusbyrj.app.util.RewardDelivery.reconcileRoutines(app, startNewRuns = false)
             val noteDb = NoteDatabase.getInstance(app)
             val drillDb = DrillDatabase.getDatabase(app)
             val vocabDb = app.vocabDatabase
@@ -322,6 +323,7 @@ object BackupRestoreManager {
                     logArray.put(BackupRecordCodec.habitLog(l))
                 }
                 put("habitLogs", logArray)
+                put("earnedRewards", RewardArchive.encode(focusDb.earnedRewardDao().all()))
 
                 // Drill Sessions
                 val drillArray = JSONArray()
@@ -364,6 +366,7 @@ object BackupRestoreManager {
                     val pObj = JSONObject()
                     val tObj = JSONObject()
                     map.forEach { (k, v) ->
+                        if (prefName in setOf("focus_economy_prefs", "focus_stats_prefs") && k in setOf("reward_delivery_id", "reward_delivery_ids")) return@forEach
                         when (v) {
                             is Boolean -> {
                                 pObj.put(k, v)
@@ -726,6 +729,7 @@ object BackupRestoreManager {
         val stagingDir = prepared.stagingDir
         val mediaDestinations = prepared.destinations
         var preparedMedia: List<Pair<File, File>> = emptyList()
+        val restoredScheduleIds = mutableMapOf<Long, Long>()
         val restoredHabitIds = mutableMapOf<Long, Long>()
         val restoredNoteIds = mutableMapOf<Long, Long>()
         val restoreWarnings = mutableListOf<String>()
@@ -736,6 +740,7 @@ object BackupRestoreManager {
         var restoreVaultKey = authorizedVaultKey?.copyOf()
         try {
             val focusDb = app.database
+            com.focusbyrj.app.util.RewardDelivery.drain(app)
             val noteDb = NoteDatabase.getInstance(app)
             val drillDb = DrillDatabase.getDatabase(app)
             val vocabDb = app.vocabDatabase
@@ -897,7 +902,7 @@ object BackupRestoreManager {
                         isEnabled = obj.optBoolean("isEnabled", false)
                     )
                     if (!obj.has("isEnabled")) restoreWarnings += "Older schedules were restored paused. Review them in Routines."
-                    focusDb.scheduleDao().insertSchedule(schedule)
+                    restoredScheduleIds[obj.optLong("id", 0)] = focusDb.scheduleDao().insertSchedule(schedule)
                 }
 
                 // 7. Restore Tasks
@@ -979,6 +984,7 @@ object BackupRestoreManager {
                     )
                     focusDb.habitDao().insertOrUpdateLog(log)
                 }
+                RewardArchive.restore(focusDb, rootJson.optJSONArray("earnedRewards"), cleanRestore, restoredHabitIds, restoredScheduleIds)
             }
 
             RestoreJournal.checkpoint("focus")
@@ -1167,6 +1173,7 @@ object BackupRestoreManager {
                     val innerKeys = pObj.keys()
                     while (innerKeys.hasNext()) {
                         val k = innerKeys.next()
+                        if (prefName in setOf("focus_economy_prefs", "focus_stats_prefs") && k in setOf("reward_delivery_id", "reward_delivery_ids")) continue
                         val v = pObj.get(k)
                         val explicitType = if (tObj?.has(k) == true) tObj.getString(k) else null
 
@@ -1337,6 +1344,7 @@ object BackupRestoreManager {
     }
 
     private fun validateRestoreManifest(root: JSONObject) {
+        if (root.has("earnedRewards")) RewardArchive.decode(root.getJSONArray("earnedRewards"))
         if (root.has("vocabulary")) VocabularyArchive.validate(root.getJSONObject("vocabulary"))
         require(root.optInt("version", 1) in 1..BACKUP_VERSION) { "Unsupported backup manifest version" }
         val arrays = listOf("notes", "restrictions", "schedules", "tasks", "habits", "habitLogs",

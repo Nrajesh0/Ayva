@@ -62,7 +62,8 @@ import java.util.Locale
 fun HabitsScreen(
     habitViewModel: HabitViewModel,
     onBack: (() -> Unit)? = null,
-    initialOpenCreate: Boolean = false
+    initialOpenCreate: Boolean = false,
+    onOpenCreateHandled: (() -> Unit)? = null
 ) {
     val habitsWithProgress by habitViewModel.habitsWithProgress.collectAsStateWithLifecycle()
     val economyProfile by FocusEconomyManager.profileFlow.collectAsStateWithLifecycle()
@@ -71,6 +72,16 @@ fun HabitsScreen(
 
     var showEditorSheet by remember { mutableStateOf(initialOpenCreate) }
     var editingHabit by remember { mutableStateOf<Habit?>(null) }
+    var savingHabit by remember { mutableStateOf(false) }
+    LaunchedEffect(initialOpenCreate) {
+        if (initialOpenCreate) {
+            if (!showEditorSheet) {
+                editingHabit = null
+                showEditorSheet = true
+            }
+            onOpenCreateHandled?.invoke()
+        }
+    }
     var habitToDelete by remember { mutableStateOf<Habit?>(null) }
     var showFreezeDialog by remember { mutableStateOf(false) }
 
@@ -238,18 +249,32 @@ fun HabitsScreen(
         HabitEditorBottomSheet(
             habit = editingHabit,
             onDismiss = {
-                showEditorSheet = false
-                editingHabit = null
-            },
-            onSave = { habitToSave, stored ->
-                if (editingHabit == null) {
-                    habitViewModel.addHabit(habitToSave, stored)
-                } else {
-                    habitViewModel.updateHabit(habitToSave, stored)
+                if (!savingHabit) {
+                    showEditorSheet = false
+                    editingHabit = null
                 }
-                showEditorSheet = false
-                editingHabit = null
+            },
+            onSave = save@{ habitToSave, stored ->
+                if (savingHabit) return@save
+                savingHabit = true
+                val saved = {
+                    stored()
+                    showEditorSheet = false
+                    editingHabit = null
+                }
+                val job = if (editingHabit == null) habitViewModel.addHabit(habitToSave, saved)
+                    else habitViewModel.updateHabit(habitToSave, saved)
+                job.invokeOnCompletion { coroutineScope.launch { savingHabit = false } }
             }
+        )
+    }
+
+    if (savingHabit) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Saving habit") },
+            text = { LinearProgressIndicator(Modifier.fillMaxWidth()) },
+            confirmButton = {}
         )
     }
 
@@ -993,7 +1018,7 @@ fun HabitCard(
                         ) {
                             if (item.completedToday > 0) {
                                 DropdownMenuItem(
-                                    text = { Text("Undo 1 Log (-1)") },
+                                    text = { Text("Undo 1 log (rewards stay)") },
                                     enabled = !habit.isPaused,
                                     onClick = {
                                         showMenu = false
@@ -1180,12 +1205,19 @@ fun EmptyHabitsCard(onAddClick: () -> Unit) {
     }
 }
 
+@Composable
+fun HabitEditorBottomSheet(habit: Habit?, onDismiss: () -> Unit, onSave: (Habit, () -> Unit) -> Unit) {
+    var reset by remember { mutableIntStateOf(0) }
+    key(reset) { HabitEditorBottomSheetContent(habit, onDismiss, onSave, onReset = { reset++ }) }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun HabitEditorBottomSheet(
+private fun HabitEditorBottomSheetContent(
     habit: Habit?,
     onDismiss: () -> Unit,
-    onSave: (Habit, () -> Unit) -> Unit
+    onSave: (Habit, () -> Unit) -> Unit,
+    onReset: () -> Unit
 ) {
     val context = LocalContext.current
     val draftStore = com.focusbyrj.app.ui.components.rememberEditorDraft("habit:${habit?.id ?: 0}:${habit?.hashCode() ?: 0}")
@@ -1348,6 +1380,7 @@ fun HabitEditorBottomSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            if (restored.length() > 0) com.focusbyrj.app.ui.components.DraftRestoredBanner(onDiscard = { draftStore.discard(); onReset() })
             // Title Input Field
             OutlinedTextField(
                 value = title,

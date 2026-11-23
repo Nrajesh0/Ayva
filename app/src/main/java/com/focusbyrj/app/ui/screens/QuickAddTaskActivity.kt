@@ -53,6 +53,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -111,11 +113,18 @@ class QuickAddTaskActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun QuickAddTaskOverlay(onDismiss: () -> Unit, onSave: (Task, () -> Unit) -> Unit) {
+    var reset by remember { mutableIntStateOf(0) }
+    key(reset) { QuickAddTaskOverlayContent(onDismiss, onSave, onReset = { reset++ }) }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QuickAddTaskOverlay(
+private fun QuickAddTaskOverlayContent(
     onDismiss: () -> Unit,
-    onSave: (Task, () -> Unit) -> Unit
+    onSave: (Task, () -> Unit) -> Unit,
+    onReset: () -> Unit
 ) {
     val draftStore = com.focusbyrj.app.ui.components.rememberEditorDraft("quick-task")
     val restored = remember(draftStore) { draftStore.read() }
@@ -230,6 +239,9 @@ fun QuickAddTaskOverlay(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Title Input Field
+                if (restored.length() > 0) {
+                    com.focusbyrj.app.ui.components.DraftRestoredBanner(onDiscard = { draftStore.discard(); onReset() })
+                }
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },

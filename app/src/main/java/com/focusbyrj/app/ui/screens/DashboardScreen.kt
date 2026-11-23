@@ -332,8 +332,8 @@ fun NormalDashboard(
                 items(routineApps, key = { it.packageName }) { app ->
                     SwipeableAppRestrictionCard(
                         app = app,
-                        onToggle = { onToggle(app) },
-                        onEdit = { editingApp = app },
+                        onToggle = { onOpenRoutines() },
+                        onEdit = { onOpenRoutines() },
                         onDelete = { onDelete(app) },
                         selectionMode = boundaryState.selecting,
                         selected = app.packageName in boundaryState.selected,
@@ -1742,10 +1742,12 @@ fun AppRestrictionCard(app: AppRestriction, onToggle: () -> Unit, selectionMode:
                         }
                     }
                 }
+                if (app.ruleSummary.isNotBlank()) Text(app.ruleSummary,
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            
+
             Spacer(modifier = Modifier.width(16.dp))
-            
+
             if (selectionMode) Checkbox(checked = selected, onCheckedChange = { onToggle() }) else Switch(
                 checked = isLocked,
                 onCheckedChange = { onToggle() },

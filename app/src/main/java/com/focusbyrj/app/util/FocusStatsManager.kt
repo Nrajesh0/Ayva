@@ -114,6 +114,7 @@ object FocusStatsManager {
     private val _interceptionsFlow = MutableStateFlow(0)
     val interceptionsFlow: StateFlow<Int> = _interceptionsFlow.asStateFlow()
 
+    @Synchronized
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (!prefs.contains(KEY_INSTALL_TIME)) {
@@ -132,6 +133,7 @@ object FocusStatsManager {
         refreshStats(context)
     }
 
+    @Synchronized
     fun addInterception(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = getDailyInterceptionKey(Calendar.getInstance())
@@ -141,28 +143,71 @@ object FocusStatsManager {
         FocusEconomyManager.addResist()
     }
 
+    @Synchronized
     fun setHeatmapTheme(context: Context, theme: HeatmapTheme) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_HEATMAP_THEME, theme.id).apply()
         _themeFlow.value = theme
     }
 
+    @Synchronized
     fun addFocusSessionTime(context: Context, seconds: Long) {
         if (seconds <= 0) return
         addDailyActivity(context, seconds * 1000L, triggerFullRefresh = true)
     }
 
+    private const val RECEIPTS = "reward_delivery_ids"
+    private var receiptPersistenceFailed = false
+
+    private fun ensureReceiptDurable(prefs: android.content.SharedPreferences) {
+        if (!receiptPersistenceFailed) return
+        check(prefs.edit().putStringSet(RECEIPTS,
+            prefs.getStringSet(RECEIPTS, emptySet()).orEmpty().filterNot { it.startsWith("retry:") }.toSet() + "retry:${java.util.UUID.randomUUID()}").commit()) {
+            "Routine saved. Activity credit will retry when storage is available."
+        }
+        receiptPersistenceFailed = false
+    }
+
+    @Synchronized
+    internal fun creditRoutineReceipt(context: Context, id: String, endAt: Long) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ensureReceiptDurable(prefs)
+        val acknowledged = prefs.getStringSet(RECEIPTS, emptySet()).orEmpty()
+        if (id in acknowledged) return
+        val key = getDailyKey(Calendar.getInstance().apply { timeInMillis = endAt })
+        if (!prefs.edit().putLong(key, Math.addExact(prefs.getSafeLong(key, 0L), 15L * 60 * 1000))
+                .putStringSet(RECEIPTS, acknowledged + id).commit()) {
+            receiptPersistenceFailed = true
+            error("Routine saved. Activity credit will retry when storage is available.")
+        }
+    }
+
+    @Synchronized
+    internal fun clearReceiptMarkers(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        ensureReceiptDurable(prefs)
+        val refresh = prefs.contains(RECEIPTS)
+        if (refresh && !prefs.edit().remove(RECEIPTS).commit()) {
+            receiptPersistenceFailed = true
+            error("Activity saved. Pending activity credit will retry when storage is available.")
+        }
+        if (refresh) refreshStats(context)
+    }
+
+    @Synchronized
     fun addRoutineActivity(context: Context, minutes: Long = 15L) {
         if (minutes <= 0) return
         addDailyActivity(context, minutes * 60 * 1000L, triggerFullRefresh = false)
     }
 
+    @Synchronized
     fun addAppRestrictionActivity(context: Context, count: Int = 1) {
         if (count <= 0) return
         // Give 10 minutes of activity score per app restricted
         addDailyActivity(context, count * 10 * 60 * 1000L, triggerFullRefresh = true)
     }
 
+    @Synchronized
     private fun addDailyActivity(context: Context, deltaMs: Long, triggerFullRefresh: Boolean = true) {
         if (deltaMs <= 0) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -185,6 +230,7 @@ object FocusStatsManager {
         }
     }
 
+    @Synchronized
     fun refreshStats(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val installTime = prefs.getSafeLong(KEY_INSTALL_TIME, System.currentTimeMillis())

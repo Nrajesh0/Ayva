@@ -30,7 +30,7 @@ class LegacyUpgradeInvestigationTest {
 
     @Test fun historicalSchemasUpgradeWithoutLosingTasksHabitsOrBoundaries() {
         // Schema12 is the unchanged exported schema from release 2.0.0 (fe8da10).
-        for (version in 12..15) {
+        for (version in 12..16) {
             val path = "schemas/com.focusbyrj.app.data.FocusDatabase/$version.json"
             val fixture = listOf(File(path), File("app/$path")).first { it.exists() }
             val schema = JSONObject(fixture.readText()).getJSONObject("database")
@@ -84,11 +84,11 @@ class LegacyUpgradeInvestigationTest {
             repeat(2) {
                 val room = Room.databaseBuilder(context, FocusDatabase::class.java, name)
                     .addMigrations(FocusDatabase.MIGRATION_12_13, FocusDatabase.MIGRATION_13_14,
-                        FocusDatabase.MIGRATION_14_15, FocusDatabase.MIGRATION_15_16)
+                        FocusDatabase.MIGRATION_14_15, FocusDatabase.MIGRATION_15_16, FocusDatabase.MIGRATION_16_17)
                     .allowMainThreadQueries().build()
                 try {
                     val db = room.openHelper.writableDatabase // Executes migration and Room schema validation.
-                    assertEquals(16, db.version)
+                    assertEquals(17, db.version)
                     for (table in listOf("tasks", "habits", "habit_logs", "app_restrictions", "focus_schedules")) {
                         db.query("SELECT COUNT(*) FROM `$table`").use { c -> c.moveToFirst(); assertEquals("$version $table", 1, c.getInt(0)) }
                     }

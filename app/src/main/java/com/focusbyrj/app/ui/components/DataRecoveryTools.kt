@@ -155,11 +155,12 @@ internal object StorageInventory {
         entries = withContext(Dispatchers.IO) {
             File(context.filesDir, "editor_drafts").listFiles().orEmpty().filter { it.extension == "enc" }.sortedByDescending { it.lastModified() }.map { file ->
                 runCatching {
-                    require(file.length() <= 260_000)
+                    require(file.length() <= EditorDraftStore.MAX_ENCRYPTED_BYTES)
                     val j = org.json.JSONObject(EncryptedSnapshotFile.read(file))
-                    val title = j.optString("title").ifBlank { "Saved editor draft" }
-                    val parts = listOf("title", "details", "description", "text", "input", "draft", "newStepText").mapNotNull { key ->
-                        j.optString(key).takeIf { it.isNotBlank() }
+                    val form = j.optJSONObject("fields") ?: j
+                    val title = form.optString("title").ifBlank { form.optString("name") }.ifBlank { "Saved editor draft" }
+                    val parts = listOf("title", "name", "details", "description", "text", "input", "draft", "newStepText").mapNotNull { key ->
+                        form.optString(key).takeIf { it.isNotBlank() }
                     }.toMutableList()
                     if (j.has("subtasks")) com.focusbyrj.app.data.Subtask.listFromJson(j.getString("subtasks")).forEach { parts.add("• ${it.title}") }
                     title to parts.joinToString("\n\n").ifBlank { "This draft contains editor settings. Reopen its original editor to resume it." }

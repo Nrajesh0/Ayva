@@ -65,6 +65,16 @@ class SettingsOwnershipTest {
         assertEquals("todos", app.getSharedPreferences("focus_app_prefs", 0).getString("default_start_tab", null))
     }
 
+    @Test fun launchTabNamesMatchTheTabsUsersSeeAndAmbiguousRequestsNeedClarification() {
+        val spec = AssistantPreferences.specs.single { it.key == "default_start_tab" }
+        mapOf("Focus" to "dashboard", "Tasks" to "todos", "Notes" to "empty", "Screen Time" to "time", "Profile" to "account").forEach { (name, route) ->
+            assertEquals(route, AssistantPreferences.extractValue(spec, "set launch tab to $name"))
+        }
+        assertNull(AssistantPreferences.extractValue(spec, "set launch tab to Notes or Tasks"))
+        assertNull(AssistantPreferences.extractValue(spec, "set launch tab to notebook"))
+        assertEquals("empty", AssistantPreferences.validate(spec.key, spec.type, "empty"))
+    }
+
     @Test fun datePreviewSwitchHasAnEffectWithoutDisablingExplicitTaskParsing() {
         val text = "call Mum tomorrow at 6pm"
         assertNull(SettingsPreferenceRules.datePreview(text, false))

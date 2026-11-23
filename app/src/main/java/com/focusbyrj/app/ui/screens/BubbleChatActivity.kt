@@ -388,7 +388,8 @@ fun ChatInterface() {
         }
     }
 
-    val composerDraft = com.focusbyrj.app.ui.components.rememberEditorDraft("chat-composer")
+    var draftSession by remember { mutableIntStateOf(0) }
+    val composerDraft = com.focusbyrj.app.ui.components.rememberEditorDraft("chat-composer", draftSession)
     val restoredComposer = remember(composerDraft) { composerDraft.read() }
     var chatMode by remember { mutableStateOf(ChatModeStore.get(context)) }
     var inputTextFieldValue by remember { mutableStateOf(TextFieldValue(restoredComposer.optString("text"), TextRange(restoredComposer.optInt("cursor").coerceIn(0, restoredComposer.optString("text").length)))) }
@@ -405,6 +406,8 @@ fun ChatInterface() {
     }
 
     val inputText = inputTextFieldValue.text
+    var restoredDraftNotice by remember(composerDraft) { mutableStateOf(restoredComposer.optString("text").isNotBlank()) }
+    LaunchedEffect(inputText) { if (inputText.isBlank()) restoredDraftNotice = false }
     var isHighPriority by remember { mutableStateOf(restoredComposer.optBoolean("priority")) }
     var isPersistent by remember { mutableStateOf(restoredComposer.optBoolean("persistent")) }
 
@@ -1871,6 +1874,10 @@ fun ChatInterface() {
             }
             replyToMessage?.let { quoted -> AyvaReplyPreview(quoted, onCancel = { replyToMessage = null }) }
 
+            if (restoredDraftNotice) com.focusbyrj.app.ui.components.DraftRestoredBanner(onDiscard = {
+                composerDraft.discard(); inputTextFieldValue = TextFieldValue("")
+                isHighPriority = false; isPersistent = false; draftSession++
+            })
             // Bottom Composer Bar
             AnimatedVisibility(
                 visible = activeDrillSession == null,

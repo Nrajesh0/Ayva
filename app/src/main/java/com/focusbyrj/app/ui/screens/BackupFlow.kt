@@ -164,7 +164,15 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
             }
         )
     }
-    if (isPreparing || isExporting) {
+    val maintaining by com.focusbyrj.app.util.backup.MaintenanceGate.busy.collectAsState()
+    val recoveryNeeded by com.focusbyrj.app.util.backup.MaintenanceGate.recoveryNeeded.collectAsState()
+    LaunchedEffect(recoveryNeeded, restoreState.phase, restoreState.recoveryPending) {
+        if (!recoveryNeeded && restoreState.phase == RestorePhase.ERROR && restoreState.recoveryPending) {
+            pendingRestoreUri = null
+            restore.cancel()
+        }
+    }
+    if ((isPreparing || isExporting) && !maintaining) {
         AlertDialog(
             modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 24.dp),
             properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -269,7 +277,7 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
         if (restoreState.phase == RestorePhase.SUCCESS) onRestored()
     }
     when (restoreState.phase) {
-        RestorePhase.CHECKING, RestorePhase.APPLYING -> AlertDialog(
+        RestorePhase.CHECKING, RestorePhase.APPLYING -> if (!maintaining) AlertDialog(
             onDismissRequest = {},
             title = { Text(if (restoreState.phase == RestorePhase.CHECKING) "Checking backup" else "Restoring data") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -313,7 +321,7 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
         )
         RestorePhase.ERROR -> {
             var details by remember { mutableStateOf(false) }
-            AlertDialog(onDismissRequest = { restore.cancel() }, title = { Text("Restore not completed") },
+            if (!recoveryNeeded) AlertDialog(onDismissRequest = { restore.cancel() }, title = { Text("Restore not completed") },
                 text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(if (com.focusbyrj.app.util.backup.MaintenanceGate.recoveryRequired) "Restart the app to finish recovery. Keep your backup file."
                         else if (restoreState.needsBackupFile) "Choose the backup file again. Its folder may be unavailable."
@@ -346,13 +354,14 @@ internal fun RestoreReviewDialog(state: RestoreState, onConfirm: () -> Unit, onD
     AlertDialog(
             onDismissRequest = { onDismiss() },
             title = { Text(if (state.replace) "Restore this snapshot?" else "Import extra copies?") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Backup: ${backupTime(state.createdAt)}")
                 Text("${state.notes} notes · ${state.tasks} tasks")
-                Text(if (state.replace) "Current records and settings will match this backup. Later changes will be replaced."
+                state.scope.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                Text(if (state.replace) "Included records, attachments and settings will match this backup. Later changes in those categories will be replaced."
                     else "Adds copies of notes, tasks and habits. Existing chat and drill results are kept on ID conflicts. Backed-up settings are applied. Importing again adds more copies.")
-                Text("Current notes and tasks get a safety snapshot first.", style = MaterialTheme.typography.bodySmall)
-                Text("Running drills will end. Only completed drill results are restored.", style = MaterialTheme.typography.bodySmall)
+                Text("A recovery point is saved before applying changes. Your backup file is kept.", style = MaterialTheme.typography.bodySmall)
+                Text("Active drills end. Incomplete routine rewards are not resumed. Phone permissions, backup-folder access and device security keys stay on this phone.", style = MaterialTheme.typography.bodySmall)
             } },
             confirmButton = { Button(onClick = onConfirm) { Text(if (state.replace) "Restore backup" else "Import copies") } },
             dismissButton = { TextButton(onClick = { onDismiss() }) { Text("Cancel") } }

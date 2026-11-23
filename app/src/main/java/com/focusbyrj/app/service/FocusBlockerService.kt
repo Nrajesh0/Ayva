@@ -7,6 +7,7 @@
 
 package com.focusbyrj.app.service
 
+import kotlinx.coroutines.sync.withLock
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
@@ -264,16 +265,8 @@ class FocusBlockerService : Service() {
         }
     }
 
-    data class ActiveRoutineRule(
-        val scheduleName: String,
-        val restrictionMode: String,
-        val timeLimitMinutes: Int,
-        val clickLimitCount: Int,
-        val appMode: String
-    )
-
     @Volatile
-    private var activeRoutineRules = mapOf<String, ActiveRoutineRule>()
+    private var activeRoutineRules = mapOf<String, List<com.focusbyrj.app.data.BlockingRules.Rule>>()
 
     @Volatile
     private var cachedRestrictions = mapOf<String, AppRestriction>()
@@ -348,17 +341,14 @@ class FocusBlockerService : Service() {
         }
     }
 
-    private suspend fun checkRoutinesAndNotify() {
+    private val routineCheck = kotlinx.coroutines.sync.Mutex()
+    private suspend fun checkRoutinesAndNotify() = routineCheck.withLock {
         val prefs = applicationContext.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
         val notifyEnabled = prefs.getBoolean("routine_notifications", true)
         
         val schedules = db.scheduleDao().getAllSchedulesSync()
         val calendar = java.util.Calendar.getInstance()
-        val currentDay = calendar.get(java.util.Calendar.DAY_OF_WEEK)
-        val currentHour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
-        val currentMinute = calendar.get(java.util.Calendar.MINUTE)
-        val currentTotalMinutes = currentHour * 60 + currentMinute
-        
+        activeRoutineRules = com.focusbyrj.app.data.BlockingRules.routines(schedules, calendar).groupBy { it.packageName }
         val currentlyActive = mutableMapOf<String, com.focusbyrj.app.data.FocusSchedule>()
         
         for (schedule in schedules) {
@@ -375,44 +365,15 @@ class FocusBlockerService : Service() {
             }
         }
         
-        for (activeId in activeRoutines.keys) {
-            if (!currentlyActive.containsKey(activeId)) {
-                if (notifyEnabled) {
-                    val scheduleName = activeRoutines[activeId]?.name ?: "Routine"
-                    sendRoutineNotification("Routine Ended", "$scheduleName has ended.")
-                    com.focusbyrj.app.util.FocusEconomyManager.addRewards(100, 25)
-                }
-                // Reward routine completion activity
-                com.focusbyrj.app.util.FocusStatsManager.addRoutineActivity(applicationContext, 15L)
-            }
-        }
-        
         activeRoutines.clear()
         activeRoutines.putAll(currentlyActive)
 
-        // Pre-parse routine block rules for O(1) instantaneous package matching without string allocations
-        val newRules = mutableMapOf<String, ActiveRoutineRule>()
-        for (schedule in currentlyActive.values) {
-            val appsStr = schedule.appsToBlock
-            if (appsStr.isBlank()) continue
-            val entries = appsStr.split(",")
-            for (entry in entries) {
-                val trimmed = entry.trim()
-                if (trimmed.isEmpty()) continue
-                val parts = trimmed.split("|")
-                val pkg = parts[0].trim()
-                if (pkg.isEmpty()) continue
-                val mode = if (parts.size > 1 && parts[1].isNotBlank()) parts[1].trim() else schedule.mode
-                newRules[pkg] = ActiveRoutineRule(
-                    scheduleName = schedule.name,
-                    restrictionMode = schedule.restrictionMode,
-                    timeLimitMinutes = schedule.timeLimitMinutes,
-                    clickLimitCount = schedule.clickLimitCount,
-                    appMode = mode
-                )
-            }
-        }
-        activeRoutineRules = newRules
+        // Reward delivery must never hold up enforcement if storage is unavailable.
+        try {
+            val completed = com.focusbyrj.app.util.RewardDelivery.reconcileRoutines(application as com.focusbyrj.app.FocusApplication)
+            if (notifyEnabled) completed.forEach { name -> sendRoutineNotification("Routine Ended", "$name has ended.") }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) { android.util.Log.w("Rewards", "Pending routine rewards retained", error) }
     }
 
     private fun sendRoutineNotification(title: String, message: String) {
@@ -572,90 +533,25 @@ class FocusBlockerService : Service() {
             return
         }
 
-        if (TemporaryUnlockManager.isUnlocked(applicationContext, packageName)) {
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                BlockOverlayManager.hideOverlay(this)
-            }
-            return
-        }
-
-        var shouldBlock = false
-        var blockQuote = ""
-        var blockMode = "HARD"
-
         val restriction = cachedRestrictions[packageName] ?: if (cachedRestrictions.isEmpty()) {
             db.appRestrictionDao().getRestriction(packageName)
         } else null
-        if (restriction != null && restriction.isRestricted) {
-            when (restriction.restrictionMode) {
-                "TIME_LIMIT" -> {
-                    if (restriction.timeLimitMinutes > 0) {
-                        val usageMins = getTrackedUsageMinutes(packageName, restriction.timeLimitMinutes)
-                        if (usageMins >= restriction.timeLimitMinutes) {
-                            shouldBlock = true
-                            blockQuote = FocusQuotes.getQuoteOrDefault(restriction.customQuote)
-                            blockMode = restriction.mode
-                        }
-                    }
-                }
-                "CLICK_LIMIT" -> {
-                    if (restriction.clickLimitCount > 0) {
-                        val launches = getTrackedLaunchCount(packageName)
-                        if (launches > restriction.clickLimitCount) {
-                            shouldBlock = true
-                            blockQuote = FocusQuotes.getQuoteOrDefault(restriction.customQuote)
-                            blockMode = restriction.mode
-                        }
-                    }
-                }
-                else -> {
-                    shouldBlock = true
-                    blockQuote = FocusQuotes.getQuoteOrDefault(restriction.customQuote)
-                    blockMode = restriction.mode
-                }
-            }
-        }
-
-        if (!shouldBlock) {
-            val routineRule = activeRoutineRules[packageName]
-            if (routineRule != null) {
-                when (routineRule.restrictionMode) {
-                    "TIME_LIMIT" -> {
-                        if (routineRule.timeLimitMinutes > 0) {
-                            val usageMins = getTrackedUsageMinutes(packageName, routineRule.timeLimitMinutes)
-                            if (usageMins >= routineRule.timeLimitMinutes) {
-                                shouldBlock = true
-                                blockQuote = "Routine '${routineRule.scheduleName}' time limit exceeded."
-                                blockMode = routineRule.appMode
-                            }
-                        }
-                    }
-                    "CLICK_LIMIT" -> {
-                        if (routineRule.clickLimitCount > 0) {
-                            val launches = getTrackedLaunchCount(packageName)
-                            if (launches > routineRule.clickLimitCount) {
-                                shouldBlock = true
-                                blockQuote = "Routine '${routineRule.scheduleName}' open limit exceeded."
-                                blockMode = routineRule.appMode
-                            }
-                        }
-                    }
-                    else -> {
-                        shouldBlock = true
-                        blockQuote = "Routine '${routineRule.scheduleName}' is active."
-                        blockMode = routineRule.appMode
-                    }
-                }
-            }
-        }
-
         val prefs = applicationContext.getSharedPreferences("focus_prefs", Context.MODE_PRIVATE)
-        val isSessionActive = prefs.getBoolean("isSessionActive", false)
-        if (!shouldBlock && isSessionActive && restriction != null) {
-            shouldBlock = true
-            blockQuote = FocusQuotes.getQuoteOrDefault(restriction.customQuote)
-            blockMode = restriction.mode
-        }
+        val sessionRule = restriction?.takeIf { prefs.getBoolean("isSessionActive", false) }
+            ?.let { com.focusbyrj.app.data.BlockingRules.manual(it).copy(source = "Focus session", restrictionMode = "SIMPLE") }
+        val rules = activeRoutineRules[packageName].orEmpty() + listOfNotNull(
+            restriction?.takeIf { it.isRestricted }?.let(com.focusbyrj.app.data.BlockingRules::manual), sessionRule
+        )
+        val resolved = com.focusbyrj.app.data.BlockingRules.resolve(rules,
+            usageMinutes = { getTrackedUsageMinutes(packageName, it) },
+            launchCount = { getTrackedLaunchCount(packageName) },
+            temporarilyUnlocked = TemporaryUnlockManager.isUnlocked(applicationContext, packageName))
+        val shouldBlock = resolved != null
+        val blockMode = resolved?.mode ?: "HARD"
+        val blockQuote = resolved?.let {
+            if (it.source == "Manual" || it.source == "Focus session") FocusQuotes.getQuoteOrDefault(it.quote)
+            else it.label
+        }.orEmpty()
 
         if (shouldBlock) {
             android.os.Handler(android.os.Looper.getMainLooper()).post {

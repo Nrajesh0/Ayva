@@ -147,20 +147,26 @@ object AssistantActionExecutor {
                 val habit = app.habitRepository.getHabitById(action.id) ?: error("That habit no longer exists")
                 require(!habit.isArchived && !habit.isPaused) { "Resume this habit before logging progress" }
                 val date = app.habitRepository.getTodayDateString()
-                val todayLog = app.database.habitDao().getLogForHabitAndDate(habit.id, date)
-                val target = todayLog?.targetCount?.takeIf { it > 0 } ?: habit.targetPerDay
-                val old = todayLog?.completedCount ?: 0
-                if (old >= target) return@withLock AssistantActionResult("**${habit.title}** is already complete for today ($old/${target}).", habitId = habit.id, changed = false)
-                val count = (old + action.count).coerceAtMost(target)
-                val log = app.habitRepository.setHabitProgress(habit.id, count)
-                HabitAlarmScheduler.scheduleHabitReminder(context, habit, log.lastCompletedTimestamp, isGoalCompletedToday = count >= target)
-                val rewardPrefs = context.getSharedPreferences("ayva_action_receipts", Context.MODE_PRIVATE)
-                val rewarded = if (rewardPrefs.getString("habit_reward_date", "") == date) rewardPrefs.getStringSet("habit_reward_steps", emptySet()).orEmpty().toMutableSet() else mutableSetOf()
-                val newSteps = ((old + 1)..count).filter { rewarded.add("${habit.id}:$it") }
-                check(rewardPrefs.edit().putString("habit_reward_date", date).putStringSet("habit_reward_steps", rewarded).commit())
-                for (step in newSteps) FocusEconomyManager.addRewards(if (step == target) 25 else 10, if (step == target) 15 else 5)
+                var rewardPending = false
+                val result = com.focusbyrj.app.util.backup.MaintenanceGate.shared {
+                    val stored = app.database.habitDao().logStepsChecked(habit.id, date, action.count, System.currentTimeMillis())
+                    try { RewardDelivery.drain(app) }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { rewardPending = true }
+                    stored
+                }
+                val log = result.log
+                val old = result.before
+                val target = log.targetCount
+                if (old == log.completedCount) return@withLock AssistantActionResult("**${habit.title}** is already complete for today ($old/${target}).", habitId = habit.id, changed = false)
+                var reminderPending = false
+                try { HabitAlarmScheduler.scheduleHabitReminder(context, habit, log.lastCompletedTimestamp, isGoalCompletedToday = log.completedCount >= target) }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { reminderPending = true }
+                val deliveryNotice = (if (rewardPending) " Rewards are pending and will retry automatically." else "") +
+                    (if (reminderPending) " Progress saved; check reminder access in Settings." else "")
                 val inverse = JSONObject().put("kind", "habit").put("id", habit.id).put("date", date).put("before", old).put("after", log.completedCount)
-                AssistantActionResult("Logged **${habit.title}** — ${log.completedCount}/${log.targetCount} today${if (log.completedCount >= log.targetCount) "; daily target reached" else ""}.", habitId = habit.id, undo = listOf(inverse))
+                AssistantActionResult("Logged **${habit.title}** — ${log.completedCount}/${log.targetCount} today${if (log.completedCount >= log.targetCount) "; daily target reached" else ""}.$deliveryNotice", habitId = habit.id, undo = listOf(inverse))
             }
             is AssistantAction.EditHabit -> {
                 val updated = app.database.withTransaction {

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.LightMode
@@ -89,6 +90,7 @@ data class LaunchTabOption(
 val launchTabOptions = listOf(
     LaunchTabOption("dashboard", "Focus (Apps)", Icons.Filled.Home, "App blocker & active focus timer"),
     LaunchTabOption("todos", "To-Do (Tasks)", Icons.Filled.CheckCircle, "Tasks, checklists & occasions"),
+    LaunchTabOption("empty", "Notes", Icons.Filled.EditNote, "Notes, attachments & archive"),
     LaunchTabOption("time", "Time (Stats)", Icons.Filled.DateRange, "Screen time insights & heatmaps"),
     LaunchTabOption("account", "Account", Icons.Filled.Person, "Profile, rank & trophy achievements")
 )

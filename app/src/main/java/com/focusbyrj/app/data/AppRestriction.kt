@@ -23,4 +23,6 @@ data class AppRestriction(
 ) {
     @androidx.room.Ignore
     var isFromRoutine: Boolean = false
+    @androidx.room.Ignore
+    var ruleSummary: String = ""
 }

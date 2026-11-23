@@ -62,11 +62,18 @@ object FocusEconomyManager {
 
     private var prefs: SharedPreferences? = null
 
+    @Synchronized
     fun init(context: Context) {
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         loadProfile()
     }
 
+    @Synchronized
+    internal fun ensureInitialized(context: Context) {
+        if (prefs == null) init(context)
+    }
+
+    @Synchronized
     private fun loadProfile() {
         val oldProfile = _profileFlow.value
         prefs?.let {
@@ -160,11 +167,13 @@ object FocusEconomyManager {
         if (old.avatarTier < 4 && new.avatarTier >= 4) emitEvent(EconomyEvent.AchievementUnlocked("Emperor"))
     }
 
+    @Synchronized
     fun updateName(newName: String) {
         prefs?.edit()?.putString("user_name", newName)?.apply()
         loadProfile()
     }
 
+    @Synchronized
     fun updateProfileDetails(name: String, role: String, bio: String) {
         prefs?.edit()
             ?.putString("user_name", name)
@@ -174,6 +183,7 @@ object FocusEconomyManager {
         loadProfile()
     }
 
+    @Synchronized
     fun purchaseAvatar(avatarId: String, cost: Int): Boolean {
         prefs?.let { p ->
             val currentProfile = _profileFlow.value
@@ -191,6 +201,7 @@ object FocusEconomyManager {
         return false
     }
 
+    @Synchronized
     fun equipAvatar(avatarId: String) {
         prefs?.edit()?.putString("selected_avatar", avatarId)?.apply()
         loadProfile()
@@ -229,6 +240,7 @@ object FocusEconomyManager {
         }
     }
     
+    @Synchronized
     fun applySoftUnlockPenalty() {
         prefs?.let { p ->
             val currentProfile = _profileFlow.value
@@ -254,14 +266,15 @@ object FocusEconomyManager {
         }
     }
 
+    @Synchronized
     fun claimPendingRewards() {
         prefs?.let { p ->
-            val pXp = _profileFlow.value.pendingXp
-            val pGold = _profileFlow.value.pendingGold
+            val pXp = p.getInt("pending_xp", 0)
+            val pGold = p.getInt("pending_gold", 0)
             
             p.edit()
-                .putInt("xp", _profileFlow.value.xp + pXp)
-                .putInt("gold", _profileFlow.value.gold + pGold)
+                .putInt("xp", p.getInt("xp", 0) + pXp)
+                .putInt("gold", p.getInt("gold", 0) + pGold)
                 .putInt("pending_xp", 0)
                 .putInt("pending_gold", 0)
                 .apply()
@@ -272,9 +285,10 @@ object FocusEconomyManager {
         }
     }
     
+    @Synchronized
     fun spendGold(amount: Int): Boolean {
         val p = prefs ?: return false
-        val currentGold = _profileFlow.value.gold
+        val currentGold = p.getInt("gold", 0)
         if (currentGold >= amount) {
             p.edit().putInt("gold", currentGold - amount).apply()
             loadProfile()
@@ -283,23 +297,25 @@ object FocusEconomyManager {
         return false
     }
 
+    @Synchronized
     fun recoverXp(goldCost: Int, xpGain: Int) {
         prefs?.let { p ->
-            val currentGold = _profileFlow.value.gold
+            val currentGold = p.getInt("gold", 0)
             if (currentGold >= goldCost) {
                 p.edit()
                     .putInt("gold", currentGold - goldCost)
-                    .putInt("xp", _profileFlow.value.xp + xpGain)
+                    .putInt("xp", p.getInt("xp", 0) + xpGain)
                     .apply()
                 loadProfile()
             }
         }
     }
     
+    @Synchronized
     fun addExactRewards(exactXp: Int, exactGold: Int) {
         prefs?.let { p ->
-            val pXp = _profileFlow.value.pendingXp
-            val pGold = _profileFlow.value.pendingGold
+            val pXp = p.getInt("pending_xp", 0)
+            val pGold = p.getInt("pending_gold", 0)
             
             p.edit()
                 .putInt("pending_xp", pXp + exactXp)
@@ -309,14 +325,57 @@ object FocusEconomyManager {
         }
     }
     
+    private var receiptPersistenceFailed = false
+    private const val RECEIPT_MARKER = "reward_delivery_ids"
+
+    /** A failed commit may update only memory. Force a new durable generation before trusting it. */
+    private fun ensureReceiptDurable(p: SharedPreferences) {
+        if (!receiptPersistenceFailed) return
+        val retry = "retry:" + java.util.UUID.randomUUID()
+        check(p.edit().putStringSet(RECEIPT_MARKER,
+            p.getStringSet(RECEIPT_MARKER, emptySet()).orEmpty().filterNot { it.startsWith("retry:") }.toSet() + retry).commit()) {
+            "Progress saved. Reward delivery will retry when storage is available."
+        }
+        receiptPersistenceFailed = false
+    }
+
+    @Synchronized
+    internal fun creditReceipt(id: String, xp: Int, gold: Int) {
+        val p = checkNotNull(prefs) { "Rewards are not ready. Progress is saved." }
+        ensureReceiptDurable(p)
+        val acknowledged = p.getStringSet(RECEIPT_MARKER, emptySet()).orEmpty()
+        if (id in acknowledged) return
+        val finalGold = (gold * getGoldMultiplier(calculateLevel(p.getInt("xp", 0)))).toInt()
+        val committed = p.edit().putStringSet(RECEIPT_MARKER, acknowledged + id)
+            .putInt("pending_xp", Math.addExact(p.getInt("pending_xp", 0), xp))
+            .putInt("pending_gold", Math.addExact(p.getInt("pending_gold", 0), finalGold)).commit()
+        if (!committed) {
+            receiptPersistenceFailed = true
+            error("Progress saved. Reward delivery will retry when storage is available.")
+        }
+        loadProfile()
+    }
+
+    @Synchronized
+    internal fun clearReceiptMarker() {
+        val p = checkNotNull(prefs)
+        ensureReceiptDurable(p)
+        if (p.contains(RECEIPT_MARKER) && !p.edit().remove(RECEIPT_MARKER).commit()) {
+            receiptPersistenceFailed = true
+            error("Rewards saved. Pending rewards will retry when storage is available.")
+        }
+        loadProfile()
+    }
+
+    @Synchronized
     fun addRewards(baseXp: Int, baseGold: Int) {
         prefs?.let { p ->
-            val currentLevel = _profileFlow.value.level
+            val currentLevel = calculateLevel(p.getInt("xp", 0))
             val goldMultiplier = getGoldMultiplier(currentLevel)
             val finalGold = (baseGold * goldMultiplier).toInt()
             
-            val pXp = _profileFlow.value.pendingXp
-            val pGold = _profileFlow.value.pendingGold
+            val pXp = p.getInt("pending_xp", 0)
+            val pGold = p.getInt("pending_gold", 0)
             
             p.edit()
                 .putInt("pending_xp", pXp + baseXp)
@@ -326,9 +385,10 @@ object FocusEconomyManager {
         }
     }
 
+    @Synchronized
     fun addDurationBasedRewards(totalMinsFocusedSoFar: Int) {
         prefs?.let { p ->
-            val currentLevel = _profileFlow.value.level
+            val currentLevel = calculateLevel(p.getInt("xp", 0))
             val goldMultiplier = getGoldMultiplier(currentLevel)
             
             val baseXp = 50
@@ -350,8 +410,8 @@ object FocusEconomyManager {
             
             val finalGold = (baseGold * goldMultiplier).toInt()
             
-            val pXp = _profileFlow.value.pendingXp
-            val pGold = _profileFlow.value.pendingGold
+            val pXp = p.getInt("pending_xp", 0)
+            val pGold = p.getInt("pending_gold", 0)
             
             p.edit()
                 .putInt("pending_xp", pXp + baseXp)
@@ -361,6 +421,7 @@ object FocusEconomyManager {
         }
     }
 
+    @Synchronized
     fun completeTaskReward(
         taskTitle: String,
         isPriority: Boolean,
@@ -379,12 +440,12 @@ object FocusEconomyManager {
             else -> 15
         }
 
-        val currentLevel = _profileFlow.value.level
+        val currentLevel = calculateLevel(p.getInt("xp", 0))
         val goldMultiplier = getGoldMultiplier(currentLevel)
         val finalGold = max(1, (baseGold * goldMultiplier).toInt())
 
-        val pXp = _profileFlow.value.pendingXp
-        val pGold = _profileFlow.value.pendingGold
+        val pXp = p.getInt("pending_xp", 0)
+        val pGold = p.getInt("pending_gold", 0)
         val currentTasks = _profileFlow.value.lifetimeTasksCompleted
 
         p.edit()
@@ -397,6 +458,7 @@ object FocusEconomyManager {
         return Pair(baseXp, finalGold)
     }
 
+    @Synchronized
     fun uncompleteTaskReward(
         isPriority: Boolean,
         type: com.focusbyrj.app.data.TaskType = com.focusbyrj.app.data.TaskType.TASK
@@ -414,12 +476,12 @@ object FocusEconomyManager {
             else -> 15
         }
 
-        val currentLevel = _profileFlow.value.level
+        val currentLevel = calculateLevel(p.getInt("xp", 0))
         val goldMultiplier = getGoldMultiplier(currentLevel)
         val finalGold = max(1, (baseGold * goldMultiplier).toInt())
 
-        val pXp = _profileFlow.value.pendingXp
-        val pGold = _profileFlow.value.pendingGold
+        val pXp = p.getInt("pending_xp", 0)
+        val pGold = p.getInt("pending_gold", 0)
         val currentTasks = _profileFlow.value.lifetimeTasksCompleted
 
         p.edit()
@@ -431,6 +493,7 @@ object FocusEconomyManager {
         loadProfile()
     }
 
+    @Synchronized
     fun addResist() {
         prefs?.let { p ->
             val current = _profileFlow.value.lifetimeResists
@@ -439,6 +502,7 @@ object FocusEconomyManager {
         }
     }
     
+    @Synchronized
     fun addLifetimeFocusMins(mins: Int) {
         prefs?.let { p ->
             val current = _profileFlow.value.lifetimeFocusMins
@@ -447,10 +511,11 @@ object FocusEconomyManager {
         }
     }
         
+    @Synchronized
     fun addDirectGold(goldAmount: Int) {
         if (goldAmount <= 0) return
         prefs?.let { p ->
-            val currentGold = _profileFlow.value.gold
+            val currentGold = p.getInt("gold", 0)
             val newGold = currentGold + goldAmount
             val maxGold = max(newGold, _profileFlow.value.maxGold)
             p.edit()
@@ -462,6 +527,7 @@ object FocusEconomyManager {
         }
     }
 
+    @Synchronized
     fun syncStreaks(current: Int, longest: Int) {
         prefs?.let { p ->
             val oldLongest = _profileFlow.value.longestStreak
@@ -472,7 +538,7 @@ object FocusEconomyManager {
                 if (longest >= 30 && oldLongest < 30) goldBonus += 5000
             }
             
-            val pGold = _profileFlow.value.pendingGold
+            val pGold = p.getInt("pending_gold", 0)
             
             p.edit()
                 .putInt("current_streak", current)
@@ -483,6 +549,7 @@ object FocusEconomyManager {
         }
     }
 
+    @Synchronized
     fun incrementStreak() {
         prefs?.let { p ->
             val newStreak = _profileFlow.value.currentStreak + 1
@@ -496,7 +563,7 @@ object FocusEconomyManager {
                 if (newLongest >= 30 && oldLongest < 30) goldBonus += 5000
             }
             
-            val pGold = _profileFlow.value.pendingGold
+            val pGold = p.getInt("pending_gold", 0)
             
             p.edit()
                 .putInt("current_streak", newStreak)
@@ -507,11 +574,13 @@ object FocusEconomyManager {
         }
     }
     
+    @Synchronized
     fun resetStreak() {
         prefs?.edit()?.putInt("current_streak", 0)?.apply()
         loadProfile()
     }
     
+    @Synchronized
     fun unlockProMax() {
         prefs?.let { p ->
             p.edit()
@@ -524,6 +593,7 @@ object FocusEconomyManager {
         }
     }
 
+    @Synchronized
     fun setStreakFreezes(count: Int) {
         val p = prefs ?: return
         val clamped = count.coerceIn(0, 3)
@@ -531,9 +601,10 @@ object FocusEconomyManager {
         loadProfile()
     }
 
+    @Synchronized
     fun buyStreakFreeze(cost: Int = 150): Boolean {
         val p = prefs ?: return false
-        val currentGold = _profileFlow.value.gold
+        val currentGold = p.getInt("gold", 0)
         val currentFreezes = _profileFlow.value.streakFreezes
         if (currentFreezes >= 3) return false // Max 3 shields cap
         if (currentGold >= cost) {
@@ -550,6 +621,7 @@ object FocusEconomyManager {
         return false
     }
 
+    @Synchronized
     fun addStreakFreezeShield(amount: Int = 1) {
         val p = prefs ?: return
         val currentFreezes = _profileFlow.value.streakFreezes
@@ -560,6 +632,7 @@ object FocusEconomyManager {
         loadProfile()
     }
 
+    @Synchronized
     fun useStreakFreeze(): Boolean {
         val p = prefs ?: return false
         val currentFreezes = _profileFlow.value.streakFreezes
