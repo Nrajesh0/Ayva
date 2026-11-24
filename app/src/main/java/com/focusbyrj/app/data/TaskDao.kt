@@ -148,8 +148,15 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE isTrashed = 1 AND trashedAt IS NOT NULL AND trashedAt < :cutoffMs")
     suspend fun getExpiredTrashedTasks(cutoffMs: Long): List<Task>
 
+    @Query("""
+        DELETE FROM tasks
+        WHERE id = :id AND isTrashed = 1 AND trashedAt = :trashedAt
+            AND trashedAt < :cutoffMs AND updatedAt = :updatedAt
+    """)
+    suspend fun purgeExpiredTask(id: Long, trashedAt: Long?, updatedAt: Long, cutoffMs: Long): Int
+
     /**
-     * Hard-deletes tasks whose IDs are in [ids]. Used by 30-day auto-purge and batch delete.
+     * Hard-deletes tasks whose IDs are in [ids]. Used by batch delete.
      */
     @Query("DELETE FROM tasks WHERE id IN (:ids)")
     suspend fun hardDeleteTasksByIds(ids: List<Long>)

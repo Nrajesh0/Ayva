@@ -9,10 +9,8 @@ import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.Subtask
 import com.focusbyrj.app.data.Task
 import com.focusbyrj.app.data.TaskRepository
-import com.focusbyrj.app.data.note.NoteDatabase
 import com.focusbyrj.app.data.note.NotesStorageVersion
 import com.focusbyrj.app.util.TaskReminderHelper
-import com.focusbyrj.app.util.backup.DataSafetyManager
 import com.focusbyrj.app.util.backup.MaintenanceGate
 import com.focusbyrj.app.widget.TodoWidgetProvider
 import kotlinx.coroutines.flow.SharingStarted
@@ -219,23 +217,6 @@ class TaskViewModel(private val repository: TaskRepository, application: Applica
 
     fun deletePermanently(task: Task) {
         deleteTask(task)
-    }
-
-    fun emptyTrash() {
-        viewModelScope.launch {
-            try {
-                val app = getApplication<FocusApplication>()
-                val noteDb = NoteDatabase.getInstance(app)
-                DataSafetyManager.writePreOpSnapshot(
-                    app,
-                    noteDb.noteDao(),
-                    "emptyTrash_unified",
-                    app.database,
-                )
-            } catch (_: Exception) {}
-            repository.emptyTrash()
-            TodoWidgetProvider.updateAllWidgets(getApplication())
-        }
     }
 
     fun toggleTaskCompletion(task: Task, overrideDependencies: Boolean = false) {

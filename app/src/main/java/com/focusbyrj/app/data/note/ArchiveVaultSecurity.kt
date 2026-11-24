@@ -7,6 +7,7 @@
 
 package com.focusbyrj.app.data.note
 
+import kotlinx.coroutines.flow.asStateFlow
 import android.content.Context
 import androidx.room.withTransaction
 import android.util.Base64
@@ -78,13 +79,22 @@ object ArchiveVaultSecurity {
 
     /** Initial setup can be interrupted after credentials commit. Retry sealing with
      * the authenticated VDK; a failure never exposes a partially opened vault. */
-    private fun sealArchivedNotes(context: Context, vdk: ByteArray) {
+    private fun sealArchivedNotes(
+        context: Context, vdk: ByteArray, expectedGeneration: Long? = null, stillActive: () -> Boolean = { true }
+    ) {
+        fun checkCurrent() {
+            check((expectedGeneration == null || authenticationGeneration.get() == expectedGeneration) && stillActive()) {
+                "Vault verification was invalidated before sealing finished."
+            }
+        }
         kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
             val db = NoteDatabase.getInstance(context)
             db.withTransaction {
+                checkCurrent()
                 db.noteDao().getArchivedNotesSync().forEach { note ->
                     if (!VaultPayloadEncryptor.isVaultEncrypted(note)) db.noteDao().updateNote(VaultPayloadEncryptor.encryptNotePayload(note, vdk))
                 }
+                checkCurrent()
             }
         }
     }
@@ -97,6 +107,10 @@ object ArchiveVaultSecurity {
     // Ephemeral in-memory Vault Sub-Key cache while vault is unlocked
     @Volatile
     private var ephemeralVaultSubKey: ByteArray? = null
+    private val authenticationGeneration = java.util.concurrent.atomic.AtomicLong()
+    private val credentialOperations = Any()
+    private val keyAvailableState = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val keyAvailable = keyAvailableState.asStateFlow()
 
     internal const val MEDIA_RETURN_TIMEOUT_MS = 120_000L
     private class MediaReturn(val context: Context, val nonce: String, val noteId: Long, val epoch: Long,
@@ -164,6 +178,7 @@ object ArchiveVaultSecurity {
                 !screenAllowsMediaReturn(context) || archiveWriteBinding(context) != lease.binding) return false
             ephemeralVaultSubKey?.fill(0)
             ephemeralVaultSubKey = lease.key.copyOf()
+            keyAvailableState.value = true
             return true
         } catch (_: Exception) { return false }
         finally { clearMediaReturn() }
@@ -171,8 +186,10 @@ object ArchiveVaultSecurity {
 
     @Synchronized
     fun lockForBackground() {
+        authenticationGeneration.incrementAndGet()
         ephemeralVaultSubKey?.fill(0)
         ephemeralVaultSubKey = null
+        keyAvailableState.value = false
         val lease = mediaReturn
         if (lease != null && (android.os.SystemClock.elapsedRealtime() - lease.started !in 0 until MEDIA_RETURN_TIMEOUT_MS ||
                     !screenAllowsMediaReturn(lease.context))) clearMediaReturn()
@@ -208,14 +225,22 @@ object ArchiveVaultSecurity {
     @Synchronized
     fun getActiveVaultSubKey(): ByteArray? = ephemeralVaultSubKey?.copyOf()
 
+    private fun publishKey(key: ByteArray) {
+        ephemeralVaultSubKey?.fill(0)
+        ephemeralVaultSubKey = key.copyOf()
+        keyAvailableState.value = true
+    }
+
     /**
      * Locks the vault and completely wipes the in-memory sub-key bytes.
      */
     @Synchronized
     fun lockVault() {
+        authenticationGeneration.incrementAndGet()
         clearMediaReturn()
         ephemeralVaultSubKey?.let { Arrays.fill(it, 0.toByte()) }
         ephemeralVaultSubKey = null
+        keyAvailableState.value = false
     }
 
     enum class VaultStatus {
@@ -275,14 +300,16 @@ object ArchiveVaultSecurity {
      * Optionally creates an encrypted recovery envelope derived from a 12-word BIP-39 emergency phrase.
      * Persists the recovery phrase encrypted with AES-256-GCM under the vault subkey for Zero-Knowledge recovery & export.
      */
-    @Synchronized
     fun setPasscode(
         context: Context,
         pin: String,
         mnemonicWords: List<String>? = null,
         isPhraseBackedUp: Boolean = true
-    ): Boolean {
-        clearMediaReturn()
+    ): Boolean = synchronized(credentialOperations) {
+        val operationGeneration = synchronized(this) {
+            clearMediaReturn()
+            authenticationGeneration.incrementAndGet()
+        }
         if (pin.length != 6 || !pin.all { it.isDigit() }) {
             Log.e(TAG, "Invalid PIN format: must be exactly 6 digits")
             return false
@@ -295,7 +322,7 @@ object ArchiveVaultSecurity {
         secureRandom.nextBytes(salt)
 
         val status = getVaultStatus(context)
-        val oldSubKey = ephemeralVaultSubKey?.copyOf()
+        val oldSubKey = getActiveVaultSubKey()
         if (status == VaultStatus.ENABLED && oldSubKey == null) {
             Log.e(TAG, "Cannot change passcode: vault is currently locked. Old subkey required to re-encrypt data.")
             return false
@@ -376,16 +403,13 @@ object ArchiveVaultSecurity {
                     .remove(KEY_RECOVERY_BACKED_UP)
             }
 
-            val committed = editor.commit()
-            // Set ephemeralVaultSubKey and perform note encryption only after prefs are safely on disk.
-            if (committed) {
-                ephemeralVaultSubKey?.fill(0)
-                ephemeralVaultSubKey = finalVdk.copyOf()
-
-                if (!hasExistingVdk) {
-                    sealArchivedNotes(appContext, finalVdk)
+            val committed = synchronized(this) {
+                if (authenticationGeneration.get() != operationGeneration) return false
+                editor.commit().also { saved ->
+                    if (saved) publishKey(finalVdk)
                 }
             }
+            if (committed && !hasExistingVdk) sealArchivedNotes(appContext, finalVdk, operationGeneration)
             return committed
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set vault passcode", e)
@@ -403,9 +427,38 @@ object ArchiveVaultSecurity {
      * Verifies the 6-digit PIN using the current Argon2id verifier and authenticated VDK envelope.
      * Protected by progressive brute-force rate-limiting and timing-attack-resistant comparison.
      */
-    @Synchronized
-    fun verifyPasscode(context: Context, inputPin: String): VerifyResult {
-        clearMediaReturn()
+    fun verifyPasscode(context: Context, inputPin: String): VerifyResult =
+        verifyPasscode(context, inputPin, authenticationGeneration.get())
+
+    suspend fun verifyPasscodeAsync(context: Context, inputPin: String): VerifyResult {
+        val expected = authenticationGeneration.get()
+        val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+        return try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                verifyPasscode(context, inputPin, expected) { job?.isActive != false }
+            }
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            synchronized(this) {
+                if (authenticationGeneration.get() == expected) lockVault()
+            }
+            throw error
+        }
+    }
+
+    private fun verifyPasscode(
+        context: Context,
+        inputPin: String,
+        expected: Long,
+        stillActive: () -> Boolean = { true }
+    ): VerifyResult = synchronized(credentialOperations) {
+        fun checkCurrent() {
+            check(authenticationGeneration.get() == expected && stillActive()) { "Vault verification was canceled." }
+        }
+        synchronized(this) {
+            if (authenticationGeneration.get() != expected || !stillActive())
+                return VerifyResult.Error("Vault verification was canceled.")
+            clearMediaReturn()
+        }
         val appContext = context.applicationContext
         val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
@@ -451,11 +504,14 @@ object ArchiveVaultSecurity {
                 require(iv.size == 12 && wrapped.size == 48)
                 activeVdk = unwrapVaultDataKey(wrapped, iv, computedHash)
                 require(activeVdk.size == 32)
-                sealArchivedNotes(appContext, activeVdk)
-                check(prefs.edit().putInt(KEY_FAILED_ATTEMPTS, 0).putLong(KEY_LOCKOUT_UNTIL, 0L).commit())
-                ephemeralVaultSubKey?.fill(0)
-                ephemeralVaultSubKey = activeVdk.copyOf()
-                inMemoryLockoutElapsed = 0L
+                checkCurrent()
+                sealArchivedNotes(appContext, activeVdk, expected, stillActive)
+                synchronized(this) {
+                    checkCurrent()
+                    check(prefs.edit().putInt(KEY_FAILED_ATTEMPTS, 0).putLong(KEY_LOCKOUT_UNTIL, 0L).commit())
+                    publishKey(activeVdk)
+                    inMemoryLockoutElapsed = 0L
+                }
                 return VerifyResult.Success
             } else {
                 // Failure: update attempt counters and escalate lockout
@@ -514,10 +570,12 @@ object ArchiveVaultSecurity {
      * Disables the passcode protection for the Archive Secret Vault.
      * Restores all encrypted archived notes back to plaintext so user notes remain accessible.
      */
-    @Synchronized
-    fun disablePasscode(context: Context): Boolean {
-        clearMediaReturn()
-        val activeSubKey = ephemeralVaultSubKey?.copyOf()
+    fun disablePasscode(context: Context): Boolean = synchronized(credentialOperations) {
+        synchronized(this) {
+            clearMediaReturn()
+            authenticationGeneration.incrementAndGet()
+        }
+        val activeSubKey = getActiveVaultSubKey()
         val appContext = context.applicationContext
         val status = getVaultStatus(context)
         if (status == VaultStatus.ENABLED && activeSubKey == null) {
@@ -592,9 +650,11 @@ object ArchiveVaultSecurity {
      * @param newPin The new 6-digit passcode.
      * @return True if recovery succeeded and the vault is unlocked; false otherwise.
      */
-    @Synchronized
-    fun recoverVaultWithMnemonic(context: Context, words: List<String>, newPin: String): Boolean {
-        clearMediaReturn()
+    fun recoverVaultWithMnemonic(context: Context, words: List<String>, newPin: String): Boolean = synchronized(credentialOperations) {
+        val operationGeneration = synchronized(this) {
+            clearMediaReturn()
+            authenticationGeneration.incrementAndGet()
+        }
         if (newPin.length != 6 || !newPin.all { it.isDigit() }) {
             Log.e(TAG, "Invalid new PIN format: must be exactly 6 digits")
             return false
@@ -676,11 +736,14 @@ object ArchiveVaultSecurity {
                 .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
                 .putBoolean(KEY_RECOVERY_BACKED_UP, true)
 
-            val committed = credentialEditor.commit()
+            val committed = synchronized(this) {
+                if (authenticationGeneration.get() != operationGeneration) return false
+                credentialEditor.commit().also { saved ->
+                    if (saved) publishKey(finalVdk)
+                }
+            }
 
             if (committed) {
-                ephemeralVaultSubKey?.fill(0)
-                ephemeralVaultSubKey = finalVdk.copyOf()
                 inMemoryLockoutElapsed = 0L
                 Log.i(TAG, "Vault successfully recovered and re-keyed with new PIN")
                 return true
@@ -718,11 +781,16 @@ object ArchiveVaultSecurity {
      * Retrieves the decrypted 12-word recovery phrase for an unlocked vault.
      * Returns null if vault is locked or recovery phrase not configured.
      */
-    @Synchronized
-    fun getStoredRecoveryPhrase(context: Context): List<String>? {
-        val activeSubKey = ephemeralVaultSubKey ?: return null
-        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return getStoredRecoveryPhraseInternal(prefs, activeSubKey)
+    fun getStoredRecoveryPhrase(context: Context): List<String>? = synchronized(credentialOperations) {
+        val generation = authenticationGeneration.get()
+        val activeSubKey = getActiveVaultSubKey() ?: return null
+        try {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return getStoredRecoveryPhraseInternal(prefs, activeSubKey)
+                .takeIf { authenticationGeneration.get() == generation }
+        } finally {
+            activeSubKey.fill(0)
+        }
     }
 
     private fun getStoredRecoveryPhraseInternal(prefs: android.content.SharedPreferences, subKey: ByteArray): List<String>? {
@@ -745,35 +813,33 @@ object ArchiveVaultSecurity {
      *
      * Requires the vault to be unlocked (active vault subkey in memory).
      */
-    @Synchronized
-    fun getOrConfigureRecoveryPhrase(context: Context): List<String>? {
-        val activeSubKey = ephemeralVaultSubKey ?: return null
-        val existing = getStoredRecoveryPhrase(context)
-        if (existing != null && existing.size == 12) {
-            return existing
+    fun getOrConfigureRecoveryPhrase(context: Context): List<String>? = synchronized(credentialOperations) {
+        val generation = authenticationGeneration.get()
+        val activeSubKey = getActiveVaultSubKey() ?: return null
+        try {
+            val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val existing = getStoredRecoveryPhraseInternal(prefs, activeSubKey)
+            if (existing?.size == 12) return existing.takeIf { authenticationGeneration.get() == generation }
+            if (prefs.getBoolean(KEY_RECOVERY_ENABLED, false) || prefs.contains(KEY_RECOVERY_CIPHERTEXT) ||
+                prefs.contains(KEY_RECOVERY_PHRASE_CIPHERTEXT)) return null
+
+            val words = VaultCryptoEngine.generate12WordMnemonic()
+            val envelope = VaultCryptoEngine.createRecoveryEnvelope(activeSubKey, words)
+            val encryptedPhrase = encryptRecoveryPhrase(words, activeSubKey)
+            val editor = prefs.edit()
+                .putBoolean(KEY_RECOVERY_ENABLED, true)
+                .putString(KEY_RECOVERY_CIPHERTEXT, Base64.encodeToString(envelope.first, Base64.NO_WRAP))
+                .putString(KEY_RECOVERY_IV, Base64.encodeToString(envelope.second, Base64.NO_WRAP))
+                .putString(KEY_RECOVERY_SALT, Base64.encodeToString(envelope.third, Base64.NO_WRAP))
+                .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encryptedPhrase.first, Base64.NO_WRAP))
+                .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
+                .putBoolean(KEY_RECOVERY_BACKED_UP, false)
+            return synchronized(this) {
+                if (authenticationGeneration.get() == generation && editor.commit()) words else null
+            }
+        } finally {
+            activeSubKey.fill(0)
         }
-
-        val existingPrefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (existingPrefs.getBoolean(KEY_RECOVERY_ENABLED, false) || existingPrefs.contains(KEY_RECOVERY_CIPHERTEXT) ||
-            existingPrefs.contains(KEY_RECOVERY_PHRASE_CIPHERTEXT)) return null
-
-        // Generate fresh 12-word BIP-39 mnemonic and configure recovery envelope
-        val words = VaultCryptoEngine.generate12WordMnemonic()
-        val envelope = VaultCryptoEngine.createRecoveryEnvelope(activeSubKey, words)
-        val encryptedPhrase = encryptRecoveryPhrase(words, activeSubKey)
-
-        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val committed = prefs.edit()
-            .putBoolean(KEY_RECOVERY_ENABLED, true)
-            .putString(KEY_RECOVERY_CIPHERTEXT, Base64.encodeToString(envelope.first, Base64.NO_WRAP))
-            .putString(KEY_RECOVERY_IV, Base64.encodeToString(envelope.second, Base64.NO_WRAP))
-            .putString(KEY_RECOVERY_SALT, Base64.encodeToString(envelope.third, Base64.NO_WRAP))
-            .putString(KEY_RECOVERY_PHRASE_CIPHERTEXT, Base64.encodeToString(encryptedPhrase.first, Base64.NO_WRAP))
-            .putString(KEY_RECOVERY_PHRASE_IV, Base64.encodeToString(encryptedPhrase.second, Base64.NO_WRAP))
-            .putBoolean(KEY_RECOVERY_BACKED_UP, false)
-            .commit()
-
-        return if (committed) words else null
     }
 
     private fun derivePhraseEncryptionKey(vaultSubKey: ByteArray): ByteArray {
@@ -844,8 +910,11 @@ object ArchiveVaultSecurity {
     /**
      * Marks initial passcode setup as skipped.
      */
-    @Synchronized
-    fun skipPasscodeSetup(context: Context): Boolean {
+    fun skipPasscodeSetup(context: Context): Boolean = synchronized(credentialOperations) {
+        synchronized(this) {
+            clearMediaReturn()
+            authenticationGeneration.incrementAndGet()
+        }
         // Refuse to skip if vault is already enabled; must call disablePasscode() to decrypt notes
         if (getVaultStatus(context) == VaultStatus.ENABLED) {
             Log.w(TAG, "Cannot skip passcode setup: vault is already ENABLED. Use disablePasscode() to safely restore notes.")

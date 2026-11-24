@@ -123,7 +123,7 @@ private fun PrivateVaultSettingsPanel(viewModel: NotesViewModel) {
     }
     if (allowWithoutPin) ArchiveVaultUnlockDialog(
         onDismiss = { allowWithoutPin = false; viewModel.lockVault() },
-        onVerify = viewModel::verifyArchiveOptionPin,
+        onVerify = viewModel::verifyArchiveOptionPinAsync,
         onSuccess = { allowWithoutPin = false; viewModel.setArchiveWithoutPin(true) },
         initialLockoutSeconds = viewModel.getRemainingLockoutSeconds(),
         title = "Allow archiving without PIN",
@@ -141,15 +141,15 @@ private fun PrivateVaultSettingsPanel(viewModel: NotesViewModel) {
             else Toast.makeText(context, "The vault PIN could not be saved. Your existing data is unchanged.", Toast.LENGTH_LONG).show()
         })
     if (changePin) ArchiveVaultChangePasscodeDialog(onDismiss = { changePin = false },
-        onVerifyCurrentPin = viewModel::verifyVaultPasscode, onSaveNewPin = { viewModel.setVaultPasscode(it, isPhraseBackedUp = backedUp) },
+        onVerifyCurrentPin = viewModel::verifyVaultPasscodeAsync, onSaveNewPin = { viewModel.setVaultPasscode(it, isPhraseBackedUp = backedUp) },
         onSuccess = { changePin = false; refresh() })
     if (disable) ArchiveVaultDisableConfirmDialog(onDismiss = { disable = false },
-        onVerifyCurrentPin = viewModel::verifyVaultPasscode, onDisableConfirmed = {
+        onVerifyCurrentPin = viewModel::verifyVaultPasscodeAsync, onDisableConfirmed = {
             if (viewModel.disableVaultPasscode()) { disable = false; refresh() }
             else Toast.makeText(context, "Vault protection could not be disabled.", Toast.LENGTH_LONG).show()
         })
     if (unlockingForPhrase) ArchiveVaultUnlockDialog(onDismiss = { unlockingForPhrase = false },
-        onVerify = viewModel::verifyVaultPasscode, onSuccess = { unlockingForPhrase = false; refresh(); exportPhrase() },
+        onVerify = viewModel::verifyVaultPasscodeAsync, onSuccess = { unlockingForPhrase = false; refresh(); exportPhrase() },
         initialLockoutSeconds = ArchiveVaultSecurity.getRemainingLockoutSeconds(context),
         onEmergencyRecoveryClick = { unlockingForPhrase = false; recover = true })
     phrase?.let { words -> ArchiveVaultExportPhraseDialog(words, backedUp,

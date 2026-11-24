@@ -147,7 +147,7 @@ interface NoteDao {
     /**
      * Soft-delete: moves note to trash with a [trashedAt] timestamp.
      * This is the safe primary delete path for all UI-triggered deletions.
-     * Permanently deleted only after 30 days via [getExpiredTrashedNotes] + [hardDeleteNotesByIds].
+     * Permanently deleted only after 30 days via [purgeExpiredNote].
      */
     @Query("UPDATE keep_notes SET isTrashed = 1, isPinned = 0, trashedAt = :now, updatedAt = MAX(updatedAt + 1, :now) WHERE id = :id")
     suspend fun softDeleteNote(id: Long, now: Long = System.currentTimeMillis())
@@ -155,7 +155,7 @@ interface NoteDao {
     /**
      * Hard-deletes exactly the notes whose IDs are in [ids].
      * Safe to call because the caller controls the exact set.
-     * Used by: emptyTrash, auto-purge of 30-day expired trash.
+     * Used by explicit empty-trash operations.
      */
     @Query("DELETE FROM keep_notes WHERE id IN (:ids)")
     suspend fun hardDeleteNotesByIds(ids: List<Long>)
@@ -174,6 +174,13 @@ interface NoteDao {
      */
     @Query("SELECT * FROM keep_notes WHERE isTrashed = 1 AND trashedAt IS NOT NULL AND trashedAt < :cutoffMs")
     suspend fun getExpiredTrashedNotes(cutoffMs: Long): List<NoteEntity>
+
+    @Query("""
+        DELETE FROM keep_notes
+        WHERE id = :id AND isTrashed = 1 AND trashedAt = :trashedAt
+            AND trashedAt < :cutoffMs AND updatedAt = :updatedAt
+    """)
+    suspend fun purgeExpiredNote(id: Long, trashedAt: Long?, updatedAt: Long, cutoffMs: Long): Int
 
     @Query("UPDATE keep_notes SET updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateNoteOrder(id: Long, updatedAt: Long)

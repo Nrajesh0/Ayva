@@ -66,7 +66,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import com.focusbyrj.app.util.sync.VaultCryptoEngine
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -219,7 +222,7 @@ fun ArchiveVaultNumericKeypad(
                     modifier = Modifier
                         .size(66.dp)
                         .clip(CircleShape)
-                        .clickable {
+                        .clickable(enabled = isEnabled) {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onLeftActionClick()
                         }
@@ -358,7 +361,7 @@ private fun KeypadCircleButton(
 @Composable
 fun ArchiveVaultUnlockDialog(
     onDismiss: () -> Unit,
-    onVerify: (String) -> ArchiveVaultSecurity.VerifyResult,
+    onVerify: suspend (String) -> ArchiveVaultSecurity.VerifyResult,
     onSuccess: () -> Unit,
     initialLockoutSeconds: Long = 0L,
     onEmergencyRecoveryClick: (() -> Unit)? = null,
@@ -374,6 +377,49 @@ fun ArchiveVaultUnlockDialog(
     var lockoutSeconds by remember { mutableLongStateOf(initialLockoutSeconds) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val verifying = pin.length == 6
+    var verificationJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val verify by rememberUpdatedState(onVerify)
+    val success by rememberUpdatedState(onSuccess)
+    fun invalidate() {
+        if (pin.length == 6) ArchiveVaultSecurity.lockVault()
+        verificationJob?.cancel()
+        pin = ""
+    }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) { invalidate() }
+    DisposableEffect(Unit) { onDispose { invalidate() } }
+    LaunchedEffect(pin) {
+        val submitted = pin
+        if (submitted.length != 6) return@LaunchedEffect
+        val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+        verificationJob = job
+        val result = try { verify(submitted) }
+        finally { if (verificationJob === job) verificationJob = null }
+        if (pin != submitted) return@LaunchedEffect
+        pin = ""
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        when (result) {
+            is ArchiveVaultSecurity.VerifyResult.Success -> success()
+            is ArchiveVaultSecurity.VerifyResult.Incorrect -> {
+                isError = true
+                shakeTrigger++
+                errorMessage = if (result.remainingAttempts > 0) {
+                    "Incorrect passcode (${result.remainingAttempts} left)"
+                } else "Incorrect passcode"
+            }
+            is ArchiveVaultSecurity.VerifyResult.LockedOut -> {
+                isError = true
+                shakeTrigger++
+                lockoutSeconds = result.remainingSeconds
+            }
+            is ArchiveVaultSecurity.VerifyResult.Error -> {
+                isError = true
+                shakeTrigger++
+                errorMessage = result.message
+            }
+        }
+    }
+
     LaunchedEffect(lockoutSeconds) {
         if (lockoutSeconds > 0L) {
             while (lockoutSeconds > 0L) {
@@ -386,7 +432,7 @@ fun ArchiveVaultUnlockDialog(
     }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { invalidate(); onDismiss() },
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         containerColor = MaterialTheme.colorScheme.surface,
@@ -494,9 +540,14 @@ fun ArchiveVaultUnlockDialog(
 
             Spacer(modifier = Modifier.height(14.dp))
 
+            if (verifying) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text("Checking PIN", style = MaterialTheme.typography.bodySmall)
+            }
+
             // Tactile Numeric Keypad
             ArchiveVaultNumericKeypad(
-                isEnabled = lockoutSeconds == 0L,
+                isEnabled = !verifying && lockoutSeconds == 0L,
                 onDigitClick = { digit ->
                     if (pin.length < 6 && lockoutSeconds == 0L) {
                         val newPin = pin + digit
@@ -504,39 +555,7 @@ fun ArchiveVaultUnlockDialog(
                         errorMessage = null
                         isError = false
 
-                        if (newPin.length == 6) {
-                            when (val res = onVerify(newPin)) {
-                                is ArchiveVaultSecurity.VerifyResult.Success -> {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onSuccess()
-                                }
-                                is ArchiveVaultSecurity.VerifyResult.Incorrect -> {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    isError = true
-                                    shakeTrigger += 1
-                                    errorMessage = if (res.remainingAttempts > 0) {
-                                        "Incorrect passcode (${res.remainingAttempts} left)"
-                                    } else {
-                                        "Incorrect passcode"
-                                    }
-                                    pin = ""
-                                }
-                                is ArchiveVaultSecurity.VerifyResult.LockedOut -> {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    isError = true
-                                    shakeTrigger += 1
-                                    lockoutSeconds = res.remainingSeconds
-                                    pin = ""
-                                }
-                                is ArchiveVaultSecurity.VerifyResult.Error -> {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    isError = true
-                                    shakeTrigger += 1
-                                    errorMessage = res.message
-                                    pin = ""
-                                }
-                            }
-                        }
+
                     }
                 },
                 onBackspaceClick = {
@@ -554,14 +573,15 @@ fun ArchiveVaultUnlockDialog(
                 leftActionLabel = if (pin.isNotEmpty()) "Clear" else null
             )
 
-            if (showCancelButton) {
-                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+            if (showCancelButton || verifying) {
+                TextButton(onClick = { invalidate(); onDismiss() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
             }
 
             if (onEmergencyRecoveryClick != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 TextButton(
                     onClick = onEmergencyRecoveryClick,
+                    enabled = !verifying,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(
@@ -1922,12 +1942,11 @@ private fun CalmVaultActionRow(
 @Composable
 fun ArchiveVaultChangePasscodeDialog(
     onDismiss: () -> Unit,
-    onVerifyCurrentPin: (String) -> ArchiveVaultSecurity.VerifyResult,
+    onVerifyCurrentPin: suspend (String) -> ArchiveVaultSecurity.VerifyResult,
     onSaveNewPin: (String) -> Boolean,
     onSuccess: () -> Unit
 ) {
     var step by remember { mutableStateOf(ChangePinStep.VERIFY_OLD) }
-    var currentPin by remember { mutableStateOf("") }
     var newPin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -1935,6 +1954,18 @@ fun ArchiveVaultChangePasscodeDialog(
     var shakeTrigger by remember { mutableStateOf(0) }
     val haptic = LocalHapticFeedback.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    if (step == ChangePinStep.VERIFY_OLD) {
+        ArchiveVaultUnlockDialog(
+            onDismiss = onDismiss,
+            onVerify = onVerifyCurrentPin,
+            onSuccess = { step = ChangePinStep.ENTER_NEW },
+            title = "Change passcode",
+            description = "Enter your current 6-digit passcode.",
+            showCancelButton = true
+        )
+        return
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1964,7 +1995,6 @@ fun ArchiveVaultChangePasscodeDialog(
                             when (step) {
                                 ChangePinStep.ENTER_NEW -> {
                                     step = ChangePinStep.VERIFY_OLD
-                                    currentPin = ""
                                     newPin = ""
                                     errorMessage = null
                                 }
@@ -2033,7 +2063,7 @@ fun ArchiveVaultChangePasscodeDialog(
             Spacer(modifier = Modifier.height(18.dp))
 
             val activePin = when (step) {
-                ChangePinStep.VERIFY_OLD -> currentPin
+                ChangePinStep.VERIFY_OLD -> ""
                 ChangePinStep.ENTER_NEW -> newPin
                 ChangePinStep.CONFIRM_NEW -> confirmPin
             }
@@ -2065,43 +2095,7 @@ fun ArchiveVaultChangePasscodeDialog(
             ArchiveVaultNumericKeypad(
                 onDigitClick = { digit ->
                     when (step) {
-                        ChangePinStep.VERIFY_OLD -> {
-                            if (currentPin.length < 6) {
-                                val updated = currentPin + digit
-                                currentPin = updated
-                                errorMessage = null
-                                isError = false
-                                if (updated.length == 6) {
-                                    when (val res = onVerifyCurrentPin(updated)) {
-                                        is ArchiveVaultSecurity.VerifyResult.Success -> {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            step = ChangePinStep.ENTER_NEW
-                                        }
-                                        is ArchiveVaultSecurity.VerifyResult.Incorrect -> {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            isError = true
-                                            shakeTrigger += 1
-                                            errorMessage = "Incorrect passcode (${res.remainingAttempts} left)"
-                                            currentPin = ""
-                                        }
-                                        is ArchiveVaultSecurity.VerifyResult.LockedOut -> {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            isError = true
-                                            shakeTrigger += 1
-                                            errorMessage = "Lockout active. Try again in ${res.remainingSeconds}s"
-                                            currentPin = ""
-                                        }
-                                        is ArchiveVaultSecurity.VerifyResult.Error -> {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            isError = true
-                                            shakeTrigger += 1
-                                            errorMessage = res.message
-                                            currentPin = ""
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        ChangePinStep.VERIFY_OLD -> Unit
                         ChangePinStep.ENTER_NEW -> {
                             if (newPin.length < 6) {
                                 val updated = newPin + digit
@@ -2141,7 +2135,7 @@ fun ArchiveVaultChangePasscodeDialog(
                 },
                 onBackspaceClick = {
                     when (step) {
-                        ChangePinStep.VERIFY_OLD -> if (currentPin.isNotEmpty()) currentPin = currentPin.dropLast(1)
+                        ChangePinStep.VERIFY_OLD -> Unit
                         ChangePinStep.ENTER_NEW -> if (newPin.isNotEmpty()) newPin = newPin.dropLast(1)
                         ChangePinStep.CONFIRM_NEW -> if (confirmPin.isNotEmpty()) confirmPin = confirmPin.dropLast(1)
                     }
@@ -2166,140 +2160,15 @@ private enum class ChangePinStep {
 @Composable
 fun ArchiveVaultDisableConfirmDialog(
     onDismiss: () -> Unit,
-    onVerifyCurrentPin: (String) -> ArchiveVaultSecurity.VerifyResult,
+    onVerifyCurrentPin: suspend (String) -> ArchiveVaultSecurity.VerifyResult,
     onDisableConfirmed: () -> Unit
 ) {
-    var currentPin by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var isError by remember { mutableStateOf(false) }
-    var shakeTrigger by remember { mutableStateOf(0) }
-    val haptic = LocalHapticFeedback.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 24.dp)
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.10f))
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.LockOpen,
-                    contentDescription = "Disable protection",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = "Turn Off Vault Passcode",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 18.sp,
-                    letterSpacing = (-0.3).sp
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(modifier = Modifier.height(3.dp))
-
-            Text(
-                text = "Enter current 6-digit passcode to remove protection",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            ArchiveVaultPinDots(
-                pinLength = currentPin.length,
-                isError = isError,
-                shakeTrigger = shakeTrigger
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            if (!errorMessage.isNullOrEmpty()) {
-                Text(
-                    text = errorMessage ?: "",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Medium
-                    ),
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center
-                )
-            } else {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            ArchiveVaultNumericKeypad(
-                onDigitClick = { digit ->
-                    if (currentPin.length < 6) {
-                        val updated = currentPin + digit
-                        currentPin = updated
-                        errorMessage = null
-                        isError = false
-                        if (updated.length == 6) {
-                            when (val res = onVerifyCurrentPin(updated)) {
-                                is ArchiveVaultSecurity.VerifyResult.Success -> {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onDisableConfirmed()
-                                }
-                                is ArchiveVaultSecurity.VerifyResult.Incorrect -> {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    isError = true
-                                    shakeTrigger += 1
-                                    errorMessage = "Incorrect passcode (${res.remainingAttempts} left)"
-                                    currentPin = ""
-                                }
-                                is ArchiveVaultSecurity.VerifyResult.LockedOut -> {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    isError = true
-                                    shakeTrigger += 1
-                                    errorMessage = "Lockout active. Try again in ${res.remainingSeconds}s"
-                                    currentPin = ""
-                                }
-                                is ArchiveVaultSecurity.VerifyResult.Error -> {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    isError = true
-                                    shakeTrigger += 1
-                                    errorMessage = res.message
-                                    currentPin = ""
-                                }
-                            }
-                        }
-                    }
-                },
-                onBackspaceClick = {
-                    if (currentPin.isNotEmpty()) {
-                        currentPin = currentPin.dropLast(1)
-                        errorMessage = null
-                        isError = false
-                    }
-                }
-            )
-        }
-    }
+    ArchiveVaultUnlockDialog(
+        onDismiss = onDismiss,
+        onVerify = onVerifyCurrentPin,
+        onSuccess = onDisableConfirmed,
+        title = "Disable vault passcode",
+        description = "Enter your current PIN to remove passcode protection from Archive.",
+        showCancelButton = true
+    )
 }

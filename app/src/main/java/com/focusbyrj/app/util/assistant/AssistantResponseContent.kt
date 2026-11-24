@@ -23,10 +23,11 @@ object AssistantResponseContent {
         val list = AssistantPresentation.data(payload)?.optJSONObject("taskList") ?: return null
         val items = list.getJSONArray("items"); require(items.length() in 1..20)
         val rows = (0 until items.length()).map { index ->
-            val item = items.getJSONObject(index); val id = item.getLong("id"); require(id > 0)
+            val item = items.getJSONObject(index); val id = item.getLong("id"); require(id >= 0)
             TaskRow(id, item.getString("title").take(500), item.optString("detail").take(500), item.optBoolean("completed"))
         }
-        require(rows.map { it.id }.distinct().size == rows.size)
+        val linkedIds = rows.map { it.id }.filter { it > 0 }
+        require(linkedIds.distinct().size == linkedIds.size)
         TaskList(rows, list.optInt("total", rows.size).coerceAtLeast(rows.size), list.getLong("at"))
     }.getOrNull()
     fun settingSpec(payload: String?) = AssistantPresentation.data(payload)?.optJSONObject("setting")?.optString("key")?.let { key -> runCatching { AssistantCapabilities.setting(key).spec }.getOrNull() }

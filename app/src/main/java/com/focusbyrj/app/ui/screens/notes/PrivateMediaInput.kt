@@ -192,7 +192,7 @@ private fun privateMediaInputState(viewModel: NotesViewModel): (String, String) 
             val token = target
             if (token == null || !alive) ArchiveVaultSecurity.VerifyResult.Error("Selection expired. Choose it again.")
             else {
-                val result = viewModel.verifyVaultPasscode(pin)
+                val result = viewModel.verifyVaultPasscodeAsync(pin)
                 if (!alive || target != token || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                     viewModel.lockVault(); ArchiveVaultSecurity.VerifyResult.Error("Return to the app and try again.")
                 } else result

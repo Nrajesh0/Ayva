@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -133,6 +134,9 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun verifyArchiveOptionPin(pin: String): ArchiveVaultSecurity.VerifyResult =
         ArchiveVaultSecurity.verifyPasscode(getApplication(), pin)
 
+    suspend fun verifyArchiveOptionPinAsync(pin: String): ArchiveVaultSecurity.VerifyResult =
+        ArchiveVaultSecurity.verifyPasscodeAsync(getApplication(), pin)
+
     fun dismissArchiveOptionMessage() {
         if (!_archiveOption.value.busy) _archiveOption.value = ArchiveOptionState()
     }
@@ -185,8 +189,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun verifyVaultPasscode(pin: String): ArchiveVaultSecurity.VerifyResult {
-        val result = ArchiveVaultSecurity.verifyPasscode(getApplication(), pin)
+    fun verifyVaultPasscode(pin: String): ArchiveVaultSecurity.VerifyResult =
+        acceptVaultVerification(ArchiveVaultSecurity.verifyPasscode(getApplication(), pin))
+
+    suspend fun verifyVaultPasscodeAsync(pin: String): ArchiveVaultSecurity.VerifyResult =
+        acceptVaultVerification(ArchiveVaultSecurity.verifyPasscodeAsync(getApplication(), pin))
+
+    private fun acceptVaultVerification(result: ArchiveVaultSecurity.VerifyResult): ArchiveVaultSecurity.VerifyResult {
         if (result is ArchiveVaultSecurity.VerifyResult.Success) {
             _isVaultUnlocked.value = true
             _currentFolder.value = NoteFolder.ARCHIVE
@@ -430,6 +439,19 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         refreshVaultStatus()
     }
 
+    private val displayReads = NoteReadMonitor()
+    private val labelReads = NoteReadMonitor()
+    private val widgetReads = NoteReadMonitor()
+    val noteReadFailed = combine(displayReads.error, labelReads.error, widgetReads.error) { display, labels, widgets ->
+        display || labels || widgets
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun retryNoteReads() {
+        displayReads.retry()
+        labelReads.retry()
+        widgetReads.retry()
+    }
+
     init {
         try {
             val vaultPrefs = application.getSharedPreferences(ArchiveVaultSecurity.PREFS_NAME, Context.MODE_PRIVATE)
@@ -439,8 +461,13 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val db = NoteDatabase.getInstance(application)
         repository = NoteRepository(db.noteDao(), application)
 
+        viewModelScope.launch {
+            ArchiveVaultSecurity.keyAvailable.collect { available ->
+                if (!available) _isVaultUnlocked.value = false
+            }
+        }
         viewModelScope.launch(Dispatchers.IO) {
-            repository.getActiveNotes().collect {
+            widgetReads.observe { repository.getActiveNotes() }.collect {
                 com.focusbyrj.app.widget.NoteWidgetProvider.updateAllWidgets(application)
             }
         }
@@ -770,21 +797,21 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Notes stream based on folder and multi-token ranked search query
-    private val rawNotesFlow = combine(_currentFolder, _searchQuery, _isVaultUnlocked) { folder, query, isUnlocked ->
-        Triple(folder, query, isUnlocked)
-    }.flatMapLatest { (folder, query, isUnlocked) ->
-        val folderFlow = when (folder) {
-            NoteFolder.NOTES -> repository.getActiveNotes()
-            NoteFolder.ARCHIVE -> {
-                val status = ArchiveVaultSecurity.getVaultStatus(getApplication())
-                if (status == ArchiveVaultSecurity.VaultStatus.ENABLED && !isUnlocked) {
-                    kotlinx.coroutines.flow.flowOf(emptyList())
-                } else {
-                    repository.getArchivedNotes()
+    private val privateRowsAllowed = combine(_vaultStatus, _isVaultUnlocked, ArchiveVaultSecurity.keyAvailable) { status, authorized, key ->
+        status != ArchiveVaultSecurity.VaultStatus.ENABLED || authorized && key
+    }
+    private val rawNotesFlow = combine(_currentFolder, _searchQuery, privateRowsAllowed) { folder, query, privateAllowed ->
+        Triple(folder, query, privateAllowed)
+    }.flatMapLatest { (folder, query, privateAllowed) ->
+        val folderFlow = displayReads.observe {
+            when (folder) {
+                NoteFolder.NOTES -> repository.getActiveNotes()
+                NoteFolder.ARCHIVE -> if (privateAllowed) repository.getArchivedNotes() else kotlinx.coroutines.flow.flowOf(emptyList())
+                NoteFolder.TRASH -> repository.getTrashedNotes().map { notes ->
+                    if (privateAllowed) notes else notes.filterNot { it.isArchived }
                 }
             }
-            NoteFolder.TRASH -> repository.getTrashedNotes()
-        }
+        }.onStart { emit(emptyList()) }
         if (query.isBlank()) {
             folderFlow
         } else {
@@ -833,14 +860,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     val displayedNotes: StateFlow<List<NoteEntity>> = combine(
         rawNotesFlow,
-        _currentFolder,
+        privateRowsAllowed,
         _selectedColorFilter,
         _selectedLabelFilter
-    ) { notes, _, colorFilter, labelFilter ->
+    ) { notes, privateAllowed, colorFilter, labelFilter ->
         notes.filter { note ->
             val matchesColor = colorFilter == null || note.colorKey.equals(colorFilter, ignoreCase = true)
             val matchesLabel = labelFilter == null || note.getLabels().any { it.equals(labelFilter, ignoreCase = true) }
-            matchesColor && matchesLabel
+            (privateAllowed || !note.isArchived) && matchesColor && matchesLabel
         }
     }.stateIn(
         scope = viewModelScope,
@@ -850,7 +877,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     // All available labels across active notes & custom labels (never leaks vault metadata)
     val allLabels: StateFlow<List<String>> = combine(
-        repository.getActiveNotes(),
+        labelReads.observe { repository.getActiveNotes() },
         _customLabels
     ) { active, custom ->
         val set = linkedSetOf<String>()
@@ -1110,7 +1137,18 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
         if (decryptedNote.id != 0L) {
             viewModelScope.launch(Dispatchers.IO) {
-                val fresh = repository.getNoteByIdSync(decryptedNote.id)
+                val fresh = try {
+                    repository.getNoteByIdSync(decryptedNote.id)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    withContext(Dispatchers.Main) {
+                        if (_editingState.value?.originalId == decryptedNote.id) {
+                            Toast.makeText(getApplication(), "Could not refresh this note. Your draft is kept.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    return@launch
+                }
                 if (fresh != null && fresh.updatedAt > decryptedNote.updatedAt) {
                     val freshDecrypted = if (VaultPayloadEncryptor.isVaultEncrypted(fresh)) {
                         when (val dec = VaultPayloadEncryptor.tryDecryptNotePayload(fresh)) {
@@ -2370,6 +2408,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             return ArchiveVaultSecurity.VerifyResult.Error("This request expired. Start the move again.")
         // Do not navigate to Archive or start unrelated recovery jobs while authorizing this move.
         return ArchiveVaultSecurity.verifyPasscode(getApplication(), pin)
+    }
+
+    suspend fun verifyArchiveMovePinAsync(pin: String): ArchiveVaultSecurity.VerifyResult {
+        if (pendingArchiveMove == null || _archiveMove.value.phase != ArchiveMovePhase.UNLOCK)
+            return ArchiveVaultSecurity.VerifyResult.Error("This request expired. Start the move again.")
+        return ArchiveVaultSecurity.verifyPasscodeAsync(getApplication(), pin)
     }
 
     fun cancelArchiveMoveAuthorization() {

@@ -188,6 +188,7 @@ fun NotesScreen(
     val selectedColorFilter by viewModel.selectedColorFilter.collectAsState()
     val selectedLabelFilter by viewModel.selectedLabelFilter.collectAsState()
     val allNotes by viewModel.displayedNotes.collectAsState()
+    val noteReadFailed by viewModel.noteReadFailed.collectAsState()
     val allLabels by viewModel.allLabels.collectAsState()
     val editingState by viewModel.editingState.collectAsState()
     val canUndo by viewModel.canUndo.collectAsState()
@@ -1348,7 +1349,13 @@ fun NotesScreen(
                 // =========================================================
                 // MASONRY STAGGERED GRID (OR EMPTY STATE)
                 // =========================================================
-                if (allNotes.isEmpty()) {
+                if (noteReadFailed) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Some notes could not be loaded.", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = viewModel::retryNoteReads) { Text("Retry") }
+                    }
+                }
+                if (allNotes.isEmpty() && !noteReadFailed) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -1872,7 +1879,7 @@ fun NotesScreen(
             when (archiveMove.phase) {
                 NotesViewModel.ArchiveMovePhase.UNLOCK -> ArchiveVaultUnlockDialog(
                     onDismiss = viewModel::cancelArchiveMoveAuthorization,
-                    onVerify = viewModel::verifyArchiveMovePin,
+                    onVerify = viewModel::verifyArchiveMovePinAsync,
                     onSuccess = viewModel::continueArchiveMove,
                     initialLockoutSeconds = viewModel.getRemainingLockoutSeconds(),
                     title = if (archiveMove.archived) "Unlock to archive" else "Unlock to move to Notes",
@@ -1903,7 +1910,7 @@ fun NotesScreen(
                         showVaultUnlockDialog = false
                         pendingUnlockNoteId = null
                     },
-                    onVerify = { pin -> viewModel.verifyVaultPasscode(pin) },
+                    onVerify = { pin -> viewModel.verifyVaultPasscodeAsync(pin) },
                     onSuccess = {
                         showVaultUnlockDialog = false
                         Toast.makeText(context, "Archive Vault unlocked 🔓", Toast.LENGTH_SHORT).show()

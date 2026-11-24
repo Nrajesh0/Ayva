@@ -11,6 +11,13 @@ on:
       - 'app/src/**'
       - 'app/schemas/**'
       - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - '.github/workflows/native-validation.yml'
+      - 'tools/verify_native_data_safety.sh'
       - 'app/proguard-rules.pro'
       - '.github/workflows/release.yml'
       - 'tools/release_intent.py'
@@ -20,12 +27,20 @@ on:
   workflow_dispatch:    # Enables manual trigger button in GitHub Actions
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  native_checks:
+    uses: ./.github/workflows/native-validation.yml
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      publish: ${{ steps.publication.outputs.publish }}
+      tag_name: ${{ steps.version_info.outputs.tag_name }}
+      version_name: ${{ steps.version_info.outputs.version_name }}
+      version_code: ${{ steps.version_info.outputs.version_code }}
 
     steps:
       - name: Checkout Source Code
@@ -119,12 +134,28 @@ jobs:
           path: build/release-apks/
           retention-days: 14
 
+  publish:
+    if: needs.build.outputs.publish == 'true'
+    needs: [build, native_checks]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: focus-by-rj-v${{ needs.build.outputs.version_name }}-apk
+          path: build/release-apks
+
+      - name: Check downloaded APK checksum
+        working-directory: build/release-apks
+        run: sha256sum --check SHA256SUMS.txt
+
       - name: Automatically Create / Update GitHub Release
-        if: steps.publication.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || env.TAG_NAME }}
-          name: ${{ github.event_name == 'release' && github.event.release.name || format('Release v{0} (Build {1})', env.VERSION_NAME, env.VERSION_CODE) }}
+          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || needs.build.outputs.tag_name }}
+          name: ${{ github.event_name == 'release' && github.event.release.name || format('Release v{0} (Build {1})', needs.build.outputs.version_name, needs.build.outputs.version_code) }}
           files: |
             build/release-apks/*.apk
             build/release-apks/SHA256SUMS.txt

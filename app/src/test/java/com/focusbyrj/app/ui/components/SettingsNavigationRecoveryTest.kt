@@ -64,6 +64,24 @@ class SettingsNavigationRecoveryTest {
         compose.waitForIdle()
     }
 
+    @Test fun backupActivityKeepsFailedAttemptsAndCancelKeepsHistory() {
+        val log = com.focusbyrj.app.util.backup.BackupActivityLog
+        val failed = log.begin(app, com.focusbyrj.app.util.backup.BackupActivityLog.Operation.AUTOMATIC)
+        log.finish(app, failed, com.focusbyrj.app.util.backup.BackupActivityLog.Outcome.RETRY_SCHEDULED)
+        val success = log.begin(app, com.focusbyrj.app.util.backup.BackupActivityLog.Operation.AUTOMATIC)
+        log.finish(app, success, com.focusbyrj.app.util.backup.BackupActivityLog.Outcome.COMPLETED)
+        graph()
+        search("Backup activity", "Backup activity")
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("Retry scheduled", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Completed", substring = true).assertExists()
+        compose.onNodeWithText("Clear history").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Retry scheduled", substring = true).assertExists()
+        assertEquals(2, log.entries(app).size)
+    }
+
     @Test fun allSevenRootCategoriesHaveWorkingDestinationsAndBackReturnsToSettings() {
         graph()
         val pages = listOf("Appearance" to "settings_appearance", "Focus & behavior" to "settings_focus",
@@ -146,6 +164,28 @@ class SettingsNavigationRecoveryTest {
         val intent = shadowOf(compose.activity).nextStartedActivity
         assertEquals(TodoWidgetConfigureActivity::class.java.name, intent.component?.className)
         assertEquals(202, intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1))
+    }
+
+    @Test fun widgetEditorsRejectUnknownNegativeAndForeignIdsButAcceptDefaultStyle() {
+        val manager = AppWidgetManager.getInstance(app)
+        val provider = ComponentName(app, TodoWidgetProvider::class.java)
+        shadowOf(manager).addInstalledProvider(AppWidgetProviderInfo().apply { this.provider = provider })
+        shadowOf(manager).bindAppWidgetId(101, provider)
+        fun assertFinishing(activity: Class<out ComponentActivity>, id: Int?, finishing: Boolean) {
+            val intent = android.content.Intent(app, activity)
+            id?.let { intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, it) }
+            val controller = org.robolectric.Robolectric.buildActivity(activity, intent).create()
+            try { assertEquals(finishing, controller.get().isFinishing) }
+            finally { controller.destroy() }
+        }
+        val todo = TodoWidgetConfigureActivity::class.java
+        val notes = com.focusbyrj.app.widget.NoteWidgetConfigureActivity::class.java
+        assertFinishing(todo, -1, true)
+        assertFinishing(todo, 999, true)
+        assertFinishing(notes, 101, true)
+        assertFinishing(todo, 101, false)
+        assertFinishing(todo, 0, false)
+        assertFinishing(notes, null, false)
     }
 
     @Test fun defaultWidgetStyleDoesNotSelectAnInstalledInstance() {

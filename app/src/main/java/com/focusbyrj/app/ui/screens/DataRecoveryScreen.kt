@@ -5,7 +5,14 @@ import com.focusbyrj.app.ui.tours.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.focusbyrj.app.util.backup.BackupActivityLog
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -21,11 +28,13 @@ fun DataRecoveryScreen(nav: NavController, onRestored: () -> Unit = {}) {
         when { c.problem.isNotBlank() -> "Needs attention"; c.keyId.isBlank() -> "Set up"; !c.enabled -> "Paused"; c.lastSuccess == 0L -> "No backup yet"
             c.nextDue > 0 && System.currentTimeMillis() > c.nextDue + 3_600_000L -> "Overdue"; else -> "Scheduled" }
     }.getOrDefault("Needs attention") }
+    var activity by remember { mutableStateOf(false) }
     var snapshots by remember { mutableStateOf(false) }
     var recoveryTools by remember { mutableStateOf(false) }
     val target = SettingsSearchCatalog.id(LocalSettingsSearchTarget.current)
     LaunchedEffect(target) {
         if (target == "data.snapshots") snapshots = true
+        if (target == "data.activity") activity = true
         if (target in setOf("data.verify", "data.snapshots", "data.repair", "data.drafts", "data.storage")) recoveryTools = true
     }
     val backupTour = rememberSpotlightTour(AppTours.backups)
@@ -38,6 +47,9 @@ fun DataRecoveryScreen(nav: NavController, onRestored: () -> Unit = {}) {
             }
             SettingsMenuRow(Icons.Default.CloudDownload, "Restore encrypted backup", Modifier.settingsSearchTarget("data.restore")) {
                 GrantButton("Restore", enabled = !actions.busy, onClick = actions.restore)
+            }
+            SettingsMenuRow(Icons.Default.History, "Backup activity", Modifier.settingsSearchTarget("data.activity")) {
+                GrantButton("View", onClick = { activity = true })
             }
             Text("Automatic: recovery file. Manual: chosen password.", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
@@ -61,4 +73,72 @@ fun DataRecoveryScreen(nav: NavController, onRestored: () -> Unit = {}) {
         }
     }
     if (snapshots) SafetySnapshotsBottomSheet { snapshots = false }
+    if (activity) BackupActivityDialog { activity = false }
+}
+
+@Composable
+private fun BackupActivityDialog(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var entries by remember { mutableStateOf<List<BackupActivityLog.Entry>?>(null) }
+    var error by remember { mutableStateOf(false) }
+    var clear by remember { mutableStateOf(false) }
+    var refresh by remember { mutableIntStateOf(0) }
+    LaunchedEffect(refresh) {
+        error = false
+        try {
+            entries = withContext(Dispatchers.IO) { BackupActivityLog.entries(context) }
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (_: Exception) {
+            error = true
+        }
+    }
+    if (clear) {
+        AlertDialog(
+            onDismissRequest = { clear = false },
+            title = { Text("Clear backup activity?") },
+            text = { Text("This removes the activity list. Your backups and recovery snapshots stay on this device.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    clear = false
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) { BackupActivityLog.clear(context) }
+                            refresh++
+                        } catch (cause: CancellationException) { throw cause }
+                        catch (_: Exception) { error = true }
+                    }
+                }) { Text("Clear history") }
+            },
+            dismissButton = { TextButton(onClick = { clear = false }) { Text("Cancel") } }
+        )
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Backup activity") },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val rows = entries
+                    when {
+                        error -> {
+                            Text("Could not read backup activity.")
+                            TextButton(onClick = { refresh++ }) { Text("Retry") }
+                        }
+                        rows == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                        rows.isEmpty() -> Text("Your backup and restore activity will appear here.")
+                        else -> for (row in rows) {
+                            Text(row.operation.title, style = MaterialTheme.typography.titleSmall)
+                            val date = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(row.timestamp))
+                            Text(listOfNotNull(row.outcome.label, row.reason?.label, date).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+            dismissButton = { if (error || entries?.isNotEmpty() == true) TextButton(onClick = { clear = true }) { Text("Clear history") } }
+        )
+    }
 }

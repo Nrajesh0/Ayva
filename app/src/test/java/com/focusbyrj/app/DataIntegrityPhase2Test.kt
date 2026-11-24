@@ -355,4 +355,44 @@ class DataIntegrityPhase2Test {
         )
         assertTrue(trashedFingerprint.contains("true|1700000000000"))
     }
+
+    @Test fun purgePreservesCandidatesThatChangeAfterSelection() = runBlocking {
+        val notes = noteDb.noteDao()
+        val tasks = focusDb.taskDao()
+        val noteId = notes.insertNote(NoteEntity(title = "Restored note", isTrashed = true, trashedAt = 1L))
+        val taskId = tasks.insertTask(Task(title = "Retrashed task", isTrashed = true, trashedAt = 1L))
+        val interleavedNotes = object : com.focusbyrj.app.data.note.NoteDao by notes {
+            override suspend fun getExpiredTrashedNotes(cutoffMs: Long): List<NoteEntity> {
+                return notes.getExpiredTrashedNotes(cutoffMs).also {
+                    notes.insertNote(notes.getNoteByIdSync(noteId)!!.copy(isTrashed = false, trashedAt = null))
+                }
+            }
+        }
+        val interleavedTasks = object : com.focusbyrj.app.data.TaskDao by tasks {
+            override suspend fun getExpiredTrashedTasks(cutoffMs: Long): List<Task> {
+                return tasks.getExpiredTrashedTasks(cutoffMs).also {
+                    tasks.updateTrashStatus(taskId, true, updatedAt = 2L)
+                }
+            }
+        }
+        assertEquals(0, DataSafetyManager.purgeExpiredTrash(context, interleavedNotes, interleavedTasks, focusDb = focusDb))
+        assertEquals(false, notes.getNoteByIdSync(noteId)?.isTrashed)
+        assertEquals(2L, tasks.getTaskById(taskId)?.trashedAt)
+    }
+
+    @Test fun restoringTheOldestSnapshotKeepsTheSelectedRecoveryPoint() = runBlocking {
+        val dao = noteDb.noteDao()
+        dao.insertNote(NoteEntity(id = 42, title = "Old content"))
+        val paths = (1..10).map { index ->
+            if (index > 1) dao.insertNote(NoteEntity(id = 42, title = "Revision $index"))
+            File(checkNotNull(DataSafetyManager.writePreOpSnapshot(context, dao, "test", focusDb))).apply {
+                assertTrue(setLastModified(1_000L * index))
+            }
+        }
+        assertEquals(1, DataSafetyManager.restoreSnapshot(context, paths.first().path, dao, focusDb).getOrThrow())
+        assertTrue(paths.first().isFile)
+        assertEquals("Old content", dao.getNoteByIdSync(42)?.title)
+        assertEquals(10, paths.first().parentFile!!.listFiles()!!.count { it.extension == "json" })
+    }
+
 }

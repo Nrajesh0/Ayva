@@ -109,6 +109,7 @@ class ManualBackupUiTest {
         compose.onNodeWithText("Start manual backup").performClick()
         compose.onNodeWithText("Unlock for this backup").assertIsDisplayed()
         "123456".forEach { compose.onNodeWithText(it.toString()).performClick() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Set manual backup password").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Set manual backup password").assertIsDisplayed()
         compose.onNodeWithText("Cancel").performClick()
         assertTrue(ArchiveVaultSecurity.isVaultLocked(app))
@@ -129,6 +130,7 @@ class ManualBackupUiTest {
             page()
             compose.onNodeWithText("Start manual backup").performClick()
             "123456".forEach { compose.onNodeWithText(it.toString()).performClick() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Backup Password").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Backup Password").performTextInput("test-manual-password")
             compose.onNodeWithText("Confirm Password").performTextInput("test-manual-password")
             val click = compose.onNodeWithText("Prepare encrypted backup").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!

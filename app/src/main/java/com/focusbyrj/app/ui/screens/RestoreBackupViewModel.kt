@@ -87,6 +87,9 @@ internal class RestoreBackupViewModel(
                 owned = BackupRestoreManager.prepareRestore(getApplication(), uri, secret).getOrThrow()
                 ensureActive()
                 if (request != generation) return@launch
+                require(!replace || checkNotNull(owned).canReplace) {
+                    "This backup is missing required collections. Choose Import copies and select the backup again."
+                }
                 prepared = owned; owned = null
                 val value = checkNotNull(prepared)
                 mutable.value = RestoreState(RestorePhase.REVIEW, value.noteCount, value.taskCount, replace,
@@ -101,6 +104,10 @@ internal class RestoreBackupViewModel(
                 capability?.close()
                 if (request != generation) return@launch
                 if (authorization === capability) authorization = null
+                withContext(Dispatchers.IO) {
+                    runCatching { com.focusbyrj.app.util.backup.RestoreNotice.outcome(getApplication(), "check_failed") }
+                }
+                if (request != generation) return@launch
                 mutable.value = RestoreState(RestorePhase.ERROR,
                     message = error.message ?: "Could not check this backup. Your data was not changed.",
                     needsRecoveryFile = credential == null && (!keyReady || error is SecurityException),
@@ -112,6 +119,10 @@ internal class RestoreBackupViewModel(
     fun acceptReview() {
         if (mutable.value.phase != RestorePhase.REVIEW) return
         val value = prepared ?: return
+        if (replace && !value.canReplace) {
+            cancel("This backup is missing required collections. Choose Import copies and select it again.")
+            return
+        }
         when {
             authorization != null -> startApply(null)
             ArchiveVaultSecurity.getVaultStatus(getApplication()) == ArchiveVaultSecurity.VaultStatus.ENABLED ->
@@ -124,6 +135,16 @@ internal class RestoreBackupViewModel(
     fun onBackground() {
         if (mutable.value.phase in setOf(RestorePhase.CHECKING, RestorePhase.REVIEW, RestorePhase.UNLOCK_SAVED_KEY, RestorePhase.UNLOCK, RestorePhase.SETUP_PIN))
             cancel("Restore paused. Choose the backup again; your data was not changed.")
+    }
+
+    fun authorizeRestore() {
+        if (mutable.value.phase != RestorePhase.UNLOCK) return
+        try {
+            authorization = BackupRestoreManager.captureRestoreAuthorization(getApplication())
+            startApply(null)
+        } catch (_: Exception) {
+            cancel("Vault confirmation expired. Select the backup and confirm your PIN again.")
+        }
     }
 
     fun confirm(pin: String? = null) {

@@ -25,6 +25,7 @@ import com.focusbyrj.app.data.TaskDao
 import com.focusbyrj.app.data.TaskType
 import com.focusbyrj.app.data.note.NoteDao
 import com.focusbyrj.app.data.note.NoteEntity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -33,6 +34,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 /**
  * Records encrypted recovery snapshots providing three complementary layers of protection
@@ -70,6 +72,8 @@ object DataSafetyManager {
     private const val PRE_OP_PREFIX = "pre_op_"
     private const val MAX_DAILY_BACKUPS = 7
     private const val MAX_PRE_OP_BACKUPS = 10
+    private val snapshotFiles = Any()
+    private val protectedInputs = mutableSetOf<File>()
 
     // ──────────────────────────────────────────────────────────────────────
     // Public API
@@ -86,6 +90,8 @@ object DataSafetyManager {
         noteDao: NoteDao,
         focusDb: FocusDatabase? = null
     ): Boolean = withContext(Dispatchers.IO) {
+        val activity = BackupActivityLog.begin(context, BackupActivityLog.Operation.SNAPSHOT_CREATE)
+        var outcome = BackupActivityLog.Outcome.FAILED
         try {
             val dir = ensureDir(context, AUTO_BACKUP_DIR)
             val notes = noteDao.getAllNotesList()
@@ -93,16 +99,23 @@ object DataSafetyManager {
 
             val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
             val file = File(dir, "${DAILY_PREFIX}${dateStamp}.json")
-            writeAtomically(file, payload)
-
-            // Rotate: remove oldest if over limit
-            rotateDailyBackups(dir)
+            synchronized(snapshotFiles) {
+                check(file.canonicalFile !in protectedInputs) { "This daily snapshot is being restored." }
+                writeAtomically(file, payload)
+                rotateSnapshots(dir, DAILY_PREFIX, MAX_DAILY_BACKUPS, file)
+            }
 
             Log.i(TAG, "Daily auto-backup written: ${notes.size} notes → ${file.name}")
+            outcome = BackupActivityLog.Outcome.COMPLETED
             true
+        } catch (error: CancellationException) {
+            outcome = BackupActivityLog.Outcome.INTERRUPTED
+            throw error
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write daily auto-backup", e)
             false
+        } finally {
+            BackupActivityLog.finish(context, activity, outcome)
         }
     }
 
@@ -125,6 +138,8 @@ object DataSafetyManager {
         operationTag: String,
         focusDb: FocusDatabase? = null
     ): String? = withContext(Dispatchers.IO) {
+        val activity = BackupActivityLog.begin(context, BackupActivityLog.Operation.SNAPSHOT_CREATE)
+        var outcome = BackupActivityLog.Outcome.FAILED
         try {
             val dir = ensureDir(context, PRE_OP_DIR)
             val notes = noteDao.getAllNotesList()
@@ -132,17 +147,23 @@ object DataSafetyManager {
 
             val ts = System.currentTimeMillis()
             val safeTag = operationTag.replace(Regex("[^a-zA-Z0-9_]"), "_")
-            val file = File(dir, "${PRE_OP_PREFIX}${safeTag}_${ts}.json")
-            writeAtomically(file, payload)
-
-            // Rotate: keep only the most recent MAX_PRE_OP_BACKUPS
-            rotatePreOpBackups(dir)
+            val file = File(dir, "${PRE_OP_PREFIX}${safeTag}_${ts}_${UUID.randomUUID()}.json")
+            synchronized(snapshotFiles) {
+                writeAtomically(file, payload)
+                rotateSnapshots(dir, PRE_OP_PREFIX, MAX_PRE_OP_BACKUPS, file)
+            }
 
             Log.i(TAG, "Pre-op snapshot written for '$operationTag': ${notes.size} notes → ${file.name}")
+            outcome = BackupActivityLog.Outcome.COMPLETED
             file.absolutePath
+        } catch (error: CancellationException) {
+            outcome = BackupActivityLog.Outcome.INTERRUPTED
+            throw error
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write pre-op snapshot for '$operationTag'", e)
             null
+        } finally {
+            BackupActivityLog.finish(context, activity, outcome)
         }
     }
 
@@ -171,48 +192,53 @@ object DataSafetyManager {
      * Returns a list of all auto-backup files (daily + pre-op) sorted newest first.
      * Useful for displaying a recovery list in settings UI.
      */
-    fun listAvailableSnapshots(context: Context): List<SnapshotInfo> {
-        return try {
-            val dailyDir = File(context.filesDir, AUTO_BACKUP_DIR)
-            val preOpDir = File(context.filesDir, PRE_OP_DIR)
-            val taskOnlyDir = File(context.filesDir, TaskRecoveryStore.DIRECTORY)
-            val files = mutableListOf<File>()
-            if (dailyDir.exists()) files.addAll(dailyDir.listFiles { f -> f.isFile && f.name.endsWith(".json") } ?: emptyArray())
-            if (preOpDir.exists()) files.addAll(preOpDir.listFiles { f -> f.isFile && f.name.endsWith(".json") } ?: emptyArray())
-            if (taskOnlyDir.exists()) files.addAll(taskOnlyDir.listFiles { f -> f.isFile && f.name.endsWith(".json") } ?: emptyArray())
-            files.sortByDescending { it.lastModified() }
-            files.map { file ->
-                val tag = when {
-                    file.parentFile == taskOnlyDir -> "Task recovery"
-                    file.name.startsWith(DAILY_PREFIX) -> "Daily"
-                    file.name.contains("SYNC_ANOMALY") -> "Emergency (Sync Anomaly)"
-                    else -> "Pre-Op"
-                }
-                // Read JSON once to extract createdAt, noteCount, taskCount — avoids repeated IO per item in the UI list.
-                val (jsonCreatedAt, noteCount, taskCount) = try {
-                    val text = readAtomically(file)
-                    val obj = JSONObject(text)
-                    Triple(
-                        obj.optLong("createdAt", 0L).takeIf { it > 0L } ?: file.lastModified(),
-                        obj.optInt("noteCount", -1),
-                        obj.optInt("taskCount", -1)
-                    )
-                } catch (_: Exception) {
-                    Triple(file.lastModified(), -1, -1)
-                }
-                SnapshotInfo(
-                    tag = tag,
-                    fileName = file.name,
-                    absolutePath = file.absolutePath,
-                    createdAtMs = jsonCreatedAt,
-                    sizeBytes = file.length(),
-                    noteCount = noteCount,
-                    taskCount = taskCount
-                )
+    fun listAvailableSnapshots(context: Context): List<SnapshotInfo> = runCatching {
+        readSnapshotList(context)
+    }.getOrElse {
+        Log.e(TAG, "Failed to list snapshots", it)
+        emptyList()
+    }
+
+    internal suspend fun loadSnapshots(context: Context): List<SnapshotInfo> =
+        withContext(Dispatchers.IO) { readSnapshotList(context) }
+
+    private fun readSnapshotList(context: Context): List<SnapshotInfo> {
+        val dailyDir = File(context.filesDir, AUTO_BACKUP_DIR)
+        val preOpDir = File(context.filesDir, PRE_OP_DIR)
+        val taskOnlyDir = File(context.filesDir, TaskRecoveryStore.DIRECTORY)
+        val files = mutableListOf<File>()
+        if (dailyDir.exists()) files.addAll(checkNotNull(dailyDir.listFiles { f -> f.isFile && f.name.endsWith(".json") }) { "Could not read safety snapshots." })
+        if (preOpDir.exists()) files.addAll(checkNotNull(preOpDir.listFiles { f -> f.isFile && f.name.endsWith(".json") }) { "Could not read safety snapshots." })
+        if (taskOnlyDir.exists()) files.addAll(checkNotNull(taskOnlyDir.listFiles { f -> f.isFile && f.name.endsWith(".json") }) { "Could not read safety snapshots." })
+        files.sortByDescending { it.lastModified() }
+        return files.map { file ->
+            val tag = when {
+                file.parentFile == taskOnlyDir -> "Task recovery"
+                file.name.startsWith(DAILY_PREFIX) -> "Daily"
+                file.name.contains("SYNC_ANOMALY") -> "Emergency (Sync Anomaly)"
+                else -> "Pre-Op"
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to list snapshots", e)
-            emptyList()
+            // Read JSON once to extract createdAt, noteCount, taskCount — avoids repeated IO per item in the UI list.
+            val (jsonCreatedAt, noteCount, taskCount) = try {
+                val text = readAtomically(file)
+                val obj = JSONObject(text)
+                Triple(
+                    obj.optLong("createdAt", 0L).takeIf { it > 0L } ?: file.lastModified(),
+                    obj.optInt("noteCount", -1),
+                    obj.optInt("taskCount", -1)
+                )
+            } catch (_: Exception) {
+                Triple(file.lastModified(), -1, -1)
+            }
+            SnapshotInfo(
+                tag = tag,
+                fileName = file.name,
+                absolutePath = file.absolutePath,
+                createdAtMs = jsonCreatedAt,
+                sizeBytes = file.length(),
+                noteCount = noteCount,
+                taskCount = taskCount
+            )
         }
     }
 
@@ -259,38 +285,39 @@ object DataSafetyManager {
         retentionDays: Int = 30,
         focusDb: FocusDatabase? = null
     ): Int = withContext(Dispatchers.IO) {
+        var activity: UUID? = null
+        var outcome = BackupActivityLog.Outcome.FAILED
         try {
-            val cutoffMs = System.currentTimeMillis() - (retentionDays * 24L * 60L * 60L * 1000L)
-            val expiredNotes = noteDao.getExpiredTrashedNotes(cutoffMs)
-            val expiredTasks = taskDao?.getExpiredTrashedTasks(cutoffMs) ?: emptyList()
-
-            if (expiredNotes.isNotEmpty() || expiredTasks.isNotEmpty()) {
+            MaintenanceGate.shared {
+                val cutoffMs = System.currentTimeMillis() - (retentionDays * 24L * 60L * 60L * 1000L)
+                val expiredNotes = noteDao.getExpiredTrashedNotes(cutoffMs)
+                val expiredTasks = taskDao?.getExpiredTrashedTasks(cutoffMs).orEmpty()
+                if (expiredNotes.isEmpty() && expiredTasks.isEmpty()) return@shared 0
+                activity = BackupActivityLog.begin(context, BackupActivityLog.Operation.TRASH_CLEANUP)
                 checkNotNull(writePreOpSnapshot(context, noteDao, "auto_purge_30d_trash", focusDb)) {
                     "Safety snapshot failed; expired trash was retained."
                 }
-                
-                var purgedCount = 0
-                if (expiredNotes.isNotEmpty()) {
-                    val expiredNoteIds = expiredNotes.map { it.id }
-                    noteDao.hardDeleteNotesByIds(expiredNoteIds)
-                    purgedCount += expiredNoteIds.size
-                    Log.i(TAG, "30-day trash purge: permanently removed ${expiredNoteIds.size} notes (older than $retentionDays days)")
+                val purgedNotes = expiredNotes.sumOf { note ->
+                    noteDao.purgeExpiredNote(note.id, note.trashedAt, note.updatedAt, cutoffMs)
                 }
-
-                if (expiredTasks.isNotEmpty()) {
-                    val expiredTaskIds = expiredTasks.map { it.id }
-                    taskDao?.hardDeleteTasksByIds(expiredTaskIds)
-                    purgedCount += expiredTaskIds.size
-                    Log.i(TAG, "30-day trash purge: permanently removed ${expiredTaskIds.size} tasks (older than $retentionDays days)")
-                }
-
-                purgedCount
-            } else {
-                0
+                val purgedTasks = taskDao?.let { dao ->
+                    expiredTasks.sumOf { task ->
+                        dao.purgeExpiredTask(task.id, task.trashedAt, task.updatedAt, cutoffMs)
+                    }
+                } ?: 0
+                outcome = BackupActivityLog.Outcome.COMPLETED
+                purgedNotes + purgedTasks
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to purge expired trash", e)
+        } catch (error: CancellationException) {
+            outcome = BackupActivityLog.Outcome.INTERRUPTED
+            throw error
+        } catch (error: Exception) {
+            if (activity == null) activity = BackupActivityLog.begin(context, BackupActivityLog.Operation.TRASH_CLEANUP)
+            Log.e(TAG, "Failed to purge expired trash", error)
             0
+        } finally {
+            BackupActivityLog.finish(context, activity, outcome,
+                BackupActivityLog.Reason.CLEANUP.takeIf { outcome == BackupActivityLog.Outcome.FAILED })
         }
     }
 
@@ -313,14 +340,74 @@ object DataSafetyManager {
         snapshotPath: String,
         noteDao: NoteDao,
         focusDb: FocusDatabase? = null
-    ): Result<Int> = AssistantStateLock.mutex.withLock {
-        if (File(snapshotPath).canonicalFile.parentFile == File(context.filesDir, TaskRecoveryStore.DIRECTORY).canonicalFile) {
-            restoreSnapshotUnlocked(context, snapshotPath, noteDao, focusDb)
-        } else RestoreJournal.mutate(context) { restoreSnapshotUnlocked(context, snapshotPath, noteDao, focusDb) }
+    ): Result<Int> = restoreSnapshotInternal(context, snapshotPath, noteDao, focusDb, null, true)
+
+    internal suspend fun restoreSnapshotAuthorized(
+        context: Context,
+        snapshotPath: String,
+        noteDao: NoteDao,
+        focusDb: FocusDatabase?,
+        authorization: BackupRestoreManager.RestoreAuthorization?
+    ): Result<Int> = restoreSnapshotInternal(context, snapshotPath, noteDao, focusDb, authorization, false)
+
+    internal suspend fun snapshotNeedsVault(context: Context, path: String, noteDao: NoteDao): Boolean =
+        withContext(Dispatchers.IO) {
+            val file = File(path).canonicalFile
+            if (file.parentFile == File(context.filesDir, TaskRecoveryStore.DIRECTORY).canonicalFile) return@withContext false
+            val notes = JSONObject(readAtomically(file)).optJSONArray("notes") ?: return@withContext false
+            for (index in 0 until notes.length()) {
+                val row = notes.getJSONObject(index)
+                if (row.optBoolean("isArchived")) return@withContext true
+                val live = noteDao.getNoteByIdSync(row.optLong("id"))
+                if (live != null && (live.isArchived ||
+                        com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(live))) return@withContext true
+            }
+            false
+        }
+
+    private suspend fun restoreSnapshotInternal(
+        context: Context,
+        snapshotPath: String,
+        noteDao: NoteDao,
+        focusDb: FocusDatabase?,
+        authorization: BackupRestoreManager.RestoreAuthorization?,
+        allowActiveVault: Boolean
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            Result.success(BackupActivityLog.track(context, BackupActivityLog.Operation.SNAPSHOT_RESTORE) {
+                AssistantStateLock.mutex.withLock {
+                    val input = File(snapshotPath).canonicalFile
+                    if (input.parentFile == File(context.filesDir, TaskRecoveryStore.DIRECTORY).canonicalFile) {
+                        restoreSnapshotUnlocked(context, input.path, noteDao, focusDb)
+                    } else {
+                        synchronized(snapshotFiles) { protectedInputs.add(input) }
+                        try {
+                            RestoreJournal.mutate(context) {
+                                val key = authorization?.copyKey(context) ?: if (allowActiveVault) {
+                                    com.focusbyrj.app.data.note.ArchiveVaultSecurity.getActiveVaultSubKey()
+                                } else null
+                                try {
+                                    restoreSnapshotUnlocked(context, input.path, noteDao, focusDb, key)
+                                } finally {
+                                    key?.fill(0)
+                                }
+                            }
+                        } finally {
+                            synchronized(snapshotFiles) { protectedInputs.remove(input) }
+                            if (!allowActiveVault) com.focusbyrj.app.data.note.ArchiveVaultSecurity.lockVault()
+                        }
+                    }
+                }.getOrThrow()
+            })
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
     }
 
     private suspend fun restoreSnapshotUnlocked(
-        context: Context, snapshotPath: String, noteDao: NoteDao, focusDb: FocusDatabase?
+        context: Context, snapshotPath: String, noteDao: NoteDao, focusDb: FocusDatabase?, activeSubKey: ByteArray? = null
     ): Result<Int> = withContext(Dispatchers.IO) {
         var priorNotes: List<NoteEntity>? = null
         var assistantRecovery: AssistantPlanningArchive.Recovery? = null
@@ -338,13 +425,11 @@ object DataSafetyManager {
                     requireNotNull(focusDb) { "Task database is required for task recovery" })
             }
 
+            val root = JSONObject(readAtomically(file))
             // A restore is destructive. Do not proceed unless the rollback point is durable.
             checkNotNull(writePreOpSnapshot(context, noteDao, "pre_restore", focusDb)) {
                 "Could not create the required pre-restore safety snapshot. No data was changed."
             }
-
-            val jsonStr = readAtomically(file)
-            val root = JSONObject(jsonStr)
 
             // Validate new planning metadata before Notes or native tasks can be changed.
             root.optJSONArray("tasks")?.let { array ->
@@ -391,7 +476,6 @@ object DataSafetyManager {
                 }
 
                 if (restoredNotes.isNotEmpty()) {
-                    val activeSubKey = com.focusbyrj.app.data.note.ArchiveVaultSecurity.getActiveVaultSubKey()
                     val safeToRestoreNotes = mutableListOf<NoteEntity>()
                     for (snapshotNote in restoredNotes) {
                         val liveNote = noteDao.getNoteByIdSync(snapshotNote.id)
@@ -830,24 +914,17 @@ object DataSafetyManager {
         return root.toString()
     }
 
-    private fun rotateDailyBackups(dir: File) {
-        val files = dir.listFiles { f -> f.isFile && f.name.startsWith(DAILY_PREFIX) }
-            ?.sortedByDescending { it.lastModified() } ?: return
-        if (files.size > MAX_DAILY_BACKUPS) {
-            files.drop(MAX_DAILY_BACKUPS).forEach { old ->
-                old.delete()
-                Log.d(TAG, "Rotated old daily backup: ${old.name}")
-            }
-        }
-    }
-
-    private fun rotatePreOpBackups(dir: File) {
-        val files = dir.listFiles { f -> f.isFile && f.name.startsWith(PRE_OP_PREFIX) }
-            ?.sortedByDescending { it.lastModified() } ?: return
-        if (files.size > MAX_PRE_OP_BACKUPS) {
-            files.drop(MAX_PRE_OP_BACKUPS).forEach { old ->
-                old.delete()
-                Log.d(TAG, "Rotated old pre-op snapshot: ${old.name}")
+    private fun rotateSnapshots(dir: File, prefix: String, limit: Int, written: File) {
+        val files = dir.listFiles { file -> file.isFile && file.name.startsWith(prefix) }
+            ?.sortedBy { it.lastModified() } ?: return
+        val excess = files.size - limit
+        if (excess <= 0) return
+        val kept = protectedInputs + written.canonicalFile
+        var removed = 0
+        for (old in files) {
+            if (old.canonicalFile !in kept && old.delete()) {
+                Log.d(TAG, "Rotated old recovery snapshot: ${old.name}")
+                if (++removed == excess) break
             }
         }
     }

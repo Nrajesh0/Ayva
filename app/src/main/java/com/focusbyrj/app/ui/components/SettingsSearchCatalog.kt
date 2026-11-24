@@ -62,6 +62,7 @@ internal object SettingsSearchCatalog {
         SettingsSearchEntry("Change vault PIN", "Verify the current PIN before changing it", "Private notes vault", "settings_vault", "vault.change_pin", listOf()),
         SettingsSearchEntry("Disable vault PIN", "Verify the PIN before removing vault protection", "Private notes vault", "settings_vault", "vault.disable", listOf()),
         SettingsSearchEntry("Lock private notes vault", "Discard the in-memory vault key", "Private notes vault", "settings_vault", "vault.lock", listOf("Lock app immediately")),
+        SettingsSearchEntry("Backup activity", "Review recent backup and restore results", "Data & recovery", "settings_data", "data.activity", listOf()),
         SettingsSearchEntry("Verify a backup", "Check an encrypted backup without restoring it", "Data & recovery", "settings_data", "data.verify", listOf()),
         SettingsSearchEntry("Interrupted restore", "Repair is available only when an operation needs recovery", "Data & recovery", "settings_data", "data.repair", listOf()),
         SettingsSearchEntry("Saved drafts", "Review and recover saved editor text", "Data & recovery", "settings_data", "data.drafts", listOf()),

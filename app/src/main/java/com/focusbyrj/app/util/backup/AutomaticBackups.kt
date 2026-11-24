@@ -1,19 +1,9 @@
 package com.focusbyrj.app.util.backup
 
-import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 import androidx.work.*
-import com.focusbyrj.app.MainActivity
-import com.focusbyrj.app.R
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.map
@@ -27,8 +17,6 @@ import java.util.concurrent.TimeUnit
 internal object AutomaticBackups {
     private const val PERIODIC = "run_automatic_full_backup_check_v1"
     private const val IMMEDIATE = "run_automatic_full_backup_now_v1"
-    private const val CHANNEL = "run_backup_health"
-    private const val NOTICE = 8407
     private val operation = Mutex()
     private val active = kotlinx.coroutines.flow.MutableStateFlow(false)
     val running: kotlinx.coroutines.flow.StateFlow<Boolean> = active
@@ -140,9 +128,15 @@ internal object AutomaticBackups {
         store: AutomaticBackupStore = AutomaticBackupStore(context),
         destinationFactory: (String) -> BackupDestination = { SafBackupDestination(context, it) },
         createArchive: suspend (Context, Uri, String, ByteArray?) -> Result<BackupRestoreManager.BackupMetadata> = BackupRestoreManager::createAutomaticEncryptedBackup,
-        requestId: String = "", expectedScope: BackupRequestScope? = null
-    ): Boolean = withContext(BackupProgress { mutableProgress.value = it }) { edit {
+        requestId: String = "", expectedScope: BackupRequestScope? = null,
+        startForeground: suspend () -> Unit = {},
+        reportNotification: (String) -> Unit = {}
+    ): Boolean = withContext(BackupProgress {
+        mutableProgress.value = it
+        reportNotification(it)
+    }) { edit {
         val app = context.applicationContext
+        val work = currentCoroutineContext()
         var config = store.config()
         // Check under the same mutex as key/folder changes, not only in the worker's preflight.
         if (expectedScope != null && !expectedScope.matches(config, store.requestEpoch())) return@edit true
@@ -155,20 +149,25 @@ internal object AutomaticBackups {
         }
         if ((!config.enabled && !force) || (!force && config.nextDue > now)) return@edit true
         if (!config.keyExported || !config.keyAcknowledged || config.tree.isBlank()) return@edit true
-        var phase = "KEY"
+        var phase = "SYSTEM"
         fun stage(value: String) {
             phase = value
-            mutableProgress.value = when (value) {
+            work.ensureActive()
+            BackupProgress.report(when (value) {
                 "ARCHIVE" -> "Preparing backup"
                 "VERIFY" -> "Saving and verifying"
                 "RETENTION" -> "Finishing backup"
                 "DESTINATION" -> "Checking backup folder"
                 else -> "Starting backup"
-            }
+            })
         }
-        stage("KEY")
         active.value = true
+        val activity = BackupActivityLog.begin(app, BackupActivityLog.Operation.AUTOMATIC)
+        var outcome = BackupActivityLog.Outcome.INTERRUPTED
+        var reason: BackupActivityLog.Reason? = null
         try {
+            startForeground()
+            stage("KEY")
             store.save(config.copy(lastAttempt = now))
             store.key().use { key ->
                 stage("BOOKKEEPING")
@@ -183,12 +182,27 @@ internal object AutomaticBackups {
                     require(file.canonicalFile.parentFile == folder.canonicalFile && file.name.matches(Regex("[a-f0-9-]{36}\\.enc")))
                     return file
                 }
-                val usable = staged?.takeIf { it.stream == config.stream && it.keyId == config.keyId &&
-                    it.vaultAuthorization == store.vaultAuthorizationToken() && it.created <= now + 300_000L &&
-                    (requestId.isBlank() || it.requestId == requestId) && it.created >= config.lastSuccess && config.frequency.nextAfter(it.created) > now }?.let { value ->
-                    runCatching { val f = stageFile(value); f.isFile && f.inputStream().use { digestBackup(it, value.size) } == EncryptedFileDigest(value.size, value.sha256) }.getOrDefault(false)
+                val ledger = store.records()
+                val authorization = store.vaultAuthorizationToken()
+                val eligible = staged?.takeIf { it.stream == config.stream && it.keyId == config.keyId &&
+                    it.vaultAuthorization == authorization && it.created <= now + 300_000L &&
+                    (requestId.isBlank() || it.requestId == requestId) && it.created >= config.lastSuccess &&
+                    config.frequency.nextAfter(it.created) > now }
+                val receipt = ledger.asReversed().firstOrNull { record ->
+                    record.stream == config.stream && record.keyId == config.keyId &&
+                        record.vaultAuthorization == authorization &&
+                        record.created in config.lastSuccess..(now + 300_000L) &&
+                        (eligible?.let { record.created == it.created && record.size == it.size && record.sha256 == it.sha256 }
+                            ?: (requestId.isNotBlank() && record.requestId == requestId)) &&
+                        AutomaticBackupFiles.verifies(destination, record, work::ensureActive)
+                }
+                val usable = eligible?.let { value ->
+                    runCatching {
+                        val file = stageFile(value)
+                        file.isFile && file.inputStream().use { digestBackup(it, value.size) } == EncryptedFileDigest(value.size, value.sha256)
+                    }.getOrDefault(false)
                 } == true
-                if (!usable) {
+                if (receipt == null && !usable) {
                     stage("ARCHIVE")
                     val file = File(folder, "${UUID.randomUUID()}.enc")
                     var installed = false
@@ -204,36 +218,45 @@ internal object AutomaticBackups {
                         previous?.let { runCatching { stageFile(it).delete() } }
                     } finally { if (!installed) file.delete() }
                 }
-                val stage = checkNotNull(staged)
-                val file = stageFile(stage)
                 stage("VERIFY")
-                val name = "RUN-Auto-${config.stream}-${config.keyId}-${stage.created}-${UUID.randomUUID()}.focusbackup"
-                val published = AutomaticBackupFiles.publish(destination, name, EncryptedFileDigest(stage.size, stage.sha256)) { file.inputStream() }
-                val record = stage.copy(uri = published.uri, name = published.name)
-                // Save ownership durably before retention. An interrupted ledger write never deletes old copies.
-                val records = store.records() + record
-                store.records(records)
+                val record = receipt ?: run {
+                    val stage = checkNotNull(staged)
+                    val file = stageFile(stage)
+                    val name = "RUN-Auto-${config.stream}-${config.keyId}-${stage.created}-${UUID.randomUUID()}.focusbackup"
+                    val published = AutomaticBackupFiles.publish(destination, name, EncryptedFileDigest(stage.size, stage.sha256),
+                        work::ensureActive) { file.inputStream() }
+                    stage.copy(uri = published.uri, name = published.name).also {
+                        // Record ownership before retention. A failed write leaves older copies intact.
+                        store.records(ledger + it)
+                    }
+                }
                 stage("RETENTION")
-                val (kept, failures, retainedVerified) = AutomaticBackupFiles.prune(destination, store.records(), config.stream, config.keyId, config.keep)
+                val ordered = ledger.filterNot { it.uri == record.uri } + record
+                val (kept, failures, retainedVerified) = AutomaticBackupFiles.prune(destination, ordered, config.stream, config.keyId, config.keep, work::ensureActive)
                 store.records(kept)
                 if (!retainedVerified) { stage("VERIFY"); error("The committed destination copy could no longer be verified; local retry archive retained.") }
-                val nextDue = config.frequency.nextAfter(stage.created).coerceAtLeast(System.currentTimeMillis() + 60_000L)
-                store.save(store.config().copy(lastSuccess = stage.created, nextDue = nextDue, lastFile = published.name,
+                work.ensureActive()
+                val nextDue = config.frequency.nextAfter(record.created).coerceAtLeast(System.currentTimeMillis() + 60_000L)
+                store.save(store.config().copy(lastSuccess = record.created, nextDue = nextDue, lastFile = record.name,
                     problem = if (failures > 0) "RETENTION" else "",
                     detail = if (failures > 0) "New backup verified. $failures older files were kept because safe deletion could not be confirmed." else ""))
                 app.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
                     .putLong("last_verified_export_ms", System.currentTimeMillis()).apply()
-                store.staged(null); file.delete()
+                store.staged(null)
                 // Clean uncommitted local stages only after a fresh external copy is protected.
                 folder.listFiles()?.filter { it.isFile && it.name.matches(Regex("[a-f0-9-]{36}\\.enc")) }
                     ?.forEach { runCatching { it.delete() } }
-                (app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTICE)
-                if (failures > 0) notifyProblem(app)
+                outcome = if (failures > 0) BackupActivityLog.Outcome.WARNING else BackupActivityLog.Outcome.COMPLETED
+                if (failures > 0) reason = BackupActivityLog.Reason.RETENTION
+                AutomaticBackupNotifications(app).complete(retentionWarning = failures > 0)
             }
             true
         } catch (error: CancellationException) { throw error }
         catch (error: Exception) {
+            outcome = BackupActivityLog.Outcome.RETRY_SCHEDULED
+            reason = BackupActivityLog.Reason.entries.firstOrNull { it.name == phase }
             val detail = when(phase) {
+                "SYSTEM" -> "Android could not start a long-running backup. Open Ayva and try Back up now. Existing backups were kept."
                 "KEY" -> "The protected backup key could not be opened. Import your exported recovery key; no replacement key was generated."
                 "BOOKKEEPING" -> "Automatic backup records could not be saved. Check device storage. Existing backup files were kept."
                 "DESTINATION" -> "The backup folder is unavailable or its permission was lost. Reconnect it or choose a folder again."
@@ -243,54 +266,58 @@ internal object AutomaticBackups {
             }
             runCatching { store.save(store.config().copy(problem = phase, detail = detail, lastAttempt = now)) }
             android.util.Log.w("AutomaticBackups", "Automatic full backup failed in $phase (${error.javaClass.simpleName})")
-            notifyProblem(app)
+            AutomaticBackupNotifications(app).failure()
             false
-        } finally { active.value = false }
-    } }
-    fun notifyProblem(context: Context) {
-        runCatching {
-            val manager = context.getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(NotificationChannel(CHANNEL, "Backup health", NotificationManager.IMPORTANCE_DEFAULT))
-            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-            val open = PendingIntent.getActivity(context, NOTICE, Intent(context, MainActivity::class.java)
-                .putExtra("navigate_to", "settings_automatic_backups"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            manager.notify(NOTICE, NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("Automatic backup needs attention").setContentText("Open backup settings to check your recovery protection.")
-                .setContentIntent(open).setAutoCancel(true).setOnlyAlertOnce(true).build())
+        } finally {
+            BackupActivityLog.finish(app, activity, outcome, reason)
+            active.value = false
         }
+    } }
+    suspend fun recordWorkerFailure(context: Context) = edit {
+        val activity = BackupActivityLog.begin(context, BackupActivityLog.Operation.AUTOMATIC)
+        runCatching {
+            val store = AutomaticBackupStore(context)
+            store.save(store.config().copy(problem = "SYSTEM",
+                detail = "Android could not finish checking backup setup. Open backup settings and try again. Existing backups were kept."))
+        }
+        BackupActivityLog.finish(context, activity, BackupActivityLog.Outcome.RETRY_SCHEDULED, BackupActivityLog.Reason.SYSTEM)
     }
+
 }
 
 class AutomaticFullBackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
-    override suspend fun doWork(): Result { return try {
-        val config = AutomaticBackupStore(applicationContext).config()
-        val force = inputData.getBoolean("force", false)
-        val expectedScope = if (force) BackupRequestScope(inputData.getString("setup_stream").orEmpty(), inputData.getString("setup_key").orEmpty(), inputData.getString("request_epoch").orEmpty()) else null
-        if (expectedScope != null && (expectedScope.stream.isBlank() || expectedScope.keyId.isBlank() || expectedScope.epoch.isBlank() || !expectedScope.matches(config, AutomaticBackupStore(applicationContext).requestEpoch()))) return Result.success()
-        val now = System.currentTimeMillis()
-        val zoneChanged = config.scheduleZone != java.time.ZoneId.systemDefault().id
-        val clockMovedBack = config.lastAttempt > now + 300_000L
-        if ((!config.enabled && !force) || !config.keyAcknowledged || config.tree.isBlank() ||
-            (!force && config.nextDue > now && !zoneChanged && !clockMovedBack)) return Result.success()
-        val notifications = applicationContext.getSystemService(NotificationManager::class.java)
-        val channel = "run_backup_progress"
-        notifications.createNotificationChannel(NotificationChannel(channel, "Backup progress", NotificationManager.IMPORTANCE_LOW))
-        val open = PendingIntent.getActivity(applicationContext, 8408, Intent(applicationContext, MainActivity::class.java)
-            .putExtra("navigate_to", "settings_automatic_backups"), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(applicationContext, channel).setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Creating encrypted backup").setContentText("The archive is verified before older backups are removed.")
-            .setContentIntent(open).setOngoing(true).setSilent(true).build()
-        try { setForeground(ForegroundInfo(8408, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)) }
-        catch (e: CancellationException) { throw e }
-        catch (_: Exception) {
-            AutomaticBackups.edit {
-                val store = AutomaticBackupStore(applicationContext)
-                store.save(store.config().copy(problem = "SYSTEM", detail = "Android could not start a long-running backup. Open RUN and try Back up now. Existing backups were kept."))
-            }
-            AutomaticBackups.notifyProblem(applicationContext)
-            return Result.retry()
+    override suspend fun doWork(): Result {
+        val notifications = AutomaticBackupNotifications(applicationContext)
+        val work = currentCoroutineContext()
+        // WorkManager owns removal on success, failure and cancellation. Use a work-specific ID
+        // so an older work request cannot remove another request's foreground notification.
+        val notificationId = 0x40000000 or (id.hashCode() and 0x3fffffff)
+        return try {
+            val force = inputData.getBoolean("force", false)
+            val expectedScope = if (force) BackupRequestScope(
+                inputData.getString("setup_stream").orEmpty(),
+                inputData.getString("setup_key").orEmpty(),
+                inputData.getString("request_epoch").orEmpty()
+            ) else null
+            if (expectedScope != null && (expectedScope.stream.isBlank() ||
+                    expectedScope.keyId.isBlank() || expectedScope.epoch.isBlank())) return Result.success()
+            val succeeded = AutomaticBackups.run(
+                applicationContext, force,
+                requestId = inputData.getString("request_id").orEmpty(),
+                expectedScope = expectedScope,
+                startForeground = {
+                    setForeground(ForegroundInfo(notificationId, notifications.progress(notificationId, "Preparing backup"),
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC))
+                },
+                reportNotification = { if (work.isActive) notifications.updateProgress(notificationId, it) }
+            )
+            if (succeeded) Result.success() else Result.retry()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            AutomaticBackups.recordWorkerFailure(applicationContext)
+            notifications.failure()
+            Result.retry()
         }
-        if (AutomaticBackups.run(applicationContext, force, requestId = inputData.getString("request_id").orEmpty(), expectedScope = expectedScope)) Result.success() else Result.retry()
-    } catch (e: CancellationException) { throw e }
-    catch (_: Exception) { AutomaticBackups.notifyProblem(applicationContext); Result.retry() } }
+    }
 }

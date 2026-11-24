@@ -46,8 +46,11 @@ class FocusedDiscoveryDeviceTest {
         catch (failure: Throwable) { com.focusbyrj.app.ui.screenshot("focused-keyboard-failure.png"); throw failure }
         compose.onNodeWithText("keep this draft").assertIsDisplayed()
         compose.onNodeWithText("Explore Ayva").performClick()
+        compose.waitUntil(30_000) { !imeVisible() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Word chain").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Word chain").assertIsDisplayed()
         Espresso.pressBack()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Word chain").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithText("Word chain").assertDoesNotExist()
         compose.onNodeWithText("keep this draft").assertIsDisplayed()
         compose.runOnIdle { assertEquals("keep this draft", draft.value.text); assertTrue(!compose.activity.isFinishing) }

@@ -37,12 +37,23 @@ internal object RestoreJournal {
         block()
     }
 
-    suspend fun <T> mutate(context: Context, invalidateDrills: Boolean = false, portableRestore: Boolean = false, block: suspend () -> Result<T>): Result<T> = try {
-        mutateLocked(context, invalidateDrills = invalidateDrills, portableRestore = portableRestore, block = block)
-    } catch (error: Exception) {
-        if (error is kotlinx.coroutines.CancellationException) throw error
-        Result.failure(error)
-    }
+    suspend fun <T> mutate(context: Context, invalidateDrills: Boolean = false, portableRestore: Boolean = false, block: suspend () -> Result<T>): Result<T> =
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val activity = if (portableRestore) BackupActivityLog.begin(context, BackupActivityLog.Operation.PORTABLE_RESTORE) else null
+            var outcome = BackupActivityLog.Outcome.INTERRUPTED
+            try {
+                mutateLocked(context, invalidateDrills = invalidateDrills, portableRestore = portableRestore,
+                    activityId = activity, block = block).also { result ->
+                    outcome = if (result.isSuccess) BackupActivityLog.Outcome.COMPLETED else BackupActivityLog.Outcome.FAILED
+                }
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                outcome = BackupActivityLog.Outcome.FAILED
+                Result.failure(error)
+            } finally {
+                BackupActivityLog.finish(context, activity, outcome)
+            }
+        }
 
     suspend fun <T> mutateDrill(context: Context, sessionId: String, block: suspend () -> Result<T>): Result<T> = try {
         mutateLocked(context, true, sessionId, block = block)
@@ -52,13 +63,21 @@ internal object RestoreJournal {
     }
 
     private suspend fun <T> mutateLocked(context: Context, drillOnly: Boolean = false, drillSessionId: String? = null,
-                                       invalidateDrills: Boolean = false, portableRestore: Boolean = false, block: suspend () -> Result<T>): Result<T> = MaintenanceGate.exclusively {
+                                       invalidateDrills: Boolean = false, portableRestore: Boolean = false,
+                                       activityId: java.util.UUID? = null, block: suspend () -> Result<T>): Result<T> = MaintenanceGate.exclusively {
         val app = context.applicationContext as FocusApplication
         recoverLocked(app)
         if (drillOnly) requireNotNull(drillSessionId).also { java.util.UUID.fromString(it) }
         if (portableRestore) RestoreNotice.outcome(app, "applying")
         BackupProgress.report("Saving recovery point")
-        val before = capture(app, drillOnly, drillSessionId).put("portableRestore", portableRestore)
+        val before = try {
+            capture(app, drillOnly, drillSessionId).put("portableRestore", portableRestore)
+                .apply { if (activityId != null) put("activityId", activityId.toString()) }
+        } catch (error: Exception) {
+            if (portableRestore && error !is kotlinx.coroutines.CancellationException)
+                runCatching { RestoreNotice.outcome(app, "apply_failed") }
+            throw error
+        }
         MaintenanceGate.requireRecovery()
         try {
             EncryptedSnapshotFile.write(journal(app), before.toString())
@@ -76,13 +95,21 @@ internal object RestoreJournal {
                     com.focusbyrj.app.data.drill.DrillSessionRepository.invalidateCache()
                 }
                 checkpoint("before_commit")
+                val completedJournal = JSONObject(EncryptedSnapshotFile.read(journal(app)))
+                val media = completedJournal.optJSONArray("ownedMedia")
+                if (media != null) for (index in 0 until media.length()) {
+                    check(File(media.getJSONObject(index).getString("destination")).isFile) {
+                        "A restored attachment is missing. The previous data will be recovered."
+                    }
+                }
                 val output = marker(app).startWrite()
                 try { output.write(before.getString("id").toByteArray()); output.fd.sync(); marker(app).finishWrite(output) }
                 catch (error: Throwable) { marker(app).failWrite(output); throw error }
+                BackupActivityLog.finish(app, activityId, BackupActivityLog.Outcome.COMPLETED)
                 if (invalidateDrills) com.focusbyrj.app.data.drill.DrillSessionRepository.invalidateAfterRestore()
                 checkpoint("committed")
-                cleanOwnedMedia(app, JSONObject(EncryptedSnapshotFile.read(journal(app))), true)
-                if (portableRestore) RestoreNotice.outcome(app, "completed", JSONObject(EncryptedSnapshotFile.read(journal(app))).optString("restoreSummary"))
+                cleanOwnedMedia(app, completedJournal, true)
+                if (portableRestore) RestoreNotice.outcome(app, "completed", completedJournal.optString("restoreSummary"))
                 cleanup(app)
             }
             result
@@ -126,8 +153,11 @@ internal object RestoreJournal {
         MaintenanceGate.reportProgress("Recovering previous data")
         val root = JSONObject(EncryptedSnapshotFile.read(file))
         require(root.getInt("version") == 1)
+        val activityId = root.optString("activityId").takeIf { it.isNotBlank() }
+            ?.let { runCatching { java.util.UUID.fromString(it) }.getOrNull() }
         val committed = runCatching { marker(app).openRead().use { it.readBytes().decodeToString() } }.getOrNull()
         if (committed == root.getString("id")) {
+            BackupActivityLog.finish(app, activityId, BackupActivityLog.Outcome.COMPLETED)
             cleanOwnedMedia(app, root, true)
             if (root.optBoolean("portableRestore")) {
                 RestoreNotice.outcome(app, "completed", JSONObject(EncryptedSnapshotFile.read(journal(app))).optString("restoreSummary"))
@@ -236,6 +266,7 @@ internal object RestoreJournal {
             RestoreNotice.outcome(app, "recovered")
             if (announce) RestoreNotice.publish(app, "Interrupted restore recovered", "Your previous records were recovered. Imported files from the interrupted restore were removed. Choose the backup again to retry; nothing resumes automatically.")
         }
+        BackupActivityLog.finish(app, activityId, BackupActivityLog.Outcome.RECOVERED)
         checkpoint("recovered")
         cleanup(app)
     }

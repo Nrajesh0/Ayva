@@ -66,6 +66,33 @@ class AutomaticBackupsTest {
         val created=onCreate();File(uri.path!!).writeText("encrypted archive fixture $created")
         Result.success(BackupRestoreManager.BackupMetadata(2,created,"test",0,0,0,0,0,0))
     }
+    @Test fun foregroundStartRejectionRecordsAnActionableSystemFailureWithoutPublication() = runBlocking {
+        val store = readyStore()
+        val destination = MemoryBackupDestination()
+        var archiveStarted = false
+        val result = AutomaticBackups.run(app, true, store, { destination }, fixtureCreator {
+            archiveStarted = true
+            System.currentTimeMillis()
+        }, startForeground = { throw IllegalStateException("Foreground start rejected") })
+        assertFalse(result)
+        assertFalse(archiveStarted)
+        assertTrue(destination.files.isEmpty())
+        assertEquals("SYSTEM", store.config().problem)
+        assertTrue(store.config().detail.contains("Back up now"))
+        assertEquals(0L, store.config().lastSuccess)
+    }
+
+    @Test fun notificationPermissionDoesNotGateVerifiedBackupPublication() = runBlocking {
+        val notifications = AutomaticBackupNotifications(app)
+        val store = readyStore()
+        val destination = MemoryBackupDestination()
+        org.robolectric.Shadows.shadowOf(app as Application).denyPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        assertTrue(notifications.isPermissionMissing())
+        assertTrue(AutomaticBackups.run(app, true, store, { destination }, fixtureCreator()))
+        assertEquals(1, store.records().size)
+        assertTrue(store.config().lastSuccess > 0)
+    }
+
     @Test fun damagedRetryMetadataDoesNotPermanentlyStopFreshBackups() = runBlocking {
         val store=readyStore();val d=MemoryBackupDestination()
         app.getSharedPreferences("automatic_full_backups_v1",0).edit().putString("stage","broken retry metadata").commit()
@@ -138,6 +165,25 @@ class AutomaticBackupsTest {
         assertNotNull(store.staged());assertTrue(d.files.containsKey(older.uri))
         assertEquals(before.lastSuccess,store.config().lastSuccess);assertEquals("VERIFY",store.config().problem)
     }
+    @Test fun retryReusesVerifiedReceiptEvenIfTheLocalStageWasEvicted() = runBlocking {
+        val store = readyStore()
+        store.save(store.config().copy(keep = 2))
+        val destination = MemoryBackupDestination()
+        var captures = 0
+        val creator = fixtureCreator { System.currentTimeMillis() + captures++ }
+        assertTrue(AutomaticBackups.run(app, true, store, { destination }, creator))
+        val first = store.records().single()
+        val request = UUID.randomUUID().toString()
+        destination.corruptOnRead = destination.reads + 3
+        assertFalse(AutomaticBackups.run(app, true, store, { destination }, creator, requestId = request))
+        val second = store.records().last()
+        assertTrue(File(Uri.parse(store.staged()!!.uri).path!!).delete())
+        assertTrue(AutomaticBackups.run(app, true, store, { destination }, creator, requestId = request))
+        assertEquals(2, captures)
+        assertEquals(listOf(first.uri, second.uri), store.records().map { it.uri })
+        assertEquals(setOf(first.uri, second.uri), destination.files.keys)
+    }
+
     @Test fun uncommittedEncryptedStagesSurviveFailedCapturesAndAreOnlyCleanedAfterExternalSuccess() = runBlocking {
         val store=readyStore();val d=MemoryBackupDestination()
         val orphan=File(File(app.noBackupFilesDir,"automatic_backup_staging").apply{mkdirs()},"${UUID.randomUUID()}.enc").apply{writeText("old encrypted capture")}

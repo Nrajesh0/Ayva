@@ -352,34 +352,6 @@ class Batch8SecurityAuditTest {
         assertFalse("ViewModel _isVaultUnlocked must be false", notesVm.isVaultUnlocked.value)
     }
 
-    // BATCH-8-012: TaskViewModel emptyTrash must query database synchronously to avoid missing uncollected StateFlow items and dropping tombstones
-    @Test
-    fun testTaskViewModelEmptyTrashUsesDatabaseQueryNotStateFlow() = runBlocking {
-        val trashedTask = Task(
-            id = 777L,
-            title = "Trashed task pending deletion",
-            isCompleted = true,
-            isTrashed = true,
-            updatedAt = System.currentTimeMillis()
-        )
-        focusDb.taskDao().insertTask(trashedTask)
-
-        // Do not collect taskVm.trashedTasks to simulate cold StateFlow
-        val taskVm = TaskViewModel(taskRepo, app)
-        assertTrue("Cold trashedTasks StateFlow value is initially empty", taskVm.trashedTasks.value.isEmpty())
-
-        taskVm.emptyTrash()
-
-        var retries = 0
-        while (retries < 20 && focusDb.taskDao().getTaskById(777L) != null) {
-            delay(50)
-            Shadows.shadowOf(Looper.getMainLooper()).idle()
-            retries++
-        }
-
-        assertNull("Task 777L must be removed from Room database", focusDb.taskDao().getTaskById(777L))
-    }
-
     // BATCH-8-013: NotesViewModel deleteCurrentNote must delete auto-saved notes where originalId is 0L but pendingNewNoteId is set
     @Test
     fun testNotesViewModelDeleteCurrentNoteHandlesPendingNewNoteId() = runBlocking {

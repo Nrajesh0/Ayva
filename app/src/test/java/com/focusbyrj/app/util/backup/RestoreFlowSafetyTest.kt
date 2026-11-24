@@ -97,6 +97,71 @@ class RestoreFlowSafetyTest {
         }
     }
 
+    @Test fun copiedChatTaskListTargetsOnlyTheImportedTaskAndKeepsUnresolvedRowsReadable() = runBlocking {
+        val tasks = app.database.taskDao()
+        val source = Task(id = 227, title = "Imported title")
+        tasks.insertTask(source)
+        val chat = com.focusbyrj.app.data.chat.AyvaChatDatabase.getDatabase(app).chatDao()
+        chat.clearAllMessages()
+        val payload = """{"presentation":{"version":1,"taskList":{"at":42,"total":2,"items":[
+          {"id":227,"title":"Imported title","detail":"Imported details"},
+          {"id":999,"title":"Historical task","detail":"Historical details"}]}},
+          "actions":[{"type":"ask_query","query":"reschedule id:227","label":"Reschedule"}]}"""
+        chat.insertMessages(listOf(com.focusbyrj.app.data.chat.AyvaChatMessageEntity(
+            id = "source-list", text = "Two tasks", isUser = false, talkActionJson = payload, isTalkAction = true,
+            vocabJson = """{"idiom":{"id":77,"idiom":"Saved word"},"rev_ows":{"id":89,"term":"Review term"}}"""
+        )))
+        val file = archive()
+        chat.clearAllMessages()
+        tasks.insertTask(source.copy(title = "Current local title"))
+        BackupRestoreManager.restoreEncryptedBackup(app, Uri.fromFile(file), password, cleanRestore = false).getOrThrow()
+        val copy = tasks.getAllTasksList().single { it.id != 227L }
+        val message = chat.getAllMessagesSync().single()
+        val rows = com.focusbyrj.app.util.assistant.AssistantResponseContent.tasks(message.talkActionJson)!!.rows
+        assertEquals(listOf(copy.id, 0L), rows.map { it.id })
+        assertEquals("Historical details", rows.last().detail)
+        assertEquals(0, org.json.JSONObject(message.talkActionJson!!).getJSONArray("actions").length())
+        val vocab = org.json.JSONObject(message.vocabJson!!)
+        assertFalse(vocab.getJSONObject("idiom").has("id"))
+        assertFalse(vocab.getJSONObject("rev_ows").has("id"))
+        assertEquals("Saved word", vocab.getJSONObject("idiom").getString("idiom"))
+        assertEquals("Current local title", tasks.getTaskById(227)?.title)
+    }
+
+    @Test fun damagedMediaHeaderFailsExportWithoutRemovingTheAttachment() = runBlocking {
+        val photo = File(app.filesDir, "keep_images/damaged.jpg")
+        EncryptedMediaStorage.writeEncryptedBytes(photo, "Photo".toByteArray())
+        val damaged = photo.readBytes().apply { this[0] = (this[0].toInt() xor 1).toByte() }
+        photo.writeBytes(damaged)
+        notes.insertNote(NoteEntity(title = "Has damaged attachment", imageUrisJson = JSONArray(listOf(photo.path)).toString()))
+        val destination = File(app.cacheDir, "damaged-export.focusbackup")
+        assertTrue(BackupRestoreManager.createEncryptedBackup(app, Uri.fromFile(destination), password).isFailure)
+        assertArrayEquals(damaged, photo.readBytes())
+        assertEquals(1, notes.getAllNotesList().size)
+    }
+
+    @Test fun scopedSnapshotRestoreRestoresProtectedContentWithoutLeavingTheVaultOpen() = runBlocking {
+        assertTrue(ArchiveVaultSecurity.setPasscode(app, pin))
+        val key = ArchiveVaultSecurity.getActiveVaultSubKey()!!
+        val before = try {
+            VaultPayloadEncryptor.encryptNotePayload(NoteEntity(id = 889, title = "Protected original", isArchived = true), key)
+        } finally { key.fill(0) }
+        notes.insertNote(before)
+        val snapshot = checkNotNull(DataSafetyManager.writePreOpSnapshot(app, notes, "scoped_test", app.database))
+        notes.deleteAllNotes()
+        ArchiveVaultSecurity.lockVault()
+        assertTrue(DataSafetyManager.snapshotNeedsVault(app, snapshot, notes))
+        assertTrue(DataSafetyManager.restoreSnapshotAuthorized(app, snapshot, notes, app.database, null).isFailure)
+        assertTrue(notes.getAllNotesList().isEmpty())
+        assertTrue(ArchiveVaultSecurity.verifyPasscodeAsync(app, pin) is ArchiveVaultSecurity.VerifyResult.Success)
+        BackupRestoreManager.captureRestoreAuthorization(app).use { authorization ->
+            assertTrue(ArchiveVaultSecurity.isVaultLocked(app))
+            DataSafetyManager.restoreSnapshotAuthorized(app, snapshot, notes, app.database, authorization).getOrThrow()
+        }
+        assertTrue(ArchiveVaultSecurity.isVaultLocked(app))
+        assertTrue(VaultPayloadEncryptor.isVaultEncrypted(notes.getAllNotesList().single()))
+    }
+
     @Test fun vaultPinCanBeSuppliedHereWithoutDisablingVaultOrReadingTheArchiveTwice() = runBlocking {
         assertTrue(ArchiveVaultSecurity.setPasscode(app, pin))
         val key = ArchiveVaultSecurity.getActiveVaultSubKey()!!
@@ -181,6 +246,57 @@ class RestoreFlowSafetyTest {
         assertTrue(BackupRestoreManager.applyPreparedRestore(app, prepared).isFailure)
         assertEquals(listOf(current), notes.getAllNotesList())
         assertEquals("Backed up attachment", EncryptedMediaStorage.readDecryptedBytes(image)!!.decodeToString())
+    }
+
+    @Test fun attachmentLossBeforeCommitRecoversThePreviousRecords() = runBlocking {
+        val photo = File(app.filesDir, "keep_images/precommit.jpg")
+        EncryptedMediaStorage.writeEncryptedBytes(photo, "Backup attachment".toByteArray())
+        notes.insertNote(NoteEntity(title = "Backup note", imageUrisJson = JSONArray(listOf(photo.path)).toString()))
+        val archive = archive()
+        notes.deleteAllNotes()
+        val current = NoteEntity(id = 51, title = "Current note")
+        notes.insertNote(current)
+        BackupRestoreManager.prepareRestore(app, Uri.fromFile(archive), password).getOrThrow().use { prepared ->
+            RestoreJournal.checkpointHook = { phase ->
+                if (phase == "before_commit") assertTrue(prepared.destinations.values.single().delete())
+            }
+            assertTrue(BackupRestoreManager.applyPreparedRestore(app, prepared).isFailure)
+        }
+        assertEquals(listOf(current), notes.getAllNotesList())
+        assertFalse(MaintenanceGate.recoveryRequired)
+    }
+
+    @Test fun missingStagedAttachmentPreservesLiveDataAndAllowsFreshPreparation() = runBlocking {
+        assertChangedStageRejected { staged -> assertTrue(staged.delete()) }
+    }
+
+    @Test fun validEncryptedSubstituteCannotReplaceTheVerifiedAttachment() = runBlocking {
+        assertChangedStageRejected { staged ->
+            EncryptedMediaStorage.writeEncryptedBytes(staged, "Substitute attachment".toByteArray())
+        }
+    }
+
+    private suspend fun assertChangedStageRejected(change: (File) -> Unit) {
+        val archivedImage = File(app.filesDir, "keep_images/archived.jpg")
+        EncryptedMediaStorage.writeEncryptedBytes(archivedImage, "Backup attachment".toByteArray())
+        notes.insertNote(NoteEntity(title = "Backup note", imageUrisJson = JSONArray(listOf(archivedImage.path)).toString()))
+        val archive = archive()
+        notes.deleteAllNotes()
+        val liveImage = File(app.filesDir, "keep_images/current.jpg")
+        EncryptedMediaStorage.writeEncryptedBytes(liveImage, "Current attachment".toByteArray())
+        val current = NoteEntity(id = 51, title = "Current note", imageUrisJson = JSONArray(listOf(liveImage.path)).toString())
+        notes.insertNote(current)
+
+        BackupRestoreManager.prepareRestore(app, Uri.fromFile(archive), password).getOrThrow().use { prepared ->
+            change(File(prepared.stagingDir, "keep_images").listFiles()!!.single())
+            assertTrue(BackupRestoreManager.applyPreparedRestore(app, prepared).isFailure)
+        }
+        assertEquals(listOf(current), notes.getAllNotesList())
+        assertEquals("Current attachment", EncryptedMediaStorage.readDecryptedBytes(liveImage)!!.decodeToString())
+        BackupRestoreManager.restoreEncryptedBackup(app, Uri.fromFile(archive), password, cleanRestore = true).getOrThrow()
+        val restored = notes.getAllNotesList().single()
+        val restoredImage = File(JSONArray(restored.imageUrisJson).getString(0))
+        assertEquals("Backup attachment", EncryptedMediaStorage.readDecryptedBytes(restoredImage)!!.decodeToString())
     }
 
     @Test fun reviewRequiresConfirmationAndBackgroundingDiscardsPreparationWithoutChangingData() {

@@ -64,6 +64,8 @@ import com.focusbyrj.app.util.PermissionUtils
 import com.focusbyrj.app.util.backup.BackupRestoreManager
 import com.focusbyrj.app.util.backup.DataSafetyManager
 import com.focusbyrj.app.util.diagnostics.DiagnosticManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -221,7 +223,31 @@ fun SafetySnapshotsBottomSheet(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var snapshots by remember { mutableStateOf(DataSafetyManager.listAvailableSnapshots(context)) }
+    var snapshots by remember { mutableStateOf<List<DataSafetyManager.SnapshotInfo>>(emptyList()) }
+    var loadingSnapshots by remember { mutableStateOf(true) }
+    var snapshotLoadError by remember { mutableStateOf(false) }
+    var refreshSnapshots by remember { mutableIntStateOf(0) }
+    var snapshotError by remember { mutableStateOf<String?>(null) }
+    var snapshotToUnlock by remember { mutableStateOf<DataSafetyManager.SnapshotInfo?>(null) }
+    LaunchedEffect(refreshSnapshots) {
+        loadingSnapshots = true
+        snapshotLoadError = false
+        try {
+            snapshots = DataSafetyManager.loadSnapshots(context)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            snapshotLoadError = true
+        } finally {
+            loadingSnapshots = false
+        }
+    }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+        if (snapshotToUnlock != null) {
+            snapshotToUnlock = null
+            ArchiveVaultSecurity.lockVault()
+        }
+    }
     var selectedSnapshotForRestore by remember { mutableStateOf<DataSafetyManager.SnapshotInfo?>(null) }
     var isRestoring by remember { mutableStateOf(false) }
     var isCreatingSnapshot by remember { mutableStateOf(false) }
@@ -229,8 +255,29 @@ fun SafetySnapshotsBottomSheet(
 
     val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy · HH:mm:ss", Locale.getDefault()) }
 
+    fun restore(snap: DataSafetyManager.SnapshotInfo, authorization: BackupRestoreManager.RestoreAuthorization?) {
+        isRestoring = true
+        snapshotError = null
+        coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                val noteDao = NoteDatabase.getInstance(context).noteDao()
+                val focusDb = (context.applicationContext as? com.focusbyrj.app.FocusApplication)?.database
+                val count = DataSafetyManager.restoreSnapshotAuthorized(context, snap.absolutePath, noteDao, focusDb, authorization).getOrThrow()
+                refreshSnapshots++
+                Toast.makeText(context, "Restored $count items", Toast.LENGTH_LONG).show()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                snapshotError = error.message ?: "Could not restore this safety snapshot. Check the selected snapshot and try again."
+            } finally {
+                authorization?.close()
+                isRestoring = false
+            }
+        }
+    }
+
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isRestoring && !isCreatingSnapshot) onDismiss() },
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         containerColor = MaterialTheme.colorScheme.surface,
@@ -273,14 +320,14 @@ fun SafetySnapshotsBottomSheet(
                             val ok = DataSafetyManager.writeDailyBackup(context, db.noteDao(), focusDb)
                             isCreatingSnapshot = false
                             if (ok) {
-                                snapshots = DataSafetyManager.listAvailableSnapshots(context)
+                                refreshSnapshots++
                                 Toast.makeText(context, "Safety snapshot created", Toast.LENGTH_SHORT).show()
                             } else {
                                 Toast.makeText(context, "Failed to create snapshot", Toast.LENGTH_SHORT).show()
                             }
                         }
                     },
-                    enabled = !isCreatingSnapshot,
+                    enabled = !isCreatingSnapshot && !isRestoring,
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     modifier = Modifier.height(36.dp)
@@ -291,7 +338,13 @@ fun SafetySnapshotsBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (snapshots.isEmpty()) {
+            snapshotError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            if (isRestoring || loadingSnapshots) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (snapshotLoadError) {
+                Text("Could not load safety snapshots.", color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { refreshSnapshots++ }) { Text("Retry") }
+            }
+            if (!loadingSnapshots && !snapshotLoadError && snapshots.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -342,7 +395,7 @@ fun SafetySnapshotsBottomSheet(
                                     if (isNotEmpty()) append(", ")
                                     append("${snap.taskCount} tasks")
                                 }
-                                if (isEmpty()) append("Snapshot")
+                                if (isEmpty()) append("Snapshot details unavailable")
                                 append(" · ${sizeKb} KB")
                             }
                         }
@@ -403,6 +456,7 @@ fun SafetySnapshotsBottomSheet(
 
                                 Button(
                                     onClick = { selectedSnapshotForRestore = snap },
+                                    enabled = !isRestoring && !isCreatingSnapshot && snapshotToUnlock == null,
                                     shape = RoundedCornerShape(10.dp),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                                     modifier = Modifier.height(34.dp),
@@ -448,27 +502,24 @@ fun SafetySnapshotsBottomSheet(
                 Button(
                     onClick = {
                         isRestoring = true
+                        snapshotError = null
+                        selectedSnapshotForRestore = null
                         coroutineScope.launch {
-                            val db = NoteDatabase.getInstance(context)
-                            // CONFLICT-5 fix: pass focusDb so tasks, habits, schedules &
-                            // restrictions in the snapshot are also restored, not just notes.
-                            val focusDb = (context.applicationContext as? com.focusbyrj.app.FocusApplication)?.database
-                            val result = DataSafetyManager.restoreSnapshot(context, snap.absolutePath, db.noteDao(), focusDb)
-                            isRestoring = false
-                            selectedSnapshotForRestore = null
-                            if (result.isSuccess) {
-                                Toast.makeText(
-                                    context,
-                                    "Successfully restored ${result.getOrNull()} items!",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                                snapshots = DataSafetyManager.listAvailableSnapshots(context)
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "Restore failed: ${result.exceptionOrNull()?.message}",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                            try {
+                                val dao = NoteDatabase.getInstance(context).noteDao()
+                                if (DataSafetyManager.snapshotNeedsVault(context, snap.absolutePath, dao)) {
+                                    isRestoring = false
+                                    if (ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED) {
+                                        snapshotToUnlock = snap
+                                    } else {
+                                        snapshotError = "The vault credentials required by this snapshot are unavailable on this device."
+                                    }
+                                } else restore(snap, null)
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                isRestoring = false
+                                snapshotError = "Could not read the selected safety snapshot. Choose another snapshot or retry."
                             }
                         }
                     },
@@ -487,4 +538,23 @@ fun SafetySnapshotsBottomSheet(
             }
         )
     }
+    snapshotToUnlock?.let { snap ->
+        ArchiveVaultUnlockDialog(
+            onDismiss = { snapshotToUnlock = null; ArchiveVaultSecurity.lockVault() },
+            onVerify = { ArchiveVaultSecurity.verifyPasscodeAsync(context, it) },
+            onSuccess = {
+                snapshotToUnlock = null
+                try {
+                    restore(snap, BackupRestoreManager.captureRestoreAuthorization(context))
+                } catch (_: Exception) {
+                    ArchiveVaultSecurity.lockVault()
+                    snapshotError = "Vault confirmation expired. Select the snapshot and confirm your PIN again."
+                }
+            },
+            title = "Unlock Archive for restore",
+            description = "Enter the vault PIN to restore protected notes. The vault stays locked afterward.",
+            showCancelButton = true
+        )
+    }
+
 }

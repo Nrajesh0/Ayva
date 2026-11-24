@@ -58,7 +58,7 @@ def package(source, destination):
 
 Install **RUN-{version}.apk** on Android 12 or newer, including POCO X6 Pro.
 This single universal APK includes all supported CPU architectures, features,
-artwork, dictionary and Kotlin conversation features.
+artwork and Kotlin conversation features.
 SHA-256 checksums are in SHA256SUMS.txt.
 """)
         (staged / marker).touch()

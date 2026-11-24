@@ -40,8 +40,11 @@ internal object ManualBackupFiles {
     ): PreparedManualBackup {
         var file: File? = null
         var delivered = false
+        var activity: UUID? = null
+        var outcome = BackupActivityLog.Outcome.FAILED
         try {
             val result = withContext(ioDispatcher) {
+                activity = BackupActivityLog.begin(context, BackupActivityLog.Operation.MANUAL_PREPARE)
                 val id = UUID.randomUUID().toString()
                 val directory = folder(context)
                 require(password.trim().length >= 8) { "Use a backup password with at least 8 characters." }
@@ -59,25 +62,36 @@ internal object ManualBackupFiles {
                 PreparedManualBackup(id, target, metadata, digest, SystemClock.elapsedRealtime())
             }
             currentCoroutineContext().ensureActive()
+            outcome = BackupActivityLog.Outcome.READY
+            withContext(Dispatchers.IO) { BackupActivityLog.finish(context, activity, outcome) }
+            currentCoroutineContext().ensureActive()
             delivered = true
             return result
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            outcome = BackupActivityLog.Outcome.INTERRUPTED
+            throw error
         } finally {
             // Covers prompt cancellation when withContext discards an IO result before
             // dispatching it back to the caller. Ownership has not transferred yet.
             if (!delivered) file?.let(::discardFile)
+            if (!delivered && activity != null) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                BackupActivityLog.finish(context, activity, outcome)
+            }
         }
     }
 
     fun expired(value: PreparedManualBackup, now: Long = SystemClock.elapsedRealtime()) =
         now < value.preparedAt || now - value.preparedAt >= LIFETIME_MS
 
-    suspend fun save(context: Context, value: PreparedManualBackup, uri: Uri) {
-        require(uri.scheme == "content") { "Choose a document location with the system file picker." }
-        copyVerified(value,
-            { context.contentResolver.openOutputStream(uri, "wt") ?: error("The selected location cannot be written.") },
-            { context.contentResolver.openInputStream(uri) ?: error("The selected location cannot be read back for verification.") })
-        context.applicationContext.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
-            .putLong("last_verified_export_ms", System.currentTimeMillis()).apply()
+    suspend fun save(context: Context, value: PreparedManualBackup, uri: Uri) = withContext(Dispatchers.IO) {
+        BackupActivityLog.track(context, BackupActivityLog.Operation.MANUAL_SAVE) {
+            require(uri.scheme == "content") { "Choose a document location with the system file picker." }
+            copyVerified(value,
+                { context.contentResolver.openOutputStream(uri, "wt") ?: error("The selected location cannot be written.") },
+                { context.contentResolver.openInputStream(uri) ?: error("The selected location cannot be read back for verification.") })
+            context.applicationContext.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
+                .putLong("last_verified_export_ms", System.currentTimeMillis()).apply()
+        }
     }
 
     /** Public-provider success is not enough: compare the read-back ciphertext to the verified source. */

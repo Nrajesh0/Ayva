@@ -126,7 +126,7 @@ class DataPreservationAuditTest {
         val zip = ByteArrayOutputStream()
         ZipOutputStream(zip).use {
             it.putNextEntry(ZipEntry("data.json"))
-            it.write("""{"version":1,"notes":[{"title":"Assigned"},{"id":1,"title":"Stable"}]}""".toByteArray())
+            it.write("""{"version":1,"notes":[{"title":"Assigned"},{"id":1,"title":"Stable"}],"restrictions":[],"schedules":[],"tasks":[],"habits":[],"habitLogs":[],"drillSessions":[],"chatMessages":[]}""".toByteArray())
             it.closeEntry()
         }
         val file = File(context.cacheDir, "mixed-ids.fbck")
@@ -151,6 +151,13 @@ class DataPreservationAuditTest {
         val result = BackupRestoreManager.restoreEncryptedBackup(context, Uri.fromFile(file), "audit-fixture", cleanRestore = true)
         assertTrue(result.exceptionOrNull().toString(), result.isFailure)
         assertEquals(listOf(original), dao.getAllNotesList())
+    }
+
+    @Test fun partialLegacyArchivesCannotReplaceLiveData() = runBlocking {
+        rejectedManifestPreservesLiveData("""{"version":1,"notes":[{"id":1,"title":"Legacy"}]}""")
+        val file = File(context.cacheDir, "audit-backup.fbck")
+        assertTrue(BackupRestoreManager.restoreEncryptedBackup(context, Uri.fromFile(file), "audit-fixture", cleanRestore = false).isSuccess)
+        assertEquals(setOf("Original", "Legacy"), NoteDatabase.getInstance(context).noteDao().getAllNotesList().map { it.title }.toSet())
     }
 
     @Test fun futureManifestVersionIsRejectedBeforeMutation() = runBlocking {

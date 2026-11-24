@@ -31,6 +31,9 @@ import com.focusbyrj.app.util.assistant.ChatMode
 import com.focusbyrj.app.util.assistant.ChatExperiences
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -90,6 +93,16 @@ fun AyvaComposerBar(
     onExploreRequest: (String) -> Unit = {}
 ) {
     var showExplore by rememberSaveable { mutableStateOf(false) }
+    var pendingExplore by rememberSaveable { mutableStateOf(false) }
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(pendingExplore, imeBottom, selectedMode) {
+        if (pendingExplore && (imeBottom == 0 || selectedMode == ChatMode.PLAN)) {
+            pendingExplore = false
+            showExplore = selectedMode != ChatMode.PLAN
+        }
+    }
     if (showExplore && selectedMode != ChatMode.PLAN) {
         AlertDialog(
             onDismissRequest = { showExplore = false },
@@ -138,7 +151,11 @@ fun AyvaComposerBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (selectedMode != ChatMode.PLAN) item {
-                Surface(onClick = { showExplore = true }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+                Surface(onClick = {
+                    focus.clearFocus(force = true)
+                    keyboard?.hide()
+                    pendingExplore = true
+                }, shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
                     Text("Explore Ayva", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
                 }
             }

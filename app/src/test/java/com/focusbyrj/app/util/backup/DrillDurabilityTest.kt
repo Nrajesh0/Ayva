@@ -206,4 +206,30 @@ class DrillDurabilityTest {
         assertEquals(0, dao.getAllIdioms().first { it.id == id }.isMastered)
     }
 
+    @Test fun restoreDiscardsQueuedAnswersAndKeepsTheNoticeThroughAFailedFreshWrite() = runBlocking {
+        val dao = app.vocabDatabase.vocabDao()
+        val id = requireNotNull(dao.getAllIdioms().first().id)
+        dao.setIdiomMastery(id, 0, 0L)
+        val oldGeneration = DrillSessionRepository.storageGeneration
+        val writer = com.focusbyrj.app.data.VocabQuizWriter(app)
+        writer.enqueue("idiom", id, true, oldGeneration)
+        com.focusbyrj.app.data.note.NotesStorageVersion.replaced()
+        DrillSessionRepository.invalidateAfterRestore()
+        writer.enqueue("idiom", id, true, oldGeneration)
+        writer.enqueue("idiom", id, true)
+        val db = app.vocabDatabase.openHelper.writableDatabase
+        db.execSQL("CREATE TRIGGER synthetic_vocab_failure BEFORE UPDATE ON idioms BEGIN SELECT RAISE(ABORT, 'Synthetic vocabulary write failure'); END")
+        try {
+            val failure = writer.flush().exceptionOrNull()
+            assertNotNull(failure)
+            assertFalse(failure is com.focusbyrj.app.data.VocabQuizWriter.StaleAnswersException)
+            assertEquals(0, dao.getAllIdioms().first { it.id == id }.isMastered)
+        } finally {
+            db.execSQL("DROP TRIGGER synthetic_vocab_failure")
+        }
+        assertTrue(writer.flush().exceptionOrNull() is com.focusbyrj.app.data.VocabQuizWriter.StaleAnswersException)
+        assertEquals(1, dao.getAllIdioms().first { it.id == id }.isMastered)
+        assertTrue(writer.flush().isSuccess)
+    }
+
 }

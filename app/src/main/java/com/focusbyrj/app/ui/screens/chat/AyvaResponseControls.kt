@@ -41,7 +41,7 @@ internal fun AyvaSelectableTaskList(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("${list.total} ${if (list.total == 1) "task" else "tasks"}", color = MaterialTheme.colorScheme.onSurface, fontSize = font.sp, fontWeight = FontWeight.Medium)
         list.rows.forEachIndexed { index, row ->
-            val current = tasks?.get(row.id)
+            val current = row.id.takeIf { it > 0 }?.let { tasks?.get(it) }
             val available = fresh && current != null && !current.isTrashed && current.deletedAt == null
             val active = available && selected?.id == row.id
             val title = current?.title ?: row.title
@@ -55,7 +55,7 @@ internal fun AyvaSelectableTaskList(
                 Text("${index + 1}", Modifier.width(32.dp).padding(start = 8.dp), color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = (font * .85f).sp)
                 Column(Modifier.weight(1f).padding(end = 8.dp)) {
                     Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = font.sp)
-                    Text(if (!available) "No longer available · request a fresh list" else AssistantPresentation.due(current?.dueDate) + if (current?.isCompleted == true) " · completed" else if (current?.isPriority == true) " · priority" else "",
+                    Text(if (row.id == 0L) row.detail.ifBlank { "No longer available · request a fresh list" } else if (!available) "No longer available · request a fresh list" else AssistantPresentation.due(current?.dueDate) + if (current?.isCompleted == true) " · completed" else if (current?.isPriority == true) " · priority" else "",
                         color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = (font * .82f).coerceAtLeast(12f).sp)
                 }
                 if (active) Icon(Icons.Default.Check, "Selected task", Modifier.padding(end = 10.dp).size(18.dp), tint = MaterialTheme.colorScheme.primary)

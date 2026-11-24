@@ -11,7 +11,6 @@ import com.focusbyrj.app.ui.security.installScreenCaptureProtection
 
 import android.app.Activity
 import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -74,18 +73,15 @@ class NoteWidgetConfigureActivity : ComponentActivity() {
         installScreenCaptureProtection()
         setResult(RESULT_CANCELED)
 
-        val extras = intent.extras
-        if (extras != null) {
-            appWidgetId = extras.getInt(
-                AppWidgetManager.EXTRA_APPWIDGET_ID,
-                AppWidgetManager.INVALID_APPWIDGET_ID
-            )
-        }
+        appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 0)
+        val appWidgetManager = AppWidgetManager.getInstance(this)
+        val provider = android.content.ComponentName(this, NoteWidgetProvider::class.java)
+        fun ownsConfiguration(): Boolean = appWidgetId == 0 ||
+            (appWidgetId > 0 && appWidgetManager.getAppWidgetInfo(appWidgetId)?.provider == provider)
 
-        if (appWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) {
-            val appWidgetManager = AppWidgetManager.getInstance(this)
-            val ids = appWidgetManager.getAppWidgetIds(ComponentName(this, NoteWidgetProvider::class.java))
-            appWidgetId = if (ids != null && ids.isNotEmpty()) ids[0] else 0
+        if (!ownsConfiguration()) {
+            finish()
+            return
         }
 
         val initialConfig = NoteWidgetConfigHelper.getConfig(this, appWidgetId)
@@ -94,12 +90,15 @@ class NoteWidgetConfigureActivity : ComponentActivity() {
             FocusByRjTheme {
                 NoteWidgetConfigScreen(
                     initialConfig = initialConfig,
-                    onSave = { newConfig ->
+                    onSave = save@{ newConfig ->
+                        if (!ownsConfiguration()) {
+                            finish()
+                            return@save
+                        }
                         NoteWidgetConfigHelper.saveConfig(this, appWidgetId, newConfig)
-                        val appWidgetManager = AppWidgetManager.getInstance(this)
                         // Only update the specific widget being configured if a valid ID was supplied.
                         // If no specific ID exists (appWidgetId == 0), update all note widgets.
-                        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID && appWidgetId != 0) {
+                        if (appWidgetId != 0) {
                             NoteWidgetProvider.updateWidget(this, appWidgetManager, appWidgetId)
                         } else {
                             NoteWidgetProvider.updateAllWidgets(this)

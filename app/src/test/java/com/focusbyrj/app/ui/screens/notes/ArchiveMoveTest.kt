@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.focusbyrj.app.FocusApplication
 import com.focusbyrj.app.data.note.*
 import com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -244,6 +245,20 @@ class ArchiveMoveTest {
         assertEquals(NotesViewModel.ArchiveMovePhase.ERROR, model.archiveMove.value.phase)
         assertEquals(note, dao.getNoteByIdSync(note.id))
         assertArrayEquals(bytes, recovery.readBytes())
+    }
+
+    @Test fun canceledPinVerificationCannotRepublishTheVaultKey() = runBlocking {
+        enableLockedVault()
+        val attempt = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            ArchiveVaultSecurity.verifyPasscodeAsync(app, "123456")
+        }
+        ArchiveVaultSecurity.lockForBackground()
+        attempt.cancel()
+        attempt.join()
+        assertNull(ArchiveVaultSecurity.getActiveVaultSubKey())
+        assertFalse(ArchiveVaultSecurity.keyAvailable.value)
+        assertTrue(ArchiveVaultSecurity.verifyPasscodeAsync(app, "123456") is ArchiveVaultSecurity.VerifyResult.Success)
+        assertTrue(ArchiveVaultSecurity.keyAvailable.value)
     }
 
     @Test fun aStalePlaintextPrivateCardCannotOpenAfterRelocking() = runBlocking {

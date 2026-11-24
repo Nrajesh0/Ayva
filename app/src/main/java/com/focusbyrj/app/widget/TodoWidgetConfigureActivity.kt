@@ -37,22 +37,15 @@ class TodoWidgetConfigureActivity : ComponentActivity() {
         // out of the widget placement if the user presses the back button.
         setResult(RESULT_CANCELED)
 
-        // Find the widget id from the intent.
-        val intent = intent
-        val extras = intent.extras
-        if (extras != null) {
-            appWidgetId = extras.getInt(
-                AppWidgetManager.EXTRA_APPWIDGET_ID,
-                AppWidgetManager.INVALID_APPWIDGET_ID
-            )
-        }
+        appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 0)
+        val appWidgetManager = AppWidgetManager.getInstance(this)
+        val provider = android.content.ComponentName(this, TodoWidgetProvider::class.java)
+        fun ownsConfiguration(): Boolean = appWidgetId == 0 ||
+            (appWidgetId > 0 && appWidgetManager.getAppWidgetInfo(appWidgetId)?.provider == provider)
 
-        // If this activity was started without an intent specifying which widget to configure,
-        // check if any widget exists or default to id 0
-        if (appWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) {
-            val appWidgetManager = AppWidgetManager.getInstance(this)
-            val ids = appWidgetManager.getAppWidgetIds(android.content.ComponentName(this, TodoWidgetProvider::class.java))
-            appWidgetId = if (ids != null && ids.isNotEmpty()) ids[0] else 0
+        if (!ownsConfiguration()) {
+            finish()
+            return
         }
 
         val currentConfig = WidgetConfigHelper.getConfig(this, appWidgetId)
@@ -61,12 +54,15 @@ class TodoWidgetConfigureActivity : ComponentActivity() {
             FocusByRjTheme {
                 WidgetConfigScreen(
                     initialConfig = currentConfig,
-                    onSave = { updatedConfig ->
+                    onSave = save@{ updatedConfig ->
+                        if (!ownsConfiguration()) {
+                            finish()
+                            return@save
+                        }
                         WidgetConfigHelper.saveConfig(this, appWidgetId, updatedConfig)
 
                         // Push widget update
-                        val appWidgetManager = AppWidgetManager.getInstance(this)
-                        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID && appWidgetId != 0) {
+                        if (appWidgetId != 0) {
                             TodoWidgetProvider.updateWidget(this, appWidgetManager, appWidgetId)
                         } else {
                             TodoWidgetProvider.updateAllWidgets(this)

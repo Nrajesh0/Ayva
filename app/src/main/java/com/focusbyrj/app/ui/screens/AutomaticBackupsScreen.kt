@@ -175,6 +175,14 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
                 Text(if (!configurationLoaded) "Loading backup settings" else if (backgroundBusy) backupProgress else if (config.problem.isNotBlank()) "Needs attention" else if (pendingBackup) "Backup queued" else if (!ready) "Set up automatic backups" else backupHealth(config, now), style = MaterialTheme.typography.titleMedium, modifier = Modifier.spotlightTarget(automaticTour, "automatic_setup"))
                 Text("Encrypted · Saved data and attachments", style = MaterialTheme.typography.bodySmall)
                 if (configurationLoaded) Text("Last backup: ${backupTime(config.lastSuccess)}", style = MaterialTheme.typography.bodySmall)
+                if (configurationLoaded && config.detail.isNotBlank()) {
+                    Text(config.detail, style = MaterialTheme.typography.bodySmall)
+                }
+                if (configurationLoaded && config.problem == "DESTINATION") {
+                    TextButton(enabled = controlsEnabled, onClick = { launchPicker { folderPicker.launch(Uri.parse(config.tree)) } }) {
+                        Text("Reconnect folder")
+                    }
+                }
                 if (config.tree.isNotBlank()) Text("Folder: ${Uri.parse(config.tree).lastPathSegment.orEmpty().substringAfterLast('/').substringAfter(':')}", style = MaterialTheme.typography.bodySmall)
                 if (config.enabled) Text("Next backup: ${backupTime(config.nextDue)}", style = MaterialTheme.typography.bodySmall)
             }
@@ -291,14 +299,11 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
                     }
                 }
             }
-            if (config.detail.isNotBlank()) Text(config.detail, style = MaterialTheme.typography.bodySmall)
             Text("$count verified backups managed here.", style = MaterialTheme.typography.bodySmall)
             if (ownershipLimit) Text("Some older copies were kept for manual review.", style = MaterialTheme.typography.bodySmall)
             Text("Keep a second copy off this phone. Unsaved text and local recovery snapshots are separate.", style = MaterialTheme.typography.bodySmall)
-            SettingsMenuRow(Icons.Default.Notifications, "Failure notifications") { TextButton(onClick = {
-                runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)) }
-            }) { Text("System") } }
         }
+        AutomaticBackupNotificationSettings()
       }
       if (showBackups) AlertDialog(
         onDismissRequest = { showBackups = false },
@@ -391,7 +396,7 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
             error = "Key export cancelled. No recovery key was written."
         },
         title = "Confirm vault PIN", description = "Save the recovery file. Vault protection stays on.",
-        onVerify = { ArchiveVaultSecurity.verifyPasscode(context, it) },
+        onVerify = { ArchiveVaultSecurity.verifyPasscodeAsync(context, it) },
         onSuccess = {
             val asPdf = pendingExportAsPdf
             pendingExportUri = null; pendingExportKeyId = null
@@ -411,7 +416,7 @@ fun AutomaticBackupsScreen(nav: NavController, onRestored: () -> Unit = {}) {
             else error = "No private vault is configured. Ordinary saved notes are already included."
         }) { Text("Continue") } }, dismissButton = { TextButton(onClick = { vaultConsent = false }) { Text("Cancel") } })
     if (showVaultPin) com.focusbyrj.app.ui.screens.notes.ArchiveVaultUnlockDialog(
-        onDismiss = { showVaultPin = false }, onVerify = { ArchiveVaultSecurity.verifyPasscode(context, it) },
+        onDismiss = { showVaultPin = false }, onVerify = { ArchiveVaultSecurity.verifyPasscodeAsync(context, it) },
         onSuccess = { showVaultPin = false; perform { try { AutomaticBackups.authorizeVault(context); info = "Private-note backup access authorized on this phone. The vault is locked again. Keep the backup recovery key separate from your backup files." } finally { ArchiveVaultSecurity.lockVault() } } },
         title = "Authorize automatic backups",
         description = "One-time permission for private-note backups. Vault protection stays on.")
@@ -496,4 +501,43 @@ private fun BackupScheduleDialog(initial: BackupFrequency, onDismiss: () -> Unit
             Text("Android scheduling is approximate. A delayed job creates one backup, rather than a burst of missed copies.", style = MaterialTheme.typography.bodySmall)
         }
     }, confirmButton = { TextButton(enabled = every.toIntOrNull() in 1..max, onClick = { onSave(value.copy(every = every.toInt(), anchor = if (value.unit == "HOURS" && value != initial) System.currentTimeMillis() else value.anchor)) }) { Text("Save") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+}
+
+
+@Composable
+private fun AutomaticBackupNotificationSettings() {
+    val context = LocalContext.current
+    val notifications = remember(context) { AutomaticBackupNotifications(context) }
+    var refresh by remember { mutableIntStateOf(0) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { refresh++ }
+    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
+    SettingsMenuSectionHeader("BACKUP NOTIFICATIONS")
+    for (option in BackupNotificationOption.entries) {
+        val checked = remember(notifications, option, refresh) { notifications.isEnabled(option) }
+        SettingsMenuRow(Icons.Default.Notifications, option.title) {
+            Switch(checked = checked, onCheckedChange = {
+                notifications.setEnabled(option, it)
+                refresh++
+            })
+        }
+    }
+    Text("Android requires a foreground service indicator during a backup. Turning off progress hides the details and progress bar.", style = MaterialTheme.typography.bodySmall)
+    val permissionMissing = remember(notifications, refresh) { notifications.isPermissionMissing() }
+    val blocked = remember(notifications, refresh) {
+        BackupNotificationOption.entries.any { notifications.isEnabled(it) && notifications.isBlocked(it) }
+    }
+    if (blocked) {
+        Text("Android is hiding some backup notifications. Backups can still run.", style = MaterialTheme.typography.bodySmall)
+        if (permissionMissing) {
+            TextButton(onClick = { requestPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS) }) {
+                Text("Allow notifications")
+            }
+        }
+    }
+    TextButton(onClick = {
+        runCatching {
+            context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+        }
+    }) { Text("Android notification settings") }
 }

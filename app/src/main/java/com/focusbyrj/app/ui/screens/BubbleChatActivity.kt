@@ -338,7 +338,8 @@ fun ChatInterface() {
             com.focusbyrj.app.util.DrillSummaryHelper.generateSummaryMessage(session).also { drillSaveError = null }
         } catch (error: Exception) {
             if (error is kotlinx.coroutines.CancellationException) throw error
-            drillSaveError = "Your result could not be saved. Keep this drill open, check available storage, then try again."
+            drillSaveError = if (error is com.focusbyrj.app.data.VocabQuizWriter.StaleAnswersException) error.message
+                else "Your result could not be saved. Keep this drill open, check available storage, then try again."
             null
         } finally {
             finishingDrill = false
@@ -1521,15 +1522,17 @@ fun ChatInterface() {
 }
 
     // Handlers for active drill / blitz session interactions
+    val answeringSession = activeDrillSession
     val handleDrillAnswer: (Boolean, QuestionRecord) -> Unit = { isCorrect, qRecord ->
-        activeDrillSession?.takeUnless { finishingDrill }?.let { session ->
+        activeDrillSession?.takeIf { !finishingDrill && it.sessionId == answeringSession?.sessionId }?.let { session ->
             session.questionRecords.add(qRecord)
             session.total++
             if (session.difficulty == "vocab" && qRecord.vocabId != null && qRecord.vocabId > 0 && !qRecord.vocabType.isNullOrBlank()) {
-                vocabQuizWriter.enqueue(qRecord.vocabType, qRecord.vocabId, isCorrect)
+                vocabQuizWriter.enqueue(qRecord.vocabType, qRecord.vocabId, isCorrect, session.storageGeneration)
                 coroutineScope.launch {
-                    if (vocabQuizWriter.flush().isFailure) {
-                        drillSaveError = "Your vocabulary progress could not be saved. Keep this drill open, check available storage, then try again."
+                    vocabQuizWriter.flush().exceptionOrNull()?.let { error ->
+                        drillSaveError = if (error is com.focusbyrj.app.data.VocabQuizWriter.StaleAnswersException) error.message
+                            else "Your vocabulary progress could not be saved. Keep this drill open, check available storage, then try again."
                     }
                 }
             }

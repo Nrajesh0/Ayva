@@ -145,7 +145,7 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
     if (showExportVaultPin) {
         ArchiveVaultUnlockDialog(
             onDismiss = { showExportVaultPin = false; ArchiveVaultSecurity.lockVault() },
-            onVerify = { ArchiveVaultSecurity.verifyPasscode(context, it) },
+            onVerify = { ArchiveVaultSecurity.verifyPasscodeAsync(context, it) },
             onSuccess = { showExportVaultPin = false; showExportPasswordDialog = true },
             title = "Unlock for this backup",
             description = "Enter your vault PIN here to include private notes. You do not need to leave this screen or disable the vault. This does not authorize automatic backups."
@@ -290,14 +290,12 @@ internal fun BackupFlow(onRestored: () -> Unit = {}, automaticRestore: Boolean =
         )
         RestorePhase.REVIEW -> RestoreReviewDialog(restoreState, restore::acceptReview) { restore.cancel() }
         RestorePhase.UNLOCK_SAVED_KEY, RestorePhase.UNLOCK -> {
-            var verifiedPin by remember { mutableStateOf<String?>(null) }
             ArchiveVaultUnlockDialog(
-                onDismiss = { verifiedPin = null; restore.cancel(); ArchiveVaultSecurity.lockVault() },
-                onVerify = { pin -> ArchiveVaultSecurity.verifyPasscode(context, pin).also {
-                    if (it is ArchiveVaultSecurity.VerifyResult.Success) verifiedPin = pin
-                } },
-                onSuccess = { val pin = verifiedPin; verifiedPin = null
-                    if (restoreState.phase == RestorePhase.UNLOCK_SAVED_KEY) restore.authorizeSavedKey() else restore.confirm(pin)
+                onDismiss = { restore.cancel(); ArchiveVaultSecurity.lockVault() },
+                onVerify = { pin -> ArchiveVaultSecurity.verifyPasscodeAsync(context, pin) },
+                onSuccess = {
+                    if (restoreState.phase == RestorePhase.UNLOCK_SAVED_KEY) restore.authorizeSavedKey()
+                    else restore.authorizeRestore()
                 },
                 title = "Confirm your vault PIN",
                 description = if (restoreState.phase == RestorePhase.UNLOCK_SAVED_KEY) "Use this phone’s saved recovery key. Vault protection stays on." else "Restore private data here. Vault protection stays on."

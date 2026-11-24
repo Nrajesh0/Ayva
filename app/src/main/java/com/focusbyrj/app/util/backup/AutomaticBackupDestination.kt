@@ -71,23 +71,38 @@ internal fun digestBackup(input: InputStream, maxBytes: Long = BackupArchiveLimi
 
 /** External files are committed only after read-back equality with an authenticated local archive. */
 internal object AutomaticBackupFiles {
-    fun publish(destination: BackupDestination, name: String, expected: EncryptedFileDigest, source: () -> InputStream): BackupDocument {
+    fun publish(
+        destination: BackupDestination, name: String, expected: EncryptedFileDigest,
+        checkpoint: () -> Unit = {}, source: () -> InputStream
+    ): BackupDocument {
         var pending: BackupDocument? = null
         var fallback: BackupDocument? = null
         fun copy(document: BackupDocument) {
             BackupProgress.report("Saving backup file")
-            source().use { input -> destination.write(document.uri).use { output -> input.copyTo(output, 64 * 1024); output.flush() } }
+            source().use { input ->
+                destination.write(document.uri).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        checkpoint()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                    }
+                    output.flush()
+                }
+            }
             BackupProgress.report("Verifying saved file")
-            val actual = destination.read(document.uri).use { digestBackup(it, expected.size) }
+            val actual = destination.read(document.uri).use { digestBackup(it, expected.size, checkpoint) }
             require(actual == expected) { "Destination verification failed; previous backups were kept." }
         }
         try {
             pending = destination.create("$name.incomplete"); copy(pending)
             BackupProgress.report("Confirming backup file")
+            checkpoint()
             val renamed = destination.rename(pending.uri, name)
             if (renamed != null) {
                 pending = renamed
-                require(destination.read(renamed.uri).use { digestBackup(it, expected.size) } == expected)
+                require(destination.read(renamed.uri).use { digestBackup(it, expected.size, checkpoint) } == expected)
                 return renamed
             }
             // Some providers have no rename. Keep the verified temporary copy until a final copy verifies.
@@ -101,29 +116,50 @@ internal object AutomaticBackupFiles {
         }
     }
 
+    fun verifies(destination: BackupDestination, record: ManagedBackup, checkpoint: () -> Unit = {}): Boolean = try {
+        destination.info(record.uri)?.name == record.name &&
+            destination.read(record.uri).use { digestBackup(it, record.size, checkpoint) } == EncryptedFileDigest(record.size, record.sha256)
+    } catch (error: kotlinx.coroutines.CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        false
+    }
+
     /** Operates only on the local ownership ledger, never a filename/glob scan of the chosen folder. */
-    fun prune(destination: BackupDestination, records: List<ManagedBackup>, stream: String, keyId: String, keep: Int): Triple<List<ManagedBackup>, Int, Boolean> {
+    fun prune(
+        destination: BackupDestination, records: List<ManagedBackup>, stream: String, keyId: String, keep: Int,
+        checkpoint: () -> Unit = {}
+    ): Triple<List<ManagedBackup>, Int, Boolean> {
         require(keep in 1..365)
         val owned = records.filter { it.stream == stream && it.keyId == keyId }
             .asReversed().distinctBy { it.uri }.asReversed()
-        val candidates = owned.dropLast(keep) // Ledger order is commit order, independent of wall-clock changes.
-        // Recheck the newest committed copy after bookkeeping. A missing/corrupt retained
-        // archive must never cause deletion of the only older recoverable copies.
-        val anchor = owned.lastOrNull() ?: return Triple(records, 0, false)
+        fun capture(record: ManagedBackup) = Triple(record.created, record.size, record.sha256)
+        val retained = owned.asReversed().distinctBy(::capture).take(keep).associateBy(::capture)
+        val candidates = owned.filter { record -> retained[capture(record)]?.uri != record.uri }
         BackupProgress.report("Checking latest backup")
-        try {
-            require(destination.info(anchor.uri)?.name == anchor.name)
-            require(destination.read(anchor.uri).use { digestBackup(it, anchor.size) } == EncryptedFileDigest(anchor.size, anchor.sha256))
-        } catch (_: Exception) { return Triple(records, candidates.size.coerceAtLeast(1), false) }
-        val removed = hashSetOf<String>(); var failures = 0
+        val anchor = owned.lastOrNull() ?: return Triple(records, 0, false)
+        if (!verifies(destination, anchor, checkpoint)) return Triple(records, 1, false)
+        val verifiedRetained = mutableMapOf(anchor.uri to true)
+        val removed = hashSetOf<String>()
+        var failures = 0
         for (record in candidates) {
+            checkpoint()
             try {
                 val info = destination.info(record.uri)
                 if (info == null) { removed.add(record.uri); continue }
+                val other = retained[capture(record)]
+                require(other == null || verifiedRetained.getOrPut(other.uri) { verifies(destination, other, checkpoint) }) {
+                    "A retained copy of this capture could not be verified"
+                }
                 require(info.name == record.name)
-                require(destination.read(record.uri).use { digestBackup(it, record.size) } == EncryptedFileDigest(record.size, record.sha256))
+                require(destination.read(record.uri).use { digestBackup(it, record.size, checkpoint) } == EncryptedFileDigest(record.size, record.sha256))
+                checkpoint()
                 if (destination.delete(record.uri)) removed.add(record.uri) else failures++
-            } catch (_: Exception) { failures++ } // Missing access or changed files must never trigger broader deletion.
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                failures++
+            }
         }
         return Triple(records.filterNot { it.uri in removed }, failures, true)
     }

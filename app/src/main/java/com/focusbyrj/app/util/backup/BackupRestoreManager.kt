@@ -81,7 +81,6 @@ object BackupRestoreManager {
         "aptitude_economy_prefs",
         "custom_category_prefs",
         "focus_app_prefs",
-        "temporary_unlock_prefs",
         "usage_break_tracker_prefs",
         "summary_quotes_deck",
         "enclave_identity_prefs",
@@ -123,7 +122,8 @@ object BackupRestoreManager {
     private data class MediaManifestEntry(
         val relativePath: String,
         val plaintextSize: Long,
-        val sha256: String
+        val sha256: String,
+        val source: File
     )
 
     /**
@@ -181,7 +181,7 @@ object BackupRestoreManager {
                 // Encryption authentication alone does not prove the restore reader accepts
                 // the manifest and attachments. Never rotate archives on that assumption.
                 if (result.isSuccess) {
-                    verifyEncryptedBackup(context, destinationUri, password).getOrThrow()
+                    verifyEncryptedBackup(context, destinationUri, password, recordActivity = false).getOrThrow()
                     if (recordExport) context.getSharedPreferences("ayva_backup_verification", Context.MODE_PRIVATE).edit()
                         .putLong("last_verified_export_ms", System.currentTimeMillis()).apply()
                 }
@@ -240,7 +240,6 @@ object BackupRestoreManager {
             }
             BackupProgress.report("Checking attachments")
             val mediaManifest = buildMediaManifest(app, processedNotes)
-            val mediaManifestPaths = mediaManifest.mapTo(hashSetOf()) { it.relativePath }
             val drillSessions = drillDb.drillSessionDao().getAllSessionsSync()
             val learnedIdioms = vocabDb.vocabDao().getAllLearnedIdioms()
             val learnedOws = vocabDb.vocabDao().getAllLearnedOws()
@@ -433,43 +432,20 @@ object BackupRestoreManager {
 
                             // Package media files: stream decrypted bytes from EncryptedMediaStorage
                             // so that media is encrypted by the backup password and portable across devices.
-                            val buffer = ByteArray(32 * 1024)
-                            var packedMedia = 0
-                            MEDIA_FOLDERS.forEach { folderName ->
-                                val mediaDir = File(app.filesDir, folderName)
-                                if (mediaDir.exists() && mediaDir.isDirectory) {
-                                    mediaDir.listFiles()?.forEach { file ->
-                                        if (file.isFile && file.length() > 0 && "$folderName/${file.name}" in mediaManifestPaths) {
-                                            packedMedia++
-                                            BackupProgress.report("Encrypting attachment $packedMedia of ${mediaManifest.size}")
-                                            if (EncryptedMediaStorage.isEncrypted(file)) {
-                                                val mediaStream = EncryptedMediaStorage.openDecryptedInputStream(file)
-                                                if (mediaStream != null) {
-                                                    zipOut.setLevel(if (file.extension.lowercase(Locale.ROOT) in setOf("jpg", "jpeg", "png", "webp", "gif", "mp3", "mp4", "m4a", "ogg", "zip", "pdf")) java.util.zip.Deflater.NO_COMPRESSION else java.util.zip.Deflater.DEFAULT_COMPRESSION)
-                                                    zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
-                                                    mediaStream.use { input ->
-                                                        var read = input.read(buffer)
-                                                        while (read != -1) {
-                                                            zipOut.write(buffer, 0, read)
-                                                            read = input.read(buffer)
-                                                        }
-                                                    }
-                                                    zipOut.closeEntry()
-                                                } else throw IOException("Cannot create complete backup: media file ${file.name} is unreadable")
-                                            } else {
-                                                zipOut.setLevel(if (file.extension.lowercase(Locale.ROOT) in setOf("jpg", "jpeg", "png", "webp", "gif", "mp3", "mp4", "m4a", "ogg", "zip", "pdf")) java.util.zip.Deflater.NO_COMPRESSION else java.util.zip.Deflater.DEFAULT_COMPRESSION)
-                                                    zipOut.putNextEntry(ZipEntry("media/$folderName/${file.name}"))
-                                                FileInputStream(file).use { input ->
-                                                    var read = input.read(buffer)
-                                                    while (read != -1) {
-                                                        zipOut.write(buffer, 0, read)
-                                                        read = input.read(buffer)
-                                                    }
-                                                }
-                                                zipOut.closeEntry()
-                                            }
-                                        }
-                                    }
+                            val compressedExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "mp3", "mp4", "m4a", "ogg", "zip", "pdf")
+                            mediaManifest.forEachIndexed { index, media ->
+                                BackupProgress.report("Encrypting attachment ${index + 1} of ${mediaManifest.size}")
+                                val file = media.source
+                                val stream = EncryptedMediaStorage.openDecryptedInputStream(file)
+                                    ?: throw IOException("Cannot create complete backup: an attachment is unreadable")
+                                stream.use { input ->
+                                    val level = if (file.extension.lowercase(Locale.ROOT) in compressedExtensions) {
+                                        java.util.zip.Deflater.NO_COMPRESSION
+                                    } else java.util.zip.Deflater.DEFAULT_COMPRESSION
+                                    zipOut.setLevel(level)
+                                    zipOut.putNextEntry(ZipEntry("media/${media.relativePath}"))
+                                    input.copyTo(zipOut, 32 * 1024)
+                                    zipOut.closeEntry()
                                 }
                             }
                             zipOut.flush()
@@ -492,20 +468,30 @@ object BackupRestoreManager {
     }
 
     /** Read-only verification through the restore reader; no databases, preferences or live media are changed. */
-    suspend fun verifyEncryptedBackup(context: Context, sourceUri: Uri, password: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun verifyEncryptedBackup(
+        context: Context, sourceUri: Uri, password: String, recordActivity: Boolean = true
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val activity = if (recordActivity) BackupActivityLog.begin(context, BackupActivityLog.Operation.CHECK) else null
+        var outcome = BackupActivityLog.Outcome.INTERRUPTED
         try {
             prepareRestore(context, sourceUri, password).getOrThrow().use { prepared ->
                 val rootJson = checkNotNull(prepared.manifest)
                 val counts = listOf("notes", "tasks", "habits", "drillSessions", "chatMessages")
                     .joinToString(" · ") { "$it: ${rootJson.optJSONArray(it)?.length() ?: 0}" }
-                val media = rootJson.optJSONArray("mediaManifest")?.length()
+                val media = prepared.verifiedMedia.size
+                val hasHashes = rootJson.has("mediaManifest")
+                outcome = BackupActivityLog.Outcome.COMPLETED
                 Result.success("Verified authenticated backup.\n$counts\n" +
-                    (media?.let { "$it attachments checked against their hashes." } ?: "Legacy archive: no attachment hash inventory is available.") +
+                    (if (hasHashes) "$media attachments checked against their hashes." else "$media attachments checked in a legacy archive.") +
                     "\nNo saved data changed. This verifies this archive, not compatibility with every future app version.")
             }
         } catch (error: Exception) {
             if (error is kotlinx.coroutines.CancellationException) throw error
+            outcome = BackupActivityLog.Outcome.FAILED
             Result.failure(error)
+        } finally {
+            BackupActivityLog.finish(context, activity, outcome,
+                BackupActivityLog.Reason.CHECKING.takeIf { outcome == BackupActivityLog.Outcome.FAILED })
         }
     }
 
@@ -541,17 +527,23 @@ object BackupRestoreManager {
     }
 
     /** Authenticated manifest stays in memory; staged attachments are device-key encrypted. */
+    internal data class VerifiedMedia(val size: Long, val sha256: String)
+
     internal class PreparedRestore internal constructor(
         internal val owner: Context,
         internal var manifest: JSONObject?,
         internal val stagingDir: File,
         internal val destinations: Map<String, File>,
+        internal val verifiedMedia: Map<String, VerifiedMedia>,
         internal val preparedAt: Long = android.os.SystemClock.elapsedRealtime()
     ) : AutoCloseable {
         internal val use = kotlinx.coroutines.sync.Mutex()
         val hasPrivateNotes: Boolean get() = manifest?.optJSONArray("notes")?.let { notes ->
             (0 until notes.length()).any { notes.getJSONObject(it).optBoolean("isArchived", false) }
         } ?: false
+        val canReplace: Boolean get() = manifest?.let { root ->
+            replacementCollections.all { root.optJSONArray(it) != null }
+        } == true
         val noteCount: Int get() = manifest?.optJSONArray("notes")?.length() ?: 0
         val taskCount: Int get() = manifest?.optJSONArray("tasks")?.length() ?: 0
         override fun close() { manifest = null; stagingDir.deleteRecursively() }
@@ -609,16 +601,10 @@ object BackupRestoreManager {
                                     jsonDataStr = baos.toString(Charsets.UTF_8.name())
                                 } else if (entry.name.startsWith("media/")) {
                                     BackupProgress.report("Checking attachment ${mediaDestinations.size + 1}")
-                                    val normalized = entry.name.removePrefix("media/").replace('\\', '/').trimStart('/')
+                                    val normalized = normalizeArchiveMediaPath(entry.name.removePrefix("media/"))
+                                    require(normalized !in mediaDestinations) { "Duplicate media path: $normalized" }
                                     val topFolder = normalized.substringBefore('/')
-                                    if (topFolder !in MEDIA_FOLDERS || normalized.contains("..") || normalized.isEmpty()) {
-                                        throw SecurityException("Invalid or disallowed media path in backup archive: $normalized. Must reside in: $MEDIA_FOLDERS")
-                                    }
-                                    val targetDir = File(stagingDir, topFolder).canonicalFile
-                                    val targetFile = File(stagingDir, normalized).canonicalFile
-                                    if (!targetFile.toPath().startsWith(targetDir.toPath())) {
-                                        throw SecurityException("Zip Slip directory traversal detected in backup media entry: $normalized")
-                                    }
+                                    val targetFile = File(stagingDir, normalized)
                                     targetFile.parentFile?.mkdirs()
                                     // Never overwrite live attachments: DB rollback must still reference
                                     // the original bytes if a later store fails or the process dies.
@@ -657,8 +643,8 @@ object BackupRestoreManager {
             BackupProgress.report("Checking saved records")
             val rootJson = BackupArchiveLimits.parseManifest(jsonDataStr!!)
             validateRestoreManifest(rootJson)
-            validateStagedMedia(rootJson, stagingDir)
-            val result = PreparedRestore(app, rootJson, stagingDir, mediaDestinations)
+            val verifiedMedia = validateStagedMedia(rootJson, stagingDir, mediaDestinations.keys)
+            val result = PreparedRestore(app, rootJson, stagingDir, mediaDestinations, verifiedMedia)
             completed = result
             return@withContext Result.success(result)
         } catch (error: Exception) {
@@ -685,12 +671,13 @@ object BackupRestoreManager {
         AssistantStateLock.mutex.withLock locked@ {
             require(prepared.owner === context.applicationContext) { "This restore belongs to another app session." }
             require(android.os.SystemClock.elapsedRealtime() - prepared.preparedAt in 0..600_000) { "Restore preparation expired. Choose the backup again." }
-            checkNotNull(prepared.manifest) { "This restore session has ended." }
+            val manifest = checkNotNull(prepared.manifest) { "This restore session has ended." }
+            if (cleanRestore) requireCompleteReplacement(manifest)
             val enabled = ArchiveVaultSecurity.getVaultStatus(context) == ArchiveVaultSecurity.VaultStatus.ENABLED
             if (authorization == null && enabled) {
                 if (ArchiveVaultSecurity.isVaultLocked(context)) {
                     if (vaultPin == null) return@locked Result.failure(RequiresVaultUnlockException())
-                    if (ArchiveVaultSecurity.verifyPasscode(context, vaultPin) !is ArchiveVaultSecurity.VerifyResult.Success)
+                    if (ArchiveVaultSecurity.verifyPasscodeAsync(context, vaultPin) !is ArchiveVaultSecurity.VerifyResult.Success)
                         return@locked Result.failure(SecurityException("Vault PIN was not accepted. Your data was not changed."))
                 }
                 ownedAuthorization = captureRestoreAuthorization(context)
@@ -819,7 +806,7 @@ object BackupRestoreManager {
 
             // Complete all expensive/fallible media decryption and device-key encryption before
             // any live database is changed. Installation later is rename-only and rollback-safe.
-            preparedMedia = prepareRestoredMedia(app, stagingDir, mediaDestinations)
+            preparedMedia = prepareRestoredMedia(app, stagingDir, mediaDestinations, prepared.verifiedMedia)
 
             LatestNotesCache.clear()
 
@@ -1079,8 +1066,10 @@ object BackupRestoreManager {
                             isTaskSummary = obj.optBoolean("isTaskSummary", false),
                             taskSummaryJson = RestoreImportPolicy.remapCards(if (obj.has("taskSummaryJson") && !obj.isNull("taskSummaryJson")) obj.getString("taskSummaryJson") else null, taskIdMapping, restoreWarnings),
                             isTalkAction = obj.optBoolean("isTalkAction", false),
-                            talkActionJson = if (obj.has("talkActionJson") && !obj.isNull("talkActionJson")) obj.optString("talkActionJson") else null,
-                            pendingActionJson = if (obj.has("pendingActionJson") && !obj.isNull("pendingActionJson")) obj.optString("pendingActionJson") else null,
+                            talkActionJson = RestoreImportPolicy.remapTalkHistory(
+                                if (obj.has("talkActionJson") && !obj.isNull("talkActionJson")) obj.getString("talkActionJson") else null,
+                                taskIdMapping, restoredHabitIds, restoredScheduleIds, restoreWarnings
+                            ),
                             isDailyQuests = obj.optBoolean("isDailyQuests", false),
                             isMysteryBox = obj.optBoolean("isMysteryBox", false),
                             isMorningBrief = obj.optBoolean("isMorningBrief", false),
@@ -1088,7 +1077,9 @@ object BackupRestoreManager {
                             isStreakFreezeSkipped = obj.optBoolean("isStreakFreezeSkipped", false),
                             isVocabBrief = obj.optBoolean("isVocabBrief", false),
                             isVocabHub = obj.optBoolean("isVocabHub", false),
-                            vocabJson = if (obj.has("vocabJson") && !obj.isNull("vocabJson")) obj.optString("vocabJson") else null,
+                            vocabJson = RestoreImportPolicy.vocabularyHistory(
+                                if (obj.has("vocabJson") && !obj.isNull("vocabJson")) obj.getString("vocabJson") else null
+                            ),
                             isWelcome = obj.optBoolean("isWelcome", false),
                             isHabitsSummary = obj.optBoolean("isHabitsSummary", false),
                             habitsSummaryJson = RestoreImportPolicy.remapCards(if (obj.has("habitsSummaryJson") && !obj.isNull("habitsSummaryJson")) obj.getString("habitsSummaryJson") else null, restoredHabitIds, restoreWarnings)
@@ -1343,7 +1334,18 @@ object BackupRestoreManager {
         while (input.read(buffer) != -1) { /* EOF forces GCM tag verification. */ }
     }
 
+    private val replacementCollections = listOf(
+        "notes", "restrictions", "schedules", "tasks", "habits", "habitLogs", "drillSessions", "chatMessages"
+    )
+
+    private fun requireCompleteReplacement(root: JSONObject) {
+        require(replacementCollections.all { root.optJSONArray(it) != null }) {
+            "This backup is missing required collections for replacement. Choose Import copies."
+        }
+    }
+
     private fun validateRestoreManifest(root: JSONObject) {
+        if (root.optInt("version", 1) >= 3) requireCompleteReplacement(root)
         if (root.has("earnedRewards")) RewardArchive.decode(root.getJSONArray("earnedRewards"))
         if (root.has("vocabulary")) VocabularyArchive.validate(root.getJSONObject("vocabulary"))
         require(root.optInt("version", 1) in 1..BACKUP_VERSION) { "Unsupported backup manifest version" }
@@ -1470,45 +1472,61 @@ object BackupRestoreManager {
         }
     }
 
-    private fun validateStagedMedia(root: JSONObject, stagingDir: File) {
-        val manifest = root.optJSONArray("mediaManifest")
-        if (manifest == null) {
-            require(root.optInt("version", 1) < 2) { "Backup v2 is missing its media inventory" }
-            return // legacy backup
+    private fun normalizeArchiveMediaPath(path: String): String {
+        val normalized = path.replace('\\', '/')
+        val parts = normalized.split('/')
+        require(parts.size == 2 && parts.first() in MEDIA_FOLDERS &&
+            parts.last().isNotBlank() && parts.last() !in setOf(".", "..") && '\u0000' !in normalized) {
+            "Invalid media path in backup archive"
         }
-        val expectedPaths = mutableSetOf<String>()
-        for (i in 0 until manifest.length()) {
-            BackupProgress.report("Verifying attachment ${i + 1} of ${manifest.length()}")
-            val obj = manifest.getJSONObject(i)
-            val relative = obj.getString("path").replace('\\', '/').trimStart('/')
-            require(relative.substringBefore('/') in MEDIA_FOLDERS && !relative.contains("..")) {
-                "Invalid media manifest path: $relative"
+        return normalized
+    }
+
+    private fun verifyAttachment(file: File): VerifiedMedia {
+        require(file.isFile) { "A backup attachment is missing." }
+        val digest = MessageDigest.getInstance("SHA-256")
+        var size = 0L
+        (EncryptedMediaStorage.openDecryptedInputStream(file)
+            ?: throw IOException("A backup attachment could not be authenticated")).use { input ->
+            val buffer = ByteArray(32 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                digest.update(buffer, 0, read)
+                size += read
+                require(size <= BackupArchiveLimits.MEDIA_ENTRY_BYTES) { "A backup attachment is too large" }
             }
-            require(expectedPaths.add(relative)) { "Duplicate media manifest path: $relative" }
-            val file = File(stagingDir, relative).canonicalFile
-            require(file.toPath().startsWith(stagingDir.canonicalFile.toPath()) && file.isFile) {
-                "Backup is incomplete: media '$relative' is missing"
-            }
-            val digest = MessageDigest.getInstance("SHA-256")
-            var size = 0L
-            (EncryptedMediaStorage.openDecryptedInputStream(file)
-                ?: throw IOException("Staged attachment cannot be decrypted")).use { input ->
-                val buffer = ByteArray(32 * 1024)
-                var read = input.read(buffer)
-                while (read != -1) {
-                    digest.update(buffer, 0, read)
-                    size += read
-                    read = input.read(buffer)
+        }
+        return VerifiedMedia(size, digest.digest().toHex())
+    }
+
+    private fun validateStagedMedia(
+        root: JSONObject,
+        stagingDir: File,
+        stagedPaths: Set<String>
+    ): Map<String, VerifiedMedia> {
+        val manifest = root.optJSONArray("mediaManifest")
+        require(manifest != null || root.optInt("version", 1) < 2 && !root.has("mediaManifest")) {
+            "Backup is missing its media inventory"
+        }
+        val manifestEntries = linkedMapOf<String, VerifiedMedia>()
+        if (manifest != null) {
+            for (i in 0 until manifest.length()) {
+                val entry = manifest.getJSONObject(i)
+                val path = normalizeArchiveMediaPath(entry.getString("path"))
+                require(manifestEntries.put(path, VerifiedMedia(entry.getLong("size"), entry.getString("sha256"))) == null) {
+                    "Duplicate media manifest path: $path"
                 }
             }
-            require(size == obj.getLong("size") && digest.digest().toHex() == obj.getString("sha256")) {
-                "Backup media verification failed for '$relative'"
-            }
+            require(manifestEntries.keys == stagedPaths) { "Backup media inventory does not match the archive" }
         }
-        val stagedPaths = MEDIA_FOLDERS.flatMap { folder ->
-            File(stagingDir, folder).listFiles()?.filter { it.isFile }?.map { "$folder/${it.name}" } ?: emptyList()
-        }.toSet()
-        require(stagedPaths == expectedPaths) { "Backup media inventory does not match the archive" }
+        val verified = linkedMapOf<String, VerifiedMedia>()
+        stagedPaths.forEachIndexed { index, path ->
+            BackupProgress.report("Verifying attachment ${index + 1} of ${stagedPaths.size}")
+            val media = verifyAttachment(File(stagingDir, path))
+            require(manifest == null || media == manifestEntries[path]) { "Backup media verification failed for '$path'" }
+            verified[path] = media
+        }
 
         val notes = root.optJSONArray("notes") ?: JSONArray()
         for (i in 0 until notes.length()) {
@@ -1519,57 +1537,34 @@ object BackupRestoreManager {
                 audioUrisJson = obj.optString("audioUrisJson", "[]")
             )
             collectNoteMediaPaths(note).forEach { path ->
-                val normalized = path.replace('\\', '/')
-                val folder = MEDIA_FOLDERS.firstOrNull {
-                    normalized.contains("/$it/") || normalized.startsWith("$it/")
-                } ?: throw IOException("Backup contains an unsupported attachment path: $path")
-                val relative = "$folder/${normalized.substringAfterLast('/')}"
-                require(relative in expectedPaths) { "Backup is missing referenced media '$relative'" }
+                val relative = noteMediaRelativePath(path)
+                require(relative in verified) { "Backup is missing referenced media '$relative'" }
             }
         }
+        return verified
     }
 
     private fun buildMediaManifest(context: Context, notes: List<NoteEntity>): List<MediaManifestEntry> {
         val referenced = notes.flatMap { collectNoteMediaPaths(it) }.toSet()
-        referenced.forEach { path ->
-            val normalized = path.replace('\\', '/')
-            val folder = MEDIA_FOLDERS.firstOrNull { normalized.contains("/$it/") || normalized.startsWith("$it/") }
-                ?: throw IOException("Cannot create complete backup: unsupported attachment path '$path'")
-            val file = File(path)
-            val allowedRoot = File(context.filesDir, folder).canonicalFile
-            val canonical = file.canonicalFile
-            if (!canonical.toPath().startsWith(allowedRoot.toPath()) || !canonical.isFile) {
-                throw IOException("Cannot create complete backup: referenced media is missing or outside app storage: $path")
+        val sources = linkedMapOf<String, File>()
+        for (path in referenced) {
+            val relative = noteMediaRelativePath(path)
+            val folder = relative.substringBefore('/')
+            val root = File(context.filesDir, folder).canonicalFile
+            val file = File(path).canonicalFile
+            require(file.parentFile == root && file.isFile) {
+                "Cannot create complete backup: a referenced attachment is missing or outside app storage"
+            }
+            require(file.name == relative.substringAfter('/')) { "Attachment storage does not match its reference" }
+            require(sources.put(relative, file).let { it == null || it == file }) {
+                "Cannot create complete backup: conflicting attachment paths"
             }
         }
-
-        val result = mutableListOf<MediaManifestEntry>()
-        val uniqueReferencedFiles = linkedMapOf<String, File>()
-        referenced.forEach { path ->
-            val normalized = path.replace('\\', '/')
-            val folder = MEDIA_FOLDERS.first { normalized.contains("/$it/") || normalized.startsWith("$it/") }
-            uniqueReferencedFiles["$folder/${normalized.substringAfterLast('/')}"] = File(path)
+        return sources.entries.mapIndexed { index, (relative, file) ->
+            BackupProgress.report("Checking attachment ${index + 1} of ${sources.size}")
+            val verified = verifyAttachment(file)
+            MediaManifestEntry(relative, verified.size, verified.sha256, file)
         }
-        uniqueReferencedFiles.forEach { (relativePath, file) ->
-                BackupProgress.report("Checking attachment ${result.size + 1} of ${uniqueReferencedFiles.size}")
-                val stream = if (EncryptedMediaStorage.isEncrypted(file)) {
-                    EncryptedMediaStorage.openDecryptedInputStream(file)
-                } else FileInputStream(file)
-                stream ?: throw IOException("Cannot create complete backup: media file ${file.name} is unreadable")
-                val digest = MessageDigest.getInstance("SHA-256")
-                var size = 0L
-                stream.use { input ->
-                    val buffer = ByteArray(32 * 1024)
-                    var read = input.read(buffer)
-                    while (read != -1) {
-                        digest.update(buffer, 0, read)
-                        size += read
-                        read = input.read(buffer)
-                    }
-                }
-                result += MediaManifestEntry(relativePath, size, digest.digest().toHex())
-        }
-        return result
     }
 
     private fun collectNoteMediaPaths(note: NoteEntity): List<String> {
@@ -1581,12 +1576,18 @@ object BackupRestoreManager {
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
 
+    private fun noteMediaRelativePath(path: String): String {
+        val parts = path.replace('\\', '/').split('/')
+        val folders = parts.indices.filter { parts[it] in MEDIA_FOLDERS }
+        require(folders.size == 1 && folders.single() == parts.lastIndex - 1 &&
+            parts.none { it == "." || it == ".." }) { "Backup contains an unsupported attachment reference" }
+        return normalizeArchiveMediaPath(parts.takeLast(2).joinToString("/"))
+    }
+
     private fun remapMediaPath(path: String, destinations: Map<String, File>): String {
-        val normalized = path.replace('\\', '/')
-        val folder = MEDIA_FOLDERS.firstOrNull { normalized.contains("/$it/") || normalized.startsWith("$it/") }
-            ?: return path
-        val key = "$folder/${normalized.substringAfterLast('/')}"
-        return destinations[key]?.absolutePath ?: path
+        if (path.isBlank()) return path
+        val relative = noteMediaRelativePath(path)
+        return checkNotNull(destinations[relative]) { "Backup is missing a referenced attachment" }.absolutePath
     }
 
     private fun remapMediaJson(json: String, destinations: Map<String, File>): String {
@@ -1612,28 +1613,27 @@ object BackupRestoreManager {
     private fun prepareRestoredMedia(
         app: Context,
         stagingDir: File,
-        destinations: Map<String, File>
+        destinations: Map<String, File>,
+        verifiedMedia: Map<String, VerifiedMedia>
     ): List<Pair<File, File>> {
-        val sources = MEDIA_FOLDERS.flatMap { folder ->
-            File(stagingDir, folder).listFiles()?.filter { it.isFile }?.map { staged ->
-                val destination = checkNotNull(destinations["$folder/${staged.name}"])
-                val temporary = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.restore")
-                Triple(staged, destination, temporary)
-            }.orEmpty()
+        check(destinations.keys == verifiedMedia.keys) { "Prepared backup media inventory changed" }
+        val sources = verifiedMedia.keys.map { relative ->
+            val destination = destinations.getValue(relative)
+            val temporary = File(destination.parentFile, ".${destination.name}.${UUID.randomUUID()}.restore")
+            Triple(relative, destination, temporary)
         }
         val prepared = sources.map { it.second to it.third }
         // Persist all ownership before creating files; one durable write for the whole batch.
         RestoreJournal.registerMedia(app, prepared)
         try {
-            sources.forEachIndexed { index, (staged, destination, temp) ->
+            sources.forEachIndexed { index, (relative, destination, temp) ->
                 check(destination.parentFile!!.mkdirs() || destination.parentFile!!.isDirectory)
                 BackupProgress.report("Restoring attachment ${index + 1} of ${sources.size}")
-                (EncryptedMediaStorage.openDecryptedInputStream(staged)
-                    ?: throw IOException("Staged attachment cannot be decrypted")).close()
-                if (!staged.renameTo(temp)) {
-                    val expected = staged.inputStream().use { digestBackup(it) }
-                    staged.inputStream().use { input -> temp.outputStream().use { input.copyTo(it) } }
-                    check(temp.inputStream().use { digestBackup(it) } == expected) { "Staged media copy did not verify" }
+                val staged = File(stagingDir, relative)
+                check(staged.isFile) { "A staged backup attachment is missing. Select the backup again." }
+                staged.copyTo(temp)
+                check(verifyAttachment(temp) == verifiedMedia.getValue(relative)) {
+                    "A staged backup attachment changed. Select the backup again."
                 }
                 java.io.RandomAccessFile(temp, "rw").use { it.fd.sync() }
             }
