@@ -44,7 +44,8 @@ data class NoteEntity(
      * Null for active / trashed notes.
      */
     val deletedAt: Long? = null,
-    val sortPosition: Long? = null
+    val sortPosition: Long? = null,
+    val legacyArticleMetadata: String? = null
 ) {
     fun getImageUris(): List<String> {
         if (imageUrisJson.isBlank()) return emptyList()

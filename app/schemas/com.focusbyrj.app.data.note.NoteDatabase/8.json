@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 8,
-    "identityHash": "1b089d4f744fcae5c60fb1599e93fac0",
+    "identityHash": "a7235d2ca6d8d227c10eca30ceeee6b4",
     "entities": [
       {
         "tableName": "keep_notes",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `isChecklist` INTEGER NOT NULL, `checklistJson` TEXT NOT NULL, `colorKey` TEXT NOT NULL, `fontKey` TEXT NOT NULL, `isPinned` INTEGER NOT NULL, `isArchived` INTEGER NOT NULL, `isTrashed` INTEGER NOT NULL, `labelsJson` TEXT NOT NULL, `imageUrisJson` TEXT NOT NULL, `audioUrisJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `trashedAt` INTEGER, `deletedAt` INTEGER, `sortPosition` INTEGER)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `content` TEXT NOT NULL, `isChecklist` INTEGER NOT NULL, `checklistJson` TEXT NOT NULL, `colorKey` TEXT NOT NULL, `fontKey` TEXT NOT NULL, `isPinned` INTEGER NOT NULL, `isArchived` INTEGER NOT NULL, `isTrashed` INTEGER NOT NULL, `labelsJson` TEXT NOT NULL, `imageUrisJson` TEXT NOT NULL, `audioUrisJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `trashedAt` INTEGER, `deletedAt` INTEGER, `sortPosition` INTEGER, `legacyArticleMetadata` TEXT)",
         "fields": [
           {
             "fieldPath": "id",
@@ -115,6 +115,12 @@
             "columnName": "sortPosition",
             "affinity": "INTEGER",
             "notNull": false
+          },
+          {
+            "fieldPath": "legacyArticleMetadata",
+            "columnName": "legacyArticleMetadata",
+            "affinity": "TEXT",
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -130,7 +136,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1b089d4f744fcae5c60fb1599e93fac0')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a7235d2ca6d8d227c10eca30ceeee6b4')"
     ]
   }
 }

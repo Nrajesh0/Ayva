@@ -374,7 +374,8 @@ object DataSafetyManager {
                 var changed = root.optString("vaultStatus") == "ENABLED"
                 for (index in 0 until rows.length()) {
                     val row = rows.getJSONObject(index)
-                    val envelope = NoteEntity(id = row.getLong("id"), content = row.getString("content"), isArchived = true)
+                    val envelope = NoteEntity(id = row.getLong("id"), content = row.getString("content"), isArchived = true,
+                        legacyArticleMetadata = row.optString("legacyArticleMetadata").takeIf { it.isNotEmpty() })
                     if (!com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(envelope)) continue
                     val result = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(envelope, key)
                     check(result is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success) { "Could not unlock historical note for PIN removal." }
@@ -382,6 +383,7 @@ object DataSafetyManager {
                     try {
                         val fields = JSONObject(String(bytes, Charsets.UTF_8))
                         for (name in fields.keys()) row.put(name, fields.get(name))
+                        row.remove("legacyArticleMetadata")
                     } finally { bytes.fill(0) }
                     changed = true
                 }
@@ -512,7 +514,8 @@ object DataSafetyManager {
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                         updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
                         sortPosition = if (obj.isNull("sortPosition")) null else obj.getLong("sortPosition"),
-                    trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.getLong("trashedAt") else null,
+                        legacyArticleMetadata = obj.optString("legacyArticleMetadata").takeIf { it.isNotEmpty() },
+                        trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.getLong("trashedAt") else null,
                         deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.getLong("deletedAt") else null
                     )
                     restoredNotes.add(note)
@@ -836,7 +839,8 @@ object DataSafetyManager {
                     put("isTrashed", note.isTrashed)
                     put("createdAt", note.createdAt)
                     put("updatedAt", note.updatedAt)
-            put("sortPosition", note.sortPosition)
+                    put("sortPosition", note.sortPosition)
+                    put("legacyArticleMetadata", note.legacyArticleMetadata)
                     if (note.trashedAt != null) put("trashedAt", note.trashedAt)
                     if (note.deletedAt != null) put("deletedAt", note.deletedAt)
                 })

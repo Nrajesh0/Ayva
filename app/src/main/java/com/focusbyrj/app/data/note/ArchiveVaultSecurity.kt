@@ -92,7 +92,13 @@ object ArchiveVaultSecurity {
             db.withTransaction {
                 checkCurrent()
                 db.noteDao().getArchivedNotesSync().forEach { note ->
-                    if (!VaultPayloadEncryptor.isVaultEncrypted(note)) db.noteDao().updateNote(VaultPayloadEncryptor.encryptNotePayload(note, vdk))
+                    if (!VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                        db.noteDao().updateNote(VaultPayloadEncryptor.encryptNotePayload(note, vdk))
+                    } else if (note.legacyArticleMetadata != null) {
+                        val decoded = VaultPayloadEncryptor.tryDecryptNotePayload(note, vdk)
+                        check(decoded is VaultPayloadEncryptor.DecryptionResult.Success) { "Could not recover legacy article metadata." }
+                        db.noteDao().updateNote(VaultPayloadEncryptor.encryptNotePayload(decoded.note, vdk))
+                    }
                 }
                 checkCurrent()
             }

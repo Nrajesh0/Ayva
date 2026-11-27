@@ -382,9 +382,10 @@ class DataIntegrityPhase2Test {
 
     @Test fun restoringTheOldestSnapshotKeepsTheSelectedRecoveryPoint() = runBlocking {
         val dao = noteDb.noteDao()
-        dao.insertNote(NoteEntity(id = 42, title = "Old content"))
+        val original = NoteEntity(id = 42, title = "Old content")
+        dao.insertNote(original)
         val paths = (1..10).map { index ->
-            if (index > 1) dao.insertNote(NoteEntity(id = 42, title = "Revision $index"))
+            if (index > 1) dao.updateNote(original.copy(title = "Revision $index"))
             File(checkNotNull(DataSafetyManager.writePreOpSnapshot(context, dao, "test", focusDb))).apply {
                 assertTrue(setLastModified(1_000L * index))
             }

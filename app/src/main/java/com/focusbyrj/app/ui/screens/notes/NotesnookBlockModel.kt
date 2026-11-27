@@ -612,7 +612,7 @@ object NotesnookBlockManager {
         getSubtitle(content).takeIf { it.isNotBlank() }?.let { add(it) }
         parse(content).forEach { block ->
             add(when (block) {
-                is NotesnookBlock.Code -> block.code
+                is NotesnookBlock.Code -> "[Code: ${block.language}]\n${block.code}"
                 is NotesnookBlock.Table -> block.data.joinToString("\n") { it.joinToString("\t") }
                 else -> toPlainText(listOf(block))
             })

@@ -182,8 +182,24 @@ class NotesIntegrityRegressionTest {
             val db = helper.writableDatabase
             db.execSQL("""INSERT INTO keep_notes VALUES (1, 'Essay', 'Body', 0, '[]', 'default', 'default',
                 0, 0, 0, '[]', '[]', '[]', 10, 11, NULL, NULL, 1, 'Subtitle', '/cover.jpg', 1, 12, 3)""")
+            val key = ByteArray(32).also(java.security.SecureRandom()::nextBytes)
+            val crypto = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor
+            val encrypted = crypto.encryptNotePayload(NoteEntity(content = "Private body", isArchived = true), key)
+            db.execSQL("""INSERT INTO keep_notes VALUES (2, 'Private', ?, 0, '[]', 'default', 'default',
+                0, 1, 0, '[]', '[]', '[]', 10, 11, NULL, NULL, 1, 'Private subtitle', '/private.jpg', 0, NULL, 3)""",
+                arrayOf(encrypted.content))
             NoteDatabase.MIGRATION_6_7.migrate(db)
             NoteDatabase.MIGRATION_7_8.migrate(db)
+            db.query("SELECT content, legacyArticleMetadata FROM keep_notes WHERE id = 2").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(encrypted.content, it.getString(0))
+                val stored = encrypted.copy(legacyArticleMetadata = it.getString(1))
+                val recovered = crypto.decryptNotePayload(stored, key)
+                assertEquals("Private subtitle", NotesnookBlockManager.getSubtitle(recovered.content))
+                assertEquals(listOf("/private.jpg"), recovered.getImageUris())
+                assertNull(recovered.legacyArticleMetadata)
+            }
+            key.fill(0)
             db.query("SELECT content, imageUrisJson, updatedAt, sortPosition FROM keep_notes WHERE id = 1").use {
                 assertTrue(it.moveToFirst())
                 assertEquals("Subtitle", NotesnookBlockManager.getSubtitle(it.getString(0)))

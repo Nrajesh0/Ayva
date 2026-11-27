@@ -207,11 +207,14 @@ object VaultPayloadEncryptor {
 
     internal fun decodePayload(note: NoteEntity, bytes: ByteArray): NoteEntity {
         val obj = JSONObject(String(bytes, StandardCharsets.UTF_8))
-        return note.copy(title = obj.optString("title", ""), content = obj.optString("content", ""),
+        val decoded = note.copy(title = obj.optString("title", ""), content = obj.optString("content", ""),
             isChecklist = obj.optBoolean("isChecklist", false), checklistJson = obj.optString("checklistJson", "[]"),
             colorKey = obj.optString("colorKey", note.colorKey), fontKey = obj.optString("fontKey", note.fontKey),
             labelsJson = obj.optString("labelsJson", "[]"), imageUrisJson = obj.optString("imageUrisJson", "[]"),
             audioUrisJson = obj.optString("audioUrisJson", "[]"))
+        return note.legacyArticleMetadata?.let {
+            com.focusbyrj.app.data.note.NoteContentFormat.applyLegacyArticle(decoded, JSONObject(it))
+        } ?: decoded
     }
 
     // ──────────────────────────────────────────────────────────────────────

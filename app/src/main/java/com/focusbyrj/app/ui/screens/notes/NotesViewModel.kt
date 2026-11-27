@@ -548,6 +548,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         notes: List<NoteEntity>, clearAfterSave: Boolean = false, transform: (NoteEntity) -> NoteEntity
     ) {
         if (notes.isEmpty()) return
+        notes.forEach { latestNotesCache.remove(it.id) }
         val generation = com.focusbyrj.app.data.note.NotesStorageVersion.current()
         noteOperation {
             NoteDatabase.getInstance(getApplication()).withTransaction {
@@ -1217,6 +1218,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         ArchiveVaultSecurity.beginMediaReturn(getApplication(), nonce, current.originalId, current.storageGeneration)
         return try {
             lockVaultForBackground()
+            backgroundVaultSave?.join()
             setFolder(NoteFolder.ARCHIVE)
             check(pendingPlainVaultDraft == null && !hasPendingVaultDraftFile()) { "Your draft needs recovery. Unlock the vault before choosing media." }
             withContext(Dispatchers.IO) {
@@ -2015,8 +2017,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             persistMutex.withLock {
                 val active = _editingState.value ?: return@withLock
                 if (active.sessionId != draft.sessionId) return@withLock
-                val entity = buildEntityFromState(active)
-                if (entity.id != 0L || !entity.isEmptyNote()) {
+                val draftEntity = buildEntityFromState(active)
+                val id = sessionIds[active.sessionId] ?: draftEntity.id
+                if (id != 0L || !draftEntity.isEmptyNote()) {
+                    val entity = if (id != 0L && draftEntity.isEmptyNote()) {
+                        checkNotNull(NoteDatabase.getInstance(getApplication()).noteDao().getNoteByIdSync(id)) { "This note was removed elsewhere." }
+                    } else draftEntity.copy(id = id)
                     val saved = saveEditorEntity(entity.copy(isPinned = false, isTrashed = true,
                         trashedAt = System.currentTimeMillis()), active)
                     latestNotesCache.remove(saved.id)

@@ -224,6 +224,11 @@ abstract class NoteDatabase : RoomDatabase() {
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE keep_notes ADD COLUMN sortPosition INTEGER")
+                db.execSQL("ALTER TABLE keep_notes ADD COLUMN legacyArticleMetadata TEXT")
+                if (db.query("SELECT name FROM sqlite_master WHERE name = 'pending_v6_articles'").use { it.moveToFirst() }) {
+                    db.execSQL("UPDATE keep_notes SET legacyArticleMetadata = (SELECT metadata FROM pending_v6_articles WHERE pending_v6_articles.id = keep_notes.id)")
+                    db.execSQL("DROP TABLE pending_v6_articles")
+                }
             }
         }
 
@@ -266,29 +271,25 @@ abstract class NoteDatabase : RoomDatabase() {
 
                     db.query("SELECT id, content, isArticle, subtitle, coverImageUri, isPublished, publishedAt, readingTimeMinutes, imageUrisJson FROM keep_notes WHERE isArticle != 0 OR subtitle != '' OR coverImageUri IS NOT NULL OR isPublished != 0 OR publishedAt IS NOT NULL OR readingTimeMinutes != 0").use { rows ->
                         while (rows.moveToNext()) {
-                            val body = rows.getString(1)
-                            val images = org.json.JSONArray(rows.getString(8))
-                            rows.getString(4)?.takeIf { it.isNotBlank() }?.let { cover ->
-                                if ((0 until images.length()).none { images.optString(it) == cover }) images.put(cover)
+                            val note = NoteEntity(content = rows.getString(1), imageUrisJson = rows.getString(8))
+                            val metadata = org.json.JSONObject().apply {
+                                if (rows.getInt(2) != 0) put("isArticle", true)
+                                if (rows.getString(3).isNotEmpty()) put("subtitle", rows.getString(3))
+                                if (!rows.isNull(4)) put("coverImageUri", rows.getString(4))
+                                put("isPublished", rows.getInt(5) != 0)
+                                if (!rows.isNull(6)) put("publishedAt", rows.getLong(6))
+                                put("readingTimeMinutes", rows.getInt(7))
                             }
-                            // Preserve opaque vault envelopes verbatim. Replacing one with a rich
-                            // document would prevent a subsequent unlock from decrypting the note.
-                            val migrated = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(NoteEntity(content = body))) body else {
-                                val prefix = NoteContentFormat.BLOCKS_PREFIX
-                                val suffix = NoteContentFormat.BLOCKS_SUFFIX
-                                val doc = if (body.startsWith(prefix) && body.endsWith(suffix)) {
-                                    org.json.JSONObject(body.removePrefix(prefix).removeSuffix(suffix))
-                                } else org.json.JSONObject().put("version", 1).put("blocks", org.json.JSONArray().put(
-                                    org.json.JSONObject().put("type", "text").put("text", body)))
-                                if (rows.getInt(2) != 0) doc.put("isArticle", true)
-                                if (rows.getString(3).isNotEmpty()) doc.put("subtitle", rows.getString(3))
-                                doc.put("isPublished", rows.getInt(5) != 0)
-                                if (!rows.isNull(6)) doc.put("publishedAt", rows.getLong(6))
-                                doc.put("readingTimeMinutes", rows.getInt(7))
-                                prefix + doc + suffix
+                            if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                                // Room opens this SQLCipher database while the PIN may be locked.
+                                // Preserve the legacy columns until the envelope can be authenticated.
+                                db.execSQL("CREATE TABLE IF NOT EXISTS pending_v6_articles (id INTEGER PRIMARY KEY, metadata TEXT NOT NULL)")
+                                db.execSQL("INSERT INTO pending_v6_articles VALUES (?, ?)", arrayOf(rows.getLong(0), metadata.toString()))
+                            } else {
+                                val migrated = NoteContentFormat.applyLegacyArticle(note, metadata)
+                                db.execSQL("UPDATE keep_notes_new SET content = ?, imageUrisJson = ? WHERE id = ?",
+                                    arrayOf(migrated.content, migrated.imageUrisJson, rows.getLong(0)))
                             }
-                            db.execSQL("UPDATE keep_notes_new SET content = ?, imageUrisJson = ? WHERE id = ?",
-                                arrayOf(migrated, images.toString(), rows.getLong(0)))
                         }
                     }
                     db.execSQL("DROP TABLE keep_notes")
