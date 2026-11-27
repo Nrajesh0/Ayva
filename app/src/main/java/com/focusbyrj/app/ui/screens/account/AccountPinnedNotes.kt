@@ -351,7 +351,7 @@ private fun CyberNoteThumbnail(
     ) {
         if (!imageUri.isNullOrBlank()) {
             AsyncImage(
-                model = imageUri,
+                model = if (imageUri.startsWith("/")) com.focusbyrj.app.util.crypto.NoteThumbnail(java.io.File(imageUri)) else imageUri,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

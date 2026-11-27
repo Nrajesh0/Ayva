@@ -18,13 +18,13 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface NoteDao {
 
-    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, COALESCE(sortPosition, updatedAt) DESC, id DESC")
     fun getAllActiveNotes(): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 1 ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 1 ORDER BY COALESCE(sortPosition, updatedAt) DESC, id DESC")
     fun getArchivedNotes(): Flow<List<NoteEntity>>
 
-    @Query("SELECT * FROM keep_notes WHERE isTrashed = 1 ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 1 ORDER BY COALESCE(sortPosition, updatedAt) DESC, id DESC")
     fun getTrashedNotes(): Flow<List<NoteEntity>>
 
     @Query("SELECT * FROM keep_notes WHERE id = :id")
@@ -36,23 +36,23 @@ interface NoteDao {
     @Query("SELECT * FROM keep_notes WHERE isArchived = 1")
     suspend fun getArchivedNotesSync(): List<NoteEntity>
 
-    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 ORDER BY isPinned DESC, COALESCE(sortPosition, updatedAt) DESC, id DESC")
     suspend fun getAllActiveNotesSync(): List<NoteEntity>
 
-    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isChecklist = 1 ORDER BY isPinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isChecklist = 1 ORDER BY isPinned DESC, COALESCE(sortPosition, updatedAt) DESC, id DESC")
     suspend fun getChecklistNotesSync(): List<NoteEntity>
 
-    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isChecklist = 0 ORDER BY isPinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isChecklist = 0 ORDER BY isPinned DESC, COALESCE(sortPosition, updatedAt) DESC, id DESC")
     suspend fun getTextNotesSync(): List<NoteEntity>
 
-    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isPinned = 1 ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM keep_notes WHERE isTrashed = 0 AND isArchived = 0 AND isPinned = 1 ORDER BY COALESCE(sortPosition, updatedAt) DESC, id DESC")
     suspend fun getPinnedNotesSync(): List<NoteEntity>
 
     @Query("""
         SELECT * FROM keep_notes 
         WHERE isTrashed = 0 AND isArchived = 0 
         AND (title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%' OR checklistJson LIKE '%' || :query || '%' OR labelsJson LIKE '%' || :query || '%')
-        ORDER BY isPinned DESC, updatedAt DESC
+        ORDER BY isPinned DESC, COALESCE(sortPosition, updatedAt) DESC, id DESC
     """)
     fun searchNotes(query: String): Flow<List<NoteEntity>>
 
@@ -60,7 +60,7 @@ interface NoteDao {
         SELECT * FROM keep_notes 
         WHERE isTrashed = 0 AND isArchived = 0 
         AND (title LIKE '%' || :query || '%' OR content LIKE '%' || :query || '%' OR checklistJson LIKE '%' || :query || '%' OR labelsJson LIKE '%' || :query || '%')
-        ORDER BY isPinned DESC, updatedAt DESC
+        ORDER BY isPinned DESC, COALESCE(sortPosition, updatedAt) DESC, id DESC
     """)
     suspend fun searchNotesSync(query: String): List<NoteEntity>
 
@@ -112,7 +112,7 @@ interface NoteDao {
     suspend fun compareAndSave(note: NoteEntity, expected: Long): NoteEntity? {
         val current = getNoteByIdSync(note.id) ?: return null
         if (current.updatedAt != expected) return null
-        val saved = note.copy(updatedAt = maxOf(note.updatedAt, expected + 1))
+        val saved = note.copy(sortPosition = current.sortPosition, updatedAt = maxOf(note.updatedAt, expected + 1))
         return if (updateNoteUnchecked(saved) == 1) saved else null
     }
 
@@ -135,6 +135,9 @@ interface NoteDao {
      * transactional cleanup, or media-cleanup paths. All UI delete flows should
      * use [softDeleteNote] or [updateTrashStatus] instead.
      */
+    @Query("DELETE FROM keep_notes WHERE id = :id AND isTrashed = 1 AND updatedAt = :revision AND trashedAt IS :trashedAt AND createdAt = :createdAt")
+    suspend fun deleteReviewed(id: Long, revision: Long, trashedAt: Long?, createdAt: Long): Int
+
     @Delete
     suspend fun deleteNoteStored(note: NoteEntity)
 
@@ -182,7 +185,7 @@ interface NoteDao {
     """)
     suspend fun purgeExpiredNote(id: Long, trashedAt: Long?, updatedAt: Long, cutoffMs: Long): Int
 
-    @Query("UPDATE keep_notes SET updatedAt = :updatedAt WHERE id = :id")
+    @Query("UPDATE keep_notes SET sortPosition = :updatedAt WHERE id = :id")
     suspend fun updateNoteOrder(id: Long, updatedAt: Long)
 
     @Query("UPDATE keep_notes SET isPinned = :isPinned, updatedAt = MAX(updatedAt + 1, :updatedAt) WHERE id = :id")

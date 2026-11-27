@@ -268,6 +268,9 @@ object ArchiveVaultSecurity {
         }
     }
 
+    internal fun isEnabledForSnapshot(context: Context, recordedStatus: String): Boolean =
+        getVaultStatus(context) == VaultStatus.ENABLED || recordedStatus == VaultStatus.ENABLED.name
+
     fun isVaultLocked(context: Context): Boolean {
         return getVaultStatus(context) == VaultStatus.ENABLED && ephemeralVaultSubKey == null
     }
@@ -606,6 +609,7 @@ object ArchiveVaultSecurity {
                                 }
                             }
                         }
+                        com.focusbyrj.app.util.backup.DataSafetyManager.removeSnapshotPinProtection(context, activeSubKey)
                     }
                 }
             } catch (e: Exception) {

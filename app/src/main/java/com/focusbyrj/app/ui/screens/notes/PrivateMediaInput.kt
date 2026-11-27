@@ -37,6 +37,7 @@ private fun privateMediaInputState(viewModel: NotesViewModel): (String, String) 
     var unlock by rememberSaveable { mutableStateOf(false) }
     var pinRequired by rememberSaveable { mutableStateOf(false) }
     var cancelledPick by rememberSaveable { mutableStateOf(false) }
+    var retryCapture by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var job by remember { mutableStateOf<Job?>(null) }
     var alive by remember { mutableStateOf(true) }
@@ -63,6 +64,7 @@ private fun privateMediaInputState(viewModel: NotesViewModel): (String, String) 
             val name = uri.lastPathSegment.orEmpty()
             if (name.matches(Regex("[a-f0-9-]{36}\\.jpg"))) File(File(context.cacheDir, "note_capture"), name).delete()
         }
+        retryCapture = false
         target = null; sources = arrayListOf(); images = arrayListOf(); cameraUri = null; unlock = false; launchPending = false; pinRequired = false; cancelledPick = false
     }
     fun received(uris: List<Uri>) {
@@ -114,7 +116,8 @@ private fun privateMediaInputState(viewModel: NotesViewModel): (String, String) 
             clear()
         }
     }
-    LaunchedEffect(target, sources.toList()) {
+    LaunchedEffect(target, sources.toList(), retryCapture) {
+        if (retryCapture) return@LaunchedEffect
         val token = target ?: return@LaunchedEffect
         if (unlock) return@LaunchedEffect
         if (images.isNotEmpty()) { unlock = true; return@LaunchedEffect }
@@ -133,7 +136,10 @@ private fun privateMediaInputState(viewModel: NotesViewModel): (String, String) 
             if (target != token) return@LaunchedEffect
             images = ArrayList(created); retained = true; unlock = true
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) { showMessage(error.message ?: "Image could not be imported.", Toast.LENGTH_LONG); clear() }
+        catch (error: Exception) {
+            if (kind == "camera" && cameraUri != null) retryCapture = true
+            else { showMessage(error.message ?: "Image could not be imported.", Toast.LENGTH_LONG); clear() }
+        }
         finally {
             if (!retained) runCatching { MediaRetirement.retire(created.toSet()) }
             busy = false
@@ -152,6 +158,10 @@ private fun privateMediaInputState(viewModel: NotesViewModel): (String, String) 
             text = { Text("Finish choosing media in the other app, or cancel this selection.") },
             confirmButton = { TextButton(onClick = { clear() }) { Text("Cancel selection") } })
     }
+    if (retryCapture) AlertDialog(onDismissRequest = {}, title = { Text("Photo could not be imported") },
+        text = { Text("The camera original is available to retry.") },
+        confirmButton = { TextButton(onClick = { retryCapture = false }) { Text("Retry") } },
+        dismissButton = { TextButton(onClick = { clear() }) { Text("Discard photo") } })
     if (busy) AlertDialog(onDismissRequest = {}, title = { Text("Preparing media") },
         text = { LinearProgressIndicator() }, confirmButton = {})
     fun finish() {

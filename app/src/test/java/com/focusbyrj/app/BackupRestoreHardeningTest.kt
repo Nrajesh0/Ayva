@@ -333,7 +333,8 @@ class BackupRestoreHardeningTest {
                 "habitLogs": [],
                 "habitCategories": [],
                 "drillSessions": [],
-                "appRestrictions": [],
+                "restrictions": [],
+                "schedules": [],
                 "profiles": [],
                 "chatMessages": [],
                 "chatSessions": []
@@ -403,7 +404,8 @@ class BackupRestoreHardeningTest {
                 "habitLogs": [],
                 "habitCategories": [],
                 "drillSessions": [],
-                "appRestrictions": [],
+                "restrictions": [],
+                "schedules": [],
                 "profiles": [],
                 "chatMessages": [],
                 "chatSessions": []

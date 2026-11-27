@@ -198,7 +198,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private fun acceptVaultVerification(result: ArchiveVaultSecurity.VerifyResult): ArchiveVaultSecurity.VerifyResult {
         if (result is ArchiveVaultSecurity.VerifyResult.Success) {
             _isVaultUnlocked.value = true
-            _currentFolder.value = NoteFolder.ARCHIVE
+            if (_currentFolder.value != NoteFolder.TRASH) _currentFolder.value = NoteFolder.ARCHIVE
             refreshVaultStatus()
             recoverPendingVaultDraft()
             triggerOrphanMediaCleanup()
@@ -297,23 +297,18 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     if (!entity.isEmptyNote()) {
                         try {
                             val encrypted = VaultPayloadEncryptor.encryptNotePayload(entity, vaultSubKey = subKey, context = getApplication())
-                            try {
-                                kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                                persistMutex.withLock {
-                                        val saved = saveEditorEntity(encrypted, resolvedCurrent)
-                                        latestNotesCache[saved.id] = saved
+                            persistPendingVaultDraft(encrypted, requireEmpty = true)
+                            pendingPlainVaultDraft = null
+                            backgroundVaultSave = viewModelScope.launch(Dispatchers.IO) {
+                                try {
+                                    persistMutex.withLock { saveEditorEntity(encrypted, resolvedCurrent) }
+                                    synchronized(vaultDraftWriteLock) {
+                                        androidx.core.util.AtomicFile(pendingVaultDraftFile()).delete()
+                                        androidx.core.util.AtomicFile(pendingVaultFallbackFile()).delete()
                                     }
+                                } catch (error: Exception) {
+                                    Log.e("NotesViewModel", "Encrypted draft retained for recovery", error)
                                 }
-                                pendingVaultDraftFile().delete()
-                                pendingPlainVaultDraft = null
-                            } catch (saveError: Exception) {
-                                // Persist the already-vault-encrypted entity under device encryption.
-                                // This survives process death and is retried after the next unlock.
-                                pendingVaultDraftInMemory = encrypted
-                                persistPendingVaultDraft(encrypted)
-                                pendingVaultDraftInMemory = null
-                                pendingPlainVaultDraft = null
-                                Log.e("NotesViewModel", "Database save failed; vault draft queued for recovery", saveError)
                             }
                         } catch (e: Exception) {
                             // Keep the failed draft hidden in memory; never discard it on lock.
@@ -324,6 +319,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+            subKey?.fill(0)
             if (pendingPlainVaultDraft != null) {
                 val message = "Vault locked. An unsaved draft is retained in memory; keep Run open, free storage and unlock to recover it."
                 _saveStatus.value = NoteSaveStatus.Error(message, pendingPlainVaultDraft)
@@ -381,8 +377,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var backgroundVaultSave: kotlinx.coroutines.Job? = null
+
     private fun recoverPendingVaultDraft() {
         viewModelScope.launch(Dispatchers.IO) {
+            backgroundVaultSave?.join()
             val file = pendingVaultDraftFile()
             if (!hasPendingVaultDraftFile() && pendingVaultDraftInMemory == null && pendingPlainVaultDraft == null) return@launch
             try {
@@ -524,77 +523,65 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun reorderNotes(reorderedNotes: List<NoteEntity>) {
         if (reorderedNotes.size <= 1) return
-        reorderedNotes.forEach { latestNotesCache.remove(it.id) }
-        viewModelScope.launch(Dispatchers.IO) {
-            val baseTime = System.currentTimeMillis()
-            reorderedNotes.forEachIndexed { index, note ->
-                val newTimestamp = baseTime - (index * 1000L)
-                if (note.updatedAt != newTimestamp) {
-                    repository.updateNoteOrder(note.id, newTimestamp)
+        val generation = com.focusbyrj.app.data.note.NotesStorageVersion.current()
+        noteOperation {
+            val db = NoteDatabase.getInstance(getApplication())
+            val base = System.currentTimeMillis()
+            db.withTransaction {
+                check(generation == com.focusbyrj.app.data.note.NotesStorageVersion.current()) { "Notes were restored. Retry the reorder." }
+                reorderedNotes.forEachIndexed { index, note ->
+                    val stored = db.noteDao().getNoteByIdSync(note.id)
+                    check(stored?.updatedAt == note.updatedAt) { "The list changed. Retry the reorder." }
+                    db.noteDao().updateNoteOrder(note.id, base - index)
                 }
             }
         }
     }
 
-    fun pinSelectedNotes() {
-        val ids = _selectedNoteIds.value.toList()
-        if (ids.isEmpty()) return
-        ids.forEach { latestNotesCache.remove(it) }
-        viewModelScope.launch(Dispatchers.IO) {
-            val notes = displayedNotes.value.filter { it.id in ids }
-            val anyUnpinned = notes.any { !it.isPinned }
-            notes.forEach { note ->
-                repository.setPinned(note.id, anyUnpinned)
+    private fun selectedRows() = displayedNotes.value.filter { it.id in _selectedNoteIds.value }
+
+    private fun updateReviewedNotes(
+        notes: List<NoteEntity>, clearAfterSave: Boolean = false, transform: (NoteEntity) -> NoteEntity
+    ) {
+        if (notes.isEmpty()) return
+        val generation = com.focusbyrj.app.data.note.NotesStorageVersion.current()
+        noteOperation {
+            NoteDatabase.getInstance(getApplication()).withTransaction {
+                check(generation == com.focusbyrj.app.data.note.NotesStorageVersion.current()) { "Notes were restored. Review your selection again." }
+                for (note in notes) {
+                    check(!VaultPayloadEncryptor.isVaultEncrypted(note)) { "Unlock this note before editing it." }
+                    check(repository.saveNoteResult(transform(note).copy(updatedAt = System.currentTimeMillis()), note.updatedAt) is NoteRepository.SaveResult.Saved) { "Could not save the selection. Review the latest notes and retry." }
+                }
             }
+            notes.forEach { latestNotesCache.remove(it.id) }
+            if (clearAfterSave) clearSelection()
             triggerAutoSync()
         }
-        clearSelection()
+    }
+
+    fun pinSelectedNotes() {
+        val notes = selectedRows()
+        val pin = notes.any { !it.isPinned }
+        updateReviewedNotes(notes, true) { it.copy(isPinned = pin) }
     }
 
     fun archiveSelectedNotes() = requestArchiveMove(true, _selectedNoteIds.value.toList())
 
     fun unarchiveSelectedNotes() = requestArchiveMove(false, _selectedNoteIds.value.toList())
 
-    fun trashSelectedNotes() {
-        val ids = _selectedNoteIds.value.toList()
-        if (ids.isEmpty()) return
-        ids.forEach { latestNotesCache.remove(it) }
-        viewModelScope.launch(Dispatchers.IO) {
-            ids.forEach { id -> repository.moveToTrash(id) }
-            triggerAutoSync()
-        }
-        clearSelection()
+    fun trashSelectedNotes() = updateReviewedNotes(selectedRows(), true) {
+        it.copy(isTrashed = true, isPinned = false, trashedAt = System.currentTimeMillis())
     }
 
-    fun restoreSelectedNotes() {
-        val ids = _selectedNoteIds.value.toList()
-        if (ids.isEmpty()) return
-        ids.forEach { latestNotesCache.remove(it) }
-        viewModelScope.launch(Dispatchers.IO) {
-            ids.forEach { id -> repository.restoreFromTrash(id) }
-            triggerAutoSync()
-        }
-        clearSelection()
+    fun restoreSelectedNotes() = updateReviewedNotes(selectedRows(), true) {
+        it.copy(isTrashed = false, isPinned = false, trashedAt = null)
     }
 
     fun deleteSelectedNotesPermanently() {
         val ids = _selectedNoteIds.value.toList()
         if (ids.isEmpty()) return
         ids.forEach { latestNotesCache.remove(it) }
-        val notes = displayedNotes.value.filter { it.id in ids }
-        viewModelScope.launch(Dispatchers.IO) {
-            notes.forEach { note ->
-                val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                    com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
-                } else {
-                    note
-                }
-                deleteNoteMediaFiles(targetNote)
-                repository.deletePermanently(targetNote)
-            }
-            triggerAutoSync()
-        }
-        clearSelection()
+        deleteReviewedTrash(displayedNotes.value.filter { it.id in ids })
     }
 
     fun duplicateSelectedNotes() {
@@ -602,79 +589,56 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         if (ids.isEmpty()) return
         val notes = displayedNotes.value.filter { it.id in ids }
         if (notes.isEmpty()) return
-        val context = getApplication<Application>()
-        viewModelScope.launch(Dispatchers.IO) {
-            notes.forEach { note ->
-                val checklistJson = if (note.isChecklist) {
-                    val items = note.getChecklistItems().map { it.copy(id = UUID.randomUUID().toString()) }
-                    ChecklistItem.listToJson(items)
-                } else {
-                    note.checklistJson
+        val generation = com.focusbyrj.app.data.note.NotesStorageVersion.current()
+        noteOperation {
+            val db = NoteDatabase.getInstance(getApplication())
+            db.withTransaction {
+                check(generation == com.focusbyrj.app.data.note.NotesStorageVersion.current()) { "Review the restored notes before copying." }
+                notes.forEach { source ->
+                    val live = db.noteDao().getNoteByIdSync(source.id)
+                    check(live?.updatedAt == source.updatedAt && live.isArchived == source.isArchived) { "A selected note changed. Review the selection again." }
+                    duplicateRow(source)
                 }
-                val newImages = note.getImageUris().mapNotNull { path ->
-                    val copied = NoteImageHelper.copyImageFile(context, path)
-                    if (copied == null) {
-                        Log.e("NotesViewModel", "Failed to duplicate image file $path: refusing to reuse original path")
-                    }
-                    copied
-                }
-                val newAudios = note.getAudioUris().mapNotNull { path ->
-                    val copied = AudioMemoManager.copyAudioFile(context, path)
-                    if (copied == null) {
-                        Log.e("NotesViewModel", "Failed to duplicate audio file $path: refusing to reuse original path")
-                    }
-                    copied
-                }
-                // Isolate embedded NotesnookBlock.Image and NotesnookBlock.Attachment files in note.content
-                val newContent = if (note.content.contains(NotesnookBlockManager.BLOCKS_PREFIX)) {
-                    try {
-                        val blocks = NotesnookBlockManager.parse(note.content)
-                        val clonedBlocks = blocks.mapNotNull { block ->
-                            when (block) {
-                                is NotesnookBlock.Image -> {
-                                    val copiedUri = NoteImageHelper.copyImageFile(context, block.uri)
-                                    if (copiedUri != null) {
-                                        block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
-                                    } else {
-                                        Log.e("NotesViewModel", "Failed to duplicate block image ${block.uri}: refusing to reuse original path")
-                                        null
-                                    }
-                                }
-                                is NotesnookBlock.Attachment -> {
-                                    val copiedUri = NoteImageHelper.copyImageFile(context, block.uri)
-                                    if (copiedUri != null) {
-                                        block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
-                                    } else {
-                                        Log.e("NotesViewModel", "Failed to duplicate block attachment ${block.uri}: refusing to reuse original path")
-                                        null
-                                    }
-                                }
-                                else -> block
-                            }
-                        }
-                        NotesnookBlockManager.serialize(clonedBlocks)
-                    } catch (_: Exception) {
-                        note.content
-                    }
-                } else {
-                    note.content
-                }
-                repository.saveNote(
-                    note.copy(
-                        id = 0,
-                        title = if (note.title.isNotBlank()) "${note.title} (Copy)" else "",
-                        content = newContent,
-                        checklistJson = checklistJson,
-                        imageUrisJson = JSONArray(newImages).toString(),
-                        audioUrisJson = JSONArray(newAudios).toString(),
-                        createdAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis()
-                    )
-                )
             }
-            triggerAutoSync()
+            withContext(Dispatchers.Main) { clearSelection() }
         }
-        clearSelection()
+    }
+
+    private fun noteOperation(action: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try { action() }
+            catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), error.message ?: "Could not update notes.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private suspend fun duplicateRow(source: NoteEntity): NoteEntity {
+        val context = getApplication<Application>()
+        check(!VaultPayloadEncryptor.isVaultEncrypted(source)) { "Unlock the note before copying it." }
+        val files = mutableMapOf<String, String>()
+        fun copy(path: String, audio: Boolean = false): String = files.getOrPut(path) {
+            checkNotNull(if (audio) AudioMemoManager.copyAudioFile(context, path)
+                else NoteImageHelper.copyImageFile(context, path)) { "An attachment could not be copied." }
+        }
+        try {
+            val now = System.currentTimeMillis()
+            val duplicate = source.copy(id = 0, sortPosition = null, title = source.title.ifBlank { "Note" } + " (copy)",
+                isPinned = false, createdAt = now, updatedAt = now,
+                checklistJson = if (source.isChecklist) ChecklistItem.listToJson(source.getChecklistItems().map {
+                    it.copy(id = UUID.randomUUID().toString())
+                }) else source.checklistJson,
+                imageUrisJson = JSONArray(source.getImageUris().map { copy(it) }).toString(),
+                audioUrisJson = JSONArray(source.getAudioUris().map { copy(it, true) }).toString(),
+                content = com.focusbyrj.app.data.note.NoteMediaInventory.remapContent(source.content) { copy(it) })
+            return duplicate.copy(id = repository.saveNote(duplicate))
+        } catch (error: Exception) {
+            com.focusbyrj.app.data.note.MediaRetirement.retire(files.values.toSet())
+            throw error
+        }
     }
 
     fun toggleLabelForSelectedNotes(label: String) {
@@ -705,16 +669,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setSelectedNotesColor(colorKey: String) {
-        val ids = _selectedNoteIds.value.toList()
-        if (ids.isEmpty()) return
-        ids.forEach { latestNotesCache.remove(it) }
-        viewModelScope.launch(Dispatchers.IO) {
-            ids.forEach { id -> repository.setColor(id, colorKey) }
-            triggerAutoSync()
-        }
-        clearSelection()
-    }
+    fun setSelectedNotesColor(colorKey: String) = updateReviewedNotes(selectedRows(), true) { it.copy(colorKey = colorKey) }
 
     // Grid Layout Mode (2-column masonry grid vs 1-column list)
     private val _isGridView = MutableStateFlow(prefs.getBoolean("is_grid_view", true))
@@ -800,6 +755,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val privateRowsAllowed = combine(_vaultStatus, _isVaultUnlocked, ArchiveVaultSecurity.keyAvailable) { status, authorized, key ->
         status != ArchiveVaultSecurity.VaultStatus.ENABLED || authorized && key
     }
+    private val _loadingNotes = MutableStateFlow(true)
+    val loadingNotes = _loadingNotes.asStateFlow()
     private val rawNotesFlow = combine(_currentFolder, _searchQuery, privateRowsAllowed) { folder, query, privateAllowed ->
         Triple(folder, query, privateAllowed)
     }.flatMapLatest { (folder, query, privateAllowed) ->
@@ -811,7 +768,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     if (privateAllowed) notes else notes.filterNot { it.isArchived }
                 }
             }
-        }.onStart { emit(emptyList()) }
+        }.map { rows -> _loadingNotes.value = false; rows }.onStart { _loadingNotes.value = true; emit(emptyList()) }
         if (query.isBlank()) {
             folderFlow
         } else {
@@ -1017,7 +974,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _editingState = MutableStateFlow<EditingNoteState?>(null)
     val editingState: StateFlow<EditingNoteState?> = _editingState.asStateFlow()
-    private var initialSnapshot: EditingNoteState? = null
+    @Volatile private var initialSnapshot: EditingNoteState? = null
 
     private fun isNoteModified(current: EditingNoteState, initial: EditingNoteState?): Boolean {
         if (initial == null) return true
@@ -1324,6 +1281,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
+    fun addImportedCapture(path: String) {
+        _editingState.update { current -> current?.copy(imageUris = current.imageUris + path, updatedAt = System.currentTimeMillis()) }
+        persistCurrentEditorState()
+    }
+
     fun addImageUriToEditor(contentUri: android.net.Uri) {
         val ownerSession = _editingState.value?.sessionId ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -1440,7 +1402,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                             fileSize = fileSize
                         )
                     )
-                    val newContent = NotesnookBlockManager.serialize(blocks)
+                    val newContent = NotesnookBlockManager.serialize(blocks, NotesnookBlockManager.isArticleMode(current.content), NotesnookBlockManager.getSubtitle(current.content))
                     _editingState.value = current.copy(content = newContent, updatedAt = System.currentTimeMillis())
                     persistCurrentEditorState()
                 }
@@ -1641,95 +1603,42 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentEditorState()
     }
 
+    fun saveFailedDraftAsCopy() {
+        val current = _editingState.value ?: return
+        val error = _saveStatus.value as? NoteSaveStatus.Error ?: return
+        if (current.sessionId != error.failedDraft?.sessionId) return
+        noteOperation {
+            val db = NoteDatabase.getInstance(getApplication())
+            val saved = db.withTransaction {
+                val source = buildEntityFromState(current)
+                val stored = db.noteDao().getNoteByIdSync(source.id)
+                duplicateRow(source.copy(isArchived = source.isArchived || stored?.isArchived == true))
+            }
+            withContext(Dispatchers.Main) {
+                if (_editingState.value?.let { sameArchiveDraft(it, current) } == true) {
+                    openExistingNote(saved)
+                    _saveStatus.value = NoteSaveStatus.Saved(saved.id)
+                }
+            }
+        }
+    }
+
     fun duplicateCurrentNote() {
         val current = _editingState.value ?: return
-        val context = getApplication<Application>()
-        viewModelScope.launch(Dispatchers.IO) {
-            val copyTitle = if (current.title.isBlank()) "Note (copy)" else "${current.title} (copy)"
-            val newImages = current.imageUris.mapNotNull { path ->
-                val copied = NoteImageHelper.copyImageFile(context, path)
-                if (copied == null) {
-                    Log.e("NotesViewModel", "Failed to duplicate image file $path: refusing to reuse original path")
-                }
-                copied
+        noteOperation {
+            val source = persistMutex.withLock {
+                val active = _editingState.value ?: return@noteOperation
+                if (!sameArchiveDraft(active, current)) return@noteOperation
+                val entity = buildEntityFromState(active)
+                if (isNoteModified(active, initialSnapshot) || active.originalId == 0L) {
+                    saveEditorEntity(entity, active)
+                } else entity
             }
-            val newAudios = current.audioUris.mapNotNull { path ->
-                val copied = AudioMemoManager.copyAudioFile(context, path)
-                if (copied == null) {
-                    Log.e("NotesViewModel", "Failed to duplicate audio file $path: refusing to reuse original path")
-                }
-                copied
+            val copy = duplicateRow(source)
+            withContext(Dispatchers.Main) {
+                val active = _editingState.value
+                if (active != null && sameArchiveDraft(active, current)) openExistingNote(copy)
             }
-            val newChecklistItems = current.checklistItems.map { it.copy(id = UUID.randomUUID().toString()) }
-
-            // Isolate embedded block media files so deleting/editing one copy does not affect the other
-            val newContent = if (current.content.contains(NotesnookBlockManager.BLOCKS_PREFIX) &&
-                current.content.contains(NotesnookBlockManager.BLOCKS_SUFFIX)) {
-                try {
-                    val originalBlocks = NotesnookBlockManager.parse(current.content)
-                    val duplicatedBlocks = originalBlocks.mapNotNull { block ->
-                        when (block) {
-                            is NotesnookBlock.Image -> {
-                                val copiedUri = NoteImageHelper.copyImageFile(context, block.uri)
-                                if (copiedUri != null) {
-                                    block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
-                                } else {
-                                    Log.e("NotesViewModel", "Failed to duplicate block image ${block.uri}: refusing to reuse original path")
-                                    null
-                                }
-                            }
-                            is NotesnookBlock.Attachment -> {
-                                val copiedUri = NoteImageHelper.copyImageFile(context, block.uri)
-                                if (copiedUri != null) {
-                                    block.copy(id = UUID.randomUUID().toString(), uri = copiedUri)
-                                } else {
-                                    Log.e("NotesViewModel", "Failed to duplicate block attachment ${block.uri}: refusing to reuse original path")
-                                    null
-                                }
-                            }
-                            else -> block
-                        }
-                    }
-                    NotesnookBlockManager.serialize(duplicatedBlocks)
-                } catch (_: Exception) {
-                    current.content
-                }
-            } else {
-                current.content
-            }
-
-            val newNote = NoteEntity(
-                title = copyTitle,
-                content = newContent,
-                isChecklist = current.isChecklist,
-                checklistJson = ChecklistItem.listToJson(newChecklistItems),
-                colorKey = current.colorKey,
-                fontKey = current.fontKey,
-                isPinned = false,
-                isArchived = false,
-                isTrashed = false,
-                labelsJson = JSONArray(current.labels).toString(),
-                imageUrisJson = JSONArray(newImages).toString(),
-                audioUrisJson = JSONArray(newAudios).toString(),
-                createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
-            )
-            val newId = repository.saveNote(newNote)
-            val savedEntity = newNote.copy(id = newId)
-            latestNotesCache[newId] = savedEntity
-            _editingState.value = current.copy(
-                originalId = newId,
-                title = copyTitle,
-                content = newContent,
-                checklistItems = newChecklistItems,
-                imageUris = newImages,
-                audioUris = newAudios,
-                isPinned = false,
-                isArchived = false,
-                createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
-            )
-            resetUndoHistory()
         }
     }
 
@@ -1742,7 +1651,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 "$box ${item.text}"
             }
         } else {
-            NotesnookBlockManager.toPlainText(current.content).trim()
+            NotesnookBlockManager.fullText(current.content).trim()
         }
         val fullText = buildString {
             if (title.isNotEmpty()) {
@@ -1773,7 +1682,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 "$box ${item.text}"
             }
         } else {
-            NotesnookBlockManager.toPlainText(current.content).trim()
+            NotesnookBlockManager.fullText(current.content).trim()
         }
         val fullText = buildString {
             if (title.isNotEmpty()) {
@@ -1785,6 +1694,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
 
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("Note", fullText)
+        if (current.isArchived) clip.description.extras = android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
         clipboard.setPrimaryClip(clip)
         Toast.makeText(context, "Note copied to clipboard", Toast.LENGTH_SHORT).show()
     }
@@ -1807,7 +1717,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                         appendLine("$box ${item.text}")
                     }
                 } else if (note.content.isNotBlank()) {
-                    appendLine(NotesnookBlockManager.toPlainText(note.content).trim())
+                    appendLine(NotesnookBlockManager.fullText(note.content).trim())
                 }
             }.trim()
         }.trim()
@@ -1842,13 +1752,14 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                         appendLine("$box ${item.text}")
                     }
                 } else if (note.content.isNotBlank()) {
-                    appendLine(NotesnookBlockManager.toPlainText(note.content).trim())
+                    appendLine(NotesnookBlockManager.fullText(note.content).trim())
                 }
             }.trim()
         }.trim()
 
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("Notes", fullText)
+        if (notes.any { it.isArchived }) clip.description.extras = android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
         clipboard.setPrimaryClip(clip)
         Toast.makeText(context, "${notes.size} note${if (notes.size > 1) "s" else ""} copied to clipboard", Toast.LENGTH_SHORT).show()
     }
@@ -2068,90 +1979,52 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         persistCurrentEditorState(immediate = true)
     }
 
-    fun restoreNote(note: NoteEntity) {
-        latestNotesCache.remove(note.id)
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.restoreFromTrash(note.id)
-            triggerAutoSync()
-        }
-    }
+    fun restoreNote(note: NoteEntity) = updateReviewedNotes(listOf(note)) { it.copy(isTrashed = false, trashedAt = null, isPinned = false) }
 
     fun unarchiveNote(note: NoteEntity) = requestArchiveMove(false, listOf(note.id))
 
-    private suspend fun deleteNoteMediaFiles(note: NoteEntity) {
-        val allNotes = repository.getAllNotesListOrThrow()
-        NoteMediaManager.deleteNoteMediaFiles(note, allNotes)
-    }
+    fun deletePermanently(note: NoteEntity) = deleteReviewedTrash(listOf(note))
 
-    fun deletePermanently(note: NoteEntity) {
-        latestNotesCache.remove(note.id)
-        viewModelScope.launch(Dispatchers.IO) {
-            val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
-            } else {
-                note
+    fun emptyTrash(reviewed: List<NoteEntity> = displayedNotes.value, generation: Long = com.focusbyrj.app.data.note.NotesStorageVersion.current()) = deleteReviewedTrash(reviewed, generation)
+
+    private fun deleteReviewedTrash(notes: List<NoteEntity>, generation: Long = com.focusbyrj.app.data.note.NotesStorageVersion.current()) {
+        if (notes.isEmpty()) return
+        noteOperation {
+            val db = NoteDatabase.getInstance(getApplication())
+            checkNotNull(DataSafetyManager.writePreOpSnapshot(getApplication(), db.noteDao(), "trash_delete"))
+            db.withTransaction {
+                check(generation == com.focusbyrj.app.data.note.NotesStorageVersion.current())
+                notes.forEach { repository.deletePermanently(it) }
             }
-            repository.deletePermanently(targetNote)
-            deleteNoteMediaFiles(targetNote)
-            triggerAutoSync()
-        }
-    }
-
-    fun emptyTrash() {
-        latestNotesCache.clear()
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val trashedNotes = repository.getTrashedNotesSync()
-                if (trashedNotes.isEmpty()) return@launch
-
-                // 1. Take snapshot and delete DB rows atomically first via repository
-                repository.emptyTrash(getApplication())
-
-                // 2. Only after database rows are safely removed and pre-op snapshot verified, delete media
-                val remainingNotes = repository.getAllNotesListOrThrow()
-                trashedNotes.forEach { note ->
-                    val targetNote = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                        com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.decryptNotePayload(note)
-                    } else {
-                        note
-                    }
-                    NoteMediaManager.deleteNoteMediaFiles(targetNote, remainingNotes)
-                }
-                triggerAutoSync()
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                Log.e("NotesViewModel", "Failed to empty trash", e)
-                withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(getApplication(), "Failed to empty trash: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                }
-            }
+            notes.forEach { latestNotesCache.remove(it.id); com.focusbyrj.app.data.note.MediaRetirement.beforeChange(it, null) }
+            clearSelection()
+            triggerOrphanMediaCleanup()
         }
     }
 
     fun deleteCurrentNote() {
+        val draft = _editingState.value ?: return
+        autoSaveJob?.cancel()
         audioMemoManager.stopPlayback()
         audioMemoManager.cancelRecording()
-        autoSaveJob?.cancel()
-        val current = _editingState.value ?: return
-        _editingState.value = null
-        val pendingId = pendingNewNoteId
-        pendingNewNoteId = 0L
-        viewModelScope.launch(Dispatchers.IO) {
-            val trashed = persistMutex.withLock {
-                // An autosave can have inserted the draft before its ID reaches the editor.
-                // Resolve it only after that save releases the mutex.
-                val effectiveId = sessionIds[current.sessionId] ?: pendingId.takeIf { it != 0L } ?: current.originalId
-                if (effectiveId != 0L) {
-                    latestNotesCache.remove(effectiveId)
-                    repository.moveToTrash(effectiveId)
-                    true
-                } else {
-                    current.imageUris.forEach { NoteMediaManager.secureDeleteMediaFile(it) }
-                    current.audioUris.forEach { NoteMediaManager.secureDeleteMediaFile(it) }
-                    false
+        noteOperation {
+            persistMutex.withLock {
+                val active = _editingState.value ?: return@withLock
+                if (active.sessionId != draft.sessionId) return@withLock
+                val entity = buildEntityFromState(active)
+                if (entity.id != 0L || !entity.isEmptyNote()) {
+                    val saved = saveEditorEntity(entity.copy(isPinned = false, isTrashed = true,
+                        trashedAt = System.currentTimeMillis()), active)
+                    latestNotesCache.remove(saved.id)
+                }
+                if (!_editingState.compareAndSet(active, null)) {
+                    _editingState.update { later ->
+                        if (later?.sessionId == active.sessionId) later.copy(isTrashed = true, isPinned = false,
+                            originalId = sessionIds[active.sessionId] ?: active.originalId,
+                            storageRevision = sessionRevisions[active.sessionId]) else later
+                    }
                 }
             }
-            if (trashed) triggerAutoSync()
         }
     }
 
@@ -2217,7 +2090,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         val modified = isNoteModified(current, initial)
 
         // If existing note is unmodified, do NOT overwrite timestamp or re-save
-        if (!modified && current.originalId != 0L) {
+        if (!modified && !persistMutex.isLocked && current.originalId != 0L && !buildEntityFromState(current).isEmptyNote()) {
             _editingState.value = null
             initialSnapshot = null
             pendingNewNoteId = 0L
@@ -2225,7 +2098,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // If a brand-new note was not modified at all, discard immediately without saving
-        if (!modified && current.originalId == 0L && pendingNewNoteId == 0L) {
+        if (!modified && !persistMutex.isLocked && current.originalId == 0L && pendingNewNoteId == 0L) {
             _editingState.value = null
             initialSnapshot = null
             return
@@ -2283,7 +2156,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private fun persistCurrentEditorState(immediate: Boolean = false) {
         val current = _editingState.value ?: return
         val isModified = isNoteModified(current, initialSnapshot)
-        if (!isModified && current.originalId != 0L) return
+        if (!isModified && !persistMutex.isLocked && current.originalId != 0L) return
 
         val entityCandidate = buildEntityFromState(current, isModified = true)
         if (entityCandidate.isEmptyNote() && current.originalId == 0L) return
@@ -2314,6 +2187,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     val finalEntity = saveEditorEntity(entity, resolvedLatest)
                     val savedId = finalEntity.id
+                    if (_editingState.value?.sessionId == latest.sessionId) initialSnapshot = resolvedLatest.copy(originalId = savedId)
                     latestNotesCache[savedId] = finalEntity
                     _editingState.update { active ->
                         if (active?.sessionId == latest.sessionId) active.copy(originalId = savedId, storageRevision = finalEntity.updatedAt)
@@ -2588,38 +2462,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Direct card quick actions
-    fun togglePin(note: NoteEntity) {
-        latestNotesCache.remove(note.id)
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.togglePin(note.id, note.isPinned)
-        }
-    }
+    fun togglePin(note: NoteEntity) = updateReviewedNotes(listOf(note)) { it.copy(isPinned = !it.isPinned) }
 
     fun archiveNote(note: NoteEntity) = requestArchiveMove(true, listOf(note.id))
 
-    fun trashNote(note: NoteEntity) {
-        latestNotesCache.remove(note.id)
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.moveToTrash(note.id)
-            triggerAutoSync()
-        }
+    fun trashNote(note: NoteEntity) = updateReviewedNotes(listOf(note)) {
+        it.copy(isTrashed = true, trashedAt = System.currentTimeMillis(), isPinned = false)
     }
 
-    fun setNoteColor(note: NoteEntity, colorKey: String) {
-        latestNotesCache.remove(note.id)
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.setColor(note.id, colorKey)
-            triggerAutoSync()
-        }
-    }
+    fun setNoteColor(note: NoteEntity, colorKey: String) = updateReviewedNotes(listOf(note)) { it.copy(colorKey = colorKey) }
 
-    fun setNoteFont(note: NoteEntity, fontKey: String) {
-        latestNotesCache.remove(note.id)
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.setFont(note.id, fontKey)
-            triggerAutoSync()
-        }
-    }
+    fun setNoteFont(note: NoteEntity, fontKey: String) = updateReviewedNotes(listOf(note)) { it.copy(fontKey = fontKey) }
 
     private fun triggerAutoSync() {
         try {

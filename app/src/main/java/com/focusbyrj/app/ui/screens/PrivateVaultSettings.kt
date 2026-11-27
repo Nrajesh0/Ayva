@@ -1,5 +1,6 @@
 package com.focusbyrj.app.ui.screens
 
+import kotlinx.coroutines.launch
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.verticalScroll
@@ -42,6 +43,7 @@ fun PrivateVaultSettingsSheet(viewModel: NotesViewModel, onDismiss: () -> Unit) 
 /** The same guarded controller is used from Settings and Notes > Archive. */
 @Composable
 private fun PrivateVaultSettingsPanel(viewModel: NotesViewModel) {
+    val credentialScope = rememberCoroutineScope()
     val context = LocalContext.current
     val status by viewModel.vaultStatus.collectAsStateWithLifecycle()
     val unlocked by viewModel.isVaultUnlocked.collectAsStateWithLifecycle()
@@ -137,16 +139,20 @@ private fun PrivateVaultSettingsPanel(viewModel: NotesViewModel) {
     if (setup) ArchiveVaultFirstTimeDialog(
         onDismiss = { setup = false }, onSkip = { setup = false },
         onPasscodeSet = { pin, words, confirmed ->
-            if (viewModel.setVaultPasscode(pin, words, confirmed)) { setup = false; refresh() }
-            else Toast.makeText(context, "The vault PIN could not be saved. Your existing data is unchanged.", Toast.LENGTH_LONG).show()
+            credentialScope.launch {
+                if (kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { viewModel.setVaultPasscode(pin, words, confirmed) }) { setup = false; refresh() }
+                else Toast.makeText(context, "The vault PIN could not be saved. Your existing data is unchanged.", Toast.LENGTH_LONG).show()
+            }
         })
     if (changePin) ArchiveVaultChangePasscodeDialog(onDismiss = { changePin = false },
         onVerifyCurrentPin = viewModel::verifyVaultPasscodeAsync, onSaveNewPin = { viewModel.setVaultPasscode(it, isPhraseBackedUp = backedUp) },
         onSuccess = { changePin = false; refresh() })
     if (disable) ArchiveVaultDisableConfirmDialog(onDismiss = { disable = false },
         onVerifyCurrentPin = viewModel::verifyVaultPasscodeAsync, onDisableConfirmed = {
-            if (viewModel.disableVaultPasscode()) { disable = false; refresh() }
-            else Toast.makeText(context, "Vault protection could not be disabled.", Toast.LENGTH_LONG).show()
+            credentialScope.launch {
+                if (kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { viewModel.disableVaultPasscode() }) { disable = false; refresh() }
+                else Toast.makeText(context, "Vault protection could not be disabled.", Toast.LENGTH_LONG).show()
+            }
         })
     if (unlockingForPhrase) ArchiveVaultUnlockDialog(onDismiss = { unlockingForPhrase = false },
         onVerify = viewModel::verifyVaultPasscodeAsync, onSuccess = { unlockingForPhrase = false; refresh(); exportPhrase() },

@@ -120,6 +120,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -178,6 +179,7 @@ fun KeepNoteEditor(
     onRemoveChecklistItem: (Int) -> Unit,
     onMoveChecklistItem: (Int, Int) -> Unit,
     onAddImageUri: (Uri) -> Unit,
+    onCaptureReady: ((String) -> Unit)? = null,
     onAddAttachmentUri: (Uri) -> Unit = {},
     onPrivateMediaRequest: ((String, String) -> Unit)? = null,
     onAddDrawing: (Bitmap) -> Unit,
@@ -266,6 +268,7 @@ fun KeepNoteEditor(
     val clipboardManager = LocalClipboardManager.current
 
     var showMcqFormatPill by remember { mutableStateOf(false) }
+    var detectedMcqStart by remember { mutableIntStateOf(-1) }
     var detectedMcqRaw by remember { mutableStateOf<String?>(null) }
     var mcqPillDismissJob by remember { mutableStateOf<Job?>(null) }
 
@@ -295,6 +298,24 @@ fun KeepNoteEditor(
     var activeBlockIndex by remember(state.sessionId) { mutableIntStateOf(0) }
     val textBlockStates = remember(state.sessionId) { mutableStateMapOf<String, TextFieldValue>() }
 
+    var presentedContent by remember(state.sessionId) { mutableStateOf(state.content) }
+    fun commitContent(value: String) {
+        presentedContent = value
+        onContentChange(value)
+    }
+    androidx.compose.runtime.LaunchedEffect(state.sessionId, state.content) {
+        if (presentedContent != state.content) {
+            presentedContent = state.content
+            blocks = NotesnookBlockManager.parse(state.content)
+            val parsed = RichTextEngine.parse(state.content)
+            contentTfv = TextFieldValue(parsed.first, TextRange(contentTfv.selection.end.coerceIn(0, parsed.first.length)))
+            richSpans = parsed.second
+            textBlockStates.clear()
+            isArticleMode = NotesnookBlockManager.isArticleMode(state.content)
+            subtitleTfv = TextFieldValue(NotesnookBlockManager.getSubtitle(state.content))
+        }
+    }
+
     fun syncAndCommitBlocks(
         newBlocks: List<NotesnookBlock>,
         isArticle: Boolean = isArticleMode,
@@ -302,7 +323,7 @@ fun KeepNoteEditor(
     ) {
         blocks = newBlocks
         val serialized = NotesnookBlockManager.serialize(newBlocks, isArticle = isArticle, subtitle = subtitleText)
-        onContentChange(serialized)
+        commitContent(serialized)
     }
 
     fun getActiveTextState(): Triple<Int, TextFieldValue, List<RichSpan>>? {
@@ -335,7 +356,7 @@ fun KeepNoteEditor(
             val id = blocks.firstOrNull()?.id ?: java.util.UUID.randomUUID().toString()
             val updatedBlock = NotesnookBlock.Text(id = id, text = newTfv.text, spans = newSpans)
             blocks = listOf(updatedBlock)
-            onContentChange(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
+            commitContent(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
         } else {
             val block = blocks.getOrNull(blockIdx)
             if (block is NotesnookBlock.Text) {
@@ -483,15 +504,7 @@ fun KeepNoteEditor(
             val updatedSpans = RichTextEngine.updateSpansOnTextChange(curTfv.text, newText, curSpans)
             updateActiveTextState(idx, newTfv, updatedSpans)
         } else {
-            val prefixWithNewline = if (contentTfv.text.isNotEmpty() && !contentTfv.text.endsWith("\n\n")) "\n\n" else ""
-            val newText = contentTfv.text + prefixWithNewline + formatted + "\n"
-            val newTfv = contentTfv.copy(text = newText, selection = TextRange(newText.length))
-            val updatedSpans = RichTextEngine.updateSpansOnTextChange(contentTfv.text, newText, richSpans)
-            richSpans = updatedSpans
-            val updatedBlock = NotesnookBlock.Text(text = newText, spans = updatedSpans)
-            blocks = listOf(updatedBlock)
-            onContentChange(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
-            contentTfv = newTfv
+            insertBlockItem(NotesnookBlock.Text(text = formatted))
         }
         showFontPicker = true
         coroutineScope.launch {
@@ -511,30 +524,15 @@ fun KeepNoteEditor(
         if (formatted == raw) return
 
         val currentText = contentTfv.text
-        val exactIdx = currentText.indexOf(raw)
-        val trimmedIdx = if (exactIdx == -1) currentText.indexOf(raw.trim()) else -1
-        val replaceStart = when {
-            exactIdx != -1 -> exactIdx
-            trimmedIdx != -1 -> trimmedIdx
-            else -> -1
-        }
-        val replaceEnd = when {
-            exactIdx != -1 -> exactIdx + raw.length
-            trimmedIdx != -1 -> trimmedIdx + raw.trim().length
-            else -> -1
-        }
-        val newText = if (replaceStart != -1) {
-            currentText.replaceRange(replaceStart, replaceEnd, formatted)
-        } else {
-            val sep = if (currentText.endsWith("\n\n")) "" else if (currentText.endsWith("\n")) "\n" else "\n\n"
-            currentText + sep + formatted
-        }
-        val cursor = if (replaceStart != -1) replaceStart + formatted.length else newText.length
+        val start = detectedMcqStart
+        if (blocks.size != 1 || blocks.single() !is NotesnookBlock.Text || start < 0 || !currentText.startsWith(raw, start)) return
+        val newText = currentText.replaceRange(start, start + raw.length, formatted)
+        val cursor = start + formatted.length
         val newTfv = contentTfv.copy(text = newText, selection = TextRange(cursor))
         val updatedSpans = RichTextEngine.updateSpansOnTextChange(contentTfv.text, newText, richSpans)
         richSpans = updatedSpans
         blocks = listOf(NotesnookBlock.Text(text = newText, spans = updatedSpans))
-        onContentChange(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
+        commitContent(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
         contentTfv = newTfv
         showFontPicker = true
         coroutineScope.launch {
@@ -615,6 +613,24 @@ fun KeepNoteEditor(
 
     var captureUri by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     var captureOwner by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    var failedCapture by androidx.compose.runtime.saveable.rememberSaveable(state.sessionId) { mutableStateOf<String?>(null) }
+    fun importCapture(uri: Uri) {
+        val owner = state.sessionId
+        failedCapture = null
+        coroutineScope.launch {
+            val file = java.io.File(java.io.File(context.cacheDir, "note_capture"), uri.lastPathSegment.orEmpty())
+            val path = withContext(Dispatchers.IO) { if (file.isFile) NoteImageHelper.processCapturedImage(context, file) else null }
+            if (owner != latestEditorSession) {
+                path?.let { com.focusbyrj.app.data.note.MediaRetirement.retire(setOf(it)) }
+            } else if (path == null) {
+                failedCapture = uri.toString()
+            } else {
+                if (isArticleMode) currentInsertBlock(NotesnookBlock.Image(uri = path, caption = ""))
+                else onCaptureReady?.invoke(path)
+                file.delete()
+            }
+        }
+    }
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         val saved = captureUri; val owner = captureOwner
         captureUri = null; captureOwner = null
@@ -622,7 +638,7 @@ fun KeepNoteEditor(
             val uri = Uri.parse(saved)
             runCatching { context.revokeUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
             if (success && owner == latestEditorSession) {
-                if (isArticleMode) importArticleImage(uri) else onAddImageUri(uri)
+                if (onCaptureReady != null || isArticleMode) importCapture(uri) else onAddImageUri(uri)
             } else {
                 java.io.File(java.io.File(context.cacheDir, "note_capture"), uri.lastPathSegment.orEmpty()).delete()
                 if (success) Toast.makeText(context, "Photo was not added because the note changed. Take it again.", Toast.LENGTH_LONG).show()
@@ -881,6 +897,10 @@ fun KeepNoteEditor(
                         .verticalScroll(scrollState)
                         .padding(horizontal = if (isArticleMode) 24.dp else 20.dp, vertical = 8.dp)
                 ) {
+                    failedCapture?.let { capture ->
+                        Text("The photo could not be imported. Its temporary original is available for retry.")
+                        TextButton(onClick = { importCapture(Uri.parse(capture)) }) { Text("Retry photo") }
+                    }
                     // ATTACHED IMAGES (Google Keep style image collage)
                     if (state.imageUris.isNotEmpty()) {
                         KeepEditorImageCollage(
@@ -1216,10 +1236,11 @@ fun KeepNoteEditor(
                                     if (oldText != newText) {
                                         val diff = newText.length - oldText.length
                                         if (diff >= 10) {
-                                            val changeStart = oldText.zip(newText).indexOfFirst { (o, n) -> o != n }.let { if (it == -1) 0 else it }
+                                            val changeStart = oldText.zip(newText).indexOfFirst { (o, n) -> o != n }.let { if (it == -1) oldText.length else it }
                                             val changeEnd = changeStart + diff
                                             val inserted = newText.substring(changeStart, minOf(changeEnd, newText.length))
                                             if (McqTextParser.isLikelyMcq(inserted)) {
+                                                detectedMcqStart = changeStart
                                                 detectedMcqRaw = inserted
                                                 showMcqFormatPill = true
                                                 mcqPillDismissJob?.cancel()
@@ -1239,7 +1260,7 @@ fun KeepNoteEditor(
                                         richSpans = updatedSpans
                                         val updatedBlock = NotesnookBlock.Text(text = newText, spans = updatedSpans)
                                         blocks = listOf(updatedBlock)
-                                        onContentChange(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
+                                        commitContent(NotesnookBlockManager.serialize(blocks, isArticle = isArticleMode, subtitle = subtitleTfv.text))
                                         lastCursorPosition = effectiveTfv.selection.start
                                 } else if (effectiveTfv.selection.collapsed) {
                                     val cur = effectiveTfv.selection.start
@@ -3138,6 +3159,7 @@ fun KeepNoteEditor(
         // ==========================================
         if (showExportSheet) {
             ArticleExportBottomSheet(
+                hasImageAttachments = state.imageUris.isNotEmpty(),
                 title = state.title,
                 blocks = blocks,
                 content = contentTfv.text,

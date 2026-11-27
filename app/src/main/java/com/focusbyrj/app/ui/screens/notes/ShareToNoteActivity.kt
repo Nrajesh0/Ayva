@@ -120,9 +120,10 @@ class ShareToNoteActivity : ComponentActivity() {
 
         val parsed = try {
             KeepNoteShareParser.parseIntent(intent)
-        } catch (t: Throwable) {
-            t.printStackTrace()
-            ParsedSharedNote(title = "", content = "", isChecklist = false, checklistItems = emptyList(), imageUris = emptyList())
+        } catch (error: Exception) {
+            android.widget.Toast.makeText(this, error.message ?: "Could not read shared note", android.widget.Toast.LENGTH_LONG).show()
+            finish()
+            return
         }
 
         setContent {
@@ -165,6 +166,23 @@ fun ShareToNoteOverlay(
     var selectedColorKey by remember { mutableStateOf("default") }
     var showColorPicker by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+
+    fun submit(open: Boolean) {
+        if (isSaving) return
+        isSaving = true
+        val items = checklistItems.toList()
+        val images = imageUris.toList()
+        scope.launch {
+            try {
+                val id = withContext(Dispatchers.IO) {
+                    saveImportedNote(context, title, content, isChecklist, items, images, selectedColorKey)
+                }
+                onNoteSaved(id, open)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { Toast.makeText(context, error.message ?: "Import failed.", Toast.LENGTH_LONG).show() }
+            finally { isSaving = false }
+        }
+    }
 
     val colorTheme = KeepColorPalette.getColor(selectedColorKey)
     val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -480,23 +498,7 @@ fun ShareToNoteOverlay(
                         // Save Note silently (stays in Keep)
                         Button(
                             onClick = {
-                                if (isSaving) return@Button
-                                isSaving = true
-                                scope.launch(Dispatchers.IO) {
-                                    val savedId = saveImportedNote(
-                                        context = context,
-                                        title = title,
-                                        content = content,
-                                        isChecklist = isChecklist,
-                                        checklistItems = checklistItems,
-                                        imageUris = imageUris,
-                                        colorKey = selectedColorKey
-                                    )
-                                    withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, "Note imported to Focus Notes ✅", Toast.LENGTH_SHORT).show()
-                                        onNoteSaved(savedId, false)
-                                    }
-                                }
+                                submit(false)
                             },
                             enabled = !isSaving,
                             shape = RoundedCornerShape(12.dp),
@@ -517,23 +519,7 @@ fun ShareToNoteOverlay(
                         // Save and open in app
                         Button(
                             onClick = {
-                                if (isSaving) return@Button
-                                isSaving = true
-                                scope.launch(Dispatchers.IO) {
-                                    val savedId = saveImportedNote(
-                                        context = context,
-                                        title = title,
-                                        content = content,
-                                        isChecklist = isChecklist,
-                                        checklistItems = checklistItems,
-                                        imageUris = imageUris,
-                                        colorKey = selectedColorKey
-                                    )
-                                    withContext(Dispatchers.Main) {
-                                        Toast.makeText(context, "Note imported to Focus Notes ✅", Toast.LENGTH_SHORT).show()
-                                        onNoteSaved(savedId, true)
-                                    }
-                                }
+                                submit(true)
                             },
                             enabled = !isSaving,
                             shape = RoundedCornerShape(12.dp),
@@ -605,11 +591,14 @@ private suspend fun saveImportedNote(
     )
 
     val db = NoteDatabase.getInstance(context)
-    val savedId = db.noteDao().insertNote(noteEntity)
+    val savedId = try { db.noteDao().insertNote(noteEntity) } catch (error: Exception) {
+        com.focusbyrj.app.data.note.MediaRetirement.retire(localImagePaths.toSet())
+        throw error
+    }
     NotesViewModel.latestNotesCache[savedId] = noteEntity.copy(id = savedId)
 
     // Notify widgets
-    NoteWidgetProvider.updateAllWidgets(context)
+    runCatching { NoteWidgetProvider.updateAllWidgets(context) }
 
     return savedId
 }

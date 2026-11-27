@@ -43,7 +43,8 @@ data class NoteEntity(
      * the row is actually removed, giving a recovery window.
      * Null for active / trashed notes.
      */
-    val deletedAt: Long? = null
+    val deletedAt: Long? = null,
+    val sortPosition: Long? = null
 ) {
     fun getImageUris(): List<String> {
         if (imageUrisJson.isBlank()) return emptyList()
@@ -153,6 +154,7 @@ data class NoteEntity(
                         jsonStr = jsonStr.removeSuffix(":BLOCKS_END").trim()
                     }
                     val root = JSONObject(jsonStr)
+                    if (root.optString("subtitle").isNotBlank()) return false
                     val blocks = root.optJSONArray("blocks") ?: return false
                     var allTextEmpty = true
                     for (i in 0 until blocks.length()) {

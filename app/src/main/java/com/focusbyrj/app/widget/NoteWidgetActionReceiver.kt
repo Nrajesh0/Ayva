@@ -169,6 +169,7 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                     NoteWidgetFilterMode.NOTES -> noteDao.getTextNotesSync()
                                     NoteWidgetFilterMode.CHECKLISTS -> noteDao.getChecklistNotesSync()
                                     NoteWidgetFilterMode.PINNED -> noteDao.getPinnedNotesSync()
+                                    NoteWidgetFilterMode.SPECIFIC -> emptyList()
                                     else -> noteDao.getAllActiveNotesSync()
                                 }
                             }
@@ -218,6 +219,7 @@ class NoteWidgetActionReceiver : BroadcastReceiver() {
                                     NoteWidgetFilterMode.NOTES -> noteDao.getTextNotesSync()
                                     NoteWidgetFilterMode.CHECKLISTS -> noteDao.getChecklistNotesSync()
                                     NoteWidgetFilterMode.PINNED -> noteDao.getPinnedNotesSync()
+                                    NoteWidgetFilterMode.SPECIFIC -> emptyList()
                                     else -> noteDao.getAllActiveNotesSync()
                                 }
                             }

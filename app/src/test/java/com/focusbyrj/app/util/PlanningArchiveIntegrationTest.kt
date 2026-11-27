@@ -85,7 +85,10 @@ class PlanningArchiveIntegrationTest {
         .put("notes", JSONArray()).put("tasks", JSONArray(tasks.map { task -> JSONObject()
             .put("id", task.id).put("title", task.title).put("details", task.details)
             .put("updatedAt", task.updatedAt).put("dueDate", task.dueDate ?: JSONObject.NULL).put("planningJson", task.planningJson) }))
-        .apply { payload?.let { put("assistantPlanning", it) } }
+        .apply {
+            listOf("restrictions", "schedules", "habits", "habitLogs", "drillSessions", "chatMessages").forEach { put(it, JSONArray()) }
+            payload?.let { put("assistantPlanning", it) }
+        }
     private fun archive(root: JSONObject): Uri {
         val file = File(context.cacheDir, "planning-import.focusbackup")
         CryptoBackupEngine.openEncryptingStream(file.outputStream(), password.toCharArray()).use { encrypted ->

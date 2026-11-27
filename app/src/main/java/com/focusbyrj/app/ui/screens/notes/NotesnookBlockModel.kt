@@ -611,6 +611,17 @@ object NotesnookBlockManager {
     /**
      * Converts raw note content (which may contain blocks) to clean plain text.
      */
+    fun fullText(content: String): String = buildList {
+        getSubtitle(content).takeIf { it.isNotBlank() }?.let { add(it) }
+        parse(content).forEach { block ->
+            add(when (block) {
+                is NotesnookBlock.Code -> block.code
+                is NotesnookBlock.Table -> block.data.joinToString("\n") { it.joinToString("\t") }
+                else -> toPlainText(listOf(block))
+            })
+        }
+    }.joinToString("\n")
+
     fun toPlainText(rawContent: String): String {
         if (rawContent.contains(ALT_BLOCKS_START) && rawContent.contains(ALT_BLOCKS_END)) {
             try {

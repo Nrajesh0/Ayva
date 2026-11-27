@@ -81,15 +81,14 @@ class NoteWidgetRemoteViewsFactory(
                     if (specific != null && !specific.isArchived && !specific.isTrashed) {
                         specific
                     } else {
-                        // Fallback to active notes if specific note was deleted, trashed or archived
-                        val rawNotes = noteDao.getAllActiveNotesSync()
-                        if (rawNotes.isNotEmpty()) rawNotes.first() else null
+                        null
                     }
                 } else {
                     val rawNotes = when (widgetConfig.filterMode) {
                         NoteWidgetFilterMode.NOTES -> noteDao.getTextNotesSync()
                         NoteWidgetFilterMode.CHECKLISTS -> noteDao.getChecklistNotesSync()
                         NoteWidgetFilterMode.PINNED -> noteDao.getPinnedNotesSync()
+                        NoteWidgetFilterMode.SPECIFIC -> emptyList()
                         else -> noteDao.getAllActiveNotesSync()
                     }
 

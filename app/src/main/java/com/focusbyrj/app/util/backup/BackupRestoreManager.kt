@@ -96,7 +96,7 @@ object BackupRestoreManager {
         com.focusbyrj.app.util.AyvaAlertCategory.PREFS_NAME
     )
 
-    internal fun recoveryPreferenceNames(): List<String> = PREF_FILES + ArchiveVaultSecurity.PREFS_NAME + "ayva_composer"
+    internal fun recoveryPreferenceNames(): List<String> = PREF_FILES + ArchiveVaultSecurity.PREFS_NAME + "ayva_composer" + DataSafetyManager.LINEAGE_PREFS
 
     private val MEDIA_FOLDERS = listOf(
         "keep_images",
@@ -788,6 +788,7 @@ object BackupRestoreManager {
                     isTrashed = obj.optBoolean("isTrashed", false),
                     createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                     updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+                    sortPosition = if (obj.isNull("sortPosition")) null else obj.getLong("sortPosition"),
                     trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.optLong("trashedAt") else null,
                     deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.optLong("deletedAt") else null
                 )
@@ -1098,8 +1099,16 @@ object BackupRestoreManager {
             val prefsObj = rootJson.optJSONObject("preferences")
             BackupProgress.report("Restoring settings")
             val prefTypesObj = rootJson.optJSONObject("preferenceTypes")
+            if (cleanRestore) {
+                check(app.getSharedPreferences(DataSafetyManager.LINEAGE_PREFS, 0).edit()
+                    .putString("generation", java.util.UUID.randomUUID().toString()).commit()) { "Could not record note replacement." }
+            }
             val publicNoteIds = noteDb.noteDao().getAllActiveNotesSync().mapTo(hashSetOf()) { it.id }
             PortableNoteSettings.restorePins(app, prefsObj?.optJSONObject(PortableNoteSettings.PROFILE_PINS), cleanRestore, restoredNoteIds, publicNoteIds)
+            if (cleanRestore && prefsObj?.has("note_widget_prefs") != true &&
+                PortableNoteSettings.restoreWidgets(app, JSONObject(), true, restoredNoteIds, null)) {
+                restoreWarnings += "Reconnect note-specific widgets on this installation."
+            }
             if (prefsObj?.has("ayva_personalization") != true) restoreWarnings += "This older backup has no assistant preferences. Your current preferences were kept."
             if (cleanRestore && prefsObj?.has(PortableNoteSettings.PROFILE_PINS) != true) restoreWarnings += "This older backup has no profile pin selections. Choose them again in Account."
             // Completed history was absent from earlier current-format archives.
@@ -1368,6 +1377,10 @@ object BackupRestoreManager {
             val ids = mutableSetOf<Long>()
             for (i in 0 until array.length()) {
                 val id = array.getJSONObject(i).optLong("id", 0L)
+                if (name == "notes" && array.getJSONObject(i).has("id")) {
+                    val raw = array.getJSONObject(i).get("id")
+                    require((raw is Int || raw is Long) && id >= 0) { "Invalid note ID" }
+                }
                 require(id <= 0L || ids.add(id)) { "Duplicate $name ID: $id" }
             }
         }
@@ -1475,9 +1488,9 @@ object BackupRestoreManager {
     private fun normalizeArchiveMediaPath(path: String): String {
         val normalized = path.replace('\\', '/')
         val parts = normalized.split('/')
-        require(parts.size == 2 && parts.first() in MEDIA_FOLDERS &&
-            parts.last().isNotBlank() && parts.last() !in setOf(".", "..") && '\u0000' !in normalized) {
-            "Invalid media path in backup archive"
+        if (!(parts.size == 2 && parts.first() in MEDIA_FOLDERS &&
+            parts.last().isNotBlank() && parts.last() !in setOf(".", "..") && '\u0000' !in normalized)) {
+            throw SecurityException("Invalid or disallowed media path in backup archive")
         }
         return normalized
     }

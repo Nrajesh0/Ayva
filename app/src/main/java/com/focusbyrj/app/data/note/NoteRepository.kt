@@ -150,7 +150,7 @@ class NoteRepository(
     }
 
     suspend fun deletePermanently(note: NoteEntity) {
-        noteDao.deleteNote(note)
+        check(noteDao.deleteReviewed(note.id, note.updatedAt, note.trashedAt, note.createdAt) == 1) { "Trash changed. Review the notes again." }
     }
 
     suspend fun togglePin(id: Long, currentPinned: Boolean) {

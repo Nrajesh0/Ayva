@@ -28,7 +28,7 @@ object NoteImageHelper {
         val name = contentUri.lastPathSegment ?: return null
         if (!name.matches(Regex("[a-f0-9-]{36}\\.jpg"))) return null
         val file = File(File(context.cacheDir, "note_capture"), name)
-        return try { processCapturedImage(context, file) } catch (_: Exception) { null } finally { file.delete() }
+        return try { processCapturedImage(context, file)?.also { file.delete() } } catch (_: Exception) { null }
     }
 
     internal fun processCapturedImage(context: Context, file: File): String? {
@@ -95,6 +95,14 @@ object NoteImageHelper {
             }
 
             if (boundsOptions.outMimeType == "image/gif") return null
+            if (boundsOptions.outMimeType == "image/webp") {
+                val header = ByteArray(21)
+                val animated = context.contentResolver.openInputStream(contentUri)?.use {
+                    java.io.DataInputStream(it).readFully(header)
+                    String(header, 12, 4, Charsets.US_ASCII) == "VP8X" && header[20].toInt() and 2 != 0
+                }
+                if (animated == true) return null
+            }
             val lossless = boundsOptions.outMimeType in setOf("image/png", "image/webp")
             val origWidth = boundsOptions.outWidth
             val origHeight = boundsOptions.outHeight
@@ -253,8 +261,9 @@ object NoteImageHelper {
             val ext = src.extension.ifEmpty { "jpg" }
             val dest = File(imagesDir, "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$ext")
             val rawBytes = com.focusbyrj.app.util.crypto.EncryptedMediaStorage.readDecryptedBytes(src) ?: return null
-            com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(dest, rawBytes)
-            java.util.Arrays.fill(rawBytes, 0.toByte())
+            try {
+                com.focusbyrj.app.util.crypto.EncryptedMediaStorage.writeEncryptedBytes(dest, rawBytes)
+            } finally { rawBytes.fill(0) }
             dest.absolutePath
         } catch (e: Exception) {
             e.printStackTrace()
@@ -264,11 +273,15 @@ object NoteImageHelper {
 
     fun processAndSaveMultipleImages(context: Context, uris: List<Uri>): List<String> {
         val paths = mutableListOf<String>()
-        for (uri in uris.take(20)) {
-            val savedPath = processAndSaveImage(context, uri)
-            if (savedPath != null) {
-                paths.add(savedPath)
+        try {
+            uris.forEachIndexed { index, uri ->
+                paths += checkNotNull(processAndSaveImage(context, uri)) {
+                    "Image ${index + 1} of ${uris.size} could not be imported. Check the selection or attach the original."
+                }
             }
+        } catch (error: Exception) {
+            MediaRetirement.retire(paths.toSet())
+            throw error
         }
         return paths
     }
@@ -278,7 +291,17 @@ object NoteImageHelper {
         return try {
             val maxDim = 260
             rawBytes = if (pathOrUri.startsWith("content://") || pathOrUri.startsWith("file://")) {
-                context.contentResolver.openInputStream(android.net.Uri.parse(pathOrUri))?.use { it.readBytes() }
+                context.contentResolver.openInputStream(android.net.Uri.parse(pathOrUri))?.use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        require(output.size() + count <= 50 * 1024 * 1024)
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                }
             } else {
                 val file = File(pathOrUri)
                 if (!file.exists()) null

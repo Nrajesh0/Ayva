@@ -76,6 +76,7 @@ fun ArticleExportBottomSheet(
     title: String,
     blocks: List<NotesnookBlock>,
     content: String,
+    hasImageAttachments: Boolean = false,
     labels: List<String> = emptyList(),
     isChecklist: Boolean = false,
     checklistItems: List<ChecklistItem> = emptyList(),
@@ -185,6 +186,10 @@ fun ArticleExportBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            if (hasImageAttachments || blocks.any { it is NotesnookBlock.Image || it is NotesnookBlock.Attachment }) {
+                Text("This document exports text. Use a full backup to include the original media files.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
             // Format Selection Chips (Horizontal Scrollable)
             Row(
                 modifier = Modifier
@@ -402,6 +407,7 @@ fun ArticleExportBottomSheet(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText("Exported ${selectedFormat.displayName}", activeTextPreview)
+                        clip.description.extras = android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
                         clipboard.setPrimaryClip(clip)
                         Toast.makeText(context, "Copied ${selectedFormat.displayName} to clipboard!", Toast.LENGTH_SHORT).show()
                     },

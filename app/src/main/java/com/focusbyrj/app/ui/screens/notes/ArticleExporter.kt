@@ -697,7 +697,12 @@ object ArticleExporter {
                 val resolver = context.contentResolver
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                 if (uri != null) {
-                    resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    try {
+                        checkNotNull(resolver.openOutputStream(uri)).use { it.write(bytes) }
+                    } catch (error: Exception) {
+                        resolver.delete(uri, null, null)
+                        throw error
+                    }
                     Toast.makeText(context, "Saved to Downloads/FocusNotes/$fileName", Toast.LENGTH_LONG).show()
                     true
                 } else {

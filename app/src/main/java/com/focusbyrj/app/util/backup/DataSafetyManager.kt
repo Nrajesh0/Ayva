@@ -73,6 +73,7 @@ object DataSafetyManager {
     private const val MAX_DAILY_BACKUPS = 7
     private const val MAX_PRE_OP_BACKUPS = 10
     private val snapshotFiles = Any()
+    private val snapshotPinEpoch = java.util.concurrent.atomic.AtomicLong()
     private val protectedInputs = mutableSetOf<File>()
 
     // ──────────────────────────────────────────────────────────────────────
@@ -94,6 +95,7 @@ object DataSafetyManager {
         var outcome = BackupActivityLog.Outcome.FAILED
         try {
             val dir = ensureDir(context, AUTO_BACKUP_DIR)
+            val pinEpoch = snapshotPinEpoch.get()
             val notes = noteDao.getAllNotesList()
             val payload = buildMultiTableSnapshot(notes, focusDb, context)
 
@@ -101,6 +103,7 @@ object DataSafetyManager {
             val file = File(dir, "${DAILY_PREFIX}${dateStamp}.json")
             synchronized(snapshotFiles) {
                 check(file.canonicalFile !in protectedInputs) { "This daily snapshot is being restored." }
+                check(pinEpoch == snapshotPinEpoch.get()) { "Vault settings changed during snapshot creation. Retry." }
                 writeAtomically(file, payload)
                 rotateSnapshots(dir, DAILY_PREFIX, MAX_DAILY_BACKUPS, file)
             }
@@ -142,6 +145,7 @@ object DataSafetyManager {
         var outcome = BackupActivityLog.Outcome.FAILED
         try {
             val dir = ensureDir(context, PRE_OP_DIR)
+            val pinEpoch = snapshotPinEpoch.get()
             val notes = noteDao.getAllNotesList()
             val payload = buildMultiTableSnapshot(notes, focusDb, context)
 
@@ -149,6 +153,7 @@ object DataSafetyManager {
             val safeTag = operationTag.replace(Regex("[^a-zA-Z0-9_]"), "_")
             val file = File(dir, "${PRE_OP_PREFIX}${safeTag}_${ts}_${UUID.randomUUID()}.json")
             synchronized(snapshotFiles) {
+                check(pinEpoch == snapshotPinEpoch.get()) { "Vault settings changed during snapshot creation. Retry." }
                 writeAtomically(file, payload)
                 rotateSnapshots(dir, PRE_OP_PREFIX, MAX_PRE_OP_BACKUPS, file)
             }
@@ -350,16 +355,50 @@ object DataSafetyManager {
         authorization: BackupRestoreManager.RestoreAuthorization?
     ): Result<Int> = restoreSnapshotInternal(context, snapshotPath, noteDao, focusDb, authorization, false)
 
+    internal const val LINEAGE_PREFS = "note_storage_lineage"
+    internal fun noteLineage(context: Context): String =
+        context.getSharedPreferences(LINEAGE_PREFS, 0).getString("generation", null) ?: "initial"
+
+    internal fun removeSnapshotPinProtection(context: Context, key: ByteArray) = synchronized(snapshotFiles) {
+        snapshotPinEpoch.incrementAndGet()
+        for (directory in listOf(AUTO_BACKUP_DIR, PRE_OP_DIR)) {
+            val dir = File(context.filesDir, directory)
+            if (!dir.exists()) continue
+            for (file in checkNotNull(dir.listFiles { f -> f.isFile && f.extension == "json" })) {
+                check(file.canonicalFile !in protectedInputs) { "A snapshot is being restored." }
+                val root = JSONObject(readAtomically(file))
+                val rows = root.optJSONArray("notes") ?: continue
+                var changed = root.optString("vaultStatus") == "ENABLED"
+                for (index in 0 until rows.length()) {
+                    val row = rows.getJSONObject(index)
+                    val envelope = NoteEntity(id = row.getLong("id"), content = row.getString("content"), isArchived = true)
+                    if (!com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(envelope)) continue
+                    val result = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(envelope, key)
+                    check(result is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success) { "Could not unlock historical note for PIN removal." }
+                    val bytes = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encodePayload(result.note)
+                    try {
+                        val fields = JSONObject(String(bytes, Charsets.UTF_8))
+                        for (name in fields.keys()) row.put(name, fields.get(name))
+                    } finally { bytes.fill(0) }
+                    changed = true
+                }
+                if (changed) writeAtomically(file, root.put("vaultStatus", "DISABLED").toString())
+            }
+        }
+    }
+
     internal suspend fun snapshotNeedsVault(context: Context, path: String, noteDao: NoteDao): Boolean =
         withContext(Dispatchers.IO) {
             val file = File(path).canonicalFile
             if (file.parentFile == File(context.filesDir, TaskRecoveryStore.DIRECTORY).canonicalFile) return@withContext false
-            val notes = JSONObject(readAtomically(file)).optJSONArray("notes") ?: return@withContext false
+            val root = JSONObject(readAtomically(file))
+            val vaultEnabled = com.focusbyrj.app.data.note.ArchiveVaultSecurity.isEnabledForSnapshot(context, root.optString("vaultStatus"))
+            val notes = root.optJSONArray("notes") ?: return@withContext false
             for (index in 0 until notes.length()) {
                 val row = notes.getJSONObject(index)
-                if (row.optBoolean("isArchived")) return@withContext true
+                if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(NoteEntity(content = row.optString("content"))) || vaultEnabled && row.optBoolean("isArchived")) return@withContext true
                 val live = noteDao.getNoteByIdSync(row.optLong("id"))
-                if (live != null && (live.isArchived ||
+                if (live != null && (vaultEnabled && live.isArchived ||
                         com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(live))) return@withContext true
             }
             false
@@ -469,7 +508,8 @@ object DataSafetyManager {
                         isTrashed = obj.optBoolean("isTrashed", false),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                         updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
-                        trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.getLong("trashedAt") else null,
+                        sortPosition = if (obj.isNull("sortPosition")) null else obj.getLong("sortPosition"),
+                    trashedAt = if (obj.has("trashedAt") && !obj.isNull("trashedAt")) obj.getLong("trashedAt") else null,
                         deletedAt = if (obj.has("deletedAt") && !obj.isNull("deletedAt")) obj.getLong("deletedAt") else null
                     )
                     restoredNotes.add(note)
@@ -477,13 +517,17 @@ object DataSafetyManager {
 
                 if (restoredNotes.isNotEmpty()) {
                     val safeToRestoreNotes = mutableListOf<NoteEntity>()
-                    for (snapshotNote in restoredNotes) {
-                        val liveNote = noteDao.getNoteByIdSync(snapshotNote.id)
+                    val vaultEnabled = com.focusbyrj.app.data.note.ArchiveVaultSecurity.isEnabledForSnapshot(context, root.optString("vaultStatus"))
+                    for (original in restoredNotes) {
+                        val occupying = noteDao.getNoteByIdSync(original.id)
+                        val otherLineage = root.optString("noteLineage", "initial") != noteLineage(context)
+                        val snapshotNote = if (occupying != null && (occupying.createdAt != original.createdAt || otherLineage)) original.copy(id = 0L) else original
+                        val liveNote = occupying
                         val liveProtected = liveNote?.let {
-                            it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
+                            vaultEnabled && it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
                         } == true
                         val snapshotEncrypted = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(snapshotNote)
-                        val snapshotProtected = snapshotNote.isArchived || snapshotEncrypted
+                        val snapshotProtected = vaultEnabled && snapshotNote.isArchived || snapshotEncrypted
 
                         if (!liveProtected && !snapshotProtected) {
                             safeToRestoreNotes.add(snapshotNote)
@@ -515,7 +559,7 @@ object DataSafetyManager {
                         )
                     }
                     if (safeToRestoreNotes.isNotEmpty()) {
-                        noteDao.insertNotes(safeToRestoreNotes)
+                        noteDao.insertNotes(safeToRestoreNotes.sortedBy { it.id == 0L })
                         totalRestored += safeToRestoreNotes.size
                         Log.i(TAG, "Restored ${safeToRestoreNotes.size} notes from snapshot: ${file.name}")
                     }
@@ -767,6 +811,7 @@ object DataSafetyManager {
             put("includesMediaBytes", false)
             if (context != null) {
                 put("vaultKeyVersion", com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultDataKeyVersion(context))
+                put("noteLineage", noteLineage(context))
                 put("vaultStatus", com.focusbyrj.app.data.note.ArchiveVaultSecurity.getVaultStatus(context).name)
             }
             
@@ -788,6 +833,7 @@ object DataSafetyManager {
                     put("isTrashed", note.isTrashed)
                     put("createdAt", note.createdAt)
                     put("updatedAt", note.updatedAt)
+            put("sortPosition", note.sortPosition)
                     if (note.trashedAt != null) put("trashedAt", note.trashedAt)
                     if (note.deletedAt != null) put("deletedAt", note.deletedAt)
                 })

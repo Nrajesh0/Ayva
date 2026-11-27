@@ -89,6 +89,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusbyrj.app.data.note.ArchiveVaultSecurity
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
 /**
@@ -1196,6 +1197,7 @@ fun ArchiveVaultMnemonicRecoveryDialog(
     onRecover: (List<String>, String) -> Boolean,
     onSuccess: () -> Unit
 ) {
+    val credentialScope = androidx.compose.runtime.rememberCoroutineScope()
     var step by remember { mutableStateOf(RecoveryStep.ENTER_PHRASE) }
     var phraseInput by remember { mutableStateOf("") }
     var newPin by remember { mutableStateOf("") }
@@ -1540,16 +1542,18 @@ fun ArchiveVaultMnemonicRecoveryDialog(
 
                                 if (updated.length == 6) {
                                     if (updated == newPin) {
-                                        val recovered = onRecover(parsedWords, updated)
-                                        if (recovered) {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            onSuccess()
-                                        } else {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            isError = true
-                                            shakeTrigger += 1
-                                            errorMessage = "Recovery failed: phrase does not match stored vault"
-                                            confirmPin = ""
+                                        credentialScope.launch {
+                                            val recovered = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { onRecover(parsedWords, updated) }
+                                            if (recovered) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                onSuccess()
+                                            } else {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                isError = true
+                                                shakeTrigger += 1
+                                                errorMessage = "Recovery failed: phrase does not match stored vault"
+                                                confirmPin = ""
+                                            }
                                         }
                                     } else {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1946,6 +1950,7 @@ fun ArchiveVaultChangePasscodeDialog(
     onSaveNewPin: (String) -> Boolean,
     onSuccess: () -> Unit
 ) {
+    val credentialScope = androidx.compose.runtime.rememberCoroutineScope()
     var step by remember { mutableStateOf(ChangePinStep.VERIFY_OLD) }
     var newPin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
@@ -2116,10 +2121,12 @@ fun ArchiveVaultChangePasscodeDialog(
                                 if (updated.length == 6) {
                                     if (updated == newPin) {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        if (onSaveNewPin(updated)) {
-                                            onSuccess()
-                                        } else {
-                                            errorMessage = "Failed to update passcode"
+                                        credentialScope.launch {
+                                            if (kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { onSaveNewPin(updated) }) {
+                                                onSuccess()
+                                            } else {
+                                                errorMessage = "Failed to update passcode"
+                                            }
                                         }
                                     } else {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)

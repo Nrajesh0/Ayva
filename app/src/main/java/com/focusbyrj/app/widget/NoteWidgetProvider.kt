@@ -83,14 +83,14 @@ class NoteWidgetProvider : AppWidgetProvider() {
                     if (single != null && !single.isArchived && !single.isTrashed) {
                         listOf(single)
                     } else {
-                        // If specific note was deleted, trashed or archived, fallback to all active notes
-                        noteDao.getAllActiveNotesSync()
+                        emptyList()
                     }
                 } else {
                     when (config.filterMode) {
                         NoteWidgetFilterMode.NOTES -> noteDao.getTextNotesSync()
                         NoteWidgetFilterMode.CHECKLISTS -> noteDao.getChecklistNotesSync()
                         NoteWidgetFilterMode.PINNED -> noteDao.getPinnedNotesSync()
+                        NoteWidgetFilterMode.SPECIFIC -> emptyList()
                         else -> noteDao.getAllActiveNotesSync()
                     }
                 }

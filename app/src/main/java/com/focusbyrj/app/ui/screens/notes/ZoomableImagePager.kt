@@ -171,11 +171,15 @@ fun ZoomableImagePager(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    coil.compose.AsyncImage(
+                    var failed by remember(uri) { mutableStateOf(false) }
+                    var attempt by remember(uri) { mutableStateOf(0) }
+                    androidx.compose.runtime.key(attempt) { coil.compose.AsyncImage(
                         model = coil.request.ImageRequest.Builder(LocalContext.current)
                             .data(uri)
                             .crossfade(true)
                             .build(),
+                        onError = { failed = true },
+                        onSuccess = { failed = false },
                         contentDescription = "Full view image",
                         modifier = Modifier
                             .fillMaxSize()
@@ -187,6 +191,8 @@ fun ZoomableImagePager(
                             },
                         contentScale = ContentScale.Fit
                     )
+                    }
+                    if (failed) androidx.compose.material3.TextButton(onClick = { failed = false; attempt++ }) { Text("Image unavailable · Retry", color = Color.White) }
                 }
             }
 
@@ -221,7 +227,7 @@ fun ZoomableImagePager(
                         ) {
                             coil.compose.AsyncImage(
                                 model = coil.request.ImageRequest.Builder(LocalContext.current)
-                                    .data(uri)
+                                    .data(if (uri.startsWith("/")) com.focusbyrj.app.util.crypto.NoteThumbnail(java.io.File(uri)) else uri)
                                     .crossfade(true)
                                     .build(),
                                 contentDescription = "Thumbnail ${index + 1}",

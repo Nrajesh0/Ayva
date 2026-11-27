@@ -37,6 +37,7 @@ internal object BackupRecordCodec {
             if (note.deletedAt != null) put("deletedAt", note.deletedAt)
             put("createdAt", note.createdAt)
             put("updatedAt", note.updatedAt)
+            put("sortPosition", note.sortPosition)
         }
 
     fun restriction(res: AppRestriction): JSONObject =

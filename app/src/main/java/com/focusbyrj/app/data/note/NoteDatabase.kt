@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import net.sqlcipher.database.SQLiteDatabase
 import com.focusbyrj.app.data.PreservingSqlCipherFactory
 
-@Database(entities = [NoteEntity::class], version = 7, exportSchema = true)
+@Database(entities = [NoteEntity::class], version = 8, exportSchema = true)
 abstract class NoteDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
 
@@ -221,6 +221,12 @@ abstract class NoteDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE keep_notes ADD COLUMN sortPosition INTEGER")
+            }
+        }
+
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 try {
@@ -258,10 +264,37 @@ abstract class NoteDatabase : RoomDatabase() {
                         FROM keep_notes
                     """.trimIndent())
 
+                    db.query("SELECT id, content, isArticle, subtitle, coverImageUri, isPublished, publishedAt, readingTimeMinutes, imageUrisJson FROM keep_notes WHERE isArticle != 0 OR subtitle != '' OR coverImageUri IS NOT NULL OR isPublished != 0 OR publishedAt IS NOT NULL OR readingTimeMinutes != 0").use { rows ->
+                        while (rows.moveToNext()) {
+                            val body = rows.getString(1)
+                            val images = org.json.JSONArray(rows.getString(8))
+                            rows.getString(4)?.takeIf { it.isNotBlank() }?.let { cover ->
+                                if ((0 until images.length()).none { images.optString(it) == cover }) images.put(cover)
+                            }
+                            // Preserve opaque vault envelopes verbatim. Replacing one with a rich
+                            // document would prevent a subsequent unlock from decrypting the note.
+                            val migrated = if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(NoteEntity(content = body))) body else {
+                                val prefix = NoteContentFormat.BLOCKS_PREFIX
+                                val suffix = NoteContentFormat.BLOCKS_SUFFIX
+                                val doc = if (body.startsWith(prefix) && body.endsWith(suffix)) {
+                                    org.json.JSONObject(body.removePrefix(prefix).removeSuffix(suffix))
+                                } else org.json.JSONObject().put("version", 1).put("blocks", org.json.JSONArray().put(
+                                    org.json.JSONObject().put("type", "text").put("text", body)))
+                                if (rows.getInt(2) != 0) doc.put("isArticle", true)
+                                if (rows.getString(3).isNotEmpty()) doc.put("subtitle", rows.getString(3))
+                                doc.put("isPublished", rows.getInt(5) != 0)
+                                if (!rows.isNull(6)) doc.put("publishedAt", rows.getLong(6))
+                                doc.put("readingTimeMinutes", rows.getInt(7))
+                                prefix + doc + suffix
+                            }
+                            db.execSQL("UPDATE keep_notes_new SET content = ?, imageUrisJson = ? WHERE id = ?",
+                                arrayOf(migrated, images.toString(), rows.getLong(0)))
+                        }
+                    }
                     db.execSQL("DROP TABLE keep_notes")
                     db.execSQL("ALTER TABLE keep_notes_new RENAME TO keep_notes")
                 } catch (e: Exception) {
-                    android.util.Log.e("NoteDatabase", "Error executing MIGRATION_6_7", e)
+                    throw IllegalStateException("Could not migrate legacy note data", e)
                 }
             }
         }
@@ -323,7 +356,7 @@ abstract class NoteDatabase : RoomDatabase() {
                             MIGRATION_1_3, MIGRATION_1_4, MIGRATION_2_4,
                             MIGRATION_1_5, MIGRATION_2_5, MIGRATION_3_5,
                             MIGRATION_1_6, MIGRATION_2_6, MIGRATION_3_6, MIGRATION_4_6,
-                            MIGRATION_6_7, MIGRATION_5_7,
+                            MIGRATION_7_8, MIGRATION_6_7, MIGRATION_5_7,
                             MIGRATION_1_7, MIGRATION_2_7, MIGRATION_3_7, MIGRATION_4_7
                         )
                         .build()

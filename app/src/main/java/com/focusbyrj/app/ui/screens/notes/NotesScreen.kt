@@ -191,6 +191,15 @@ fun NotesScreen(
     val noteReadFailed by viewModel.noteReadFailed.collectAsState()
     val allLabels by viewModel.allLabels.collectAsState()
     val editingState by viewModel.editingState.collectAsState()
+    val loadingNotes by viewModel.loadingNotes.collectAsState()
+    val saveStatus by viewModel.saveStatus.collectAsState()
+    var awaitingEditorClose by remember { mutableStateOf(false) }
+    LaunchedEffect(editingState, awaitingEditorClose) {
+        if (awaitingEditorClose && editingState == null) {
+            awaitingEditorClose = false
+            viewModel.consumeReturnRoute()?.let { onNavigateToRoute?.invoke(it) }
+        }
+    }
     val canUndo by viewModel.canUndo.collectAsState()
     val canRedo by viewModel.canRedo.collectAsState()
     val selectedNoteIds by viewModel.selectedNoteIds.collectAsState()
@@ -247,7 +256,7 @@ fun NotesScreen(
             if (event == Lifecycle.Event.ON_STOP) {
                 viewModel.audioMemoManager.pauseRecording()
                 viewModel.cancelArchiveMoveAuthorization()
-                if (viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
+                if (viewModel.isVaultUnlocked.value || viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
                     viewModel.lockVaultForBackground()
                 }
             } else if (event == Lifecycle.Event.ON_RESUME) {
@@ -259,7 +268,7 @@ fun NotesScreen(
             lifecycleOwner.lifecycle.removeObserver(observer)
             viewModel.audioMemoManager.pauseRecording()
             viewModel.cancelArchiveMoveAuthorization()
-            if (viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
+            if (viewModel.isVaultUnlocked.value || viewModel.currentFolder.value == NoteFolder.ARCHIVE || viewModel.editingState.value?.isArchived == true) {
                 viewModel.lockVault()
             }
         }
@@ -267,6 +276,8 @@ fun NotesScreen(
 
     var showEditLabelsDialog by remember { mutableStateOf(false) }
     var showSketchDialogFromDock by remember { mutableStateOf(false) }
+    var reviewedGeneration by remember { mutableStateOf(0L) }
+    var reviewedTrash by remember { mutableStateOf(emptyList<NoteEntity>()) }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
 
     var microphoneRequestPending by rememberSaveable { mutableStateOf(false) }
@@ -823,7 +834,7 @@ fun NotesScreen(
 
                                     // Permanently delete selected notes
                                     IconButton(
-                                        onClick = { viewModel.deleteSelectedNotesPermanently() },
+                                        onClick = { reviewedGeneration = com.focusbyrj.app.data.note.NotesStorageVersion.current(); reviewedTrash = allNotes.filter { it.id in selectedNoteIds }; showEmptyTrashDialog = true },
                                         modifier = Modifier.size(44.dp).testTag("selection_delete_forever_button")
                                     ) {
                                         Icon(
@@ -1199,12 +1210,15 @@ fun NotesScreen(
                             }
                         }
 
+                        if (currentFolder == NoteFolder.TRASH && protectedArchive && !isVaultUnlocked) {
+                            TextButton(onClick = { showVaultUnlockDialog = true }) { Text("Unlock private Trash") }
+                        }
                         if (currentFolder == NoteFolder.TRASH && allNotes.isNotEmpty()) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .clickable { showEmptyTrashDialog = true }
+                                    .clickable { reviewedGeneration = com.focusbyrj.app.data.note.NotesStorageVersion.current(); reviewedTrash = allNotes.toList(); showEmptyTrashDialog = true }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Icon(
@@ -1355,7 +1369,9 @@ fun NotesScreen(
                         TextButton(onClick = viewModel::retryNoteReads) { Text("Retry") }
                     }
                 }
-                if (allNotes.isEmpty() && !noteReadFailed) {
+                if (allNotes.isEmpty() && loadingNotes && !noteReadFailed) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                } else if (allNotes.isEmpty() && !noteReadFailed) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -1645,6 +1661,7 @@ fun NotesScreen(
                         onAddChecklistItem = { afterIdx, text, customId -> viewModel.addChecklistItem(afterIdx, text, customId) },
                         onRemoveChecklistItem = { viewModel.removeChecklistItem(it) },
                         onMoveChecklistItem = { from, to -> viewModel.moveChecklistItem(from, to) },
+                        onCaptureReady = viewModel::addImportedCapture,
                         onAddImageUri = { viewModel.addImageUriToEditor(it) },
                         onAddAttachmentUri = { viewModel.addAttachmentToEditor(it) },
                         onAddDrawing = { viewModel.addDrawingToEditor(it) },
@@ -1669,11 +1686,8 @@ fun NotesScreen(
                             viewModel.unarchiveCurrentNote()
                         },
                         onDelete = {
+                            awaitingEditorClose = true
                             viewModel.deleteCurrentNote()
-                            val returnRoute = viewModel.consumeReturnRoute()
-                            if (returnRoute != null) {
-                                onNavigateToRoute?.invoke(returnRoute)
-                            }
                         },
                         onUndo = { viewModel.undo() },
                         onRedo = { viewModel.redo() },
@@ -1694,17 +1708,24 @@ fun NotesScreen(
                         onSeekAudio = { pos -> viewModel.seekAudio(pos) },
                         onRemoveAudio = { uri -> viewModel.removeAudioFromEditor(uri) },
                         onClose = {
+                            awaitingEditorClose = true
                             viewModel.closeEditor()
-                            val returnRoute = viewModel.consumeReturnRoute()
-                            if (returnRoute != null) {
-                                onNavigateToRoute?.invoke(returnRoute)
-                            }
                         }
                     )
                 }
             }
 
             // =========================================================
+            val saveError = saveStatus as? NotesViewModel.NoteSaveStatus.Error
+            if (editingState != null && saveError?.failedDraft?.sessionId == editingState?.sessionId && saveError != null) {
+                androidx.compose.material3.Surface(color = MaterialTheme.colorScheme.errorContainer) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(saveError.message)
+                        TextButton(onClick = { awaitingEditorClose = false; viewModel.saveFailedDraftAsCopy() }) { Text("Save draft as copy") }
+                    }
+                }
+            }
+
             // EDIT LABELS GLOBAL DIALOG
             // =========================================================
             if (showEditLabelsDialog) {
@@ -1805,16 +1826,16 @@ fun NotesScreen(
                         )
                     },
                     title = {
-                        Text("Empty trash?")
+                        Text("Delete selected notes forever?")
                     },
                     text = {
-                        Text("All notes in Trash will be permanently deleted. This action cannot be undone.")
+                        Text("Permanently delete ${reviewedTrash.size} reviewed notes from Trash?")
                     },
                     confirmButton = {
                         TextButton(
                             onClick = {
                                 showEmptyTrashDialog = false
-                                viewModel.emptyTrash()
+                                viewModel.emptyTrash(reviewedTrash, reviewedGeneration)
                             }
                         ) {
                             Text("Empty Trash", color = MaterialTheme.colorScheme.error)
@@ -1937,12 +1958,17 @@ fun NotesScreen(
                         Toast.makeText(context, "Passcode skipped. You can enable it anytime in Vault Options.", Toast.LENGTH_SHORT).show()
                     },
                     onPasscodeSet = { pin, mnemonicWords, isBackedUp ->
-                        showVaultFirstTimeDialog = false
-                        viewModel.setVaultPasscode(pin, mnemonicWords, isBackedUp)
-                        if (isBackedUp) {
-                            Toast.makeText(context, "Secret Vault secured with Recovery Phrase! 🔒", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Passcode set. Back up your phrase anytime in Vault Options! ⚠️", Toast.LENGTH_LONG).show()
+                        coroutineScope.launch {
+                            if (!kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { viewModel.setVaultPasscode(pin, mnemonicWords, isBackedUp) }) {
+                                Toast.makeText(context, "Could not finish vault setup. Check storage and retry.", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
+                            showVaultFirstTimeDialog = false
+                            if (isBackedUp) {
+                                Toast.makeText(context, "Secret Vault secured with Recovery Phrase! 🔒", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Passcode set. Back up your phrase anytime in Vault Options! ⚠️", Toast.LENGTH_LONG).show()
+                            }
                         }
                     }
                 )
