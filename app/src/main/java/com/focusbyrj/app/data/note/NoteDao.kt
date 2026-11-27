@@ -112,7 +112,11 @@ interface NoteDao {
     suspend fun compareAndSave(note: NoteEntity, expected: Long): NoteEntity? {
         val current = getNoteByIdSync(note.id) ?: return null
         if (current.updatedAt != expected) return null
-        val saved = note.copy(sortPosition = current.sortPosition, updatedAt = maxOf(note.updatedAt, expected + 1))
+        val saved = note.copy(
+            trashedAt = if (note.isTrashed) note.trashedAt ?: current.trashedAt ?: System.currentTimeMillis() else null,
+            sortPosition = current.sortPosition,
+            updatedAt = maxOf(note.updatedAt, expected + 1)
+        )
         return if (updateNoteUnchecked(saved) == 1) saved else null
     }
 

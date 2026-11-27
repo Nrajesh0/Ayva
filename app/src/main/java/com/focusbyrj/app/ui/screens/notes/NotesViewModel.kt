@@ -262,7 +262,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun disableVaultPasscode(): Boolean {
-        val success = ArchiveVaultSecurity.disablePasscode(getApplication())
+        val success = synchronized(vaultDraftWriteLock) {
+            if (hasPendingVaultDraftFile() || pendingVaultDraftInMemory != null || pendingPlainVaultDraft != null ||
+                backgroundVaultSave?.isActive == true) return false
+            ArchiveVaultSecurity.disablePasscode(getApplication())
+        }
         if (success) {
             refreshVaultStatus()
         }
@@ -342,7 +346,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         refreshVaultStatus()
     }
 
-    private var pendingPlainVaultDraft: EditingNoteState? = null
+    @Volatile private var pendingPlainVaultDraft: EditingNoteState? = null
     private fun pendingVaultFallbackFile(): File = File(getApplication<Application>().filesDir, "pending_vault_draft.vault")
     private fun pendingVaultDraftFile(): File = File(getApplication<Application>().filesDir, "pending_vault_draft.enc")
 
@@ -377,7 +381,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private var backgroundVaultSave: kotlinx.coroutines.Job? = null
+    @Volatile private var backgroundVaultSave: kotlinx.coroutines.Job? = null
 
     private fun recoverPendingVaultDraft() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -2117,12 +2121,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     if (entity.isEmptyNote()) {
                         if (entity.id != 0L) {
                             val noteDao = NoteDatabase.getInstance(getApplication()).noteDao()
-                            DataSafetyManager.writePreOpSnapshot(getApplication(), noteDao, "empty_note_soft_delete")
+                            checkNotNull(DataSafetyManager.writePreOpSnapshot(getApplication(), noteDao, "empty_note_soft_delete")) { "Could not create a recovery snapshot. Your note was kept." }
                             latestNotesCache.remove(entity.id)
                             val expected = sessionRevisions[current.sessionId] ?: resolvedCurrent.storageRevision
                             val stored = noteDao.getNoteByIdSync(entity.id) ?: throw IllegalStateException("This note was removed elsewhere")
                             check(expected == null || stored.updatedAt == expected) { "This note changed elsewhere. Your draft is retained." }
-                            check(noteDao.compareAndSave(stored.copy(isTrashed = true, trashedAt = System.currentTimeMillis()), stored.updatedAt) != null) {
+                            check(noteDao.compareAndSave(stored.copy(isTrashed = true, isPinned = false, trashedAt = System.currentTimeMillis()), stored.updatedAt) != null) {
                                 "This note changed elsewhere. Your draft is retained."
                             }
                             Log.i("NotesViewModel", "Existing note ${entity.id} was cleared to empty — moved to Trash safely (soft-delete).")

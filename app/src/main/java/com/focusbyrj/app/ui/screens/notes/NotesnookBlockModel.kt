@@ -227,8 +227,7 @@ object NotesnookBlockManager {
     fun isArticleMode(raw: String): Boolean {
         val prefixIdx = raw.indexOf(BLOCKS_PREFIX)
         val suffixIdx = if (prefixIdx != -1) {
-            val endTagged = raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length)
-            if (endTagged != -1) endTagged else raw.indexOf("-->", startIndex = prefixIdx + BLOCKS_PREFIX.length)
+            com.focusbyrj.app.data.note.NoteContentFormat.endOfPayload(raw, prefixIdx + BLOCKS_PREFIX.length)
         } else -1
         if (prefixIdx != -1 && suffixIdx != -1) {
             var jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
@@ -251,8 +250,7 @@ object NotesnookBlockManager {
     fun getSubtitle(raw: String): String {
         val prefixIdx = raw.indexOf(BLOCKS_PREFIX)
         val suffixIdx = if (prefixIdx != -1) {
-            val endTagged = raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length)
-            if (endTagged != -1) endTagged else raw.indexOf("-->", startIndex = prefixIdx + BLOCKS_PREFIX.length)
+            com.focusbyrj.app.data.note.NoteContentFormat.endOfPayload(raw, prefixIdx + BLOCKS_PREFIX.length)
         } else -1
         if (prefixIdx != -1 && suffixIdx != -1) {
             var jsonStr = raw.substring(prefixIdx + BLOCKS_PREFIX.length, suffixIdx).trim()
@@ -308,8 +306,7 @@ object NotesnookBlockManager {
         // 1. Check for native Notesnook Blocks JSON
         val prefixIdx = raw.indexOf(BLOCKS_PREFIX)
         val suffixIdx = if (prefixIdx != -1) {
-            val endTagged = raw.indexOf(BLOCKS_SUFFIX, startIndex = prefixIdx + BLOCKS_PREFIX.length)
-            if (endTagged != -1) endTagged else raw.indexOf("-->", startIndex = prefixIdx + BLOCKS_PREFIX.length)
+            com.focusbyrj.app.data.note.NoteContentFormat.endOfPayload(raw, prefixIdx + BLOCKS_PREFIX.length)
         } else -1
         if (prefixIdx != -1 && suffixIdx != -1) {
             val endMarkerLen = if (raw.startsWith(BLOCKS_SUFFIX, suffixIdx)) BLOCKS_SUFFIX.length else "-->".length

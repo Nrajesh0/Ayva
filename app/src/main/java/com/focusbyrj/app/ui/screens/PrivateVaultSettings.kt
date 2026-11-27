@@ -151,7 +151,7 @@ private fun PrivateVaultSettingsPanel(viewModel: NotesViewModel) {
         onVerifyCurrentPin = viewModel::verifyVaultPasscodeAsync, onDisableConfirmed = {
             credentialScope.launch {
                 if (kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { viewModel.disableVaultPasscode() }) { disable = false; refresh() }
-                else Toast.makeText(context, "Vault protection could not be disabled.", Toast.LENGTH_LONG).show()
+                else Toast.makeText(context, "Could not remove the PIN. Unlock Archive to recover pending drafts, check free storage, and retry.", Toast.LENGTH_LONG).show()
             }
         })
     if (unlockingForPhrase) ArchiveVaultUnlockDialog(onDismiss = { unlockingForPhrase = false },

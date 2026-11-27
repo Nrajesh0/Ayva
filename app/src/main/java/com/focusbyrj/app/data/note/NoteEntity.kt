@@ -136,11 +136,10 @@ data class NoteEntity(
         val blockPrefix = "<!--NOTESNOOK_BLOCKS:"
         val prefixIdx = content.indexOf(blockPrefix)
         if (prefixIdx != -1) {
-            val suffixIdx = content.indexOf(":BLOCKS_END-->", prefixIdx + blockPrefix.length).takeIf { it != -1 }
-                ?: content.indexOf("-->", prefixIdx + blockPrefix.length)
+            val suffixIdx = NoteContentFormat.endOfPayload(content, prefixIdx + blockPrefix.length)
             if (suffixIdx != -1) {
                 val textBefore = content.substring(0, prefixIdx).trim()
-                val endDelimLength = if (content.startsWith(":BLOCKS_END-->", suffixIdx)) 14 else 3
+                val endDelimLength = if (content.startsWith(NoteContentFormat.BLOCKS_SUFFIX, suffixIdx)) NoteContentFormat.BLOCKS_SUFFIX.length else 3
                 val textAfter = if (suffixIdx + endDelimLength < content.length) {
                     content.substring(suffixIdx + endDelimLength).trim()
                 } else ""

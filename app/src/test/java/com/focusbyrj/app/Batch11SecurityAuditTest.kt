@@ -378,13 +378,12 @@ class Batch11SecurityAuditTest {
             sb.append("- [ ] Item $i\n")
         }
 
-        val parsed = KeepNoteShareParser.parseContent("Massive Checklist", sb.toString())
-        assertTrue("Parsed note must be a checklist", parsed.isChecklist)
-        assertTrue(
-            "Checklist items must be capped at MAX_CHECKLIST_ITEMS (500) to prevent OOM",
-            parsed.checklistItems.size <= KeepNoteShareParser.MAX_CHECKLIST_ITEMS
-        )
-        assertEquals(500, parsed.checklistItems.size)
+        val failure = runCatching { KeepNoteShareParser.parseContent("Massive Checklist", sb.toString()) }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("500"))
+        val accepted = KeepNoteShareParser.parseContent("Checklist", sb.lines().take(500).joinToString("\n"))
+        assertEquals(500, accepted.checklistItems.size)
+        assertEquals("Item 500", accepted.checklistItems.last().text)
 
         // Verify null URIs are filtered out from image list
         val mixedUris: List<Uri> = listOfNotNull(

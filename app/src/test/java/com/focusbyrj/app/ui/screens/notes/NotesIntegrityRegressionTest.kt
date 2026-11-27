@@ -90,6 +90,15 @@ class NotesIntegrityRegressionTest {
         assertEquals("Paragraph", NotesnookBlockManager.toPlainText(raw))
         assertTrue(runCatching { NoteMediaInventory.paths(NoteEntity(content=raw)) }.isSuccess)
     }
+    @Test fun quotedDelimitersSurviveLegacyBackupRemapping() {
+        val text = """<!--NOTESNOOK_BLOCKS:{"blocks":[{"type":"text","text":"keep --> text"}]}-->"""
+        val image = """<!--NOTESNOOK_BLOCKS:{"blocks":[{"type":"image","uri":"old"}]}:BLOCKS_END-->"""
+        val content = text + image
+        val remapped = NoteMediaInventory.remapContent(content) { "new" }
+        assertEquals(text + image.replace("old", "new"), remapped)
+        com.focusbyrj.app.util.backup.BackupArchiveLimits.checkNoteContent(remapped)
+    }
+
     @Test fun fullCopyIncludesEntireCodeBlock() {
         val code = "line of text ".repeat(16) + "final line"
         val raw = NotesnookBlockManager.serialize(listOf(NotesnookBlock.Code(language="text",code=code)))

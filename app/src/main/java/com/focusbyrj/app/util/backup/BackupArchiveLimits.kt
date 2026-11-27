@@ -40,12 +40,15 @@ internal object BackupArchiveLimits {
     fun checkNoteContent(text: String) {
         val formats = listOf("<!--NOTESNOOK_BLOCKS:" to ":BLOCKS_END-->", "<!--BLOCKS_START-->" to "<!--BLOCKS_END-->")
         for ((prefix, suffix) in formats) {
-            val start = text.indexOf(prefix)
-            if (start < 0) continue
-            val from = start + prefix.length
-            val end = text.indexOf(suffix, from).takeIf { it >= 0 }
-                ?: if (prefix == "<!--NOTESNOOK_BLOCKS:") text.indexOf("-->", from) else -1
-            if (end >= from) checkEmbeddedJson(text.substring(from, end))
+            var start = text.indexOf(prefix)
+            while (start >= 0) {
+                val from = start + prefix.length
+                val end = com.focusbyrj.app.data.note.NoteContentFormat.endOfPayload(text, from, suffix)
+                require(end >= from) { "Incomplete note block metadata in backup." }
+                checkEmbeddedJson(text.substring(from, end))
+                val length = if (text.startsWith(suffix, end)) suffix.length else 3
+                start = text.indexOf(prefix, end + length)
+            }
         }
     }
 

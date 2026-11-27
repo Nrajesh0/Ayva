@@ -37,10 +37,9 @@ internal object NoteMediaInventory {
             NoteContentFormat.ALT_BLOCKS_START to NoteContentFormat.ALT_BLOCKS_END)) {
             var from = output.indexOf(start)
             while (from >= 0) {
-                val modern = output.indexOf(end, from + start.length)
-                val delimiter = if (modern < 0 && start == NoteContentFormat.BLOCKS_PREFIX) "-->" else end
-                val to = output.indexOf(delimiter, from + start.length)
+                val to = NoteContentFormat.endOfPayload(output, from + start.length, end)
                 require(to >= 0) { "Media block metadata is incomplete" }
+                val delimiter = if (output.startsWith(end, to)) end else "-->"
                 val payload = output.substring(from + start.length, to).trim()
                 val root: Any = if (payload.startsWith("[")) JSONArray(payload) else JSONObject(payload)
                 val blocks = if (root is JSONArray) root else (root as JSONObject).getJSONArray("blocks")

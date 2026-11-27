@@ -95,10 +95,7 @@ object KeepNoteShareParser {
 
             val imageUris = extractImageUris(intent)
 
-            require(imageUris.size <= MAX_ATTACHED_IMAGES) { "Share up to $MAX_ATTACHED_IMAGES images at a time." }
-            parseContent(rawSubject, rawText, imageUris).also {
-                require(it.checklistItems.size <= MAX_CHECKLIST_ITEMS) { "Share up to $MAX_CHECKLIST_ITEMS checklist items at a time." }
-            }
+            parseContent(rawSubject, rawText, imageUris)
         } catch (error: Exception) {
             throw IllegalArgumentException(error.message ?: "Could not read shared content", error)
         }
@@ -140,7 +137,8 @@ object KeepNoteShareParser {
             }
         }
 
-        return uris.filterNotNull().filter { isSafeShareUri(it) }.distinct()
+        require(uris.all(::isSafeShareUri)) { "A shared file could not be opened. Choose the files again." }
+        return uris.distinct()
     }
 
     /**
@@ -171,6 +169,7 @@ object KeepNoteShareParser {
     }
 
     fun parseContent(rawSubject: String?, rawText: String?, imageUris: List<Uri> = emptyList()): ParsedSharedNote {
+        require(imageUris.size <= MAX_ATTACHED_IMAGES) { "Share up to $MAX_ATTACHED_IMAGES images at a time." }
         val lines = rawText?.lines()?.map { it.trimEnd() } ?: emptyList()
         val nonEmptyLines = lines.filter { it.isNotBlank() }
 
@@ -234,6 +233,7 @@ object KeepNoteShareParser {
         }
 
         if (hasCheckboxes) {
+            require(remainingNonEmpty.size <= MAX_CHECKLIST_ITEMS) { "Share up to $MAX_CHECKLIST_ITEMS checklist items at a time." }
             val items = mutableListOf<ChecklistItem>()
             for (line in remainingLines) {
                 val trimmed = line.trim()

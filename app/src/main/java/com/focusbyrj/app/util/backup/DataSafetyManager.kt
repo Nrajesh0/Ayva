@@ -364,7 +364,10 @@ object DataSafetyManager {
         for (directory in listOf(AUTO_BACKUP_DIR, PRE_OP_DIR)) {
             val dir = File(context.filesDir, directory)
             if (!dir.exists()) continue
-            for (file in checkNotNull(dir.listFiles { f -> f.isFile && f.extension == "json" })) {
+            val snapshots = checkNotNull(dir.listFiles()).filter { it.isFile }.map {
+                File(dir, it.name.removeSuffix(".bak").removeSuffix(".new"))
+            }.filter { it.extension == "json" }.distinct()
+            for (file in snapshots) {
                 check(file.canonicalFile !in protectedInputs) { "A snapshot is being restored." }
                 val root = JSONObject(readAtomically(file))
                 val rows = root.optJSONArray("notes") ?: continue
