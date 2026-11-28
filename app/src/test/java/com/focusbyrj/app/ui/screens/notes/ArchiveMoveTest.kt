@@ -122,13 +122,20 @@ class ArchiveMoveTest {
     }
 
     @Test fun newEditorNoteArchivesLatestDraftOnceBeforeAutosaveDebounce() = runBlocking {
-        model.openNewNote()
-        model.updateEditorTitle("Brand new")
-        model.updateEditorContent("Latest unsaved content")
-        model.archiveCurrentNote()
-        assertNotNull(model.editingState.value)
+        val mutex = persistenceMutex()
+        mutex.lock()
+        try {
+            model.openNewNote()
+            model.updateEditorTitle("Brand new")
+            model.updateEditorContent("Latest unsaved content")
+            model.archiveCurrentNote()
+            assertEquals(NotesViewModel.ArchiveMovePhase.SAVING, model.archiveMove.value.phase)
+            assertEquals("Latest unsaved content", model.editingState.value?.content)
+        } finally {
+            mutex.unlock()
+        }
         awaitFinished()
-        assertEquals(NotesViewModel.ArchiveMovePhase.SUCCESS, model.archiveMove.value.phase)
+        assertEquals(model.archiveMove.value.message, NotesViewModel.ArchiveMovePhase.SUCCESS, model.archiveMove.value.phase)
         assertNull(model.editingState.value)
         val rows = dao.getAllNotesList()
         assertEquals(1, rows.size)

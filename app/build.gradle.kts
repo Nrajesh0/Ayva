@@ -15,8 +15,8 @@ android {
     multiDexEnabled = true
     minSdk = 31 // Android 12 and newer.
     targetSdk = 35
-    versionCode = 150
-    versionName = "2.0.50"
+    versionCode = 151
+    versionName = "2.0.51"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 

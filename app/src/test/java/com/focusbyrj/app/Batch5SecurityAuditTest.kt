@@ -114,14 +114,17 @@ class Batch5SecurityAuditTest {
     // B5-F-002: Note fontKey and deletedAt must be preserved across backup creation and restoration
     @Test
     fun testNoteFontKeyAndDeletedAtPreservedAcrossBackupAndRestore() = runBlocking {
+        // Startup cleanup can purge expired Trash while this test runs.
+        val trashedAt = System.currentTimeMillis() - 60_000
+        val deletedAt = trashedAt + 1
         val note = NoteEntity(
             id = 202L,
             title = "Stylized Note",
             content = "Custom typography and soft-delete retention audit",
             fontKey = "serif",
-            deletedAt = 1709999999000L,
+            deletedAt = deletedAt,
             isTrashed = true,
-            trashedAt = 1708888888000L
+            trashedAt = trashedAt
         )
         noteDb.noteDao().insertNote(note)
 
@@ -129,22 +132,20 @@ class Batch5SecurityAuditTest {
         val backupUri = Uri.fromFile(backupFile)
         val password = "BackupPassword#2026"
 
-        val createResult = BackupRestoreManager.createEncryptedBackup(context, backupUri, password)
-        assertTrue("Backup creation must succeed", createResult.isSuccess)
+        BackupRestoreManager.createEncryptedBackup(context, backupUri, password).getOrThrow()
 
         // Clear database
         noteDb.noteDao().deleteAllNotes()
         assertEquals(0, noteDb.noteDao().getAllNotesList().size)
 
-        val restoreResult = BackupRestoreManager.restoreEncryptedBackup(context, backupUri, password, cleanRestore = true)
-        assertTrue("Backup restoration must succeed", restoreResult.isSuccess)
+        BackupRestoreManager.restoreEncryptedBackup(context, backupUri, password, cleanRestore = true).getOrThrow()
 
         val restoredNotes = noteDb.noteDao().getAllNotesList()
         assertEquals(1, restoredNotes.size)
         val restoredNote = restoredNotes.first()
         assertEquals("serif", restoredNote.fontKey)
-        assertEquals(1709999999000L, restoredNote.deletedAt)
-        assertEquals(1708888888000L, restoredNote.trashedAt)
+        assertEquals(deletedAt, restoredNote.deletedAt)
+        assertEquals(trashedAt, restoredNote.trashedAt)
     }
 
     // B5-F-003: FocusDatabaseMigrationHelper extracts modern columns when present
