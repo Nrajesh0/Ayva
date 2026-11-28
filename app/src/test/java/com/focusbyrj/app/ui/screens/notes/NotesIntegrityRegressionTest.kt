@@ -154,11 +154,22 @@ class NotesIntegrityRegressionTest {
 
     @Test fun historicalArchiveSurvivesPinRemoval() = runBlocking {
         assertTrue(ArchiveVaultSecurity.setPasscode(app, "123456"))
+        val safety = com.focusbyrj.app.util.backup.DataSafetyManager
+        val obsoleteKey = ByteArray(32).also(java.security.SecureRandom()::nextBytes)
+        val obsolete = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encryptNotePayload(
+            NoteEntity(title = "Earlier vault", isArchived = true), obsoleteKey
+        )
+        obsoleteKey.fill(0)
+        dao.insertNote(obsolete)
+        val earlier = requireNotNull(safety.writePreOpSnapshot(app, dao, "earlier_pin_history"))
+        val earlierBytes = java.io.File(earlier).readBytes()
+        dao.deleteAllNotes()
+
         val note = NoteEntity(title = "Historical", isArchived = true)
         val id = NoteRepository(dao, app).saveNote(note)
-        val safety = com.focusbyrj.app.util.backup.DataSafetyManager
         val snapshot = requireNotNull(safety.writePreOpSnapshot(app, dao, "pin_history"))
         assertTrue(ArchiveVaultSecurity.disablePasscode(app))
+        assertArrayEquals(earlierBytes, java.io.File(earlier).readBytes())
         dao.deleteAllNotes()
         assertFalse(safety.snapshotNeedsVault(app, snapshot, dao))
         safety.restoreSnapshot(app, snapshot, dao, null).getOrThrow()

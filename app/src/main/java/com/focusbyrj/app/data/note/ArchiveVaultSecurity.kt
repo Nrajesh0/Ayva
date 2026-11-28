@@ -592,61 +592,63 @@ object ArchiveVaultSecurity {
             return false
         }
 
-        if (activeSubKey != null) {
-            try {
-                kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
-                    val noteDb = NoteDatabase.getInstance(appContext)
-                    noteDb.withTransaction {
-                        val targetNotes = noteDb.noteDao().getAllNotesList().filter {
-                            it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
-                        }
-                        for (note in targetNotes) {
-                            if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
-                                when (val result = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, activeSubKey)) {
-                                    is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> {
-                                        noteDb.noteDao().updateNote(result.note)
-                                    }
-                                    is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.NotEncrypted -> {
-                                        // Already plaintext
-                                    }
-                                    else -> {
-                                        throw IllegalStateException("Cannot disable passcode: note ${note.id} failed decryption ($result). Preserving vault credentials to prevent permanent data loss.")
+        com.focusbyrj.app.util.backup.DataSafetyManager.duringSnapshotPinChange {
+            if (activeSubKey != null) {
+                try {
+                    kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO + com.focusbyrj.app.util.backup.MaintenanceGate.inheritedContext()) {
+                        val noteDb = NoteDatabase.getInstance(appContext)
+                        noteDb.withTransaction {
+                            val targetNotes = noteDb.noteDao().getAllNotesList().filter {
+                                it.isArchived || com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(it)
+                            }
+                            for (note in targetNotes) {
+                                if (com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(note)) {
+                                    when (val result = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(note, activeSubKey)) {
+                                        is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success -> {
+                                            noteDb.noteDao().updateNote(result.note)
+                                        }
+                                        is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.NotEncrypted -> {
+                                            // Already plaintext
+                                        }
+                                        else -> {
+                                            throw IllegalStateException("Cannot disable passcode: note ${note.id} failed decryption ($result). Preserving vault credentials to prevent permanent data loss.")
+                                        }
                                     }
                                 }
                             }
+                            com.focusbyrj.app.util.backup.DataSafetyManager.removeSnapshotPinProtection(context, activeSubKey)
                         }
-                        com.focusbyrj.app.util.backup.DataSafetyManager.removeSnapshotPinProtection(context, activeSubKey)
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to decrypt archived notes when disabling vault passcode", e)
+                    return@duringSnapshotPinChange false
+                } finally {
+                    Arrays.fill(activeSubKey, 0.toByte())
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to decrypt archived notes when disabling vault passcode", e)
-                return false
-            } finally {
-                Arrays.fill(activeSubKey, 0.toByte())
             }
+            lockVault()
+            inMemoryLockoutElapsed = 0L
+            val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString(KEY_STATUS, "disabled")
+                .remove(KEY_SALT)
+                .remove(KEY_HASH)
+                .remove(KEY_IV)
+                .remove(KEY_KDF_TYPE)
+                .remove(KEY_WRAPPED_VAULT_DATA_KEY)
+                .remove(KEY_WRAPPED_VAULT_DATA_KEY_IV)
+                .remove(KEY_VAULT_DATA_KEY_VERSION)
+                .remove(KEY_RECOVERY_CIPHERTEXT)
+                .remove(KEY_RECOVERY_IV)
+                .remove(KEY_RECOVERY_SALT)
+                .remove(KEY_RECOVERY_ENABLED)
+                .remove(KEY_RECOVERY_PHRASE_CIPHERTEXT)
+                .remove(KEY_RECOVERY_PHRASE_IV)
+                .remove(KEY_RECOVERY_BACKED_UP)
+                .putInt(KEY_FAILED_ATTEMPTS, 0)
+                .putLong(KEY_LOCKOUT_UNTIL, 0L)
+                .commit()
         }
-        lockVault()
-        inMemoryLockoutElapsed = 0L
-        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.edit()
-            .putString(KEY_STATUS, "disabled")
-            .remove(KEY_SALT)
-            .remove(KEY_HASH)
-            .remove(KEY_IV)
-            .remove(KEY_KDF_TYPE)
-            .remove(KEY_WRAPPED_VAULT_DATA_KEY)
-            .remove(KEY_WRAPPED_VAULT_DATA_KEY_IV)
-            .remove(KEY_VAULT_DATA_KEY_VERSION)
-            .remove(KEY_RECOVERY_CIPHERTEXT)
-            .remove(KEY_RECOVERY_IV)
-            .remove(KEY_RECOVERY_SALT)
-            .remove(KEY_RECOVERY_ENABLED)
-            .remove(KEY_RECOVERY_PHRASE_CIPHERTEXT)
-            .remove(KEY_RECOVERY_PHRASE_IV)
-            .remove(KEY_RECOVERY_BACKED_UP)
-            .putInt(KEY_FAILED_ATTEMPTS, 0)
-            .putLong(KEY_LOCKOUT_UNTIL, 0L)
-            .commit()
     }
 
     /**

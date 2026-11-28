@@ -2,7 +2,7 @@
 
 This is a compact implementation history, not a complete release list or a claim
 that every milestone was published. Use [GitHub Releases](https://github.com/Nrajesh0/Ayva/releases)
-for actual artifacts and Git/CI for the exact revision. App metadata is prepared for 2.0.49 / 149. A version bump is not evidence of
+for actual artifacts and Git/CI for the exact revision. App metadata is prepared for 2.0.50 / 150. A version bump is not evidence of
 publication; use GitHub Releases for the published status.
 
 | Checkpoint | Retained decision/outcome |
@@ -20,6 +20,7 @@ publication; use GitHub Releases for the published status.
 | Documentation consolidation | Current guides replace overlapping plans/audits/HTML inventories. Artwork machine records move with tool references. Historical file-coverage classifications remain in the root tracker |
 | 2.0.48 | Optional first-use spotlight tours, context-aware feature tips and Help replay controls. Guides preserve authorization/data-operation flows; Ayva placement is unchanged |
 | 2.0.49 | Flow reliability: recovery/progress controls, encrypted draft and save-conflict handling, consistent blocking rules and durable rewards. Pending task deletes cannot cross snapshot replacement; subtask taps update the latest stored task independently of editor saves |
+| 2.0.50 | Notes edit and Trash recovery, private Archive and snapshot restoration, attachment import and thumbnails, widget bindings, and legacy article migration |
 
 ## Spotlight tour verification
 

@@ -103,7 +103,7 @@ object DataSafetyManager {
             val file = File(dir, "${DAILY_PREFIX}${dateStamp}.json")
             synchronized(snapshotFiles) {
                 check(file.canonicalFile !in protectedInputs) { "This daily snapshot is being restored." }
-                check(pinEpoch == snapshotPinEpoch.get()) { "Vault settings changed during snapshot creation. Retry." }
+                check(pinEpoch % 2L == 0L && pinEpoch == snapshotPinEpoch.get()) { "Vault settings changed during snapshot creation. Retry." }
                 writeAtomically(file, payload)
                 rotateSnapshots(dir, DAILY_PREFIX, MAX_DAILY_BACKUPS, file)
             }
@@ -153,7 +153,7 @@ object DataSafetyManager {
             val safeTag = operationTag.replace(Regex("[^a-zA-Z0-9_]"), "_")
             val file = File(dir, "${PRE_OP_PREFIX}${safeTag}_${ts}_${UUID.randomUUID()}.json")
             synchronized(snapshotFiles) {
-                check(pinEpoch == snapshotPinEpoch.get()) { "Vault settings changed during snapshot creation. Retry." }
+                check(pinEpoch % 2L == 0L && pinEpoch == snapshotPinEpoch.get()) { "Vault settings changed during snapshot creation. Retry." }
                 writeAtomically(file, payload)
                 rotateSnapshots(dir, PRE_OP_PREFIX, MAX_PRE_OP_BACKUPS, file)
             }
@@ -359,8 +359,16 @@ object DataSafetyManager {
     internal fun noteLineage(context: Context): String =
         context.getSharedPreferences(LINEAGE_PREFS, 0).getString("generation", null) ?: "initial"
 
+    internal fun <T> duringSnapshotPinChange(action: () -> T): T {
+        synchronized(snapshotFiles) { snapshotPinEpoch.incrementAndGet() }
+        try {
+            return action()
+        } finally {
+            synchronized(snapshotFiles) { snapshotPinEpoch.incrementAndGet() }
+        }
+    }
+
     internal fun removeSnapshotPinProtection(context: Context, key: ByteArray) = synchronized(snapshotFiles) {
-        snapshotPinEpoch.incrementAndGet()
         for (directory in listOf(AUTO_BACKUP_DIR, PRE_OP_DIR)) {
             val dir = File(context.filesDir, directory)
             if (!dir.exists()) continue
@@ -371,14 +379,20 @@ object DataSafetyManager {
                 check(file.canonicalFile !in protectedInputs) { "A snapshot is being restored." }
                 val root = JSONObject(readAtomically(file))
                 val rows = root.optJSONArray("notes") ?: continue
-                var changed = root.optString("vaultStatus") == "ENABLED"
+                var changed = false
+                var hasProtectedRows = false
                 for (index in 0 until rows.length()) {
                     val row = rows.getJSONObject(index)
                     val envelope = NoteEntity(id = row.getLong("id"), content = row.getString("content"), isArchived = true,
                         legacyArticleMetadata = row.optString("legacyArticleMetadata").takeIf { it.isNotEmpty() })
                     if (!com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.isVaultEncrypted(envelope)) continue
                     val result = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.tryDecryptNotePayload(envelope, key)
-                    check(result is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success) { "Could not unlock historical note for PIN removal." }
+                    if (result !is com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.DecryptionResult.Success) {
+                        // A snapshot may already contain data from an earlier vault. Keep that
+                        // envelope intact while recovering the rows that use the current key.
+                        hasProtectedRows = true
+                        continue
+                    }
                     val bytes = com.focusbyrj.app.util.crypto.VaultPayloadEncryptor.encodePayload(result.note)
                     try {
                         val fields = JSONObject(String(bytes, Charsets.UTF_8))
@@ -387,7 +401,11 @@ object DataSafetyManager {
                     } finally { bytes.fill(0) }
                     changed = true
                 }
-                if (changed) writeAtomically(file, root.put("vaultStatus", "DISABLED").toString())
+                if (!hasProtectedRows && root.optString("vaultStatus") != "DISABLED") {
+                    root.put("vaultStatus", "DISABLED")
+                    changed = true
+                }
+                if (changed) writeAtomically(file, root.toString())
             }
         }
     }
